@@ -1,0 +1,14 @@
+node_modules/
+dist/
+build/
+out/
+data/
+release/
+*.log
+.DS_Store
+Thumbs.db
+*.local
+*.env
+client-id.json
+mini_voice.db
+mini_voice.db*

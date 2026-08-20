@@ -1,0 +1,63 @@
+{
+  "name": "@mini-voice/client",
+  "version": "1.0.0",
+  "private": true,
+  "main": "dist-electron/main/main.js",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc && vite build && tsc -p tsconfig.electron.json",
+    "start": "electron .",
+    "package": "electron-builder --win --dir",
+    "dist": "electron-builder --win"
+  },
+  "description": "Mini Voice — P2P Self-Hosted Voice, Video and Chat",
+  "author": "Murilo",
+  "dependencies": {
+    "@mini-voice/shared": "*",
+    "@mini-voice/server": "*",
+    "uuid": "^11.1.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.13.4",
+    "@types/uuid": "^10.0.0",
+    "electron": "34.2.0",
+    "electron-builder": "^25.1.8",
+    "typescript": "^5.7.3",
+    "vite": "^6.2.0"
+  },
+  "build": {
+    "appId": "com.minivoice.app",
+    "productName": "Mini Voice",
+    "electronVersion": "34.2.0",
+    "directories": {
+      "output": "../../release"
+    },
+    "files": [
+      "dist/**/*",
+      "dist-electron/**/*",
+      "package.json"
+    ],
+    "extraResources": [
+      {
+        "from": "../server/dist",
+        "to": "server/dist"
+      },
+      {
+        "from": "../server/src/infrastructure/database/migrations",
+        "to": "server/dist/infrastructure/database/migrations"
+      }
+    ],
+    "win": {
+      "target": [
+        {
+          "target": "dir",
+          "arch": ["x64"]
+        },
+        {
+          "target": "portable",
+          "arch": ["x64"]
+        }
+      ]
+    }
+  }
+}

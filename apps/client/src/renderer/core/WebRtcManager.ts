@@ -1,0 +1,487 @@
+import {
+  MessageType,
+  QUALITY_PRESETS,
+  QualityPresetType,
+  WebRtcSignalPayload,
+} from '@mini-voice/shared';
+import { appEvents } from './EventBus';
+import { networkClient } from './NetworkClient';
+import { participantManager } from './ParticipantManager';
+import { settingsStore } from '../stores/settingsStore';
+
+export interface PeerSession {
+  peerUserId: string;
+  pc: RTCPeerConnection;
+  remoteStream: MediaStream;
+  isPolite: boolean;
+  makingOffer: boolean;
+  candidateQueue: RTCIceCandidateInit[];
+  audioSender?: RTCRtpSender | null;
+  videoSender?: RTCRtpSender | null;
+}
+
+export class WebRtcManager {
+  private peers: Map<string, PeerSession> = new Map();
+  private audioElements: Map<string, HTMLAudioElement> = new Map();
+  private localAudioTrack: MediaStreamTrack | null = null;
+  private localCameraTrack: MediaStreamTrack | null = null;
+  private localScreenTrack: MediaStreamTrack | null = null;
+  private currentPreset: QualityPresetType = 'NORMAL';
+  private currentUserId: string = '';
+
+  private rtcConfig: RTCConfiguration = {
+    iceServers: [
+      { urls: 'stun:stun.l.google.com:19302' },
+      { urls: 'stun:stun1.l.google.com:19302' },
+      { urls: 'stun:stun2.l.google.com:19302' },
+      { urls: 'stun:stun3.l.google.com:19302' },
+      { urls: 'stun:stun4.l.google.com:19302' },
+    ],
+    iceCandidatePoolSize: 4,
+  };
+
+  constructor() {
+    this.setupSignalListeners();
+  }
+
+  public setCurrentUserId(userId: string): void {
+    this.currentUserId = userId;
+  }
+
+  public setQualityPreset(preset: QualityPresetType): void {
+    this.currentPreset = preset;
+    this.applyBitrateConstraints();
+  }
+
+  private setupSignalListeners(): void {
+    appEvents.on(`message.${MessageType.RTC_SIGNAL}`, async (payload: WebRtcSignalPayload) => {
+      await this.handleIncomingSignal(payload);
+    });
+  }
+
+  public async connectToPeer(peerUserId: string, isInitiator: boolean): Promise<void> {
+    if (this.peers.has(peerUserId)) {
+      return;
+    }
+
+    const pc = new RTCPeerConnection(this.rtcConfig);
+    const remoteStream = new MediaStream();
+    const isPolite = this.currentUserId.localeCompare(peerUserId) < 0;
+
+    const session: PeerSession = {
+      peerUserId,
+      pc,
+      remoteStream,
+      isPolite,
+      makingOffer: false,
+      candidateQueue: [],
+    };
+    this.peers.set(peerUserId, session);
+
+    // Setup Audio Transceiver
+    if (this.localAudioTrack) {
+      session.audioSender = pc.addTrack(this.localAudioTrack, new MediaStream([this.localAudioTrack]));
+    } else {
+      pc.addTransceiver('audio', { direction: 'sendrecv' });
+    }
+
+    // Setup Video Transceiver (Camera or Screen)
+    const activeVideoTrack = this.localScreenTrack || this.localCameraTrack;
+    if (activeVideoTrack) {
+      session.videoSender = pc.addTrack(activeVideoTrack, new MediaStream([activeVideoTrack]));
+    } else {
+      pc.addTransceiver('video', { direction: 'sendrecv' });
+    }
+
+    // ICE Candidate handler
+    pc.onicecandidate = (event) => {
+      if (event.candidate) {
+        networkClient.send(MessageType.RTC_SIGNAL, {
+          targetUserId: peerUserId,
+          fromUserId: this.currentUserId,
+          signalType: 'candidate',
+          candidate: event.candidate.toJSON ? event.candidate.toJSON() : event.candidate,
+        });
+      }
+    };
+
+    // Remote Track handler (Audio & Video)
+    pc.ontrack = (event) => {
+      console.log(`[WebRTC] Received remote track (${event.track.kind}) from ${peerUserId}`);
+
+      // If new video track, remove any old ended video tracks
+      if (event.track.kind === 'video') {
+        remoteStream.getVideoTracks().forEach((old) => {
+          if (old.id !== event.track.id) {
+            remoteStream.removeTrack(old);
+          }
+        });
+      }
+
+      remoteStream.addTrack(event.track);
+      participantManager.setRemoteStream(peerUserId, remoteStream);
+
+      if (event.track.kind === 'audio') {
+        let audioEl = this.audioElements.get(peerUserId);
+        if (!audioEl) {
+          audioEl = document.createElement('audio');
+          audioEl.autoplay = true;
+          audioEl.volume = 1.0;
+          if (settingsStore.selectedSpeakerId && typeof (audioEl as any).setSinkId === 'function') {
+            (audioEl as any).setSinkId(settingsStore.selectedSpeakerId).catch((err: any) => {
+              console.warn('[WebRTC] Could not set sinkId on audio element:', err);
+            });
+          }
+          document.body.appendChild(audioEl);
+          this.audioElements.set(peerUserId, audioEl);
+        }
+        audioEl.srcObject = remoteStream;
+        audioEl.play().catch((e) => console.warn('[WebRTC] Audio play error:', e));
+      }
+
+      if (event.track.kind === 'video') {
+        const videoEl = document.getElementById(`video-${peerUserId}`) as HTMLVideoElement;
+        if (videoEl) {
+          videoEl.srcObject = remoteStream;
+          videoEl.play().catch((e) => console.warn('[WebRTC] Video play error:', e));
+        }
+        const miniVideoEl = document.getElementById(`video-mini-${peerUserId}`) as HTMLVideoElement;
+        if (miniVideoEl) {
+          miniVideoEl.srcObject = remoteStream;
+          miniVideoEl.play().catch(() => {});
+        }
+      }
+
+      event.track.onended = () => {
+        remoteStream.removeTrack(event.track);
+        participantManager.setRemoteStream(peerUserId, remoteStream);
+      };
+
+      event.track.onunmute = () => {
+        participantManager.setRemoteStream(peerUserId, remoteStream);
+        if (event.track.kind === 'audio') {
+          const audioEl = this.audioElements.get(peerUserId);
+          if (audioEl) {
+            audioEl.srcObject = remoteStream;
+            audioEl.play().catch(() => {});
+          }
+        } else if (event.track.kind === 'video') {
+          const videoEl = document.getElementById(`video-${peerUserId}`) as HTMLVideoElement;
+          if (videoEl) {
+            videoEl.srcObject = remoteStream;
+            videoEl.play().catch(() => {});
+          }
+          const miniVideoEl = document.getElementById(`video-mini-${peerUserId}`) as HTMLVideoElement;
+          if (miniVideoEl) {
+            miniVideoEl.srcObject = remoteStream;
+            miniVideoEl.play().catch(() => {});
+          }
+        }
+      };
+    };
+
+    pc.onconnectionstatechange = () => {
+      console.log(`[WebRTC] Peer ${peerUserId} state: ${pc.connectionState}`);
+      if (pc.connectionState === 'connected') {
+        this.applyBitrateConstraints();
+        participantManager.setRemoteStream(peerUserId, remoteStream);
+      } else if (pc.connectionState === 'failed' || pc.connectionState === 'disconnected') {
+        appEvents.emit('remote.peer_degraded', { userId: peerUserId });
+      }
+    };
+
+    // Initial offer if initiator
+    if (isInitiator) {
+      await this.sendOffer(session);
+    }
+  }
+
+  private async sendOffer(session: PeerSession): Promise<void> {
+    try {
+      session.makingOffer = true;
+      const offer = await session.pc.createOffer({
+        offerToReceiveAudio: true,
+        offerToReceiveVideo: true,
+      });
+      await session.pc.setLocalDescription(offer);
+
+      networkClient.send(MessageType.RTC_SIGNAL, {
+        targetUserId: session.peerUserId,
+        fromUserId: this.currentUserId,
+        signalType: 'offer',
+        sdp: session.pc.localDescription?.toJSON ? session.pc.localDescription.toJSON() : session.pc.localDescription,
+      });
+    } catch (err) {
+      console.error(`[WebRTC] Error sending offer to ${session.peerUserId}:`, err);
+    } finally {
+      session.makingOffer = false;
+    }
+  }
+
+  private async handleIncomingSignal(payload: WebRtcSignalPayload): Promise<void> {
+    const { fromUserId, signalType, sdp, candidate } = payload;
+
+    let session = this.peers.get(fromUserId);
+    if (!session && signalType === 'offer') {
+      await this.connectToPeer(fromUserId, false);
+      session = this.peers.get(fromUserId);
+    }
+
+    if (!session) return;
+
+    try {
+      if (signalType === 'offer' && sdp) {
+        const offerCollision =
+          session.makingOffer || session.pc.signalingState !== 'stable';
+
+        if (offerCollision) {
+          if (!session.isPolite) {
+            console.log(`[WebRTC] Impolite peer ignoring offer collision from ${fromUserId}`);
+            return;
+          }
+          console.log(`[WebRTC] Polite peer rolling back for offer from ${fromUserId}`);
+          await session.pc.setRemoteDescription({ type: 'rollback' } as any);
+        }
+
+        await session.pc.setRemoteDescription(new RTCSessionDescription(sdp));
+
+        // Flush any queued candidates
+        while (session.candidateQueue.length > 0) {
+          const c = session.candidateQueue.shift();
+          if (c) {
+            await session.pc.addIceCandidate(new RTCIceCandidate(c)).catch(() => {});
+          }
+        }
+
+        // 1. Ensure local audio track is attached to audio transceiver
+        if (this.localAudioTrack) {
+          const transceivers = session.pc.getTransceivers();
+          const audioTransceiver = transceivers.find(
+            (t) => t.receiver.track.kind === 'audio' || t.sender.track?.kind === 'audio'
+          );
+          if (audioTransceiver) {
+            await audioTransceiver.sender.replaceTrack(this.localAudioTrack);
+          } else {
+            const senders = session.pc.getSenders();
+            let audioSender = senders.find((s) => s.track?.kind === 'audio');
+            if (audioSender) {
+              await audioSender.replaceTrack(this.localAudioTrack);
+            } else {
+              session.audioSender = session.pc.addTrack(this.localAudioTrack, new MediaStream([this.localAudioTrack]));
+            }
+          }
+        }
+
+        // 2. Ensure active local video track (camera or screen) is attached in the answer
+        const activeVideoTrack = this.localScreenTrack || this.localCameraTrack;
+        const transceivers = session.pc.getTransceivers();
+        const videoTransceiver = transceivers.find(
+          (t) => t.receiver.track.kind === 'video' || t.sender.track?.kind === 'video'
+        );
+        if (videoTransceiver) {
+          videoTransceiver.direction = activeVideoTrack ? 'sendrecv' : 'recvonly';
+          await videoTransceiver.sender.replaceTrack(activeVideoTrack);
+        } else if (activeVideoTrack) {
+          session.videoSender = session.pc.addTrack(activeVideoTrack, new MediaStream([activeVideoTrack]));
+        }
+
+        const answer = await session.pc.createAnswer();
+        await session.pc.setLocalDescription(answer);
+
+        networkClient.send(MessageType.RTC_SIGNAL, {
+          targetUserId: fromUserId,
+          fromUserId: this.currentUserId,
+          signalType: 'answer',
+          sdp: session.pc.localDescription?.toJSON ? session.pc.localDescription.toJSON() : session.pc.localDescription,
+        });
+
+        this.applyBitrateConstraints();
+      } else if (signalType === 'answer' && sdp) {
+        if (session.pc.signalingState === 'have-local-offer') {
+          await session.pc.setRemoteDescription(new RTCSessionDescription(sdp));
+
+          // Flush queued candidates
+          while (session.candidateQueue.length > 0) {
+            const c = session.candidateQueue.shift();
+            if (c) {
+              await session.pc.addIceCandidate(new RTCIceCandidate(c)).catch(() => {});
+            }
+          }
+
+          this.applyBitrateConstraints();
+        }
+      } else if (signalType === 'candidate' && candidate) {
+        if (session.pc.remoteDescription && session.pc.remoteDescription.type) {
+          try {
+            await session.pc.addIceCandidate(new RTCIceCandidate(candidate));
+          } catch (err) {}
+        } else {
+          // Buffer candidate until remoteDescription is set
+          session.candidateQueue.push(candidate);
+        }
+      }
+    } catch (err) {
+      console.error(`[WebRTC] Signal handling error from ${fromUserId}:`, err);
+    }
+  }
+
+  public async setLocalAudioTrack(track: MediaStreamTrack | null): Promise<void> {
+    this.localAudioTrack = track;
+    for (const session of this.peers.values()) {
+      try {
+        const transceivers = session.pc.getTransceivers();
+        const audioTransceiver = transceivers.find(
+          (t) => t.receiver.track.kind === 'audio' || t.sender.track?.kind === 'audio'
+        );
+        if (audioTransceiver) {
+          await audioTransceiver.sender.replaceTrack(track);
+        } else {
+          const senders = session.pc.getSenders();
+          let sender = senders.find((s) => s.track?.kind === 'audio');
+          if (sender) {
+            await sender.replaceTrack(track);
+          } else if (track) {
+            session.audioSender = session.pc.addTrack(track, new MediaStream([track]));
+          }
+        }
+
+        if (session.pc.signalingState === 'stable') {
+          await this.sendOffer(session);
+        }
+      } catch (err) {
+        console.warn(`[WebRTC] Error updating audio track for peer ${session.peerUserId}:`, err);
+      }
+    }
+  }
+
+  public async setLocalCameraTrack(track: MediaStreamTrack | null): Promise<void> {
+    this.localCameraTrack = track;
+    const activeVideoTrack = this.localScreenTrack || this.localCameraTrack;
+    await this.updateVideoTrackAcrossPeers(activeVideoTrack);
+  }
+
+  public async setLocalScreenTrack(track: MediaStreamTrack | null): Promise<void> {
+    this.localScreenTrack = track;
+    const activeVideoTrack = this.localScreenTrack || this.localCameraTrack;
+    await this.updateVideoTrackAcrossPeers(activeVideoTrack);
+  }
+
+  private async updateVideoTrackAcrossPeers(track: MediaStreamTrack | null): Promise<void> {
+    for (const session of this.peers.values()) {
+      try {
+        const transceivers = session.pc.getTransceivers();
+        const videoTransceiver = transceivers.find(
+          (t) => t.receiver.track.kind === 'video' || t.sender.track?.kind === 'video'
+        );
+
+        if (videoTransceiver) {
+          videoTransceiver.direction = track ? 'sendrecv' : 'recvonly';
+          await videoTransceiver.sender.replaceTrack(track);
+        } else if (track) {
+          session.videoSender = session.pc.addTrack(track, new MediaStream([track]));
+        }
+
+        // Renegotiate if signaling state is stable
+        if (session.pc.signalingState === 'stable') {
+          await this.sendOffer(session);
+        }
+      } catch (err) {
+        console.warn(`[WebRTC] Error updating video track for peer ${session.peerUserId}:`, err);
+      }
+    }
+  }
+
+  public setDeafened(deafened: boolean): void {
+    for (const audioEl of this.audioElements.values()) {
+      audioEl.muted = deafened;
+    }
+  }
+
+  public async setSpeakerDeviceId(deviceId: string): Promise<void> {
+    for (const audioEl of this.audioElements.values()) {
+      if (typeof (audioEl as any).setSinkId === 'function') {
+        try {
+          await (audioEl as any).setSinkId(deviceId);
+        } catch (err) {
+          console.warn('[WebRTC] Error setting sink ID for speaker device:', err);
+        }
+      }
+    }
+  }
+
+  private async applyBitrateConstraints(): Promise<void> {
+    const profile = QUALITY_PRESETS[this.currentPreset];
+    for (const session of this.peers.values()) {
+      for (const sender of session.pc.getSenders()) {
+        if (!sender.track) continue;
+
+        try {
+          const params = sender.getParameters();
+          if (!params.encodings || params.encodings.length === 0) {
+            params.encodings = [{}];
+          }
+
+          if (sender.track.kind === 'audio') {
+            params.encodings[0].maxBitrate = profile.audioBitrateKbps * 1000;
+          } else if (sender.track.kind === 'video') {
+            params.encodings[0].maxBitrate = profile.cameraBitrateKbps * 1000;
+          }
+
+          await sender.setParameters(params);
+        } catch (err) {}
+      }
+    }
+  }
+
+  public async getPeerPing(peerUserId: string): Promise<number | null> {
+    const session = this.peers.get(peerUserId);
+    if (!session || !session.pc) return null;
+    try {
+      const stats = await session.pc.getStats();
+      for (const report of stats.values()) {
+        if (
+          report.type === 'candidate-pair' &&
+          (report.state === 'succeeded' || report.nominated) &&
+          report.currentRoundTripTime !== undefined
+        ) {
+          return Math.round(report.currentRoundTripTime * 1000);
+        }
+      }
+    } catch (e) {}
+    return null;
+  }
+
+  public async getAverageP2pPing(): Promise<number | null> {
+    const pings: number[] = [];
+    for (const peerId of this.peers.keys()) {
+      const ping = await this.getPeerPing(peerId);
+      if (ping !== null) pings.push(ping);
+    }
+    if (pings.length === 0) return null;
+    return Math.round(pings.reduce((a, b) => a + b, 0) / pings.length);
+  }
+
+  public removePeer(peerUserId: string): void {
+    const audioEl = this.audioElements.get(peerUserId);
+    if (audioEl) {
+      audioEl.srcObject = null;
+      audioEl.remove();
+      this.audioElements.delete(peerUserId);
+    }
+
+    const session = this.peers.get(peerUserId);
+    if (session) {
+      session.pc.close();
+      this.peers.delete(peerUserId);
+    }
+  }
+
+  public closeAllPeers(): void {
+    for (const [peerUserId] of this.peers) {
+      this.removePeer(peerUserId);
+    }
+    this.peers.clear();
+  }
+}
+
+export const webRtcManager = new WebRtcManager();

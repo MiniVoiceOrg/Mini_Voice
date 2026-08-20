@@ -1,0 +1,39 @@
+{
+  "name": "mini-voice",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Mini Voice — P2P Self-Hosted Voice, Video, Screen Share and Chat Application",
+  "workspaces": [
+    "packages/*",
+    "apps/*"
+  ],
+  "scripts": {
+    "start": "npm run start --workspace=apps/client",
+    "app": "npm run start --workspace=apps/client",
+    "package": "npm run build && node scripts/package.js",
+    "dist": "npm run build && node scripts/package.js",
+    "dev:server": "npm run dev --workspace=apps/server",
+    "dev:client": "npm run dev --workspace=apps/client",
+    "build": "npm run build --workspace=packages/shared && npm run build --workspace=apps/server && npm run build --workspace=apps/client",
+    "test": "npm run test --workspaces"
+  },
+  "keywords": [
+    "webrtc",
+    "p2p",
+    "voice",
+    "electron",
+    "self-hosted",
+    "chat"
+  ],
+  "author": "",
+  "license": "MIT",
+  "devDependencies": {
+    "rimraf": "^6.0.1",
+    "typescript": "^5.9.3"
+  },
+  "dependencies": {
+    "@types/sql.js": "^1.4.11",
+    "sql.js": "^1.14.2"
+  }
+}
