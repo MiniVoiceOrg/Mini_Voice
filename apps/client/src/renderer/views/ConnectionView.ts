@@ -7,15 +7,19 @@ export class ConnectionView {
   private container: HTMLElement;
   private activeTab: 'join' | 'host' = 'join';
   private selectedAvatarBase64: string = '';
+  private selectedSavedHost: string | null = null;
+  private selectedSavedPort: number | null = null;
 
   constructor(container: HTMLElement) {
     this.container = container;
     connectionStore.loadUserProfile();
+    connectionStore.loadSavedServers();
     this.selectedAvatarBase64 = connectionStore.savedAvatarBase64 || '';
   }
 
   public render(): void {
     const savedNick = connectionStore.savedNickname || '';
+    const savedServers = connectionStore.savedServers || [];
 
     this.container.innerHTML = `
       <div class="connection-layout">
@@ -23,7 +27,8 @@ export class ConnectionView {
           
           <div class="brand-header">
             <div class="brand-logo">
-              <span>🎙️ Mini Voice</span>
+              <span class="material-symbols-outlined" style="font-size: 28px; color: var(--accent-primary);">podcasts</span>
+              <span>Mini Voice</span>
               <span class="brand-badge">P2P</span>
             </div>
             <div class="brand-tagline">Comunicação direta, rápida e privada entre amigos</div>
@@ -40,13 +45,52 @@ export class ConnectionView {
           <div class="avatar-picker">
             <img id="avatar-preview" class="avatar-preview-img" src="${getAvatarUrl(this.selectedAvatarBase64)}">
             <div>
-              <button id="btn-select-avatar" class="btn btn-secondary" style="padding: 6px 12px; font-size: 12px;">Escolher Foto de Perfil</button>
+              <button id="btn-select-avatar" class="btn btn-secondary" style="padding: 6px 12px; font-size: 12px;">
+                <span class="material-symbols-outlined md-16" style="margin-right: 4px;">photo_camera</span>
+                Escolher Foto de Perfil
+              </button>
               <div style="font-size: 11px; color: var(--text-muted); margin-top: 4px;">PNG, JPG ou WebP (Salvo no PC)</div>
             </div>
           </div>
 
           <!-- Tab 1: Join Server -->
           <form id="form-join" style="display: ${this.activeTab === 'join' ? 'block' : 'none'};">
+            ${savedServers.length > 0 ? `
+              <div class="saved-servers-container">
+                <div style="font-size: 11px; font-weight: 700; color: var(--text-muted); text-transform: uppercase; margin-bottom: 8px; display: flex; justify-content: space-between; align-items: center;">
+                  <span style="display: flex; align-items: center; gap: 4px;">
+                    <span class="material-symbols-outlined md-14" style="color: var(--accent-primary);">bookmark</span>
+                    Servidores Salvos (${savedServers.length})
+                  </span>
+                  <span style="font-size: 10px; font-weight: normal; color: var(--text-muted);">Clique para selecionar</span>
+                </div>
+                <div class="saved-servers-list">
+                  ${savedServers.map((s) => {
+                    const isSelected = this.selectedSavedHost === s.host && this.selectedSavedPort === s.port;
+                    return `
+                      <div class="saved-server-item ${isSelected ? 'selected' : ''}" data-host="${this.escapeHtml(s.host)}" data-port="${s.port}" data-password="${this.escapeHtml(s.password || '')}">
+                        <div style="display: flex; flex-direction: column; overflow: hidden; pointer-events: none;">
+                          <span style="font-size: 13px; font-weight: 600; color: var(--text-primary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; display: flex; align-items: center; gap: 6px;">
+                            <span class="material-symbols-outlined md-16" style="color: var(--accent-primary);">dns</span>
+                            ${this.escapeHtml(s.name || 'Servidor')}
+                          </span>
+                          <span style="font-size: 11px; color: var(--text-muted); margin-left: 22px;">${this.escapeHtml(s.host)}:${s.port}</span>
+                        </div>
+                        <div style="display: flex; gap: 6px; align-items: center;">
+                          <button type="button" class="btn btn-secondary btn-select-saved" data-host="${this.escapeHtml(s.host)}" data-port="${s.port}" data-password="${this.escapeHtml(s.password || '')}" style="padding: 2px 8px; font-size: 11px; height: 24px;">
+                            ${isSelected ? '✓ Selecionado' : 'Usar'}
+                          </button>
+                          <button type="button" class="btn-delete-saved-srv" data-host="${this.escapeHtml(s.host)}" data-port="${s.port}" title="Remover dos salvos">
+                            <span class="material-symbols-outlined md-16">close</span>
+                          </button>
+                        </div>
+                      </div>
+                    `;
+                  }).join('')}
+                </div>
+              </div>
+            ` : ''}
+
             <div class="form-group">
               <label>Seu Nickname</label>
               <input id="join-nickname" type="text" placeholder="Ex: Murilo" value="${this.escapeHtml(savedNick)}" required minlength="2" maxlength="32">
@@ -55,11 +99,11 @@ export class ConnectionView {
             <div class="form-row">
               <div class="form-group" style="flex: 2;">
                 <label>IP / Host do Servidor</label>
-                <input id="join-host" type="text" placeholder="127.0.0.1 ou IP público" value="127.0.0.1" required>
+                <input id="join-host" type="text" placeholder="127.0.0.1 ou IP público" value="${this.selectedSavedHost || '127.0.0.1'}" required>
               </div>
               <div class="form-group small-col">
                 <label>Porta</label>
-                <input id="join-port" type="number" placeholder="3000" value="3000" required min="1024" max="65535">
+                <input id="join-port" type="number" placeholder="3000" value="${this.selectedSavedPort || 3000}" required min="1024" max="65535">
               </div>
             </div>
 
@@ -69,14 +113,18 @@ export class ConnectionView {
             </div>
 
             <button type="submit" id="btn-submit-join" class="btn btn-primary" style="width: 100%; margin-top: 8px;">
+              <span class="material-symbols-outlined md-18" style="margin-right: 6px;">login</span>
               Entrar no Servidor
             </button>
           </form>
 
           <!-- Tab 2: Host Server -->
           <form id="form-host" style="display: ${this.activeTab === 'host' ? 'block' : 'none'};">
-            <div style="background: rgba(88, 101, 242, 0.1); border: 1px solid rgba(88, 101, 242, 0.3); border-radius: var(--radius-md); padding: 10px 12px; font-size: 12px; color: var(--text-secondary); margin-bottom: 14px; line-height: 1.4;">
-              💡 <b>Como funciona:</b> Ao criar o servidor, ele roda na sua própria máquina e escuta em todas as suas interfaces de rede na porta escolhida. Seus amigos usam o seu IP (público ou de VPN) para entrar!
+            <div style="background: rgba(88, 101, 242, 0.1); border: 1px solid rgba(88, 101, 242, 0.3); border-radius: var(--radius-md); padding: 10px 12px; font-size: 12px; color: var(--text-secondary); margin-bottom: 14px; line-height: 1.4; display: flex; gap: 8px; align-items: flex-start;">
+              <span class="material-symbols-outlined md-18" style="color: var(--accent-primary); flex-shrink: 0; margin-top: 1px;">info</span>
+              <div>
+                <b>Como funciona:</b> Ao criar o servidor, ele roda na sua própria máquina e escuta em todas as suas interfaces de rede na porta escolhida. Seus amigos usam o seu IP (público ou de VPN) para entrar!
+              </div>
             </div>
 
             <div class="form-group">
@@ -112,6 +160,7 @@ export class ConnectionView {
             </div>
 
             <button type="submit" id="btn-submit-host" class="btn btn-primary" style="width: 100%; margin-top: 8px;">
+              <span class="material-symbols-outlined md-18" style="margin-right: 6px;">add_circle</span>
               Criar e Iniciar Servidor
             </button>
           </form>
@@ -131,6 +180,9 @@ export class ConnectionView {
     const btnSelectAvatar = document.getElementById('btn-select-avatar');
     const joinNickInput = document.getElementById('join-nickname') as HTMLInputElement;
     const hostNickInput = document.getElementById('host-nickname') as HTMLInputElement;
+    const joinHostInput = document.getElementById('join-host') as HTMLInputElement;
+    const joinPortInput = document.getElementById('join-port') as HTMLInputElement;
+    const joinPassInput = document.getElementById('join-password') as HTMLInputElement;
 
     // Sync and save nickname as user types
     const handleNickChange = (val: string) => {
@@ -141,6 +193,47 @@ export class ConnectionView {
 
     joinNickInput?.addEventListener('input', (e) => handleNickChange((e.target as HTMLInputElement).value));
     hostNickInput?.addEventListener('input', (e) => handleNickChange((e.target as HTMLInputElement).value));
+
+    // Handle clicking a saved server card
+    const savedServerItems = this.container.querySelectorAll('.saved-server-item');
+    savedServerItems.forEach((item) => {
+      item.addEventListener('click', (e) => {
+        if ((e.target as HTMLElement).closest('.btn-delete-saved-srv')) return;
+
+        const host = item.getAttribute('data-host');
+        const port = parseInt(item.getAttribute('data-port') || '3000', 10);
+        const pass = item.getAttribute('data-password') || '';
+
+        if (host) {
+          this.selectedSavedHost = host;
+          this.selectedSavedPort = port;
+          if (joinHostInput) joinHostInput.value = host;
+          if (joinPortInput) joinPortInput.value = port.toString();
+          if (joinPassInput && pass) joinPassInput.value = pass;
+
+          savedServerItems.forEach((el) => el.classList.remove('selected'));
+          item.classList.add('selected');
+        }
+      });
+    });
+
+    // Handle delete saved server button
+    const deleteButtons = this.container.querySelectorAll('.btn-delete-saved-srv');
+    deleteButtons.forEach((btn) => {
+      btn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        const host = btn.getAttribute('data-host');
+        const port = parseInt(btn.getAttribute('data-port') || '3000', 10);
+        if (host) {
+          connectionStore.removeSavedServer(host, port);
+          if (this.selectedSavedHost === host && this.selectedSavedPort === port) {
+            this.selectedSavedHost = null;
+            this.selectedSavedPort = null;
+          }
+          this.render();
+        }
+      });
+    });
 
     tabJoin?.addEventListener('click', () => {
       this.activeTab = 'join';
@@ -212,13 +305,14 @@ export class ConnectionView {
           host,
           port,
           name: res.server.name,
+          password: password || undefined,
           lastConnected: Date.now(),
         });
       } catch (err: any) {
         this.showError(err.message || 'Não foi possível conectar ao servidor. Verifique o IP, porta e senha.');
       } finally {
         btn.disabled = false;
-        btn.innerText = 'Entrar no Servidor';
+        btn.innerHTML = `<span class="material-symbols-outlined md-18" style="margin-right: 6px;">login</span> Entrar no Servidor`;
       }
     });
 
@@ -277,13 +371,14 @@ export class ConnectionView {
           host: '127.0.0.1',
           port,
           name: serverName,
+          password: password || undefined,
           lastConnected: Date.now(),
         });
       } catch (err: any) {
         this.showError(err.message || 'Erro ao criar e conectar ao servidor local.');
       } finally {
         btn.disabled = false;
-        btn.innerText = 'Criar e Iniciar Servidor';
+        btn.innerHTML = `<span class="material-symbols-outlined md-18" style="margin-right: 6px;">add_circle</span> Criar e Iniciar Servidor`;
       }
     });
   }

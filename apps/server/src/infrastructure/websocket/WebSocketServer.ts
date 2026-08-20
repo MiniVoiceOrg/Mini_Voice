@@ -16,6 +16,8 @@ import {
   ProtocolErrorCode,
   ProtocolMessage,
   ServerErrorPayload,
+  ServerSettingsUpdatedPayload,
+  ServerUpdateSettingsPayload,
   UserChangeNicknamePayload,
   UserJoinedPayload,
   UserLeftPayload,
@@ -156,6 +158,10 @@ export class WebSocketServer {
 
       case MessageType.USER_UPDATE_AVATAR:
         await this.handleUserUpdateAvatar(session, payload as UserUpdateAvatarPayload, requestId);
+        break;
+
+      case MessageType.SERVER_UPDATE_SETTINGS:
+        await this.handleServerUpdateSettings(session, payload as ServerUpdateSettingsPayload, requestId);
         break;
 
       case MessageType.VOICE_JOIN:
@@ -376,6 +382,39 @@ export class WebSocketServer {
       requestId,
       payload: updatePayload,
     });
+  }
+
+  private async handleServerUpdateSettings(
+    session: ClientSession,
+    payload: ServerUpdateSettingsPayload,
+    requestId?: string
+  ): Promise<void> {
+    if (!session.user) return;
+
+    const result = await this.authService.updateServerSettings(payload);
+    if (!result.success) {
+      this.sendError(
+        session.ws,
+        ProtocolErrorCode.BAD_REQUEST,
+        result.errorMessage || 'Erro ao atualizar configurações do servidor',
+        requestId
+      );
+      return;
+    }
+
+    const broadcastPayload: ServerSettingsUpdatedPayload = {
+      name: result.name!,
+      hasPassword: result.hasPassword!,
+    };
+
+    // Broadcast updated server settings to all clients
+    this.broadcast({
+      type: MessageType.SERVER_SETTINGS_UPDATED,
+      requestId,
+      payload: broadcastPayload,
+    });
+
+    Logger.info('INFO', `Configurações do servidor atualizadas (Nome: ${result.name}, Senha: ${result.hasPassword ? 'Ativa' : 'Sem Senha'})`);
   }
 
   private async handleVoiceJoin(

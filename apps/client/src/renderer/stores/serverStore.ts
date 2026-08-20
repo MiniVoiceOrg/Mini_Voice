@@ -52,6 +52,14 @@ export class ServerStore {
     appEvents.emit('user.updated', user);
   }
 
+  public updateServerMeta(name: string, hasPassword: boolean): void {
+    if (this.serverDetails) {
+      this.serverDetails.name = name;
+      this.serverDetails.hasPassword = hasPassword;
+      appEvents.emit('server.updated');
+    }
+  }
+
   public clear(): void {
     this.serverDetails = null;
     this.currentUser = null;

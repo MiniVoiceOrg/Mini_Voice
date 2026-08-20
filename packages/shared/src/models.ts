@@ -47,6 +47,7 @@ export interface ServerDetails {
   name: string;
   createdAt: number;
   maxUsers: number;
+  hasPassword?: boolean;
   channels: ChannelSummary[];
   members: UserSummary[];
   voiceStates: Record<string, VoiceParticipantState>; // key = userId

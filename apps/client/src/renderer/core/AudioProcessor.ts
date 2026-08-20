@@ -26,7 +26,23 @@ export class AudioProcessor {
       video: false,
     };
 
-    this.localStream = await navigator.mediaDevices.getUserMedia(constraints);
+    try {
+      this.localStream = await navigator.mediaDevices.getUserMedia(constraints);
+    } catch (err: any) {
+      if (targetDeviceId) {
+        console.warn('[AudioProcessor] Could not open specific mic, falling back to default mic:', err);
+        this.localStream = await navigator.mediaDevices.getUserMedia({
+          audio: {
+            echoCancellation: true,
+            noiseSuppression: true,
+            autoGainControl: true,
+          },
+          video: false,
+        });
+      } else {
+        throw err;
+      }
+    }
 
     // Setup VAD
     this.setupVad(this.localStream);

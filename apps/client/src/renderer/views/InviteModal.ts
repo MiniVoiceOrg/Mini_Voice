@@ -12,7 +12,10 @@ export class InviteModal {
     this.modalEl.innerHTML = `
       <div class="modal-card" style="max-width: 480px;">
         <div class="modal-header">
-          <div class="modal-title">🔗 Convidar Amigos</div>
+          <div class="modal-title" style="display: flex; align-items: center; gap: 8px;">
+            <span class="material-symbols-outlined" style="color: var(--accent-primary);">person_add</span>
+            <span>Convidar Amigos</span>
+          </div>
           <button id="modal-close" class="modal-close-btn">&times;</button>
         </div>
 
@@ -37,17 +40,22 @@ export class InviteModal {
           </div>
         </div>
 
-        <div style="font-size: 11px; color: var(--text-muted); line-height: 1.4;">
-          💡 <b>Dica:</b> Para amigos em outra internet conectarem direto pelo seu IP público, a porta deve estar liberada no seu roteador (Port Forwarding). Se você usa Radmin VPN ou Hamachi, use o IP da VPN!
+        <div style="background: rgba(88, 101, 242, 0.1); border: 1px solid rgba(88, 101, 242, 0.3); border-radius: var(--radius-md); padding: 10px 12px; font-size: 11px; color: var(--text-secondary); line-height: 1.4; display: flex; gap: 8px; align-items: flex-start;">
+          <span class="material-symbols-outlined md-16" style="color: var(--accent-primary); flex-shrink: 0;">info</span>
+          <div>
+            <b>Dica:</b> Para amigos em outra internet conectarem direto pelo seu IP público, a porta deve estar liberada no roteador. Se você usa Radmin VPN ou Hamachi, use o IP da VPN!
+          </div>
         </div>
 
         <div id="copy-success-msg" style="display: none; font-size: 12px; color: var(--success); text-align: center; font-weight: 500;">
-          ✔ Dados de conexão copiados para a área de transferência!
+          <span class="material-symbols-outlined md-14" style="vertical-align: middle; margin-right: 4px;">check_circle</span>
+          Dados de conexão copiados para a área de transferência!
         </div>
 
         <div class="modal-footer">
           <button id="btn-copy-invite" class="btn btn-primary" style="width: 100%;">
-            📋 Copiar Dados de Conexão
+            <span class="material-symbols-outlined md-18" style="margin-right: 6px;">content_copy</span>
+            Copiar Dados de Conexão
           </button>
         </div>
       </div>
@@ -83,7 +91,7 @@ export class InviteModal {
     btnClose?.addEventListener('click', () => this.close());
 
     btnCopy?.addEventListener('click', async () => {
-      const textToCopy = `🎙️ Convite para o Mini Voice!
+      const textToCopy = `Convite para o Mini Voice!
 Servidor: ${serverStore.serverDetails?.name || 'Mini Voice'}
 IP / Host: ${this.publicIp}
 Porta: 3000

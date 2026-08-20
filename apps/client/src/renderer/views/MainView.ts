@@ -10,6 +10,7 @@ import { ChatView } from './ChatView';
 import { VoiceStageView } from './VoiceStageView';
 import { createChannelModal } from './CreateChannelModal';
 import { settingsModal } from './SettingsModal';
+import { serverSettingsModal } from './ServerSettingsModal';
 import { inviteModal } from './InviteModal';
 import { getAvatarUrl } from '../utils/avatar';
 
@@ -37,8 +38,16 @@ export class MainView {
         <!-- Left Sidebar: Channels & User Controls -->
         <div class="channels-sidebar">
           <div class="server-header">
-            <span style="white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-weight: 700;">${this.escapeHtml(s.name)}</span>
-            <button id="btn-invite-friends" class="btn btn-secondary" style="padding: 3px 8px; font-size: 11px; height: 26px;" title="Convidar Amigos (Copiar IP)">🔗 Convidar</button>
+            <span id="server-name-title" style="white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-weight: 700;">${this.escapeHtml(s.name)}</span>
+            <div style="display: flex; gap: 6px; align-items: center;">
+              <button id="btn-server-settings" class="btn btn-secondary" style="padding: 3px 7px; font-size: 11px; height: 26px;" title="Configurações do Servidor (Alterar/Remover Senha)">
+                <span class="material-symbols-outlined md-16">settings</span>
+              </button>
+              <button id="btn-invite-friends" class="btn btn-secondary" style="padding: 3px 8px; font-size: 11px; height: 26px;" title="Convidar Amigos (Copiar IP)">
+                <span class="material-symbols-outlined md-16" style="margin-right: 4px;">person_add</span>
+                Convidar
+              </button>
+            </div>
           </div>
 
           <div class="channels-list-container">
@@ -46,7 +55,9 @@ export class MainView {
             <div class="channel-category">
               <div class="category-title">
                 <span>Canais de Texto</span>
-                <button id="btn-add-text-channel" class="category-add-btn" title="Criar Canal de Texto">+</button>
+                <button id="btn-add-text-channel" class="category-add-btn" title="Criar Canal de Texto">
+                  <span class="material-symbols-outlined md-14">add</span>
+                </button>
               </div>
               <div id="text-channels-list"></div>
             </div>
@@ -55,7 +66,9 @@ export class MainView {
             <div class="channel-category">
               <div class="category-title">
                 <span>Canais de Voz</span>
-                <button id="btn-add-voice-channel" class="category-add-btn" title="Criar Canal de Voz">+</button>
+                <button id="btn-add-voice-channel" class="category-add-btn" title="Criar Canal de Voz">
+                  <span class="material-symbols-outlined md-14">add</span>
+                </button>
               </div>
               <div id="voice-channels-list"></div>
             </div>
@@ -75,16 +88,16 @@ export class MainView {
 
             <div class="user-quick-actions">
               <button id="bar-btn-mic" class="btn btn-icon ${voiceStore.isMuted ? 'danger-active' : ''}" style="width: 32px; height: 32px;" title="${voiceStore.isMuted ? 'Desmutar' : 'Mutar'}">
-                ${voiceStore.isMuted ? '🔇' : '🎤'}
+                <span class="material-symbols-outlined md-18">${voiceStore.isMuted ? 'mic_off' : 'mic'}</span>
               </button>
               <button id="bar-btn-deafen" class="btn btn-icon ${voiceStore.isDeafened ? 'danger-active' : ''}" style="width: 32px; height: 32px;" title="${voiceStore.isDeafened ? 'Ouvir' : 'Ensurdecer'}">
-                ${voiceStore.isDeafened ? '🔇' : '🎧'}
+                <span class="material-symbols-outlined md-18">${voiceStore.isDeafened ? 'headset_off' : 'headphones'}</span>
               </button>
               <button id="bar-btn-settings" class="btn btn-icon" style="width: 32px; height: 32px;" title="Configurações">
-                ⚙️
+                <span class="material-symbols-outlined md-18">tune</span>
               </button>
               <button id="bar-btn-disconnect" class="btn btn-icon" style="width: 32px; height: 32px; color: var(--danger);" title="Desconectar do Servidor">
-                🚪
+                <span class="material-symbols-outlined md-18">logout</span>
               </button>
             </div>
           </div>
@@ -129,7 +142,7 @@ export class MainView {
     if (textListEl) {
       textListEl.innerHTML = textChannels.map((c) => `
         <div class="channel-item ${c.id === serverStore.activeTextChannelId && this.activeContentView === 'chat' ? 'active' : ''}" data-channel-id="${c.id}" data-channel-type="TEXT">
-          <span class="channel-icon">#</span>
+          <span class="material-symbols-outlined md-16 channel-icon" style="color: var(--text-muted);">tag</span>
           <span class="channel-name">${this.escapeHtml(c.name)}</span>
         </div>
       `).join('');
@@ -143,9 +156,9 @@ export class MainView {
         return `
           <div style="display: flex; flex-direction: column;">
             <div class="channel-item ${isActive ? 'active' : ''}" data-channel-id="${c.id}" data-channel-type="VOICE">
-              <span class="channel-icon">🔊</span>
+              <span class="material-symbols-outlined md-16 channel-icon" style="color: ${isActive ? 'var(--success)' : 'var(--text-muted)'};">volume_up</span>
               <span class="channel-name">${this.escapeHtml(c.name)}</span>
-              ${isActive ? '<span style="font-size: 11px; color: var(--success); font-weight: 600;">(Você)</span>' : ''}
+              ${isActive ? '<span style="font-size: 11px; color: var(--success); font-weight: 600; margin-left: auto;">(Você)</span>' : ''}
             </div>
 
             ${inVoice.length > 0 ? `
@@ -214,42 +227,48 @@ export class MainView {
     }
 
     voiceStore.setChannel(channelId);
-
-    // Send VOICE_JOIN to server
     networkClient.send(MessageType.VOICE_JOIN, { channelId });
 
-    // Connect WebRTC Mesh to all existing members in this voice channel
-    const inChannel = participantManager.getInVoiceChannel(channelId);
-    for (const member of inChannel) {
-      if (member.user.id !== serverStore.currentUser?.id) {
-        webRtcManager.connectToPeer(member.user.id, true);
+    // Connect to all peers already in this voice channel
+    const peersInChannel = participantManager.getInVoiceChannel(channelId);
+    for (const peer of peersInChannel) {
+      if (peer.user.id !== serverStore.currentUser?.id) {
+        await webRtcManager.connectToPeer(peer.user.id, true);
       }
     }
   }
 
   private renderMembers(): void {
+    if (!serverStore.serverDetails) return;
+
     const listEl = document.getElementById('members-list-items');
     const countEl = document.getElementById('members-count-label');
-    const members = participantManager.getAll();
+
+    const members = serverStore.serverDetails.members;
 
     if (countEl) {
       countEl.innerText = `MEMBROS — ${members.length}`;
     }
 
     if (listEl) {
-      listEl.innerHTML = members.map((p) => {
-        const avatar = getAvatarUrl(p.user.avatarUrl);
-        const isLocal = p.user.id === serverStore.currentUser?.id;
-        const isSpeaking = isLocal ? voiceStore.isSpeaking : p.isSpeaking;
+      listEl.innerHTML = members.map((m) => {
+        const isLocal = m.id === serverStore.currentUser?.id;
+        const voiceState = serverStore.serverDetails?.voiceStates[m.id];
+        const inVoice = !!voiceState;
+        const avatar = getAvatarUrl(m.avatarUrl);
 
         return `
-          <div class="member-item">
-            <img class="member-avatar" style="${isSpeaking ? 'box-shadow: 0 0 0 2px var(--success);' : ''}" src="${avatar}">
+          <div class="member-item" title="${this.escapeHtml(m.nickname)} ${isLocal ? '(Você)' : ''}">
+            <div class="member-avatar-wrapper">
+              <img class="member-avatar-img" src="${avatar}">
+              <span class="status-indicator ${inVoice ? 'voice' : 'online'}"></span>
+            </div>
             <div class="member-info">
-              <div class="member-name">${this.escapeHtml(p.user.nickname)} ${isLocal ? '(Você)' : ''}</div>
-              <div style="font-size: 11px; color: ${p.voiceState ? 'var(--success)' : 'var(--text-muted)'};">
-                ${p.voiceState ? 'No canal de voz' : 'Online'}
+              <div class="member-name-row">
+                <span class="member-name">${this.escapeHtml(m.nickname)}</span>
+                ${isLocal ? '<span class="member-badge-you">Você</span>' : ''}
               </div>
+              <span class="member-subtext">${inVoice ? 'No canal de voz' : 'Online'}</span>
             </div>
           </div>
         `;
@@ -264,6 +283,7 @@ export class MainView {
     const btnAddText = document.getElementById('btn-add-text-channel');
     const btnAddVoice = document.getElementById('btn-add-voice-channel');
     const btnInvite = document.getElementById('btn-invite-friends');
+    const btnServerSettings = document.getElementById('btn-server-settings');
     const btnProfile = document.getElementById('user-profile-btn');
     const btnSettings = document.getElementById('bar-btn-settings');
     const btnMic = document.getElementById('bar-btn-mic');
@@ -273,6 +293,7 @@ export class MainView {
     btnAddText?.addEventListener('click', () => createChannelModal.open('TEXT'));
     btnAddVoice?.addEventListener('click', () => createChannelModal.open('VOICE'));
     btnInvite?.addEventListener('click', () => inviteModal.open());
+    btnServerSettings?.addEventListener('click', () => serverSettingsModal.open());
     btnProfile?.addEventListener('click', () => settingsModal.open());
     btnSettings?.addEventListener('click', () => settingsModal.open());
 
@@ -283,7 +304,7 @@ export class MainView {
       networkClient.send(MessageType.VOICE_STATE_UPDATE, { isMuted: newMuted });
       if (btnMic) {
         btnMic.className = `btn btn-icon ${newMuted ? 'danger-active' : ''}`;
-        btnMic.innerHTML = newMuted ? '🔇' : '🎤';
+        btnMic.innerHTML = `<span class="material-symbols-outlined md-18">${newMuted ? 'mic_off' : 'mic'}</span>`;
       }
     });
 
@@ -291,10 +312,11 @@ export class MainView {
       const newDeafened = !voiceStore.isDeafened;
       voiceStore.setDeafened(newDeafened);
       audioProcessor.setDeafened(newDeafened);
+      webRtcManager.setDeafened(newDeafened);
       networkClient.send(MessageType.VOICE_STATE_UPDATE, { isDeafened: newDeafened, isMuted: voiceStore.isMuted });
       if (btnDeafen) {
         btnDeafen.className = `btn btn-icon ${newDeafened ? 'danger-active' : ''}`;
-        btnDeafen.innerHTML = newDeafened ? '🔇' : '🎧';
+        btnDeafen.innerHTML = `<span class="material-symbols-outlined md-18">${newDeafened ? 'headset_off' : 'headphones'}</span>`;
       }
     });
 
@@ -329,9 +351,29 @@ export class MainView {
         if (voiceStore.isSpeaking) avatarEl.classList.add('speaking');
         else avatarEl.classList.remove('speaking');
       }
+
+      const btnMicEl = document.getElementById('bar-btn-mic');
+      if (btnMicEl) {
+        btnMicEl.className = `btn btn-icon ${voiceStore.isMuted ? 'danger-active' : ''}`;
+        btnMicEl.title = voiceStore.isMuted ? 'Desmutar' : 'Mutar';
+        btnMicEl.innerHTML = `<span class="material-symbols-outlined md-18">${voiceStore.isMuted ? 'mic_off' : 'mic'}</span>`;
+      }
+
+      const btnDeafenEl = document.getElementById('bar-btn-deafen');
+      if (btnDeafenEl) {
+        btnDeafenEl.className = `btn btn-icon ${voiceStore.isDeafened ? 'danger-active' : ''}`;
+        btnDeafenEl.title = voiceStore.isDeafened ? 'Ouvir' : 'Ensurdecer';
+        btnDeafenEl.innerHTML = `<span class="material-symbols-outlined md-18">${voiceStore.isDeafened ? 'headset_off' : 'headphones'}</span>`;
+      }
     });
 
-    this.unbindEvents.push(u1, u2, u3, u4);
+    const u5 = appEvents.on(`message.${MessageType.SERVER_SETTINGS_UPDATED}`, (payload: any) => {
+      serverStore.updateServerMeta(payload.name, payload.hasPassword);
+      const titleEl = document.getElementById('server-name-title');
+      if (titleEl) titleEl.innerText = payload.name;
+    });
+
+    this.unbindEvents.push(u1, u2, u3, u4, u5);
   }
 
   private escapeHtml(unsafe: string): string {

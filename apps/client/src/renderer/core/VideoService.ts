@@ -1,5 +1,6 @@
 import { QUALITY_PRESETS, QualityProfile, QualityPresetType } from '@mini-voice/shared';
 import { appEvents } from './EventBus';
+import { settingsStore } from '../stores/settingsStore';
 
 export class VideoService {
   private cameraStream: MediaStream | null = null;
@@ -18,17 +19,34 @@ export class VideoService {
     this.stopCamera();
 
     const profile = this.getProfile();
+    const targetDeviceId = deviceId || settingsStore.selectedCameraId || undefined;
     const constraints: MediaStreamConstraints = {
       audio: false,
       video: {
-        deviceId: deviceId ? { exact: deviceId } : undefined,
+        deviceId: targetDeviceId ? { exact: targetDeviceId } : undefined,
         width: { ideal: profile.cameraWidth },
         height: { ideal: profile.cameraHeight },
         frameRate: { ideal: profile.cameraFps, max: profile.cameraFps },
       },
     };
 
-    this.cameraStream = await navigator.mediaDevices.getUserMedia(constraints);
+    try {
+      this.cameraStream = await navigator.mediaDevices.getUserMedia(constraints);
+    } catch (err: any) {
+      if (targetDeviceId) {
+        console.warn('[VideoService] Could not open specific camera, falling back to default camera:', err);
+        this.cameraStream = await navigator.mediaDevices.getUserMedia({
+          audio: false,
+          video: {
+            width: { ideal: profile.cameraWidth },
+            height: { ideal: profile.cameraHeight },
+            frameRate: { ideal: profile.cameraFps, max: profile.cameraFps },
+          },
+        });
+      } else {
+        throw err;
+      }
+    }
     appEvents.emit('local.camera_started', this.cameraStream);
     return this.cameraStream;
   }

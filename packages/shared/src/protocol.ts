@@ -26,6 +26,7 @@ export enum MessageType {
   CHANNEL_DELETE = 'CHANNEL_DELETE',
   USER_CHANGE_NICKNAME = 'USER_CHANGE_NICKNAME',
   USER_UPDATE_AVATAR = 'USER_UPDATE_AVATAR',
+  SERVER_UPDATE_SETTINGS = 'SERVER_UPDATE_SETTINGS',
   VOICE_JOIN = 'VOICE_JOIN',
   VOICE_LEAVE = 'VOICE_LEAVE',
   VOICE_STATE_UPDATE = 'VOICE_STATE_UPDATE',
@@ -36,6 +37,7 @@ export enum MessageType {
   AUTH_SUCCESS = 'AUTH_SUCCESS',
   AUTH_FAILED = 'AUTH_FAILED',
   SERVER_STATE = 'SERVER_STATE',
+  SERVER_SETTINGS_UPDATED = 'SERVER_SETTINGS_UPDATED',
   USER_JOINED = 'USER_JOINED',
   USER_LEFT = 'USER_LEFT',
   USER_UPDATED = 'USER_UPDATED',
@@ -94,6 +96,11 @@ export interface UserUpdateAvatarPayload {
   mimeType: string;
 }
 
+export interface ServerUpdateSettingsPayload {
+  name?: string;
+  password?: string | null; // null or empty string removes the password
+}
+
 export interface VoiceJoinPayload {
   channelId: string;
 }
@@ -120,6 +127,11 @@ export interface ServerErrorPayload {
   code: ProtocolErrorCode;
   message: string;
   requestId?: string;
+}
+
+export interface ServerSettingsUpdatedPayload {
+  name: string;
+  hasPassword: boolean;
 }
 
 export interface UserJoinedPayload {

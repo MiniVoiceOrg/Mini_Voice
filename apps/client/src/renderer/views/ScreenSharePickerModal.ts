@@ -21,7 +21,10 @@ export class ScreenSharePickerModal {
     this.modalEl.innerHTML = `
       <div class="modal-card" style="max-width: 640px;">
         <div class="modal-header">
-          <div class="modal-title">🖥️ Compartilhar Tela ou Janela</div>
+          <div class="modal-title" style="display: flex; align-items: center; gap: 8px;">
+            <span class="material-symbols-outlined" style="color: var(--accent-primary);">screen_share</span>
+            <span>Compartilhar Tela ou Janela</span>
+          </div>
           <button id="modal-close" class="modal-close-btn">&times;</button>
         </div>
 
@@ -43,7 +46,8 @@ export class ScreenSharePickerModal {
         <div class="modal-footer">
           <button type="button" id="btn-cancel" class="btn btn-secondary">Cancelar</button>
           <button type="button" id="btn-share" class="btn btn-primary" ${sources.length > 0 ? 'disabled' : ''}>
-            Compartilhar
+            <span class="material-symbols-outlined md-16" style="margin-right: 4px;">present_to_all</span>
+            Compartilhar Tela
           </button>
         </div>
       </div>

@@ -37,8 +37,8 @@ export class ChatView {
       <div class="chat-container">
         <div class="content-header">
           <div class="channel-title-container">
-            <span style="color: var(--text-muted); font-size: 18px; font-weight: 700;">#</span>
-            <span class="channel-title">${channelName}</span>
+            <span class="material-symbols-outlined md-18" style="color: var(--text-muted);">tag</span>
+            <span class="channel-title">${this.escapeHtml(channelName)}</span>
           </div>
           <div class="header-status-badge">Canal de Texto</div>
         </div>
@@ -47,9 +47,12 @@ export class ChatView {
 
         <div class="chat-input-container">
           <div class="chat-input-wrapper">
-            <input id="chat-message-input" class="chat-input-field" type="text" placeholder="Conversar em #${channelName}..." maxlength="${LIMITS.MAX_MESSAGE_LENGTH}">
+            <input id="chat-message-input" class="chat-input-field" type="text" placeholder="Conversar em #${this.escapeHtml(channelName)}..." maxlength="${LIMITS.MAX_MESSAGE_LENGTH}">
             <span id="chat-char-counter" class="chat-char-count">0/${LIMITS.MAX_MESSAGE_LENGTH}</span>
-            <button id="btn-send-message" class="btn btn-primary" style="padding: 6px 14px; font-size: 13px;">Enviar</button>
+            <button id="btn-send-message" class="btn btn-primary" style="padding: 6px 14px; font-size: 13px;">
+              <span class="material-symbols-outlined md-16" style="margin-right: 4px;">send</span>
+              Enviar
+            </button>
           </div>
         </div>
       </div>
@@ -75,9 +78,9 @@ export class ChatView {
     const messages = chatStore.getMessages(this.currentChannelId);
     if (messages.length === 0) {
       feed.innerHTML = `
-        <div style="display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100%; color: var(--text-muted); gap: 6px;">
-          <div style="font-size: 32px;">💬</div>
-          <div style="font-size: 15px; font-weight: 600;">Este é o início do canal #${serverStore.serverDetails?.channels.find((c) => c.id === this.currentChannelId)?.name || 'geral'}</div>
+        <div style="display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100%; color: var(--text-muted); gap: 10px;">
+          <span class="material-symbols-outlined md-36" style="color: var(--text-dim); font-size: 44px;">forum</span>
+          <div style="font-size: 15px; font-weight: 600; color: var(--text-secondary);">Este é o início do canal #${this.escapeHtml(serverStore.serverDetails?.channels.find((c) => c.id === this.currentChannelId)?.name || 'geral')}</div>
           <div style="font-size: 13px;">Envie uma mensagem para começar!</div>
         </div>
       `;
@@ -94,9 +97,9 @@ export class ChatView {
     if (m.isSystem) {
       return `
         <div class="system-message-row">
-          <span>ℹ️</span>
-          <span>${m.content}</span>
-          <span style="font-size: 10px;">${time}</span>
+          <span class="material-symbols-outlined md-14" style="color: var(--accent-primary);">info</span>
+          <span>${this.escapeHtml(m.content)}</span>
+          <span style="font-size: 10px; color: var(--text-muted); margin-left: auto;">${time}</span>
         </div>
       `;
     }

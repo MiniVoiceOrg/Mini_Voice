@@ -137,6 +137,7 @@ export class AuthService {
       name: server.name,
       createdAt: server.createdAt,
       maxUsers: server.maxUsers,
+      hasPassword: !!(server.passwordHash && server.passwordHash.length > 0),
       channels: channels.map((c) => ({
         id: c.id,
         serverId: c.serverId,
@@ -154,6 +155,44 @@ export class AuthService {
       success: true,
       user: userSummary,
       serverDetails,
+    };
+  }
+
+  public async updateServerSettings(payload: {
+    name?: string;
+    password?: string | null;
+  }): Promise<{
+    success: boolean;
+    name?: string;
+    hasPassword?: boolean;
+    errorMessage?: string;
+  }> {
+    const server = await this.serverRepo.getServer();
+    if (!server) {
+      return { success: false, errorMessage: 'Servidor não encontrado' };
+    }
+
+    const updates: Partial<UserRecord & { name?: string; passwordHash?: string }> = {};
+
+    if (payload.name && payload.name.trim().length >= 2) {
+      updates.name = payload.name.trim();
+    }
+
+    if (payload.password !== undefined) {
+      if (payload.password === null || payload.password === '') {
+        updates.passwordHash = '';
+      } else {
+        updates.passwordHash = PasswordService.hashPassword(payload.password);
+      }
+    }
+
+    await this.serverRepo.updateServer(updates as any);
+    const updatedServer = await this.serverRepo.getServer();
+
+    return {
+      success: true,
+      name: updatedServer?.name || server.name,
+      hasPassword: !!(updatedServer?.passwordHash && updatedServer.passwordHash.length > 0),
     };
   }
 }

@@ -24,11 +24,13 @@ export class CreateChannelModal {
             <div style="display: flex; gap: 12px; margin-top: 4px;">
               <label style="display: flex; align-items: center; gap: 6px; cursor: pointer; text-transform: none; color: var(--text-primary);">
                 <input type="radio" name="channel-type" value="TEXT" ${defaultType === 'TEXT' ? 'checked' : ''}>
-                <span># Texto</span>
+                <span class="material-symbols-outlined md-16" style="color: var(--text-muted);">tag</span>
+                <span>Texto</span>
               </label>
               <label style="display: flex; align-items: center; gap: 6px; cursor: pointer; text-transform: none; color: var(--text-primary);">
                 <input type="radio" name="channel-type" value="VOICE" ${defaultType === 'VOICE' ? 'checked' : ''}>
-                <span>🔊 Voz</span>
+                <span class="material-symbols-outlined md-16" style="color: var(--success);">volume_up</span>
+                <span>Voz</span>
               </label>
             </div>
           </div>

@@ -5,6 +5,7 @@ export interface SavedServer {
   port: number;
   name: string;
   lastConnected: number;
+  password?: string;
 }
 
 export class ConnectionStore {
@@ -61,12 +62,25 @@ export class ConnectionStore {
       (s) => s.host === server.host && s.port === server.port
     );
     if (existingIdx >= 0) {
+      // Preserve existing name if new one is default/empty
+      if (!server.name && this.savedServers[existingIdx].name) {
+        server.name = this.savedServers[existingIdx].name;
+      }
       this.savedServers[existingIdx] = server;
     } else {
       this.savedServers.unshift(server);
     }
-    // Keep max 10
-    this.savedServers = this.savedServers.slice(0, 10);
+    // Sort by lastConnected descending
+    this.savedServers.sort((a, b) => b.lastConnected - a.lastConnected);
+    // Keep max 15
+    this.savedServers = this.savedServers.slice(0, 15);
+    try {
+      localStorage.setItem('mini_voice_saved_servers', JSON.stringify(this.savedServers));
+    } catch (e) {}
+  }
+
+  public removeSavedServer(host: string, port: number): void {
+    this.savedServers = this.savedServers.filter((s) => !(s.host === host && s.port === port));
     try {
       localStorage.setItem('mini_voice_saved_servers', JSON.stringify(this.savedServers));
     } catch (e) {}

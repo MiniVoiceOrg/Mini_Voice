@@ -1,0 +1,170 @@
+import { MessageType, ServerUpdateSettingsPayload } from '@mini-voice/shared';
+import { networkClient } from '../core/NetworkClient';
+import { serverStore } from '../stores/serverStore';
+
+export class ServerSettingsModal {
+  private modalEl: HTMLElement | null = null;
+  private shouldRemovePassword = false;
+
+  public open(): void {
+    this.close();
+    this.shouldRemovePassword = false;
+
+    const s = serverStore.serverDetails;
+    if (!s) return;
+
+    const hasPass = !!s.hasPassword;
+
+    this.modalEl = document.createElement('div');
+    this.modalEl.className = 'modal-backdrop';
+    this.modalEl.innerHTML = `
+      <div class="modal-card" style="max-width: 460px;">
+        <div class="modal-header">
+          <div class="modal-title" style="display: flex; align-items: center; gap: 8px;">
+            <span class="material-symbols-outlined" style="color: var(--accent-primary);">settings</span>
+            <span>Configurações do Servidor</span>
+          </div>
+          <button id="modal-close" class="modal-close-btn">&times;</button>
+        </div>
+
+        <div id="server-settings-banner" class="error-banner"></div>
+
+        <form id="form-server-settings">
+          <div class="form-group">
+            <label>Nome do Servidor</label>
+            <input id="input-server-name" type="text" value="${this.escapeHtml(s.name)}" required minlength="2" maxlength="50">
+          </div>
+
+          <div style="margin-top: 18px; border-top: 1px solid var(--border-color); padding-top: 16px;">
+            <label style="font-weight: 700; font-size: 13px; color: var(--text-primary); display: block; margin-bottom: 8px;">
+              Segurança e Senha de Acesso
+            </label>
+
+            <div style="display: flex; align-items: center; justify-content: space-between; background: var(--bg-tertiary); padding: 10px 14px; border-radius: var(--radius-md); margin-bottom: 12px; border: 1px solid var(--border-color);">
+              <div>
+                <div style="font-size: 13px; font-weight: 600; color: var(--text-primary); display: flex; align-items: center; gap: 6px;">
+                  <span class="material-symbols-outlined md-16" style="color: ${hasPass ? '#f0b232' : '#23a55a'};">${hasPass ? 'lock' : 'lock_open'}</span>
+                  <span>${hasPass ? 'Servidor Protegido com Senha' : 'Servidor Aberto (Sem Senha)'}</span>
+                </div>
+                <div id="password-status-desc" style="font-size: 11px; color: var(--text-muted); margin-top: 2px; margin-left: 22px;">
+                  ${hasPass ? 'Novos usuários precisam digitar a senha para entrar.' : 'Qualquer amigo com o IP pode entrar diretamente.'}
+                </div>
+              </div>
+
+              ${hasPass ? `
+                <button type="button" id="btn-remove-pass" class="btn btn-secondary" style="font-size: 11px; padding: 4px 10px; color: var(--danger); border-color: rgba(237, 66, 69, 0.4);">
+                  Remover Senha
+                </button>
+              ` : ''}
+            </div>
+
+            <div class="form-group" style="margin-bottom: 4px;">
+              <label id="label-password-field">${hasPass ? 'Alterar Senha de Acesso' : 'Definir Nova Senha'}</label>
+              <input id="input-server-pass" type="password" placeholder="${hasPass ? 'Digite para alterar a senha...' : 'Deixe vazio para manter sem senha'}">
+            </div>
+            <div id="pass-help-text" style="font-size: 11px; color: var(--text-muted); margin-top: 4px;">
+              Deixe em branco caso não queira modificar a senha atual.
+            </div>
+          </div>
+
+          <div class="modal-footer" style="margin-top: 24px;">
+            <button type="button" id="btn-cancel" class="btn btn-secondary">Cancelar</button>
+            <button type="submit" id="btn-save" class="btn btn-primary">Salvar Alterações</button>
+          </div>
+        </form>
+      </div>
+    `;
+
+    document.body.appendChild(this.modalEl);
+    this.attachEvents();
+  }
+
+  private attachEvents(): void {
+    if (!this.modalEl) return;
+
+    const btnClose = this.modalEl.querySelector('#modal-close');
+    const btnCancel = this.modalEl.querySelector('#btn-cancel');
+    const btnRemovePass = this.modalEl.querySelector('#btn-remove-pass') as HTMLButtonElement;
+    const form = this.modalEl.querySelector('#form-server-settings') as HTMLFormElement;
+    const inputName = this.modalEl.querySelector('#input-server-name') as HTMLInputElement;
+    const inputPass = this.modalEl.querySelector('#input-server-pass') as HTMLInputElement;
+    const passHelpText = this.modalEl.querySelector('#pass-help-text') as HTMLElement | null;
+    const statusDesc = this.modalEl.querySelector('#password-status-desc') as HTMLElement | null;
+
+    btnClose?.addEventListener('click', () => this.close());
+    btnCancel?.addEventListener('click', () => this.close());
+
+    btnRemovePass?.addEventListener('click', () => {
+      this.shouldRemovePassword = true;
+      if (inputPass) {
+        inputPass.value = '';
+        inputPass.placeholder = 'A senha será removida ao salvar!';
+      }
+      if (passHelpText) {
+        passHelpText.innerHTML = '<span style="color: var(--danger); font-weight: 600;">A senha será removida e o servidor ficará público ao salvar.</span>';
+      }
+      if (statusDesc) {
+        statusDesc.innerText = 'Marcado para remoção de senha.';
+      }
+      btnRemovePass.style.display = 'none';
+    });
+
+    form?.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const name = inputName?.value.trim();
+      const passVal = inputPass?.value;
+
+      if (!name) return;
+
+      const payload: ServerUpdateSettingsPayload = {
+        name,
+      };
+
+      if (this.shouldRemovePassword) {
+        payload.password = null;
+      } else if (passVal && passVal.trim().length > 0) {
+        payload.password = passVal;
+      }
+
+      const btnSave = this.modalEl?.querySelector('#btn-save') as HTMLButtonElement;
+      if (btnSave) {
+        btnSave.disabled = true;
+        btnSave.innerText = 'Salvando...';
+      }
+
+      try {
+        await networkClient.sendRequest(MessageType.SERVER_UPDATE_SETTINGS, payload);
+        this.close();
+      } catch (err: any) {
+        const banner = document.getElementById('server-settings-banner');
+        if (banner) {
+          banner.innerText = err.message || 'Erro ao salvar configurações do servidor';
+          banner.classList.add('show');
+        }
+        if (btnSave) {
+          btnSave.disabled = false;
+          btnSave.innerText = 'Salvar Alterações';
+        }
+      }
+    });
+  }
+
+  public close(): void {
+    if (this.modalEl) {
+      this.modalEl.remove();
+      this.modalEl = null;
+      this.shouldRemovePassword = false;
+    }
+  }
+
+  private escapeHtml(str: string): string {
+    return str
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;')
+      .replace(/'/g, '&#039;');
+  }
+}
+
+export const serverSettingsModal = new ServerSettingsModal();

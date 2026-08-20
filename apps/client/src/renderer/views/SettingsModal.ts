@@ -16,85 +16,109 @@ export class SettingsModal {
   public async open(): Promise<void> {
     this.close();
 
-    const devices = await navigator.mediaDevices.enumerateDevices();
-    const audioInputs = devices.filter((d) => d.kind === 'audioinput');
-    const audioOutputs = devices.filter((d) => d.kind === 'audiooutput');
-    const videoInputs = devices.filter((d) => d.kind === 'videoinput');
-
     this.modalEl = document.createElement('div');
     this.modalEl.className = 'modal-backdrop';
     this.modalEl.innerHTML = `
       <div class="modal-card" style="max-width: 580px; max-height: 90vh; overflow-y: auto;">
         <div class="modal-header">
-          <div class="modal-title">⚙️ Configurações</div>
+          <div class="modal-title" style="display: flex; align-items: center; gap: 8px;">
+            <span class="material-symbols-outlined" style="color: var(--accent-primary);">settings</span>
+            <span>Configurações</span>
+          </div>
           <button id="modal-close" class="modal-close-btn">&times;</button>
         </div>
 
         <div id="settings-error-banner" class="error-banner"></div>
 
         <!-- Nickname & Profile -->
-        <div style="display: flex; gap: 16px; align-items: center; padding: 12px; background: var(--bg-card); border-radius: var(--radius-md);">
+        <div style="display: flex; gap: 16px; align-items: center; padding: 12px; background: var(--bg-card); border-radius: var(--radius-md); margin-bottom: 16px; border: 1px solid var(--border-color);">
           <img id="settings-avatar-preview" style="width: 52px; height: 52px; border-radius: 50%; object-fit: cover;" src="${getAvatarUrl(serverStore.currentUser?.avatarUrl)}">
           <div style="flex: 1;">
             <div class="form-group" style="margin-bottom: 0;">
-              <label>Alterar Nickname</label>
-              <div style="display: flex; gap: 8px;">
+              <label>Seu Nickname</label>
+              <div style="display: flex; gap: 8px; margin-top: 4px;">
                 <input id="settings-nickname-input" type="text" value="${serverStore.currentUser?.nickname || ''}" style="flex: 1;" maxlength="32">
-                <button id="btn-save-nickname" class="btn btn-secondary" style="font-size: 12px;">Salvar</button>
+                <button id="btn-save-nickname" class="btn btn-secondary" style="font-size: 12px; padding: 6px 12px;">Salvar</button>
               </div>
             </div>
           </div>
-          <button id="btn-change-avatar" class="btn btn-secondary" style="font-size: 12px;">Foto</button>
+          <button id="btn-change-avatar" class="btn btn-secondary" style="font-size: 12px; padding: 6px 12px;">
+            <span class="material-symbols-outlined md-16" style="margin-right: 4px;">photo_camera</span>
+            Foto
+          </button>
         </div>
 
-        <!-- Audio Devices -->
+        <!-- Device Header with Refresh Button -->
+        <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 10px; border-top: 1px solid var(--border-color); padding-top: 14px;">
+          <span style="font-size: 13px; font-weight: 700; color: var(--text-primary); text-transform: uppercase; letter-spacing: 0.5px;">
+            Dispositivos de Entrada e Saída
+          </span>
+          <button id="btn-refresh-devices" class="btn btn-secondary" style="font-size: 11px; padding: 3px 8px; height: 26px;" title="Buscar novos microfones e fones conectados">
+            <span class="material-symbols-outlined md-14" style="margin-right: 4px;">refresh</span>
+            Atualizar Lista
+          </button>
+        </div>
+
+        <!-- Audio Inputs -->
         <div class="form-group">
-          <label>Microfone</label>
+          <label style="display: flex; align-items: center; gap: 6px;">
+            <span class="material-symbols-outlined md-16" style="color: var(--accent-primary);">mic</span>
+            Microfone
+          </label>
           <select id="select-mic">
-            ${audioInputs.map((d) => `<option value="${d.deviceId}" ${d.deviceId === settingsStore.selectedMicrophoneId ? 'selected' : ''}>${d.label || 'Microfone Padrão'}</option>`).join('')}
+            <option value="">Carregando microfones...</option>
           </select>
         </div>
 
         <div class="form-group">
-          <label>Sensibilidade de Voz (VAD)</label>
+          <label style="display: flex; align-items: center; gap: 6px;">
+            <span class="material-symbols-outlined md-16" style="color: var(--accent-primary);">tune</span>
+            Sensibilidade de Voz (VAD)
+          </label>
           <div style="display: flex; align-items: center; gap: 12px;">
             <input id="slider-vad" type="range" min="5" max="80" value="${settingsStore.vadSensitivity}" style="flex: 1;">
             <span id="vad-val" style="font-family: var(--font-mono); font-size: 12px; min-width: 30px;">${settingsStore.vadSensitivity}</span>
           </div>
-          <div style="font-size: 11px; color: var(--text-muted); margin-top: 2px;">Valores menores ativam com sussurros, maiores evitam ruídos de fundo.</div>
+          <div style="font-size: 11px; color: var(--text-muted); margin-top: 2px;">Valores menores ativam com sussurros; maiores evitam ruídos de fundo.</div>
         </div>
 
-        ${audioOutputs.length > 0 ? `
-          <div class="form-group">
-            <label>Dispositivo de Saída (Alto-falante / Fone)</label>
-            <select id="select-speaker">
-              ${audioOutputs.map((d) => `<option value="${d.deviceId}" ${d.deviceId === settingsStore.selectedSpeakerId ? 'selected' : ''}>${d.label || 'Alto-falante Padrão'}</option>`).join('')}
-            </select>
-          </div>
-        ` : ''}
-
-        <!-- Camera Device -->
-        ${videoInputs.length > 0 ? `
-          <div class="form-group">
-            <label>Câmera de Vídeo</label>
-            <select id="select-cam">
-              ${videoInputs.map((d) => `<option value="${d.deviceId}" ${d.deviceId === settingsStore.selectedCameraId ? 'selected' : ''}>${d.label || 'Câmera Padrão'}</option>`).join('')}
-            </select>
-          </div>
-        ` : ''}
-
-        <!-- Quality Preset -->
-        <div class="form-group">
-          <label>Perfil de Qualidade e Desempenho</label>
-          <select id="select-preset">
-            <option value="ECONOMIC" ${settingsStore.qualityPreset === 'ECONOMIC' ? 'selected' : ''}>Econômico (Voz 24k, Câmera 360p, Tela 480p) — Menor uso de banda</option>
-            <option value="NORMAL" ${settingsStore.qualityPreset === 'NORMAL' ? 'selected' : ''}>Normal (Voz 32k, Câmera 480p, Tela 720p) — Padrão balanceado</option>
-            <option value="HIGH" ${settingsStore.qualityPreset === 'HIGH' ? 'selected' : ''}>Alta Qualidade (Voz 48k, Câmera 720p, Tela 1080p)</option>
-            <option value="GAMING" ${settingsStore.qualityPreset === 'GAMING' ? 'selected' : ''}>Gaming Mode (Voz 28k Prioritária, Câmera e Tela Reduzidas) — Sem lag em jogos</option>
+        <!-- Audio Outputs -->
+        <div class="form-group" id="group-speaker">
+          <label style="display: flex; align-items: center; gap: 6px;">
+            <span class="material-symbols-outlined md-16" style="color: var(--accent-primary);">headphones</span>
+            Dispositivo de Saída (Alto-falante / Fone)
+          </label>
+          <select id="select-speaker">
+            <option value="">Carregando dispositivos de saída...</option>
           </select>
         </div>
 
-        <div class="modal-footer">
+        <!-- Camera Inputs -->
+        <div class="form-group" id="group-camera">
+          <label style="display: flex; align-items: center; gap: 6px;">
+            <span class="material-symbols-outlined md-16" style="color: var(--accent-primary);">videocam</span>
+            Câmera de Vídeo
+          </label>
+          <select id="select-cam">
+            <option value="">Carregando câmeras...</option>
+          </select>
+        </div>
+
+        <!-- Quality Preset -->
+        <div class="form-group" style="border-top: 1px solid var(--border-color); padding-top: 14px; margin-top: 10px;">
+          <label style="display: flex; align-items: center; gap: 6px;">
+            <span class="material-symbols-outlined md-16" style="color: var(--accent-primary);">speed</span>
+            Perfil de Qualidade e Desempenho
+          </label>
+          <select id="select-preset">
+            <option value="ECONOMIC" ${settingsStore.qualityPreset === 'ECONOMIC' ? 'selected' : ''}>Econômico (Voz 24k, Câmera 360p, Tela 480p) — Menor uso de banda</option>
+            <option value="NORMAL" ${settingsStore.qualityPreset === 'NORMAL' ? 'selected' : ''}>Normal (Voz 32k, Câmera 480p, Tela 720p) — Balanceado</option>
+            <option value="HIGH" ${settingsStore.qualityPreset === 'HIGH' ? 'selected' : ''}>Alta Qualidade (Voz 48k, Câmera 720p, Tela 1080p)</option>
+            <option value="GAMING" ${settingsStore.qualityPreset === 'GAMING' ? 'selected' : ''}>Gaming Mode (Voz 28k Prioritária, Câmera/Tela Reduzidas) — Sem lag em jogos</option>
+          </select>
+        </div>
+
+        <div class="modal-footer" style="margin-top: 20px;">
           <button id="btn-settings-close" class="btn btn-primary">Pronto</button>
         </div>
       </div>
@@ -102,6 +126,66 @@ export class SettingsModal {
 
     document.body.appendChild(this.modalEl);
     this.attachEvents();
+    await this.refreshDevices();
+  }
+
+  private async refreshDevices(): Promise<void> {
+    if (!this.modalEl) return;
+
+    try {
+      const devices = await navigator.mediaDevices.enumerateDevices();
+      const audioInputs = devices.filter((d) => d.kind === 'audioinput');
+      const audioOutputs = devices.filter((d) => d.kind === 'audiooutput');
+      const videoInputs = devices.filter((d) => d.kind === 'videoinput');
+
+      const selectMic = this.modalEl.querySelector('#select-mic') as HTMLSelectElement;
+      const selectSpeaker = this.modalEl.querySelector('#select-speaker') as HTMLSelectElement;
+      const selectCam = this.modalEl.querySelector('#select-cam') as HTMLSelectElement;
+
+      if (selectMic) {
+        if (audioInputs.length === 0) {
+          selectMic.innerHTML = '<option value="">Nenhum microfone detectado</option>';
+        } else {
+          selectMic.innerHTML = audioInputs
+            .map((d, i) => `<option value="${d.deviceId}" ${d.deviceId === settingsStore.selectedMicrophoneId ? 'selected' : ''}>${d.label || `Microfone ${i + 1}`}</option>`)
+            .join('');
+          if (!settingsStore.selectedMicrophoneId && audioInputs.length > 0) {
+            settingsStore.selectedMicrophoneId = audioInputs[0].deviceId;
+            settingsStore.save();
+          }
+        }
+      }
+
+      if (selectSpeaker) {
+        if (audioOutputs.length === 0) {
+          selectSpeaker.innerHTML = '<option value="">Alto-falante Padrão do Sistema</option>';
+        } else {
+          selectSpeaker.innerHTML = audioOutputs
+            .map((d, i) => `<option value="${d.deviceId}" ${d.deviceId === settingsStore.selectedSpeakerId ? 'selected' : ''}>${d.label || `Saída ${i + 1}`}</option>`)
+            .join('');
+          if (!settingsStore.selectedSpeakerId && audioOutputs.length > 0) {
+            settingsStore.selectedSpeakerId = audioOutputs[0].deviceId;
+            settingsStore.save();
+          }
+        }
+      }
+
+      if (selectCam) {
+        if (videoInputs.length === 0) {
+          selectCam.innerHTML = '<option value="">Nenhuma câmera detectada</option>';
+        } else {
+          selectCam.innerHTML = videoInputs
+            .map((d, i) => `<option value="${d.deviceId}" ${d.deviceId === settingsStore.selectedCameraId ? 'selected' : ''}>${d.label || `Câmera ${i + 1}`}</option>`)
+            .join('');
+          if (!settingsStore.selectedCameraId && videoInputs.length > 0) {
+            settingsStore.selectedCameraId = videoInputs[0].deviceId;
+            settingsStore.save();
+          }
+        }
+      }
+    } catch (e) {
+      console.warn('[SettingsModal] Error enumerating devices:', e);
+    }
   }
 
   private attachEvents(): void {
@@ -109,6 +193,7 @@ export class SettingsModal {
 
     const btnClose = this.modalEl.querySelector('#modal-close');
     const btnDone = this.modalEl.querySelector('#btn-settings-close');
+    const btnRefresh = this.modalEl.querySelector('#btn-refresh-devices');
     const btnSaveNick = this.modalEl.querySelector('#btn-save-nickname');
     const btnChangeAvatar = this.modalEl.querySelector('#btn-change-avatar');
     const inputNick = this.modalEl.querySelector('#settings-nickname-input') as HTMLInputElement;
@@ -121,6 +206,15 @@ export class SettingsModal {
 
     btnClose?.addEventListener('click', () => this.close());
     btnDone?.addEventListener('click', () => this.close());
+
+    btnRefresh?.addEventListener('click', async () => {
+      const origText = btnRefresh.innerHTML;
+      btnRefresh.innerHTML = '<span class="material-symbols-outlined md-14" style="margin-right: 4px;">autorenew</span> Atualizando...';
+      await this.refreshDevices();
+      setTimeout(() => {
+        if (btnRefresh) btnRefresh.innerHTML = origText;
+      }, 500);
+    });
 
     sliderVad?.addEventListener('input', () => {
       const val = parseInt(sliderVad.value, 10);
@@ -150,10 +244,10 @@ export class SettingsModal {
       }
     });
 
-    selectSpeaker?.addEventListener('change', () => {
+    selectSpeaker?.addEventListener('change', async () => {
       settingsStore.selectedSpeakerId = selectSpeaker.value;
       settingsStore.save();
-      webRtcManager.setSpeakerDeviceId(selectSpeaker.value);
+      await webRtcManager.setSpeakerDeviceId(selectSpeaker.value);
     });
 
     selectCam?.addEventListener('change', async () => {
@@ -172,12 +266,21 @@ export class SettingsModal {
 
     btnSaveNick?.addEventListener('click', async () => {
       const newNick = inputNick?.value.trim();
-      if (!newNick) return;
-      this.hideError();
+      if (!newNick || newNick === serverStore.currentUser?.nickname) return;
 
       try {
-        await networkClient.sendRequest(MessageType.USER_CHANGE_NICKNAME, { newNickname: newNick });
+        await networkClient.sendRequest(MessageType.USER_CHANGE_NICKNAME, {
+          newNickname: newNick,
+        });
+        if (serverStore.currentUser) {
+          serverStore.currentUser.nickname = newNick;
+          serverStore.updateCurrentUser(serverStore.currentUser);
+        }
         connectionStore.saveUserProfile(newNick);
+        btnSaveNick.textContent = 'Salvo!';
+        setTimeout(() => {
+          if (btnSaveNick) btnSaveNick.textContent = 'Salvar';
+        }, 1500);
       } catch (err: any) {
         this.showError(err.message || 'Erro ao alterar nickname');
       }
@@ -190,13 +293,14 @@ export class SettingsModal {
           try {
             await networkClient.sendRequest(MessageType.USER_UPDATE_AVATAR, {
               avatarBase64: file.base64,
-              mimeType: file.mimeType,
+              mimeType: 'image/png',
             });
             const preview = document.getElementById('settings-avatar-preview') as HTMLImageElement;
             if (preview) preview.src = file.base64;
-            connectionStore.saveUserProfile(serverStore.currentUser?.nickname || '', file.base64);
+            const currentNick = serverStore.currentUser?.nickname || connectionStore.savedNickname;
+            connectionStore.saveUserProfile(currentNick, file.base64);
           } catch (err: any) {
-            this.showError(err.message || 'Erro ao enviar avatar');
+            this.showError(err.message || 'Erro ao atualizar foto de perfil');
           }
         }
       }
@@ -208,14 +312,6 @@ export class SettingsModal {
     if (banner) {
       banner.innerText = msg;
       banner.classList.add('show');
-    }
-  }
-
-  private hideError(): void {
-    const banner = document.getElementById('settings-error-banner');
-    if (banner) {
-      banner.innerText = '';
-      banner.classList.remove('show');
     }
   }
 

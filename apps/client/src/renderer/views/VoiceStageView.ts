@@ -27,12 +27,14 @@ export class VoiceStageView {
   }
 
   public render(): void {
+    this.stopPingMonitor();
+    this.unbindListeners();
+
     if (!this.currentChannelId || !serverStore.serverDetails) {
-      this.stopPingMonitor();
       this.container.innerHTML = `
-        <div style="display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100%; color: var(--text-muted); gap: 10px;">
-          <div style="font-size: 40px;">🔊</div>
-          <div style="font-size: 16px; font-weight: 600;">Nenhum canal de voz conectado</div>
+        <div style="display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100%; color: var(--text-muted); gap: 12px;">
+          <span class="material-symbols-outlined md-36" style="color: var(--text-dim); font-size: 48px;">volume_up</span>
+          <div style="font-size: 16px; font-weight: 600; color: var(--text-secondary);">Nenhum canal de voz conectado</div>
           <div style="font-size: 13px;">Clique em um canal de voz na barra lateral para entrar na chamada!</div>
         </div>
       `;
@@ -46,7 +48,7 @@ export class VoiceStageView {
       <div class="voice-stage-container">
         <div class="content-header">
           <div class="channel-title-container">
-            <span style="color: var(--success); font-size: 18px;">🔊</span>
+            <span class="material-symbols-outlined" style="color: var(--success); font-size: 20px;">volume_up</span>
             <span class="channel-title">${this.escapeHtml(channelName)}</span>
           </div>
 
@@ -60,41 +62,120 @@ export class VoiceStageView {
               </div>
             </div>
 
-            <div class="header-status-badge" style="background-color: rgba(35, 165, 90, 0.15); color: var(--success);">
-              Conectado (Voz P2P)
+            <div class="header-status-badge" style="background-color: rgba(35, 165, 90, 0.15); color: var(--success); display: flex; align-items: center; gap: 6px;">
+              <span class="material-symbols-outlined md-14">wifi_tethering</span>
+              <span>Conectado (Mesh P2P)</span>
             </div>
           </div>
         </div>
 
+        <!-- Live Broadcast Top Banner Container -->
+        <div id="stage-broadcast-banner-wrapper" style="display: none;"></div>
+
         <!-- Participants Container (Grid or Focused) -->
         <div id="stage-content-area" style="flex: 1; min-height: 0; display: flex; flex-direction: column;"></div>
 
+        <!-- Stage Bottom Controls Bar -->
         <div class="stage-controls-bar">
           <button id="stage-btn-mic" class="btn btn-icon ${voiceStore.isMuted ? 'danger-active' : ''}" title="${voiceStore.isMuted ? 'Desmutar Microfone' : 'Mutar Microfone'}">
-            ${voiceStore.isMuted ? '🔇' : '🎤'}
+            <span class="material-symbols-outlined">${voiceStore.isMuted ? 'mic_off' : 'mic'}</span>
           </button>
           <button id="stage-btn-deafen" class="btn btn-icon ${voiceStore.isDeafened ? 'danger-active' : ''}" title="${voiceStore.isDeafened ? 'Ouvir Áudio' : 'Mutar Tudo'}">
-            ${voiceStore.isDeafened ? '🔇' : '🎧'}
+            <span class="material-symbols-outlined">${voiceStore.isDeafened ? 'headset_off' : 'headphones'}</span>
           </button>
-          <button id="stage-btn-camera" class="btn btn-icon ${voiceStore.isCameraOn ? 'active' : ''}" title="${voiceStore.isCameraOn ? 'Desligar Câmera' : 'Ligar Câmera'}">
-            📷
+          <button id="stage-btn-camera" class="btn btn-icon ${voiceStore.isCameraOn ? 'broadcasting-pulse active' : ''}" title="${voiceStore.isCameraOn ? 'Desligar Câmera' : 'Ligar Câmera'}">
+            <span class="material-symbols-outlined">${voiceStore.isCameraOn ? 'videocam_off' : 'videocam'}</span>
           </button>
-          <button id="stage-btn-screen" class="btn btn-icon ${voiceStore.isScreenSharing ? 'active' : ''}" title="${voiceStore.isScreenSharing ? 'Parar Compartilhamento' : 'Compartilhar Tela'}">
-            🖥️
+          <button id="stage-btn-screen" class="btn btn-icon ${voiceStore.isScreenSharing ? 'broadcasting-pulse active' : ''}" title="${voiceStore.isScreenSharing ? 'Parar Compartilhamento de Tela' : 'Compartilhar Tela'}">
+            <span class="material-symbols-outlined">${voiceStore.isScreenSharing ? 'stop_screen_share' : 'screen_share'}</span>
           </button>
           <button id="stage-btn-leave" class="btn btn-danger" style="margin-left: 12px; padding: 0 16px; height: 38px;" title="Desconectar do canal">
-            <span>🚪</span> Sair da Voz
+            <span class="material-symbols-outlined md-18" style="margin-right: 4px;">call_end</span>
+            <span>Sair da Voz</span>
           </button>
         </div>
       </div>
     `;
 
     this.renderParticipants();
+    this.updateControlsUI();
     this.attachEvents();
     this.startPingMonitor();
   }
 
-  private renderParticipants(): void {
+  public updateControlsUI(): void {
+    const btnMic = document.getElementById('stage-btn-mic');
+    if (btnMic) {
+      btnMic.className = `btn btn-icon ${voiceStore.isMuted ? 'danger-active' : ''}`;
+      btnMic.title = voiceStore.isMuted ? 'Desmutar Microfone' : 'Mutar Microfone';
+      btnMic.innerHTML = `<span class="material-symbols-outlined">${voiceStore.isMuted ? 'mic_off' : 'mic'}</span>`;
+    }
+
+    const btnDeafen = document.getElementById('stage-btn-deafen');
+    if (btnDeafen) {
+      btnDeafen.className = `btn btn-icon ${voiceStore.isDeafened ? 'danger-active' : ''}`;
+      btnDeafen.title = voiceStore.isDeafened ? 'Ouvir Áudio' : 'Mutar Tudo';
+      btnDeafen.innerHTML = `<span class="material-symbols-outlined">${voiceStore.isDeafened ? 'headset_off' : 'headphones'}</span>`;
+    }
+
+    const btnCam = document.getElementById('stage-btn-camera');
+    if (btnCam) {
+      btnCam.className = `btn btn-icon ${voiceStore.isCameraOn ? 'broadcasting-pulse active' : ''}`;
+      btnCam.title = voiceStore.isCameraOn ? 'Desligar Câmera' : 'Ligar Câmera';
+      btnCam.innerHTML = `<span class="material-symbols-outlined">${voiceStore.isCameraOn ? 'videocam_off' : 'videocam'}</span>`;
+    }
+
+    const btnScreen = document.getElementById('stage-btn-screen');
+    if (btnScreen) {
+      btnScreen.className = `btn btn-icon ${voiceStore.isScreenSharing ? 'broadcasting-pulse active' : ''}`;
+      btnScreen.title = voiceStore.isScreenSharing ? 'Parar Compartilhamento de Tela' : 'Compartilhar Tela';
+      btnScreen.innerHTML = `<span class="material-symbols-outlined">${voiceStore.isScreenSharing ? 'stop_screen_share' : 'screen_share'}</span>`;
+    }
+
+    // Top broadcast banner
+    const bannerWrapper = document.getElementById('stage-broadcast-banner-wrapper');
+    if (bannerWrapper) {
+      const isBroadcasting = voiceStore.isCameraOn || voiceStore.isScreenSharing;
+      if (isBroadcasting) {
+        bannerWrapper.style.display = 'block';
+        bannerWrapper.innerHTML = `
+          <div class="stage-broadcast-banner">
+            <div style="display: flex; align-items: center; gap: 10px;">
+              <span class="live-pulse-dot"></span>
+              <span style="font-weight: 600; font-size: 12px; color: #ffffff;">
+                ${voiceStore.isScreenSharing ? 'Transmissão de Tela Ativa • Visível para todos na chamada' : 'Câmera ao Vivo • Transmitindo vídeo'}
+              </span>
+            </div>
+            <button id="btn-stage-quick-stop" class="btn btn-secondary" style="font-size: 11px; padding: 4px 12px; height: 26px; border-color: rgba(242, 63, 67, 0.5); color: #ff7b72;">
+              <span class="material-symbols-outlined md-14" style="margin-right: 4px;">stop_circle</span>
+              ${voiceStore.isScreenSharing ? 'Parar Tela' : 'Desligar Câmera'}
+            </button>
+          </div>
+        `;
+        const btnQuickStop = document.getElementById('btn-stage-quick-stop');
+        btnQuickStop?.addEventListener('click', () => this.handleStopStreaming());
+      } else {
+        bannerWrapper.style.display = 'none';
+        bannerWrapper.innerHTML = '';
+      }
+    }
+  }
+
+  private updateSpeakingClasses(): void {
+    if (!this.currentChannelId) return;
+    const participants = participantManager.getInVoiceChannel(this.currentChannelId);
+    participants.forEach((p) => {
+      const isLocal = p.user.id === serverStore.currentUser?.id;
+      const isSpeaking = isLocal ? voiceStore.isSpeaking : p.isSpeaking;
+      const card = document.getElementById(`card-${p.user.id}`);
+      if (card) {
+        if (isSpeaking) card.classList.add('speaking');
+        else card.classList.remove('speaking');
+      }
+    });
+  }
+
+  public renderParticipants(): void {
     const area = document.getElementById('stage-content-area');
     if (!area || !this.currentChannelId) return;
 
@@ -108,13 +189,11 @@ export class VoiceStageView {
       return;
     }
 
-    // Check if focused user still exists in channel
     if (this.focusedUserId && !participants.some((p) => p.user.id === this.focusedUserId)) {
       this.focusedUserId = null;
     }
 
     if (this.focusedUserId) {
-      // Focused View Mode
       const focusedParticipant = participants.find((p) => p.user.id === this.focusedUserId)!;
       const otherParticipants = participants.filter((p) => p.user.id !== this.focusedUserId);
 
@@ -122,9 +201,9 @@ export class VoiceStageView {
         <div class="stage-focused-layout">
           <div class="stage-focused-main ${focusedParticipant.isSpeaking ? 'speaking' : ''}" id="card-${focusedParticipant.user.id}" data-user-id="${focusedParticipant.user.id}">
             <div class="stage-focus-hint-badge">
-              <span>🔎 Modo Foco</span> • Clique para restaurar grade
+              <span class="material-symbols-outlined md-14">zoom_in</span>
+              <span>Modo Foco • Clique para restaurar grade</span>
             </div>
-
             ${this.renderCardContent(focusedParticipant, true)}
           </div>
 
@@ -140,7 +219,6 @@ export class VoiceStageView {
         </div>
       `;
     } else {
-      // Standard Grid Mode (Square cards)
       area.innerHTML = `
         <div class="stage-grid" id="stage-grid">
           ${participants.map((p) => `
@@ -164,7 +242,7 @@ export class VoiceStageView {
       });
     });
 
-    // Attach media streams to video elements
+    // Attach media streams to video elements cleanly
     participants.forEach((p) => {
       const isLocal = p.user.id === serverStore.currentUser?.id;
       const isCamOn = isLocal ? voiceStore.isCameraOn : (p.voiceState?.isCameraOn ?? false);
@@ -177,12 +255,12 @@ export class VoiceStageView {
 
         if (stream) {
           const videoEl = document.getElementById(`video-${p.user.id}`) as HTMLVideoElement;
-          if (videoEl) {
+          if (videoEl && videoEl.srcObject !== stream) {
             videoEl.srcObject = stream;
             videoEl.play().catch(() => {});
           }
           const miniVideoEl = document.getElementById(`video-mini-${p.user.id}`) as HTMLVideoElement;
-          if (miniVideoEl) {
+          if (miniVideoEl && miniVideoEl.srcObject !== stream) {
             miniVideoEl.srcObject = stream;
             miniVideoEl.play().catch(() => {});
           }
@@ -214,10 +292,10 @@ export class VoiceStageView {
 
       <div class="stage-badges-overlay">
         <span>${this.escapeHtml(p.user.nickname)}</span>
-        ${isMuted ? '<span class="stage-badge-icon">🔇</span>' : ''}
-        ${isDeafened ? '<span class="stage-badge-icon">🚫</span>' : ''}
-        ${isCamOn ? '<span class="stage-badge-icon">📷</span>' : ''}
-        ${isScreenOn ? '<span class="stage-badge-icon">🖥️</span>' : ''}
+        ${isMuted ? '<span class="material-symbols-outlined md-14" style="color: var(--danger);">mic_off</span>' : ''}
+        ${isDeafened ? '<span class="material-symbols-outlined md-14" style="color: var(--danger);">headset_off</span>' : ''}
+        ${isCamOn ? '<span class="material-symbols-outlined md-14" style="color: var(--accent-primary);">videocam</span>' : ''}
+        ${isScreenOn ? '<span class="material-symbols-outlined md-14" style="color: var(--success);">screen_share</span>' : ''}
       </div>
     `;
   }
@@ -281,7 +359,7 @@ export class VoiceStageView {
     };
 
     updatePing();
-    this.pingInterval = setInterval(updatePing, 1800);
+    this.pingInterval = setInterval(updatePing, 2000);
   }
 
   private stopPingMonitor(): void {
@@ -291,10 +369,25 @@ export class VoiceStageView {
     }
   }
 
-  private attachEvents(): void {
-    this.unbindEvents.forEach((u) => u());
-    this.unbindEvents = [];
+  private async handleStopStreaming(): Promise<void> {
+    if (voiceStore.isScreenSharing) {
+      if (!confirm('Deseja parar o compartilhamento de tela?')) return;
+      videoService.stopScreenShare();
+      await webRtcManager.setLocalScreenTrack(null);
+      voiceStore.setScreenSharing(false);
+      networkClient.send(MessageType.VOICE_STATE_UPDATE, { isScreenSharing: false });
+    } else if (voiceStore.isCameraOn) {
+      if (!confirm('Deseja desligar sua câmera?')) return;
+      videoService.stopCamera();
+      await webRtcManager.setLocalCameraTrack(null);
+      voiceStore.setCameraOn(false);
+      networkClient.send(MessageType.VOICE_STATE_UPDATE, { isCameraOn: false });
+    }
+    this.updateControlsUI();
+    this.renderParticipants();
+  }
 
+  private attachEvents(): void {
     const btnMic = document.getElementById('stage-btn-mic');
     const btnDeafen = document.getElementById('stage-btn-deafen');
     const btnCam = document.getElementById('stage-btn-camera');
@@ -306,7 +399,8 @@ export class VoiceStageView {
       voiceStore.setMuted(newMuted);
       audioProcessor.setMuted(newMuted);
       networkClient.send(MessageType.VOICE_STATE_UPDATE, { isMuted: newMuted });
-      this.render();
+      this.updateControlsUI();
+      this.renderParticipants();
     });
 
     btnDeafen?.addEventListener('click', () => {
@@ -315,22 +409,27 @@ export class VoiceStageView {
       audioProcessor.setDeafened(newDeafened);
       webRtcManager.setDeafened(newDeafened);
       networkClient.send(MessageType.VOICE_STATE_UPDATE, { isDeafened: newDeafened, isMuted: voiceStore.isMuted });
-      this.render();
+      this.updateControlsUI();
+      this.renderParticipants();
     });
 
     btnCam?.addEventListener('click', async () => {
       if (voiceStore.isCameraOn) {
+        if (!confirm('Deseja desligar a sua câmera?')) return;
         videoService.stopCamera();
         await webRtcManager.setLocalCameraTrack(null);
         voiceStore.setCameraOn(false);
         networkClient.send(MessageType.VOICE_STATE_UPDATE, { isCameraOn: false });
       } else {
-        try {
-          if (voiceStore.isScreenSharing) {
-            videoService.stopScreenShare();
-            await webRtcManager.setLocalScreenTrack(null);
-            voiceStore.setScreenSharing(false);
+        if (voiceStore.isScreenSharing) {
+          if (!confirm('O compartilhamento de tela será pausado para ligar a câmera. Deseja continuar?')) {
+            return;
           }
+          videoService.stopScreenShare();
+          await webRtcManager.setLocalScreenTrack(null);
+          voiceStore.setScreenSharing(false);
+        }
+        try {
           const stream = await videoService.startCamera();
           const track = stream.getVideoTracks()[0];
           await webRtcManager.setLocalCameraTrack(track);
@@ -340,52 +439,55 @@ export class VoiceStageView {
           alert(`Não foi possível acessar a câmera: ${err.message}`);
         }
       }
-      this.render();
+      this.updateControlsUI();
+      this.renderParticipants();
     });
 
     btnScreen?.addEventListener('click', async () => {
       if (voiceStore.isScreenSharing) {
+        if (!confirm('Deseja parar o compartilhamento de tela?')) return;
         videoService.stopScreenShare();
         await webRtcManager.setLocalScreenTrack(null);
         voiceStore.setScreenSharing(false);
         networkClient.send(MessageType.VOICE_STATE_UPDATE, { isScreenSharing: false });
-        this.render();
+        this.updateControlsUI();
+        this.renderParticipants();
       } else {
         appEvents.emit('modal.open_screenshare_picker');
       }
     });
 
     btnLeave?.addEventListener('click', () => {
-      if (this.currentChannelId) {
-        this.stopPingMonitor();
-        networkClient.send(MessageType.VOICE_LEAVE, { channelId: this.currentChannelId });
-        audioProcessor.stopMicrophone();
-        videoService.stopCamera();
-        videoService.stopScreenShare();
-        webRtcManager.closeAllPeers();
-        voiceStore.reset();
-        this.setChannel(null);
-      }
-    });
-
-    const u1 = appEvents.on('participants.updated', () => {
-      this.renderParticipants();
-    });
-
-    const u2 = appEvents.on('local.speaking', (speaking: boolean) => {
-      voiceStore.setSpeaking(speaking);
-      networkClient.send(MessageType.VOICE_STATE_UPDATE, { isSpeaking: speaking });
-      const currentUserId = serverStore.currentUser?.id;
-      if (currentUserId) {
-        const card = document.getElementById(`card-${currentUserId}`);
-        if (card) {
-          if (speaking) card.classList.add('speaking');
-          else card.classList.remove('speaking');
+      if (confirm('Deseja sair da chamada de voz?')) {
+        if (this.currentChannelId) {
+          this.stopPingMonitor();
+          networkClient.send(MessageType.VOICE_LEAVE, { channelId: this.currentChannelId });
+          audioProcessor.stopMicrophone();
+          videoService.stopCamera();
+          videoService.stopScreenShare();
+          webRtcManager.closeAllPeers();
+          voiceStore.reset();
+          this.setChannel(null);
         }
       }
     });
 
+    // Listeners that do NOT destroy the DOM
+    const u1 = appEvents.on('participants.updated', () => {
+      this.renderParticipants();
+    });
+
+    const u2 = appEvents.on('voice.state_updated', () => {
+      this.updateControlsUI();
+      this.updateSpeakingClasses();
+    });
+
     this.unbindEvents.push(u1, u2);
+  }
+
+  private unbindListeners(): void {
+    this.unbindEvents.forEach((u) => u());
+    this.unbindEvents = [];
   }
 
   private escapeHtml(unsafe: string): string {
@@ -399,7 +501,6 @@ export class VoiceStageView {
 
   public destroy(): void {
     this.stopPingMonitor();
-    this.unbindEvents.forEach((u) => u());
-    this.unbindEvents = [];
+    this.unbindListeners();
   }
 }

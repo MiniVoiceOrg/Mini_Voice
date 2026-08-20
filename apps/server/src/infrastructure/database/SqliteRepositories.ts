@@ -17,10 +17,13 @@ export class SqliteServerRepository implements IServerRepository {
   }
 
   async updateServer(server: Partial<ServerRecord>): Promise<void> {
-    if (server.name) {
+    if (server.name !== undefined) {
       this.db.prepare('UPDATE server_meta SET name = ?').run(server.name);
     }
-    if (server.maxUsers) {
+    if (server.passwordHash !== undefined) {
+      this.db.prepare('UPDATE server_meta SET password_hash = ?').run(server.passwordHash);
+    }
+    if (server.maxUsers !== undefined) {
       this.db.prepare('UPDATE server_meta SET max_users = ?').run(server.maxUsers);
     }
   }

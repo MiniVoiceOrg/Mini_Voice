@@ -51,6 +51,75 @@ body {
   -webkit-font-smoothing: antialiased;
 }
 
+/* Google Material Symbols Font Setup */
+.material-symbols-outlined {
+  font-family: 'Material Symbols Outlined';
+  font-weight: 400;
+  font-style: normal;
+  font-size: 20px;
+  line-height: 1;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  letter-spacing: normal;
+  text-transform: none;
+  white-space: nowrap;
+  word-wrap: normal;
+  direction: ltr;
+  -webkit-font-feature-settings: 'liga';
+  -webkit-font-smoothing: antialiased;
+  vertical-align: middle;
+}
+
+.material-symbols-outlined.md-14 { font-size: 14px; }
+.material-symbols-outlined.md-16 { font-size: 16px; }
+.material-symbols-outlined.md-18 { font-size: 18px; }
+.material-symbols-outlined.md-20 { font-size: 20px; }
+.material-symbols-outlined.md-24 { font-size: 24px; }
+.material-symbols-outlined.md-28 { font-size: 28px; }
+.material-symbols-outlined.md-36 { font-size: 36px; }
+
+/* Live Broadcast Banner & Pulsing Indicators */
+.stage-broadcast-banner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  background: linear-gradient(90deg, rgba(242, 63, 67, 0.2) 0%, rgba(88, 101, 242, 0.15) 100%);
+  border: 1px solid rgba(242, 63, 67, 0.4);
+  border-radius: var(--radius-md);
+  padding: 8px 14px;
+  animation: bannerFadeIn 0.3s ease;
+  margin-bottom: 6px;
+}
+
+@keyframes bannerFadeIn {
+  from { opacity: 0; transform: translateY(-6px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.live-pulse-dot {
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  background-color: #f23f43;
+  display: inline-block;
+  box-shadow: 0 0 0 0 rgba(242, 63, 67, 0.7);
+  animation: pulseLive 1.5s infinite;
+}
+
+@keyframes pulseLive {
+  0% { transform: scale(0.95); box-shadow: 0 0 0 0 rgba(242, 63, 67, 0.7); }
+  70% { transform: scale(1.1); box-shadow: 0 0 0 7px rgba(242, 63, 67, 0); }
+  100% { transform: scale(0.95); box-shadow: 0 0 0 0 rgba(242, 63, 67, 0); }
+}
+
+.btn.broadcasting-pulse {
+  background-color: rgba(242, 63, 67, 0.25) !important;
+  border: 1px solid #f23f43 !important;
+  color: #ff7b72 !important;
+  box-shadow: 0 0 12px rgba(242, 63, 67, 0.4);
+}
+
 #app {
   height: 100vh;
   width: 100vw;
@@ -285,6 +354,62 @@ input:focus, textarea:focus, select:focus {
 
 .error-banner.show {
   display: block;
+}
+
+/* Saved Servers Section */
+.saved-servers-container {
+  margin-bottom: 16px;
+  background: rgba(0, 0, 0, 0.25);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-md);
+  padding: 10px 12px;
+}
+
+.saved-servers-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  max-height: 145px;
+  overflow-y: auto;
+}
+
+.saved-server-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  background: var(--bg-tertiary);
+  padding: 8px 12px;
+  border-radius: var(--radius-sm);
+  border: 1px solid rgba(255, 255, 255, 0.05);
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.saved-server-item:hover {
+  background: rgba(88, 101, 242, 0.12);
+  border-color: rgba(88, 101, 242, 0.3);
+  transform: translateY(-1px);
+}
+
+.saved-server-item.selected {
+  border-color: var(--accent-primary);
+  background: rgba(88, 101, 242, 0.18);
+}
+
+.btn-delete-saved-srv {
+  background: none;
+  border: none;
+  color: var(--text-muted);
+  cursor: pointer;
+  font-size: 13px;
+  padding: 2px 6px;
+  border-radius: 4px;
+  transition: color 0.15s, background 0.15s;
+}
+
+.btn-delete-saved-srv:hover {
+  color: var(--danger);
+  background: rgba(237, 66, 69, 0.15);
 }
 
 /* Avatar Preview & Upload in Connect Screen */
