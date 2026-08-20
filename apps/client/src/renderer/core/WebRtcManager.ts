@@ -23,6 +23,7 @@ export interface PeerSession {
 export class WebRtcManager {
   private peers: Map<string, PeerSession> = new Map();
   private audioElements: Map<string, HTMLAudioElement> = new Map();
+  private remoteAudioVads: Map<string, { ctx: AudioContext; interval: any }> = new Map();
   private localAudioTrack: MediaStreamTrack | null = null;
   private localCameraTrack: MediaStreamTrack | null = null;
   private localScreenTrack: MediaStreamTrack | null = null;
@@ -137,6 +138,7 @@ export class WebRtcManager {
         }
         audioEl.srcObject = remoteStream;
         audioEl.play().catch((e) => console.warn('[WebRTC] Audio play error:', e));
+        this.setupRemoteVad(peerUserId, remoteStream);
       }
 
       if (event.track.kind === 'video') {
@@ -461,7 +463,77 @@ export class WebRtcManager {
     return Math.round(pings.reduce((a, b) => a + b, 0) / pings.length);
   }
 
+  private setupRemoteVad(peerUserId: string, stream: MediaStream): void {
+    this.cleanupRemoteVad(peerUserId);
+    try {
+      const AudioCtx = window.AudioContext || (window as any).webkitAudioContext;
+      const ctx = new AudioCtx();
+      if (ctx.state === 'suspended') {
+        ctx.resume().catch(() => {});
+      }
+      const analyser = ctx.createAnalyser();
+      analyser.fftSize = 256;
+      analyser.smoothingTimeConstant = 0.3;
+      const source = ctx.createMediaStreamSource(stream);
+      source.connect(analyser);
+
+      const bufferLength = analyser.frequencyBinCount;
+      const dataArray = new Uint8Array(bufferLength);
+      let isSpeaking = false;
+      let silenceCounter = 0;
+
+      const speechBins = Math.min(36, bufferLength);
+
+      const interval = setInterval(() => {
+        if (ctx.state === 'suspended') {
+          ctx.resume().catch(() => {});
+        }
+        analyser.getByteFrequencyData(dataArray);
+        let sum = 0;
+        let peak = 0;
+        for (let i = 0; i < speechBins; i++) {
+          const val = dataArray[i];
+          sum += val;
+          if (val > peak) peak = val;
+        }
+        const average = sum / speechBins;
+
+        const isVoiceActive = (average > 16 && peak > 40) || average > 24;
+
+        if (isVoiceActive) {
+          silenceCounter = 0;
+          if (!isSpeaking) {
+            isSpeaking = true;
+            participantManager.setSpeaking(peerUserId, true);
+          }
+        } else {
+          silenceCounter++;
+          if (silenceCounter > 4 && isSpeaking) {
+            isSpeaking = false;
+            participantManager.setSpeaking(peerUserId, false);
+          }
+        }
+      }, 50);
+
+      this.remoteAudioVads.set(peerUserId, { ctx, interval });
+    } catch (err) {
+      console.warn(`[WebRTC] Could not setup remote VAD for ${peerUserId}:`, err);
+    }
+  }
+
+  private cleanupRemoteVad(peerUserId: string): void {
+    const vad = this.remoteAudioVads.get(peerUserId);
+    if (vad) {
+      clearInterval(vad.interval);
+      try {
+        vad.ctx.close();
+      } catch (e) {}
+      this.remoteAudioVads.delete(peerUserId);
+    }
+  }
+
   public removePeer(peerUserId: string): void {
+    this.cleanupRemoteVad(peerUserId);
     const audioEl = this.audioElements.get(peerUserId);
     if (audioEl) {
       audioEl.srcObject = null;
@@ -481,6 +553,9 @@ export class WebRtcManager {
       this.removePeer(peerUserId);
     }
     this.peers.clear();
+    for (const peerUserId of this.remoteAudioVads.keys()) {
+      this.cleanupRemoteVad(peerUserId);
+    }
   }
 }
 

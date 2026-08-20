@@ -7,9 +7,16 @@ const electron_1 = require("electron");
 const path_1 = __importDefault(require("path"));
 const ipcHandlers_1 = require("./ipcHandlers");
 const serverManager_1 = require("./serverManager");
+const fs_1 = __importDefault(require("fs"));
 let mainWindow = null;
 const serverManager = new serverManager_1.ServerManager();
 function createWindow() {
+    const iconCandidates = [
+        path_1.default.join(__dirname, '../../images/Logo.png'),
+        path_1.default.join(__dirname, '../../src/renderer/assets/Logo.png'),
+        path_1.default.join(electron_1.app.getAppPath(), 'images/Logo.png'),
+    ];
+    const iconPath = iconCandidates.find((p) => fs_1.default.existsSync(p));
     mainWindow = new electron_1.BrowserWindow({
         width: 1200,
         height: 800,
@@ -18,6 +25,7 @@ function createWindow() {
         backgroundColor: '#0e1117',
         frame: true,
         title: 'Mini Voice',
+        icon: iconPath,
         webPreferences: {
             preload: path_1.default.join(__dirname, '../preload/preload.js'),
             contextIsolation: true,

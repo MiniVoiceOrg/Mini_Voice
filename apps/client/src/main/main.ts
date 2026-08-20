@@ -3,10 +3,19 @@ import path from 'path';
 import { setupIpcHandlers } from './ipcHandlers';
 import { ServerManager } from './serverManager';
 
+import fs from 'fs';
+
 let mainWindow: BrowserWindow | null = null;
 const serverManager = new ServerManager();
 
 function createWindow(): void {
+  const iconCandidates = [
+    path.join(__dirname, '../../images/Logo.png'),
+    path.join(__dirname, '../../src/renderer/assets/Logo.png'),
+    path.join(app.getAppPath(), 'images/Logo.png'),
+  ];
+  const iconPath = iconCandidates.find((p) => fs.existsSync(p));
+
   mainWindow = new BrowserWindow({
     width: 1200,
     height: 800,
@@ -15,6 +24,7 @@ function createWindow(): void {
     backgroundColor: '#0e1117',
     frame: true,
     title: 'Mini Voice',
+    icon: iconPath,
     webPreferences: {
       preload: path.join(__dirname, '../preload/preload.js'),
       contextIsolation: true,

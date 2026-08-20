@@ -8,7 +8,7 @@ export class AudioProcessor {
   private microphoneSource: MediaStreamAudioSourceNode | null = null;
   private vadInterval: any = null;
   private isSpeaking: boolean = false;
-  private vadThreshold: number = 25; // 0 - 100 sensitivity threshold
+  private vadThreshold: number = settingsStore.vadSensitivity !== undefined ? settingsStore.vadSensitivity : 14;
   private isMuted: boolean = false;
   private isDeafened: boolean = false;
 
@@ -53,15 +53,19 @@ export class AudioProcessor {
     try {
       const AudioCtx = window.AudioContext || (window as any).webkitAudioContext;
       this.audioContext = new AudioCtx();
+      if (this.audioContext.state !== 'running') {
+        this.audioContext.resume().catch(() => {});
+      }
       this.analyser = this.audioContext.createAnalyser();
       this.analyser.fftSize = 256;
-      this.analyser.smoothingTimeConstant = 0.4;
+      this.analyser.smoothingTimeConstant = 0.25;
 
       this.microphoneSource = this.audioContext.createMediaStreamSource(stream);
       this.microphoneSource.connect(this.analyser);
 
       const bufferLength = this.analyser.frequencyBinCount;
       const dataArray = new Uint8Array(bufferLength);
+      const speechBins = Math.min(36, bufferLength);
 
       let silenceCounter = 0;
 
@@ -73,34 +77,48 @@ export class AudioProcessor {
           return;
         }
 
+        if (this.audioContext && this.audioContext.state === 'suspended') {
+          this.audioContext.resume().catch(() => {});
+        }
+
         this.analyser.getByteFrequencyData(dataArray);
         let sum = 0;
-        for (let i = 0; i < bufferLength; i++) {
-          sum += dataArray[i];
+        let peak = 0;
+        for (let i = 0; i < speechBins; i++) {
+          const val = dataArray[i];
+          sum += val;
+          if (val > peak) peak = val;
         }
-        const average = sum / bufferLength;
+        const average = sum / speechBins;
 
-        if (average > this.vadThreshold) {
+        // Calibrated threshold: filters background mic hiss while activating reliably when talking
+        const targetAvg = Math.max(16, this.vadThreshold * 0.8);
+        const targetPeak = Math.max(42, this.vadThreshold * 1.8);
+        const isVoiceActive = (average > targetAvg && peak > targetPeak) || average > (targetAvg * 1.4);
+
+        if (isVoiceActive) {
           silenceCounter = 0;
           if (!this.isSpeaking) {
             this.setSpeaking(true);
           }
         } else {
           silenceCounter++;
-          // Require 3 consecutive cycles of silence before toggling off to prevent flickering
-          if (silenceCounter > 3 && this.isSpeaking) {
+          // 4 cycles (~200ms) of silence before turning off to avoid jitter between words
+          if (silenceCounter > 4 && this.isSpeaking) {
             this.setSpeaking(false);
           }
         }
-      }, 80);
+      }, 50);
     } catch (err) {
       console.warn('Could not initialize AudioContext for VAD:', err);
     }
   }
 
   private setSpeaking(speaking: boolean): void {
-    this.isSpeaking = speaking;
-    appEvents.emit('local.speaking', speaking);
+    if (this.isSpeaking !== speaking) {
+      this.isSpeaking = speaking;
+      appEvents.emit('local.speaking', speaking);
+    }
   }
 
   public setMuted(muted: boolean): void {

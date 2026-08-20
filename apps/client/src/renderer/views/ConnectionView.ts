@@ -2,6 +2,7 @@ import { appEvents } from '../core/EventBus';
 import { connectionStore } from '../stores/connectionStore';
 import { networkClient } from '../core/NetworkClient';
 import { getAvatarUrl } from '../utils/avatar';
+import logoUrl from '../assets/Logo.png';
 
 export class ConnectionView {
   private container: HTMLElement;
@@ -25,16 +26,16 @@ export class ConnectionView {
       <div class="connection-layout">
         <div class="connection-card">
           
-          <div class="brand-header">
-            <div class="brand-logo">
-              <span class="material-symbols-outlined" style="font-size: 28px; color: var(--accent-primary);">podcasts</span>
-              <span>Mini Voice</span>
-              <span class="brand-badge">P2P</span>
+          <div class="brand-header" style="display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 6px; margin-bottom: 16px;">
+            <img src="${logoUrl}" alt="Mini Voice Logo" style="width: 200px; max-width: 70%; height: auto; max-height: 80px; object-fit: contain; filter: drop-shadow(0 4px 16px rgba(88, 101, 242, 0.4));">
+            <div class="brand-logo" style="display: flex; align-items: center; justify-content: center; gap: 8px;">
+              <span style="font-size: 24px; font-weight: 800; letter-spacing: -0.5px;">Mini Voice</span>
+              <span class="brand-badge" style="font-size: 11px; padding: 2px 8px;">P2P</span>
             </div>
-            <div class="brand-tagline">Comunicação direta, rápida e privada entre amigos</div>
+            <div class="brand-tagline" style="font-size: 12px; color: var(--text-secondary); margin-top: 2px;">Comunicação direta, rápida e privada entre amigos</div>
           </div>
 
-          <div class="nav-tabs">
+          <div class="nav-tabs" style="margin-bottom: 14px;">
             <button id="tab-join" class="tab-button ${this.activeTab === 'join' ? 'active' : ''}">Entrar no Servidor</button>
             <button id="tab-host" class="tab-button ${this.activeTab === 'host' ? 'active' : ''}">Criar Servidor</button>
           </div>
@@ -42,14 +43,14 @@ export class ConnectionView {
           <div id="error-banner" class="error-banner"></div>
 
           <!-- Avatar Picker -->
-          <div class="avatar-picker">
-            <img id="avatar-preview" class="avatar-preview-img" src="${getAvatarUrl(this.selectedAvatarBase64)}">
+          <div class="avatar-picker" style="margin-bottom: 14px; gap: 12px;">
+            <img id="avatar-preview" class="avatar-preview-img" style="width: 46px; height: 46px;" src="${getAvatarUrl(this.selectedAvatarBase64)}">
             <div>
-              <button id="btn-select-avatar" class="btn btn-secondary" style="padding: 6px 12px; font-size: 12px;">
-                <span class="material-symbols-outlined md-16" style="margin-right: 4px;">photo_camera</span>
+              <button id="btn-select-avatar" class="btn btn-secondary" style="padding: 5px 10px; font-size: 11px;">
+                <span class="material-symbols-outlined md-14" style="margin-right: 4px;">photo_camera</span>
                 Escolher Foto de Perfil
               </button>
-              <div style="font-size: 11px; color: var(--text-muted); margin-top: 4px;">PNG, JPG ou WebP (Salvo no PC)</div>
+              <div style="font-size: 10px; color: var(--text-muted); margin-top: 2px;">PNG, JPG ou WebP (Salvo no PC)</div>
             </div>
           </div>
 
@@ -150,11 +151,11 @@ export class ConnectionView {
 
             <div class="form-row">
               <div class="form-group">
-                <label>Primeiro Canal de Texto</label>
+                <label>Canal de Texto</label>
                 <input id="host-text-channel" type="text" value="geral" required>
               </div>
               <div class="form-group">
-                <label>Primeiro Canal de Voz</label>
+                <label>Canal de Voz</label>
                 <input id="host-voice-channel" type="text" value="Geral" required>
               </div>
             </div>

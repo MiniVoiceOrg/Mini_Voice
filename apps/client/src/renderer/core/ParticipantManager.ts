@@ -69,7 +69,7 @@ export class ParticipantManager {
     const participant = this.participants.get(userId);
     if (participant && participant.isSpeaking !== speaking) {
       participant.isSpeaking = speaking;
-      appEvents.emit('participants.updated');
+      appEvents.emit('participants.speaking_changed', { userId, speaking });
     }
   }
 

@@ -130,6 +130,14 @@ class App {
       participantManager.updateVoiceState(payload.voiceState);
     });
 
+    // Local VAD speaking state
+    appEvents.on('local.speaking', (speaking: boolean) => {
+      voiceStore.setSpeaking(speaking);
+      if (serverStore.currentUser) {
+        participantManager.setSpeaking(serverStore.currentUser.id, speaking);
+      }
+    });
+
     // Modals
     appEvents.on('modal.open_screenshare_picker', () => {
       screenSharePickerModal.open();

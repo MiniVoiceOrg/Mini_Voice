@@ -32,8 +32,11 @@ export class VoiceStore {
   }
 
   public setSpeaking(speaking: boolean): void {
-    this.isSpeaking = speaking;
-    appEvents.emit('voice.state_updated');
+    if (this.isSpeaking !== speaking) {
+      this.isSpeaking = speaking;
+      appEvents.emit('voice.speaking_changed', speaking);
+      appEvents.emit('voice.state_updated');
+    }
   }
 
   public setCameraOn(on: boolean): void {

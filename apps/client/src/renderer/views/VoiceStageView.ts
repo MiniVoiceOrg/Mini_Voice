@@ -7,6 +7,7 @@ import { voiceStore } from '../stores/voiceStore';
 import { audioProcessor } from '../core/AudioProcessor';
 import { videoService } from '../core/VideoService';
 import { webRtcManager } from '../core/WebRtcManager';
+import { soundEffects } from '../core/SoundEffects';
 import { getAvatarUrl } from '../utils/avatar';
 
 export class VoiceStageView {
@@ -167,12 +168,19 @@ export class VoiceStageView {
     participants.forEach((p) => {
       const isLocal = p.user.id === serverStore.currentUser?.id;
       const isSpeaking = isLocal ? voiceStore.isSpeaking : p.isSpeaking;
-      const card = document.getElementById(`card-${p.user.id}`);
-      if (card) {
-        if (isSpeaking) card.classList.add('speaking');
-        else card.classList.remove('speaking');
-      }
+      this.setCardSpeaking(p.user.id, isSpeaking);
     });
+  }
+
+  private setCardSpeaking(userId: string, isSpeaking: boolean): void {
+    const card = document.getElementById(`card-${userId}`);
+    if (card) {
+      if (isSpeaking) {
+        card.classList.add('speaking');
+      } else {
+        card.classList.remove('speaking');
+      }
+    }
   }
 
   public renderParticipants(): void {
@@ -196,10 +204,11 @@ export class VoiceStageView {
     if (this.focusedUserId) {
       const focusedParticipant = participants.find((p) => p.user.id === this.focusedUserId)!;
       const otherParticipants = participants.filter((p) => p.user.id !== this.focusedUserId);
+      const isFocusedSpeaking = (focusedParticipant.user.id === serverStore.currentUser?.id) ? voiceStore.isSpeaking : focusedParticipant.isSpeaking;
 
       area.innerHTML = `
         <div class="stage-focused-layout">
-          <div class="stage-focused-main ${focusedParticipant.isSpeaking ? 'speaking' : ''}" id="card-${focusedParticipant.user.id}" data-user-id="${focusedParticipant.user.id}">
+          <div class="stage-focused-main ${isFocusedSpeaking ? 'speaking' : ''}" id="card-${focusedParticipant.user.id}" data-user-id="${focusedParticipant.user.id}">
             <div class="stage-focus-hint-badge">
               <span class="material-symbols-outlined md-14">zoom_in</span>
               <span>Modo Foco • Clique para restaurar grade</span>
@@ -209,11 +218,14 @@ export class VoiceStageView {
 
           ${otherParticipants.length > 0 ? `
             <div class="stage-focused-strip">
-              ${otherParticipants.map((p) => `
-                <div class="stage-mini-card ${p.isSpeaking ? 'speaking' : ''}" id="card-${p.user.id}" data-user-id="${p.user.id}" title="Clique para focar em ${this.escapeHtml(p.user.nickname)}">
-                  ${this.renderCardContent(p, false, true)}
-                </div>
-              `).join('')}
+              ${otherParticipants.map((p) => {
+                const isOtherSpeaking = (p.user.id === serverStore.currentUser?.id) ? voiceStore.isSpeaking : p.isSpeaking;
+                return `
+                  <div class="stage-mini-card ${isOtherSpeaking ? 'speaking' : ''}" id="card-${p.user.id}" data-user-id="${p.user.id}" title="Clique para focar em ${this.escapeHtml(p.user.nickname)}">
+                    ${this.renderCardContent(p, false, true)}
+                  </div>
+                `;
+              }).join('')}
             </div>
           ` : ''}
         </div>
@@ -221,11 +233,14 @@ export class VoiceStageView {
     } else {
       area.innerHTML = `
         <div class="stage-grid" id="stage-grid">
-          ${participants.map((p) => `
-            <div class="stage-card ${p.isSpeaking ? 'speaking' : ''}" id="card-${p.user.id}" data-user-id="${p.user.id}" title="Clique para focar/destacar">
-              ${this.renderCardContent(p, false, false)}
-            </div>
-          `).join('')}
+          ${participants.map((p) => {
+            const isSpeaking = (p.user.id === serverStore.currentUser?.id) ? voiceStore.isSpeaking : p.isSpeaking;
+            return `
+              <div class="stage-card ${isSpeaking ? 'speaking' : ''}" id="card-${p.user.id}" data-user-id="${p.user.id}" title="Clique para focar/destacar">
+                ${this.renderCardContent(p, false, false)}
+              </div>
+            `;
+          }).join('')}
         </div>
       `;
     }
@@ -398,6 +413,7 @@ export class VoiceStageView {
       const newMuted = !voiceStore.isMuted;
       voiceStore.setMuted(newMuted);
       audioProcessor.setMuted(newMuted);
+      soundEffects.play(newMuted ? 'mic_mute' : 'mic_unmute');
       networkClient.send(MessageType.VOICE_STATE_UPDATE, { isMuted: newMuted });
       this.updateControlsUI();
       this.renderParticipants();
@@ -408,6 +424,7 @@ export class VoiceStageView {
       voiceStore.setDeafened(newDeafened);
       audioProcessor.setDeafened(newDeafened);
       webRtcManager.setDeafened(newDeafened);
+      soundEffects.play(newDeafened ? 'deafen' : 'undeafen');
       networkClient.send(MessageType.VOICE_STATE_UPDATE, { isDeafened: newDeafened, isMuted: voiceStore.isMuted });
       this.updateControlsUI();
       this.renderParticipants();
@@ -461,6 +478,7 @@ export class VoiceStageView {
       if (confirm('Deseja sair da chamada de voz?')) {
         if (this.currentChannelId) {
           this.stopPingMonitor();
+          soundEffects.play('leave_voice');
           networkClient.send(MessageType.VOICE_LEAVE, { channelId: this.currentChannelId });
           audioProcessor.stopMicrophone();
           videoService.stopCamera();
@@ -482,7 +500,17 @@ export class VoiceStageView {
       this.updateSpeakingClasses();
     });
 
-    this.unbindEvents.push(u1, u2);
+    const u3 = appEvents.on('participants.speaking_changed', (data: { userId: string; speaking: boolean }) => {
+      this.setCardSpeaking(data.userId, data.speaking);
+    });
+
+    const u4 = appEvents.on('voice.speaking_changed', (speaking: boolean) => {
+      if (serverStore.currentUser) {
+        this.setCardSpeaking(serverStore.currentUser.id, speaking);
+      }
+    });
+
+    this.unbindEvents.push(u1, u2, u3, u4);
   }
 
   private unbindListeners(): void {

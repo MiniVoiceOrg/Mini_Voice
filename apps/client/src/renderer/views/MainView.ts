@@ -12,7 +12,9 @@ import { createChannelModal } from './CreateChannelModal';
 import { settingsModal } from './SettingsModal';
 import { serverSettingsModal } from './ServerSettingsModal';
 import { inviteModal } from './InviteModal';
+import { soundEffects } from '../core/SoundEffects';
 import { getAvatarUrl } from '../utils/avatar';
+import logoUrl from '../assets/Logo.png';
 
 export class MainView {
   private container: HTMLElement;
@@ -38,7 +40,10 @@ export class MainView {
         <!-- Left Sidebar: Channels & User Controls -->
         <div class="channels-sidebar">
           <div class="server-header">
-            <span id="server-name-title" style="white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-weight: 700;">${this.escapeHtml(s.name)}</span>
+            <div style="display: flex; align-items: center; gap: 8px; overflow: hidden; flex: 1;">
+              <img src="${logoUrl}" alt="Mini Voice" style="width: 22px; height: 22px; object-fit: contain; border-radius: 4px; flex-shrink: 0;">
+              <span id="server-name-title" style="white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-weight: 700;">${this.escapeHtml(s.name)}</span>
+            </div>
             <div style="display: flex; gap: 6px; align-items: center;">
               <button id="btn-server-settings" class="btn btn-secondary" style="padding: 3px 7px; font-size: 11px; height: 26px;" title="Configurações do Servidor (Alterar/Remover Senha)">
                 <span class="material-symbols-outlined md-16">settings</span>
@@ -169,7 +174,7 @@ export class MainView {
                   const avatar = getAvatarUrl(p.user.avatarUrl);
 
                   return `
-                    <div class="voice-participant-mini ${isSpeaking ? 'speaking' : ''}">
+                    <div id="voice-mini-user-${p.user.id}" class="voice-participant-mini ${isSpeaking ? 'speaking' : ''}">
                       <img class="voice-mini-avatar" src="${avatar}">
                       <span>${this.escapeHtml(p.user.nickname)}</span>
                     </div>
@@ -227,6 +232,7 @@ export class MainView {
     }
 
     voiceStore.setChannel(channelId);
+    soundEffects.play('join_voice');
     networkClient.send(MessageType.VOICE_JOIN, { channelId });
 
     // Connect to all peers already in this voice channel
@@ -301,6 +307,7 @@ export class MainView {
       const newMuted = !voiceStore.isMuted;
       voiceStore.setMuted(newMuted);
       audioProcessor.setMuted(newMuted);
+      soundEffects.play(newMuted ? 'mic_mute' : 'mic_unmute');
       networkClient.send(MessageType.VOICE_STATE_UPDATE, { isMuted: newMuted });
       if (btnMic) {
         btnMic.className = `btn btn-icon ${newMuted ? 'danger-active' : ''}`;
@@ -313,6 +320,7 @@ export class MainView {
       voiceStore.setDeafened(newDeafened);
       audioProcessor.setDeafened(newDeafened);
       webRtcManager.setDeafened(newDeafened);
+      soundEffects.play(newDeafened ? 'deafen' : 'undeafen');
       networkClient.send(MessageType.VOICE_STATE_UPDATE, { isDeafened: newDeafened, isMuted: voiceStore.isMuted });
       if (btnDeafen) {
         btnDeafen.className = `btn btn-icon ${newDeafened ? 'danger-active' : ''}`;
@@ -322,6 +330,7 @@ export class MainView {
 
     btnDisconnect?.addEventListener('click', () => {
       if (confirm('Deseja realmente desconectar do servidor?')) {
+        soundEffects.play('leave_voice');
         audioProcessor.stopMicrophone();
         webRtcManager.closeAllPeers();
         networkClient.disconnect();
@@ -367,13 +376,36 @@ export class MainView {
       }
     });
 
-    const u5 = appEvents.on(`message.${MessageType.SERVER_SETTINGS_UPDATED}`, (payload: any) => {
+    const u5 = appEvents.on('voice.speaking_changed', (speaking: boolean) => {
+      const avatarEl = document.getElementById('main-user-avatar');
+      if (avatarEl) {
+        if (speaking) avatarEl.classList.add('speaking');
+        else avatarEl.classList.remove('speaking');
+      }
+      if (serverStore.currentUser) {
+        const miniEl = document.getElementById(`voice-mini-user-${serverStore.currentUser.id}`);
+        if (miniEl) {
+          if (speaking) miniEl.classList.add('speaking');
+          else miniEl.classList.remove('speaking');
+        }
+      }
+    });
+
+    const u6 = appEvents.on('participants.speaking_changed', (data: { userId: string; speaking: boolean }) => {
+      const miniEl = document.getElementById(`voice-mini-user-${data.userId}`);
+      if (miniEl) {
+        if (data.speaking) miniEl.classList.add('speaking');
+        else miniEl.classList.remove('speaking');
+      }
+    });
+
+    const u7 = appEvents.on(`message.${MessageType.SERVER_SETTINGS_UPDATED}`, (payload: any) => {
       serverStore.updateServerMeta(payload.name, payload.hasPassword);
       const titleEl = document.getElementById('server-name-title');
       if (titleEl) titleEl.innerText = payload.name;
     });
 
-    this.unbindEvents.push(u1, u2, u3, u4, u5);
+    this.unbindEvents.push(u1, u2, u3, u4, u5, u6, u7);
   }
 
   private escapeHtml(unsafe: string): string {

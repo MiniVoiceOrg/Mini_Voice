@@ -241,23 +241,28 @@ input:focus, textarea:focus, select:focus {
 }
 
 /* Connection Screen Styles */
-.connection-container {
-  display: flex;
-  align-items: center;
-  justify-content: center;
+.connection-layout {
+  width: 100vw;
   height: 100vh;
+  overflow-y: auto;
+  overflow-x: hidden;
+  display: flex;
+  justify-content: center;
+  align-items: flex-start;
   background: radial-gradient(circle at top, #161b26 0%, #0b0e14 100%);
-  padding: 20px;
+  padding: 20px 16px;
+  box-sizing: border-box;
 }
 
 .connection-card {
   width: 100%;
-  max-width: 460px;
+  max-width: 620px;
   background-color: var(--bg-panel);
   border: 1px solid var(--border-color);
   border-radius: var(--radius-lg);
-  padding: 28px;
+  padding: 22px 26px;
   box-shadow: 0 12px 36px rgba(0, 0, 0, 0.4);
+  margin: auto;
 }
 
 .brand-header {
@@ -834,8 +839,8 @@ input:focus, textarea:focus, select:focus {
 }
 
 .stage-card.speaking {
-  border-color: var(--success);
-  box-shadow: 0 0 18px var(--success-glow);
+  border-color: #23a55a !important;
+  box-shadow: 0 0 20px rgba(35, 165, 90, 0.6), inset 0 0 10px rgba(35, 165, 90, 0.2) !important;
 }
 
 /* Focused Mode Layout */
@@ -1119,23 +1124,63 @@ input:focus, textarea:focus, select:focus {
   padding: 6px 10px;
   border-radius: var(--radius-md);
   cursor: default;
+  transition: background-color 0.12s ease;
 }
 
 .member-item:hover {
   background-color: var(--bg-panel);
 }
 
-.member-avatar {
-  width: 32px;
-  height: 32px;
+.member-avatar-wrapper {
+  position: relative;
+  width: 34px;
+  height: 34px;
+  min-width: 34px;
+  min-height: 34px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.member-avatar-img {
+  width: 34px;
+  height: 34px;
+  min-width: 34px;
+  min-height: 34px;
   border-radius: 50%;
   object-fit: cover;
   background-color: var(--bg-card);
+  display: block;
+}
+
+.status-indicator {
+  position: absolute;
+  bottom: -1px;
+  right: -1px;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  border: 2px solid var(--bg-sidebar);
+}
+
+.status-indicator.online {
+  background-color: var(--success);
+}
+
+.status-indicator.voice {
+  background-color: var(--accent-primary);
 }
 
 .member-info {
   display: flex;
   flex-direction: column;
+  overflow: hidden;
+  flex: 1;
+}
+
+.member-name-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
   overflow: hidden;
 }
 
@@ -1143,6 +1188,24 @@ input:focus, textarea:focus, select:focus {
   font-size: 13px;
   font-weight: 500;
   color: var(--text-primary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.member-badge-you {
+  font-size: 10px;
+  font-weight: 600;
+  background-color: rgba(88, 101, 242, 0.2);
+  color: var(--accent-primary);
+  padding: 1px 5px;
+  border-radius: var(--radius-sm);
+  flex-shrink: 0;
+}
+
+.member-subtext {
+  font-size: 11px;
+  color: var(--text-muted);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;

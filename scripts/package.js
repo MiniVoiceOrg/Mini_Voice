@@ -52,6 +52,9 @@ async function packageApp() {
   // Copy apps/client dist and dist-electron
   fs.cpSync(path.join(rootDir, 'apps/client/dist'), path.join(appDir, 'dist'), { recursive: true });
   fs.cpSync(path.join(rootDir, 'apps/client/dist-electron'), path.join(appDir, 'dist-electron'), { recursive: true });
+  if (fs.existsSync(path.join(rootDir, 'images'))) {
+    fs.cpSync(path.join(rootDir, 'images'), path.join(appDir, 'images'), { recursive: true });
+  }
 
   // Client package.json
   const clientPkg = {
