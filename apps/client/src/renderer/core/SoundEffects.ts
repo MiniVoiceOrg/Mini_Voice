@@ -4,6 +4,7 @@ import deafenUrl from '../assets/sounds/Mutar_Auto-Falante.mp3';
 import undeafenUrl from '../assets/sounds/Desmutar_Auto-Falante.mp3';
 import joinVoiceUrl from '../assets/sounds/Entrando_Na_Call.mp3';
 import leaveVoiceUrl from '../assets/sounds/Saindo_Da_Call.mp3';
+import { settingsStore } from '../stores/settingsStore';
 
 export type SoundEffectType =
   | 'mic_mute'
@@ -32,9 +33,35 @@ export class SoundEffectManager {
     try {
       const audio = new Audio(url);
       audio.volume = 0.6;
+      this.applySink(audio);
       this.audioMap[key] = audio;
     } catch (e) {
       console.warn(`[SoundEffects] Error preloading sound ${key}:`, e);
+    }
+  }
+
+  /**
+   * Routes an audio element to the speaker device selected in the app so that
+   * sound effects respect the user's choice instead of the OS default.
+   */
+  private applySink(audio: HTMLAudioElement): void {
+    const deviceId = settingsStore.selectedSpeakerId;
+    if (deviceId && typeof (audio as any).setSinkId === 'function') {
+      (audio as any).setSinkId(deviceId).catch(() => {
+        /* device may be gone; ignore and fall back to default */
+      });
+    }
+  }
+
+  /** Reapplies the currently selected speaker to all preloaded sound effects. */
+  public setSinkId(deviceId: string): void {
+    for (const audio of Object.values(this.audioMap)) {
+      if (audio && typeof (audio as any).setSinkId === 'function') {
+        (audio as any).setSinkId(deviceId).catch(() => {});
+      }
+    }
+    if (this.toneCtx && typeof (this.toneCtx as any).setSinkId === 'function') {
+      (this.toneCtx as any).setSinkId(deviceId).catch(() => {});
     }
   }
 
@@ -48,6 +75,9 @@ export class SoundEffectManager {
       if (!this.toneCtx) {
         const Ctor = window.AudioContext || (window as any).webkitAudioContext;
         this.toneCtx = new Ctor();
+        if (settingsStore.selectedSpeakerId && typeof (this.toneCtx as any).setSinkId === 'function') {
+          (this.toneCtx as any).setSinkId(settingsStore.selectedSpeakerId).catch(() => {});
+        }
       }
       const ctx = this.toneCtx!;
       if (ctx.state === 'suspended') ctx.resume().catch(() => {});
@@ -85,6 +115,7 @@ export class SoundEffectManager {
     try {
       const audio = this.audioMap[key];
       if (audio) {
+        this.applySink(audio);
         audio.currentTime = 0;
         audio.play().catch((err) => {
           console.debug(`[SoundEffects] Play prevented for ${key}:`, err);

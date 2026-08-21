@@ -7,6 +7,7 @@ import { settingsStore } from '../stores/settingsStore';
 import { voiceStore } from '../stores/voiceStore';
 import { webRtcManager } from '../core/WebRtcManager';
 import { videoService } from '../core/VideoService';
+import { soundEffects } from '../core/SoundEffects';
 import { connectionStore } from '../stores/connectionStore';
 import { getAvatarUrl } from '../utils/avatar';
 import { updateService } from '../core/UpdateService';
@@ -15,6 +16,10 @@ export class SettingsModal {
   private modalEl: HTMLElement | null = null;
   private previewStream: MediaStream | null = null;
   private previewOwned = false;
+  private vadMeterStream: MediaStream | null = null;
+  private vadMeterCtx: AudioContext | null = null;
+  private vadMeterAnalyser: AnalyserNode | null = null;
+  private vadMeterRAF: number | null = null;
 
   public async open(): Promise<void> {
     this.close();
@@ -82,7 +87,11 @@ export class SettingsModal {
             <input id="slider-vad" type="range" min="5" max="80" value="${settingsStore.vadSensitivity}" style="flex: 1;">
             <span id="vad-val" style="font-family: var(--font-mono); font-size: 12px; min-width: 30px;">${settingsStore.vadSensitivity}</span>
           </div>
-          <div style="font-size: 11px; color: var(--text-muted); margin-top: 2px;">Valores menores ativam com sussurros; maiores evitam ruídos de fundo.</div>
+          <div id="vad-meter" class="vad-meter" title="Nível do seu microfone">
+            <div id="vad-meter-fill" class="vad-meter-fill"></div>
+            <div id="vad-meter-threshold" class="vad-meter-threshold"></div>
+          </div>
+          <div style="font-size: 11px; color: var(--text-muted); margin-top: 2px;">Fale para ver o nível. Ajuste o slider (linha) logo acima de onde o nível fica em silêncio. Valores menores ativam com sussurros; maiores evitam ruídos de fundo.</div>
         </div>
 
         <!-- Audio Outputs -->
@@ -158,6 +167,7 @@ export class SettingsModal {
     this.attachEvents();
     await this.refreshDevices();
     await this.loadAppVersion();
+    this.startVadMeter();
   }
 
   private async loadAppVersion(): Promise<void> {
@@ -320,6 +330,7 @@ export class SettingsModal {
       settingsStore.selectedSpeakerId = selectSpeaker.value;
       settingsStore.save();
       await webRtcManager.setSpeakerDeviceId(selectSpeaker.value);
+      soundEffects.setSinkId(selectSpeaker.value);
     });
 
     selectCam?.addEventListener('change', async () => {
@@ -474,8 +485,79 @@ export class SettingsModal {
     }
   }
 
+  private async startVadMeter(): Promise<void> {
+    const fill = document.getElementById('vad-meter-fill') as HTMLElement | null;
+    const marker = document.getElementById('vad-meter-threshold') as HTMLElement | null;
+    if (!fill) return;
+
+    const positionMarker = () => {
+      if (marker) marker.style.left = `${(settingsStore.vadSensitivity / 80) * 100}%`;
+    };
+    positionMarker();
+
+    const draw = () => {
+      // Prefer the live in-call analyser; fall back to our own metering stream.
+      let level = audioProcessor.getInputLevel();
+      if (level < 0 && this.vadMeterAnalyser) {
+        const buf = new Uint8Array(this.vadMeterAnalyser.frequencyBinCount);
+        this.vadMeterAnalyser.getByteFrequencyData(buf);
+        const bins = Math.min(36, buf.length);
+        let sum = 0;
+        for (let i = 0; i < bins; i++) sum += buf[i];
+        level = sum / bins;
+      }
+      const pct = Math.max(0, Math.min(100, (Math.max(0, level) / 80) * 100));
+      fill.style.width = `${pct}%`;
+      // Green while below threshold, accent when it would trigger voice.
+      fill.style.background =
+        level >= settingsStore.vadSensitivity ? 'var(--accent-primary)' : 'var(--accent-online, #3ba55d)';
+      positionMarker();
+      this.vadMeterRAF = requestAnimationFrame(draw);
+    };
+
+    // If the mic isn't already active in a call, open a temporary metering stream.
+    if (audioProcessor.getInputLevel() < 0) {
+      try {
+        this.vadMeterStream = await navigator.mediaDevices.getUserMedia({
+          audio: settingsStore.selectedMicrophoneId
+            ? { deviceId: { exact: settingsStore.selectedMicrophoneId } }
+            : true,
+          video: false,
+        });
+        const Ctor = window.AudioContext || (window as any).webkitAudioContext;
+        this.vadMeterCtx = new Ctor();
+        const source = this.vadMeterCtx!.createMediaStreamSource(this.vadMeterStream);
+        this.vadMeterAnalyser = this.vadMeterCtx!.createAnalyser();
+        this.vadMeterAnalyser.fftSize = 256;
+        this.vadMeterAnalyser.smoothingTimeConstant = 0.25;
+        source.connect(this.vadMeterAnalyser);
+      } catch {
+        // No mic available — the meter simply stays at zero.
+      }
+    }
+
+    this.vadMeterRAF = requestAnimationFrame(draw);
+  }
+
+  private stopVadMeter(): void {
+    if (this.vadMeterRAF !== null) {
+      cancelAnimationFrame(this.vadMeterRAF);
+      this.vadMeterRAF = null;
+    }
+    this.vadMeterAnalyser = null;
+    if (this.vadMeterCtx && this.vadMeterCtx.state !== 'closed') {
+      this.vadMeterCtx.close().catch(() => {});
+    }
+    this.vadMeterCtx = null;
+    if (this.vadMeterStream) {
+      this.vadMeterStream.getTracks().forEach((t) => t.stop());
+      this.vadMeterStream = null;
+    }
+  }
+
   public close(): void {
     this.stopCameraPreview();
+    this.stopVadMeter();
     if (this.modalEl) {
       this.modalEl.remove();
       this.modalEl = null;

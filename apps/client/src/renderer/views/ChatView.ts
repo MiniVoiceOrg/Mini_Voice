@@ -51,7 +51,7 @@ export class ChatView {
 
         <div class="chat-input-container">
           <div class="chat-input-wrapper">
-            <input id="chat-message-input" class="chat-input-field" type="text" placeholder="Conversar em #${escapeHtml(channelName)}..." maxlength="${LIMITS.MAX_MESSAGE_LENGTH}">
+            <textarea id="chat-message-input" class="chat-input-field" rows="1" placeholder="Conversar em #${escapeHtml(channelName)}... (Shift+Enter para quebrar linha)" maxlength="${LIMITS.MAX_MESSAGE_LENGTH}"></textarea>
             <span id="chat-char-counter" class="chat-char-count">0/${LIMITS.MAX_MESSAGE_LENGTH}</span>
             <button id="btn-send-message" class="btn btn-primary" style="padding: 6px 14px; font-size: 13px;">
               <span class="material-symbols-outlined md-16" style="margin-right: 4px;">send</span>
@@ -165,14 +165,21 @@ export class ChatView {
     this.unbindEvents.forEach((u) => u());
     this.unbindEvents = [];
 
-    const input = document.getElementById('chat-message-input') as HTMLInputElement;
+    const input = document.getElementById('chat-message-input') as HTMLTextAreaElement;
     const charCounter = document.getElementById('chat-char-counter');
     const btnSend = document.getElementById('btn-send-message');
+
+    const autoResize = () => {
+      if (!input) return;
+      input.style.height = 'auto';
+      input.style.height = `${Math.min(input.scrollHeight, 120)}px`;
+    };
 
     input?.addEventListener('input', () => {
       if (charCounter) {
         charCounter.innerText = `${input.value.length}/${LIMITS.MAX_MESSAGE_LENGTH}`;
       }
+      autoResize();
     });
 
     const handleSend = () => {
@@ -186,6 +193,7 @@ export class ChatView {
       });
 
       input.value = '';
+      input.style.height = 'auto';
       if (charCounter) {
         charCounter.innerText = `0/${LIMITS.MAX_MESSAGE_LENGTH}`;
       }

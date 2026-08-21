@@ -151,6 +151,22 @@ export class AudioProcessor {
     return this.localStream;
   }
 
+  /**
+   * Returns the current microphone input level (0..100) from the active VAD
+   * analyser, or -1 when the microphone is not currently active. Used by the
+   * settings UI to draw a live level meter next to the sensitivity slider.
+   */
+  public getInputLevel(): number {
+    if (!this.analyser || this.isMuted) return -1;
+    const bufferLength = this.analyser.frequencyBinCount;
+    const dataArray = new Uint8Array(bufferLength);
+    this.analyser.getByteFrequencyData(dataArray);
+    const speechBins = Math.min(36, bufferLength);
+    let sum = 0;
+    for (let i = 0; i < speechBins; i++) sum += dataArray[i];
+    return sum / speechBins;
+  }
+
   public stopMicrophone(): void {
     if (this.vadInterval) {
       clearInterval(this.vadInterval);

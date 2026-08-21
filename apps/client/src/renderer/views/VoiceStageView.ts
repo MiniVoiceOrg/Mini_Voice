@@ -18,6 +18,7 @@ export class VoiceStageView {
   private currentChannelId: string | null = null;
   private unbindEvents: Array<() => void> = [];
   private focusedUserId: string | null = null;
+  private gridExpanded = false;
   private pingInterval: any = null;
 
   constructor(container: HTMLElement) {
@@ -57,6 +58,10 @@ export class VoiceStageView {
           </div>
 
           <div style="display: flex; align-items: center; gap: 10px;">
+            <!-- Grid view toggle (#29) -->
+            <button id="stage-btn-viewmode" class="btn btn-secondary" style="padding: 4px 10px; font-size: 12px;" title="Alternar entre visão padrão e visão em grade">
+              <span class="material-symbols-outlined md-16">${this.gridExpanded ? 'view_agenda' : 'grid_view'}</span>
+            </button>
             <!-- Ping / Latency Badge -->
             <div id="stage-ping-badge" class="stage-ping-badge good">
               <span class="ping-dot"></span>
@@ -235,7 +240,7 @@ export class VoiceStageView {
       `;
     } else {
       area.innerHTML = `
-        <div class="stage-grid" id="stage-grid">
+        <div class="stage-grid ${this.gridExpanded ? 'stage-grid--expanded' : ''}" id="stage-grid">
           ${participants.map((p) => {
             const isSpeaking = (p.user.id === serverStore.currentUser?.id) ? voiceStore.isSpeaking : p.isSpeaking;
             return `
@@ -288,17 +293,32 @@ export class VoiceStageView {
           if (videoEl && videoEl.srcObject !== stream) {
             videoEl.muted = true;
             videoEl.srcObject = stream;
+            this.hideVideoLoadingWhenReady(videoEl, `video-${p.user.id}`);
             videoEl.play().catch(() => {});
           }
           const miniVideoEl = document.getElementById(`video-mini-${p.user.id}`) as HTMLVideoElement;
           if (miniVideoEl && miniVideoEl.srcObject !== stream) {
             miniVideoEl.muted = true;
             miniVideoEl.srcObject = stream;
+            this.hideVideoLoadingWhenReady(miniVideoEl, `video-mini-${p.user.id}`);
             miniVideoEl.play().catch(() => {});
           }
         }
       }
     });
+  }
+
+  /** Removes the "loading video" overlay once the stream actually renders (#48). */
+  private hideVideoLoadingWhenReady(videoEl: HTMLVideoElement, videoId: string): void {
+    const overlay = document.getElementById(`loading-${videoId}`);
+    if (!overlay) return;
+    const hide = () => overlay.remove();
+    if (videoEl.readyState >= 2) {
+      hide();
+      return;
+    }
+    videoEl.addEventListener('playing', hide, { once: true });
+    videoEl.addEventListener('loadeddata', hide, { once: true });
   }
 
   private renderCardContent(p: ParticipantViewModel, isFocused: boolean = false, isMini: boolean = false): string {
@@ -313,6 +333,10 @@ export class VoiceStageView {
     return `
       ${(isCamOn || isScreenOn) ? `
         <video id="${videoId}" class="stage-video-element ${isScreenOn ? 'screen-share' : ''}" autoplay playsinline muted></video>
+        <div class="stage-loading-overlay" id="loading-${videoId}">
+          <div class="reconnect-spinner"></div>
+          <span>${isScreenOn ? 'Carregando tela…' : 'Carregando câmera…'}</span>
+        </div>
       ` : `
         <div class="stage-avatar-wrapper">
           <img class="stage-avatar-img" src="${avatarSrc}">
@@ -431,6 +455,66 @@ export class VoiceStageView {
     this.renderParticipants();
   }
 
+  /**
+   * Toggles the local camera. Extracted so it can be triggered both from the
+   * stage controls and from the sidebar media bar (#29). Handles switching from
+   * an active screen share and cleanly reverts state if the camera fails to
+   * start (e.g. no camera plugged in).
+   */
+  public async toggleCamera(): Promise<void> {
+    if (voiceStore.isCameraOn) {
+      const confirmed = await showConfirm({
+        title: 'Desligar câmera',
+        message: 'Deseja desligar a sua câmera?',
+        confirmLabel: 'Desligar',
+        variant: 'warning',
+      });
+      if (!confirmed) return;
+      videoService.stopCamera();
+      await webRtcManager.setLocalCameraTrack(null);
+      voiceStore.setCameraOn(false);
+      networkClient.send(MessageType.VOICE_STATE_UPDATE, { isCameraOn: false });
+    } else {
+      const wasScreenSharing = voiceStore.isScreenSharing;
+      if (wasScreenSharing) {
+        const confirmed = await showConfirm({
+          title: 'Ligar câmera',
+          message: 'O compartilhamento de tela será pausado para ligar a câmera. Deseja continuar?',
+          confirmLabel: 'Continuar',
+          variant: 'warning',
+        });
+        if (!confirmed) return;
+        videoService.stopScreenShare();
+        await webRtcManager.setLocalScreenTrack(null);
+        voiceStore.setScreenSharing(false);
+        // Broadcast the stop immediately so others don't keep seeing a stale
+        // screen-share icon / black frame if the camera fails to start below.
+        networkClient.send(MessageType.VOICE_STATE_UPDATE, { isScreenSharing: false });
+      }
+      try {
+        const stream = await videoService.startCamera();
+        const track = stream.getVideoTracks()[0];
+        await webRtcManager.setLocalCameraTrack(track);
+        voiceStore.setCameraOn(true);
+        networkClient.send(MessageType.VOICE_STATE_UPDATE, { isCameraOn: true, isScreenSharing: false });
+      } catch (err: any) {
+        // Fully revert local state and make sure the server/other clients
+        // reflect that nothing is being broadcast (no camera, no screen).
+        videoService.stopCamera();
+        await webRtcManager.setLocalCameraTrack(null);
+        voiceStore.setCameraOn(false);
+        networkClient.send(MessageType.VOICE_STATE_UPDATE, { isCameraOn: false, isScreenSharing: false });
+        await showAlert({
+          title: 'Erro na câmera',
+          message: `Não foi possível acessar a câmera. Verifique se há uma câmera conectada e disponível.\n\nDetalhe: ${err?.message || err}`,
+          variant: 'danger',
+        });
+      }
+    }
+    this.updateControlsUI();
+    this.renderParticipants();
+  }
+
   private attachEvents(): void {
     const btnMic = document.getElementById('stage-btn-mic');
     const btnDeafen = document.getElementById('stage-btn-deafen');
@@ -460,53 +544,32 @@ export class VoiceStageView {
     });
 
     btnCam?.addEventListener('click', async () => {
-      if (voiceStore.isCameraOn) {
-        const confirmed = await showConfirm({
-          title: 'Desligar câmera',
-          message: 'Deseja desligar a sua câmera?',
-          confirmLabel: 'Desligar',
-          variant: 'warning',
-        });
-        if (!confirmed) return;
-        videoService.stopCamera();
-        await webRtcManager.setLocalCameraTrack(null);
-        voiceStore.setCameraOn(false);
-        networkClient.send(MessageType.VOICE_STATE_UPDATE, { isCameraOn: false });
-      } else {
-        if (voiceStore.isScreenSharing) {
-          const confirmed = await showConfirm({
-            title: 'Ligar câmera',
-            message: 'O compartilhamento de tela será pausado para ligar a câmera. Deseja continuar?',
-            confirmLabel: 'Continuar',
-            variant: 'warning',
-          });
-          if (!confirmed) return;
-          videoService.stopScreenShare();
-          await webRtcManager.setLocalScreenTrack(null);
-          voiceStore.setScreenSharing(false);
-        }
-        try {
-          const stream = await videoService.startCamera();
-          const track = stream.getVideoTracks()[0];
-          await webRtcManager.setLocalCameraTrack(track);
-          voiceStore.setCameraOn(true);
-          networkClient.send(MessageType.VOICE_STATE_UPDATE, { isCameraOn: true, isScreenSharing: false });
-        } catch (err: any) {
-          await showAlert({
-            title: 'Erro na câmera',
-            message: `Não foi possível acessar a câmera: ${err.message}`,
-            variant: 'danger',
-          });
-        }
+      const b = btnCam as HTMLButtonElement;
+      if (b.dataset.busy === '1') return;
+      b.dataset.busy = '1';
+      b.setAttribute('disabled', 'true');
+      try {
+        await this.toggleCamera();
+      } finally {
+        b.removeAttribute('disabled');
+        delete b.dataset.busy;
       }
-      this.updateControlsUI();
-      this.renderParticipants();
     });
 
     btnScreen?.addEventListener('click', () => {
       // Always open the picker: when not sharing, to start; when already sharing,
       // to switch source or stop (handled inside the modal).
       appEvents.emit('modal.open_screenshare_picker');
+    });
+
+    const btnViewMode = document.getElementById('stage-btn-viewmode');
+    btnViewMode?.addEventListener('click', () => {
+      this.gridExpanded = !this.gridExpanded;
+      // The expanded grid is a full equal-split view, so leave focus mode.
+      if (this.gridExpanded) this.focusedUserId = null;
+      const icon = btnViewMode.querySelector('.material-symbols-outlined');
+      if (icon) icon.textContent = this.gridExpanded ? 'view_agenda' : 'grid_view';
+      this.renderParticipants();
     });
 
     btnLeave?.addEventListener('click', async () => {

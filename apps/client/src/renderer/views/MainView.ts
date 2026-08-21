@@ -5,6 +5,7 @@ import { networkClient } from '../core/NetworkClient';
 import { participantManager } from '../core/ParticipantManager';
 import { serverStore } from '../stores/serverStore';
 import { voiceStore } from '../stores/voiceStore';
+import { connectionStore, SavedServer } from '../stores/connectionStore';
 import { audioProcessor } from '../core/AudioProcessor';
 import { webRtcManager } from '../core/WebRtcManager';
 import { ChatView } from './ChatView';
@@ -13,7 +14,7 @@ import { createChannelModal } from './CreateChannelModal';
 import { settingsModal } from './SettingsModal';
 import { serverSettingsModal } from './ServerSettingsModal';
 import { inviteModal } from './InviteModal';
-import { showConfirm } from './Dialog';
+import { showConfirm, showAlert } from './Dialog';
 import { userContextMenu } from './UserContextMenu';
 import { soundEffects } from '../core/SoundEffects';
 import { getAvatarUrl } from '../utils/avatar';
@@ -40,20 +41,26 @@ export class MainView {
 
     this.container.innerHTML = `
       <div class="main-layout">
+        <!-- Server Rail: saved servers + home (#29) -->
+        <div class="server-rail" id="server-rail"></div>
+
         <!-- Left Sidebar: Channels & User Controls -->
         <div class="channels-sidebar">
+          <div class="channels-resizer" id="channels-resizer" title="Arraste para redimensionar"></div>
           <div class="server-header">
-            <div style="display: flex; align-items: center; gap: 8px; overflow: hidden; flex: 1;">
+            <button id="server-dropdown-toggle" class="server-dropdown-toggle" title="Opções do servidor">
               <img src="${logoUrl}" alt="Mini Voice" style="width: 22px; height: 22px; object-fit: contain; border-radius: 4px; flex-shrink: 0;">
               <span id="server-name-title" style="white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-weight: 700;">${escapeHtml(s.name)}</span>
-            </div>
-            <div style="display: flex; gap: 6px; align-items: center;">
-              <button id="btn-server-settings" class="btn btn-secondary" style="padding: 3px 7px; font-size: 11px; height: 26px;" title="Configurações do Servidor (Alterar/Remover Senha)">
-                <span class="material-symbols-outlined md-16">settings</span>
+              <span class="material-symbols-outlined md-18 server-dropdown-caret">expand_more</span>
+            </button>
+            <div id="server-dropdown-menu" class="server-dropdown-menu" style="display: none;">
+              <button id="btn-server-settings" class="server-dropdown-item" title="Configurações do Servidor (Alterar/Remover Senha)">
+                <span class="material-symbols-outlined md-18">settings</span>
+                <span>Configurações do Servidor</span>
               </button>
-              <button id="btn-invite-friends" class="btn btn-secondary" style="padding: 3px 8px; font-size: 11px; height: 26px;" title="Convidar Amigos (Copiar IP)">
-                <span class="material-symbols-outlined md-16" style="margin-right: 4px;">person_add</span>
-                Convidar
+              <button id="btn-invite-friends" class="server-dropdown-item" title="Convidar Amigos (Copiar IP)">
+                <span class="material-symbols-outlined md-18">person_add</span>
+                <span>Convidar Amigos</span>
               </button>
             </div>
           </div>
@@ -84,29 +91,42 @@ export class MainView {
 
           <!-- Bottom User Bar -->
           <div class="user-control-bar">
-            <div id="user-profile-btn" class="user-profile-summary" title="Configurações de Perfil">
-              <div class="user-avatar-container">
-                <img id="main-user-avatar" class="user-avatar-main ${voiceStore.isSpeaking ? 'speaking' : ''}" src="${getAvatarUrl(u.avatarUrl)}">
-              </div>
-              <div class="user-info-text">
-                <span id="main-user-name" class="user-name-display">${escapeHtml(u.nickname)}</span>
-                <span class="user-status-text">Online</span>
-              </div>
+            <div class="user-media-bar" id="user-media-bar">
+              <button id="media-btn-camera" class="btn btn-icon media-bar-btn ${voiceStore.isCameraOn ? 'broadcasting-pulse active' : ''}" title="Ligar/Desligar Câmera">
+                <span class="material-symbols-outlined md-18">${voiceStore.isCameraOn ? 'videocam_off' : 'videocam'}</span>
+              </button>
+              <button id="media-btn-screen" class="btn btn-icon media-bar-btn ${voiceStore.isScreenSharing ? 'broadcasting-pulse active' : ''}" title="Compartilhar Tela">
+                <span class="material-symbols-outlined md-18">${voiceStore.isScreenSharing ? 'stop_screen_share' : 'screen_share'}</span>
+              </button>
+              <button id="media-btn-soundboard" class="btn btn-icon media-bar-btn" style="opacity: 0.5;" title="Soundboard (em breve)" disabled>
+                <span class="material-symbols-outlined md-18">graphic_eq</span>
+              </button>
             </div>
+            <div class="user-control-main">
+              <div id="user-profile-btn" class="user-profile-summary" title="Configurações de Perfil">
+                <div class="user-avatar-container">
+                  <img id="main-user-avatar" class="user-avatar-main ${voiceStore.isSpeaking ? 'speaking' : ''}" src="${getAvatarUrl(u.avatarUrl)}">
+                </div>
+                <div class="user-info-text">
+                  <span id="main-user-name" class="user-name-display">${escapeHtml(u.nickname)}</span>
+                  <span class="user-status-text">Online</span>
+                </div>
+              </div>
 
-            <div class="user-quick-actions">
-              <button id="bar-btn-mic" class="btn btn-icon ${voiceStore.isMuted ? 'danger-active' : ''}" style="width: 32px; height: 32px;" title="${voiceStore.isMuted ? 'Desmutar' : 'Mutar'}">
-                <span class="material-symbols-outlined md-18">${voiceStore.isMuted ? 'mic_off' : 'mic'}</span>
-              </button>
-              <button id="bar-btn-deafen" class="btn btn-icon ${voiceStore.isDeafened ? 'danger-active' : ''}" style="width: 32px; height: 32px;" title="${voiceStore.isDeafened ? 'Ouvir' : 'Ensurdecer'}">
-                <span class="material-symbols-outlined md-18">${voiceStore.isDeafened ? 'headset_off' : 'headphones'}</span>
-              </button>
-              <button id="bar-btn-settings" class="btn btn-icon" style="width: 32px; height: 32px;" title="Configurações">
-                <span class="material-symbols-outlined md-18">tune</span>
-              </button>
-              <button id="bar-btn-disconnect" class="btn btn-icon" style="width: 32px; height: 32px; color: var(--danger);" title="Desconectar do Servidor">
-                <span class="material-symbols-outlined md-18">logout</span>
-              </button>
+              <div class="user-quick-actions">
+                <button id="bar-btn-mic" class="btn btn-icon ${voiceStore.isMuted ? 'danger-active' : ''}" title="${voiceStore.isMuted ? 'Desmutar' : 'Mutar'}">
+                  <span class="material-symbols-outlined md-18">${voiceStore.isMuted ? 'mic_off' : 'mic'}</span>
+                </button>
+                <button id="bar-btn-deafen" class="btn btn-icon ${voiceStore.isDeafened ? 'danger-active' : ''}" title="${voiceStore.isDeafened ? 'Ouvir' : 'Ensurdecer'}">
+                  <span class="material-symbols-outlined md-18">${voiceStore.isDeafened ? 'headset_off' : 'headphones'}</span>
+                </button>
+                <button id="bar-btn-settings" class="btn btn-icon" title="Configurações">
+                  <span class="material-symbols-outlined md-18">tune</span>
+                </button>
+                <button id="bar-btn-disconnect" class="btn btn-icon" style="color: var(--danger);" title="Desconectar do Servidor">
+                  <span class="material-symbols-outlined md-18">logout</span>
+                </button>
+              </div>
             </div>
           </div>
         </div>
@@ -126,6 +146,8 @@ export class MainView {
 
     this.renderChannels();
     this.renderMembers();
+    this.renderServerRail();
+    this.setupChannelsResizer();
 
     const centerStageEl = document.getElementById('main-center-stage')!;
     this.chatView = new ChatView(centerStageEl);
@@ -136,6 +158,168 @@ export class MainView {
     }
 
     this.attachEvents();
+  }
+
+  private closeServerDropdown(): void {
+    const menu = document.getElementById('server-dropdown-menu');
+    const toggle = document.getElementById('server-dropdown-toggle');
+    if (menu) menu.style.display = 'none';
+    toggle?.classList.remove('open');
+  }
+
+  private ensureInVoiceChannel(): boolean {
+    if (!voiceStore.currentVoiceChannelId) {
+      showAlert({
+        title: 'Entre em um canal de voz',
+        message: 'Para usar a câmera ou compartilhar a tela, entre primeiro em um canal de voz.',
+        variant: 'warning',
+      });
+      return false;
+    }
+    return true;
+  }
+
+  private renderServerRail(): void {
+    const railEl = document.getElementById('server-rail');
+    if (!railEl) return;
+
+    const currentUrl = networkClient.getCurrentServerUrl();
+    const saved = connectionStore.savedServers || [];
+
+    const serverButtons = saved.map((srv) => {
+      const url = `ws://${srv.host.trim().replace(/^wss?:\/\//, '')}:${srv.port}`;
+      const isCurrent = url === currentUrl;
+      const initial = (srv.name || srv.host || '?').trim().charAt(0).toUpperCase();
+      return `
+        <button class="server-rail-avatar ${isCurrent ? 'active' : ''}" data-host="${escapeHtml(srv.host)}" data-port="${srv.port}" title="${escapeHtml(srv.name || `${srv.host}:${srv.port}`)}">
+          <span>${escapeHtml(initial)}</span>
+        </button>
+      `;
+    }).join('');
+
+    railEl.innerHTML = `
+      <button class="server-rail-home" id="server-rail-home" title="Início (voltar à tela de conexão)">
+        <span class="material-symbols-outlined md-22">home</span>
+      </button>
+      <div class="server-rail-divider"></div>
+      <div class="server-rail-list">
+        ${serverButtons}
+      </div>
+    `;
+
+    railEl.querySelector('#server-rail-home')?.addEventListener('click', async () => {
+      const confirmed = await showConfirm({
+        title: 'Voltar ao início',
+        message: 'Você será desconectado deste servidor e voltará à tela inicial. Deseja continuar?',
+        confirmLabel: 'Voltar ao início',
+        variant: 'warning',
+      });
+      if (!confirmed) return;
+      soundEffects.play('leave_voice');
+      audioProcessor.stopMicrophone();
+      webRtcManager.closeAllPeers();
+      networkClient.disconnect();
+    });
+
+    railEl.querySelectorAll('.server-rail-avatar').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        const host = btn.getAttribute('data-host');
+        const port = parseInt(btn.getAttribute('data-port') || '0', 10);
+        if (!host || !port) return;
+        const target = saved.find((s) => s.host === host && s.port === port);
+        if (target) this.connectToSavedServer(target);
+      });
+    });
+  }
+
+  private async connectToSavedServer(server: SavedServer): Promise<void> {
+    const targetUrl = `ws://${server.host.trim().replace(/^wss?:\/\//, '')}:${server.port}`;
+    // Already viewing this server – nothing to do.
+    if (targetUrl === networkClient.getCurrentServerUrl()) return;
+
+    const confirmed = await showConfirm({
+      title: 'Trocar de servidor',
+      message: `Deseja se conectar a "${server.name || server.host}"? Você sairá do servidor atual.`,
+      confirmLabel: 'Conectar',
+      variant: 'warning',
+    });
+    if (!confirmed) return;
+
+    // Leave the current server first, then connect to the selected one.
+    audioProcessor.stopMicrophone();
+    webRtcManager.closeAllPeers();
+    networkClient.disconnect();
+
+    try {
+      let clientId = connectionStore.clientId;
+      if (!clientId && window.api?.getClientId) {
+        clientId = await window.api.getClientId();
+        connectionStore.clientId = clientId;
+      }
+      const nickname = connectionStore.savedNickname || 'Usuário';
+      const res = await networkClient.connect(server.host, server.port, clientId, nickname, server.password);
+      connectionStore.addSavedServer({
+        host: server.host,
+        port: server.port,
+        name: res.server.name,
+        password: server.password,
+        lastConnected: Date.now(),
+      });
+    } catch (err: any) {
+      // Connection failed – bounce back to the connection screen with an error.
+      appEvents.emit('network.disconnected');
+    }
+  }
+
+  private setupChannelsResizer(): void {
+    const resizer = document.getElementById('channels-resizer');
+    const sidebar = this.container.querySelector('.channels-sidebar') as HTMLElement | null;
+    if (!resizer || !sidebar) return;
+
+    // Restore a previously persisted width.
+    try {
+      const saved = localStorage.getItem('mini_voice_channels_width');
+      if (saved) {
+        const w = parseInt(saved, 10);
+        if (!isNaN(w)) sidebar.style.width = `${this.clampSidebarWidth(w)}px`;
+      }
+    } catch (e) {}
+
+    let startX = 0;
+    let startWidth = 0;
+
+    const onMove = (e: MouseEvent) => {
+      const delta = e.clientX - startX;
+      const newWidth = this.clampSidebarWidth(startWidth + delta);
+      sidebar.style.width = `${newWidth}px`;
+    };
+
+    const onUp = () => {
+      document.removeEventListener('mousemove', onMove);
+      document.removeEventListener('mouseup', onUp);
+      document.body.style.cursor = '';
+      document.body.style.userSelect = '';
+      try {
+        localStorage.setItem('mini_voice_channels_width', String(parseInt(sidebar.style.width, 10)));
+      } catch (e) {}
+    };
+
+    resizer.addEventListener('mousedown', (e: MouseEvent) => {
+      e.preventDefault();
+      startX = e.clientX;
+      startWidth = sidebar.getBoundingClientRect().width;
+      document.body.style.cursor = 'col-resize';
+      document.body.style.userSelect = 'none';
+      document.addEventListener('mousemove', onMove);
+      document.addEventListener('mouseup', onUp);
+    });
+  }
+
+  private clampSidebarWidth(width: number): number {
+    const min = 200;
+    // #35: cap the channels sidebar at ~25% of the viewport width.
+    const max = Math.max(min, Math.floor(window.innerWidth * 0.25));
+    return Math.min(max, Math.max(min, width));
   }
 
   private renderChannels(): void {
@@ -225,10 +409,20 @@ export class MainView {
           this.chatView?.setChannel(channelId);
           this.renderChannels();
         } else if (type === 'VOICE') {
-          await this.handleJoinVoiceChannel(channelId);
-          this.activeContentView = 'stage';
-          this.voiceStageView?.setChannel(channelId);
-          this.renderChannels();
+          // Show a loading spinner on the channel while the voice join happens (#48).
+          const iconEl = item.querySelector('.channel-icon');
+          if (iconEl) {
+            iconEl.textContent = 'progress_activity';
+            iconEl.classList.add('channel-loading');
+          }
+          item.classList.add('joining');
+          try {
+            await this.handleJoinVoiceChannel(channelId);
+            this.activeContentView = 'stage';
+            this.voiceStageView?.setChannel(channelId);
+          } finally {
+            this.renderChannels();
+          }
         }
       });
     });
@@ -334,24 +528,27 @@ export class MainView {
     if (listEl) {
       listEl.innerHTML = members.map((m) => {
         const isLocal = m.id === serverStore.currentUser?.id;
-        const voiceState = participantManager.get(m.id)?.voiceState;
+        const vm = participantManager.get(m.id);
+        const voiceState = vm?.voiceState;
         const inVoice = !!voiceState;
+        const isReconnecting = !!vm?.isReconnecting;
         const avatar = getAvatarUrl(m.avatarUrl);
 
         return `
-          <div class="member-item" data-user-id="${m.id}" title="${escapeHtml(m.nickname)} ${isLocal ? '(Você)' : '(Botão direito para ajustar volume)'}">
+          <div class="member-item ${isReconnecting ? 'reconnecting' : ''}" data-user-id="${m.id}" title="${escapeHtml(m.nickname)} ${isLocal ? '(Você)' : '(Botão direito para ajustar volume)'}">
             <div class="member-avatar-wrapper">
               <img class="member-avatar-img" src="${avatar}">
-              <span class="status-indicator ${inVoice ? 'voice' : 'online'}"></span>
+              <span class="status-indicator ${isReconnecting ? 'reconnecting' : (inVoice ? 'voice' : 'online')}"></span>
             </div>
             <div class="member-info">
               <div class="member-name-row">
                 <span class="member-name">${escapeHtml(m.nickname)}</span>
                 ${isLocal ? '<span class="member-badge-you">Você</span>' : ''}
+                ${isReconnecting ? '<span class="member-reconnecting-badge" title="Perdeu a conexão, tentando reconectar"><span class="material-symbols-outlined md-14 spin">sync</span></span>' : ''}
                 ${voiceState?.isScreenSharing ? '<span class="member-live-badge" title="Compartilhando tela">LIVE</span>' : ''}
                 ${voiceState?.isCameraOn ? '<span class="material-symbols-outlined md-14 member-cam-icon" title="Câmera ligada">videocam</span>' : ''}
               </div>
-              <span class="member-subtext">${inVoice ? 'No canal de voz' : 'Online'}</span>
+              <span class="member-subtext">${isReconnecting ? 'Reconectando…' : (inVoice ? 'No canal de voz' : 'Online')}</span>
             </div>
           </div>
         `;
@@ -389,10 +586,50 @@ export class MainView {
 
     btnAddText?.addEventListener('click', () => createChannelModal.open('TEXT'));
     btnAddVoice?.addEventListener('click', () => createChannelModal.open('VOICE'));
-    btnInvite?.addEventListener('click', () => inviteModal.open());
-    btnServerSettings?.addEventListener('click', () => serverSettingsModal.open());
+    btnInvite?.addEventListener('click', () => { this.closeServerDropdown(); inviteModal.open(); });
+    btnServerSettings?.addEventListener('click', () => { this.closeServerDropdown(); serverSettingsModal.open(); });
     btnProfile?.addEventListener('click', () => settingsModal.open());
     btnSettings?.addEventListener('click', () => settingsModal.open());
+
+    const dropdownToggle = document.getElementById('server-dropdown-toggle');
+    dropdownToggle?.addEventListener('click', (e) => {
+      e.stopPropagation();
+      const menu = document.getElementById('server-dropdown-menu');
+      if (!menu) return;
+      const isOpen = menu.style.display !== 'none';
+      menu.style.display = isOpen ? 'none' : 'flex';
+      dropdownToggle.classList.toggle('open', !isOpen);
+    });
+    const outsideClickHandler = (e: MouseEvent) => {
+      const menu = document.getElementById('server-dropdown-menu');
+      const toggle = document.getElementById('server-dropdown-toggle');
+      if (!menu || menu.style.display === 'none') return;
+      if (!menu.contains(e.target as Node) && !toggle?.contains(e.target as Node)) {
+        this.closeServerDropdown();
+      }
+    };
+    document.addEventListener('click', outsideClickHandler);
+    this.unbindEvents.push(() => document.removeEventListener('click', outsideClickHandler));
+
+    const mediaCam = document.getElementById('media-btn-camera');
+    const mediaScreen = document.getElementById('media-btn-screen');
+    mediaCam?.addEventListener('click', async () => {
+      if (!this.ensureInVoiceChannel()) return;
+      const btn = mediaCam as HTMLButtonElement;
+      if (btn.dataset.busy === '1') return;
+      btn.dataset.busy = '1';
+      btn.setAttribute('disabled', 'true');
+      try {
+        await this.voiceStageView?.toggleCamera();
+      } finally {
+        btn.removeAttribute('disabled');
+        delete btn.dataset.busy;
+      }
+    });
+    mediaScreen?.addEventListener('click', () => {
+      if (!this.ensureInVoiceChannel()) return;
+      appEvents.emit('modal.open_screenshare_picker');
+    });
 
     btnMic?.addEventListener('click', () => {
       const newMuted = !voiceStore.isMuted;
@@ -470,6 +707,17 @@ export class MainView {
         btnDeafenEl.className = `btn btn-icon ${voiceStore.isDeafened ? 'danger-active' : ''}`;
         btnDeafenEl.title = voiceStore.isDeafened ? 'Ouvir' : 'Ensurdecer';
         btnDeafenEl.innerHTML = `<span class="material-symbols-outlined md-18">${voiceStore.isDeafened ? 'headset_off' : 'headphones'}</span>`;
+      }
+
+      const mediaCamEl = document.getElementById('media-btn-camera');
+      if (mediaCamEl) {
+        mediaCamEl.className = `btn btn-icon media-bar-btn ${voiceStore.isCameraOn ? 'broadcasting-pulse active' : ''}`;
+        mediaCamEl.innerHTML = `<span class="material-symbols-outlined md-18">${voiceStore.isCameraOn ? 'videocam_off' : 'videocam'}</span>`;
+      }
+      const mediaScreenEl = document.getElementById('media-btn-screen');
+      if (mediaScreenEl) {
+        mediaScreenEl.className = `btn btn-icon media-bar-btn ${voiceStore.isScreenSharing ? 'broadcasting-pulse active' : ''}`;
+        mediaScreenEl.innerHTML = `<span class="material-symbols-outlined md-18">${voiceStore.isScreenSharing ? 'stop_screen_share' : 'screen_share'}</span>`;
       }
     });
 
