@@ -7,6 +7,7 @@ import { serverStore } from '../stores/serverStore';
 import { participantManager } from '../core/ParticipantManager';
 import { userContextMenu } from './UserContextMenu';
 import { getAvatarUrl } from '../utils/avatar';
+import { renderMarkdown } from '../utils/markdown';
 
 export class ChatView {
   private container: HTMLElement;
@@ -92,6 +93,17 @@ export class ChatView {
 
     feed.innerHTML = messages.map((m) => this.renderMessageRow(m)).join('');
 
+    // Open markdown links in the external browser instead of navigating the app.
+    feed.querySelectorAll('a.md-link').forEach((link) => {
+      link.addEventListener('click', (e) => {
+        e.preventDefault();
+        const url = link.getAttribute('data-external-link');
+        if (url && window.api?.openExternal) {
+          window.api.openExternal(url);
+        }
+      });
+    });
+
     // Attach right-click context menu on message rows (when not selecting text)
     feed.querySelectorAll('.chat-message-row').forEach((row) => {
       row.addEventListener('contextmenu', (e: Event) => {
@@ -142,7 +154,7 @@ export class ChatView {
             <span class="chat-author-name">${escapeHtml(m.userNickname)}</span>
             <span class="chat-timestamp">${time}</span>
           </div>
-          <div class="chat-message-text">${escapeHtml(m.content)}</div>
+          <div class="chat-message-text">${renderMarkdown(m.content)}</div>
         </div>
       </div>
     `;

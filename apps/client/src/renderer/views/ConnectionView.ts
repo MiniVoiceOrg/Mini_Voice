@@ -4,6 +4,7 @@ import { MessageType } from '@mini-voice/shared';
 import { connectionStore } from '../stores/connectionStore';
 import { networkClient } from '../core/NetworkClient';
 import { getAvatarUrl } from '../utils/avatar';
+import { settingsModal } from './SettingsModal';
 import logoUrl from '../assets/Logo.png';
 
 export class ConnectionView {
@@ -28,6 +29,10 @@ export class ConnectionView {
       <div class="connection-layout">
         <div class="connection-card">
           
+          <button id="btn-open-settings" class="btn btn-secondary" title="Configurações" style="position: absolute; top: 12px; right: 12px; padding: 6px 8px; z-index: 2;">
+            <span class="material-symbols-outlined md-18">settings</span>
+          </button>
+
           <div class="brand-header" style="display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 6px; margin-bottom: 16px;">
             <img src="${logoUrl}" alt="Mini Voice Logo" style="width: 200px; max-width: 70%; height: auto; max-height: 80px; object-fit: contain; filter: drop-shadow(0 4px 16px rgba(88, 101, 242, 0.4));">
             <div class="brand-logo" style="display: flex; align-items: center; justify-content: center; gap: 8px;">
@@ -78,6 +83,7 @@ export class ConnectionView {
                             ${escapeHtml(s.name || 'Servidor')}
                           </span>
                           <span style="font-size: 11px; color: var(--text-muted); margin-left: 22px;">${escapeHtml(s.host)}:${s.port}</span>
+                          <div class="saved-server-preview" data-host="${escapeHtml(s.host)}" data-port="${s.port}" style="margin-left: 22px; margin-top: 4px;"></div>
                         </div>
                         <div style="display: flex; gap: 6px; align-items: center;">
                           <button type="button" class="btn btn-secondary btn-select-saved" data-host="${escapeHtml(s.host)}" data-port="${s.port}" data-password="${escapeHtml(s.password || '')}" style="padding: 2px 8px; font-size: 11px; height: 24px;">
@@ -175,6 +181,64 @@ export class ConnectionView {
     this.attachEvents();
   }
 
+  private async loadServerPreviews(): Promise<void> {
+    const nodes = Array.from(
+      this.container.querySelectorAll('.saved-server-preview')
+    ) as HTMLElement[];
+
+    for (const node of nodes) {
+      const host = node.getAttribute('data-host');
+      const port = node.getAttribute('data-port');
+      if (!host || !port) continue;
+
+      try {
+        const controller = new AbortController();
+        const timeout = setTimeout(() => controller.abort(), 2500);
+        const res = await fetch(`http://${host}:${port}/preview`, {
+          signal: controller.signal,
+        });
+        clearTimeout(timeout);
+        if (!res.ok) continue;
+        const info = await res.json();
+        this.renderServerPreview(node, host, port, info);
+      } catch {
+        // Server offline/unreachable — leave the preview empty silently.
+      }
+    }
+  }
+
+  private renderServerPreview(
+    node: HTMLElement,
+    host: string,
+    port: string,
+    info: {
+      userCount?: number;
+      maxUsers?: number;
+      users?: Array<{ nickname?: string; avatarUrl?: string }>;
+    }
+  ): void {
+    const users = Array.isArray(info.users) ? info.users.slice(0, 5) : [];
+    const count = typeof info.userCount === 'number' ? info.userCount : users.length;
+    const max = typeof info.maxUsers === 'number' ? info.maxUsers : null;
+
+    const avatars = users
+      .map((u) => {
+        const raw = u.avatarUrl && u.avatarUrl.startsWith('/avatars/')
+          ? `http://${host}:${port}${u.avatarUrl}`
+          : u.avatarUrl || getAvatarUrl(null);
+        const title = escapeHtml(u.nickname || 'Usuário');
+        return `<img class="preview-avatar" src="${raw}" title="${title}" onerror="this.src='${getAvatarUrl(null)}'">`;
+      })
+      .join('');
+
+    node.innerHTML = `
+      <div class="server-preview-row">
+        <div class="preview-avatars">${avatars}</div>
+        <span class="preview-count">${count}${max ? `/${max}` : ''} online</span>
+      </div>
+    `;
+  }
+
   private attachEvents(): void {
     const tabJoin = document.getElementById('tab-join');
     const tabHost = document.getElementById('tab-host');
@@ -196,6 +260,12 @@ export class ConnectionView {
 
     joinNickInput?.addEventListener('input', (e) => handleNickChange((e.target as HTMLInputElement).value));
     hostNickInput?.addEventListener('input', (e) => handleNickChange((e.target as HTMLInputElement).value));
+
+    document.getElementById('btn-open-settings')?.addEventListener('click', () => {
+      settingsModal.open();
+    });
+
+    this.loadServerPreviews();
 
     // Handle clicking a saved server card
     const savedServerItems = this.container.querySelectorAll('.saved-server-item');

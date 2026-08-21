@@ -605,6 +605,13 @@ export class WebSocketServer {
     if (this.heartbeatTimer) {
       clearInterval(this.heartbeatTimer);
     }
+    // Let connected clients know the host is shutting the server down so they can
+    // show a friendly notice and return to the home screen instead of silently
+    // trying to reconnect forever.
+    this.broadcast({
+      type: MessageType.SERVER_SHUTDOWN,
+      payload: { reason: 'O anfitrião encerrou o servidor.' },
+    });
     for (const ws of this.sessions.keys()) {
       ws.close();
     }

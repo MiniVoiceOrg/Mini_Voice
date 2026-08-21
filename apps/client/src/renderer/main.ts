@@ -15,6 +15,7 @@ import {
 import { appEvents } from './core/EventBus';
 import { networkClient } from './core/NetworkClient';
 import { participantManager } from './core/ParticipantManager';
+import { soundEffects } from './core/SoundEffects';
 import { updateService } from './core/UpdateService';
 import { webRtcManager } from './core/WebRtcManager';
 import { chatStore } from './stores/chatStore';
@@ -24,6 +25,7 @@ import { voiceStore } from './stores/voiceStore';
 import { ConnectionView } from './views/ConnectionView';
 import { MainView } from './views/MainView';
 import { screenSharePickerModal } from './views/ScreenSharePickerModal';
+import { showAlert } from './views/Dialog';
 
 class App {
   private appContainer: HTMLElement;
@@ -65,9 +67,38 @@ class App {
     document.getElementById('win-close')?.addEventListener('click', () => window.api?.close());
   }
 
+  private showReconnectOverlay(attempt: number): void {
+    let overlay = document.getElementById('reconnect-overlay');
+    if (!overlay) {
+      overlay = document.createElement('div');
+      overlay.id = 'reconnect-overlay';
+      overlay.className = 'reconnect-overlay';
+      overlay.innerHTML = `
+        <div class="reconnect-card">
+          <div class="reconnect-spinner"></div>
+          <div class="reconnect-title">Conexão perdida</div>
+          <div id="reconnect-subtitle" class="reconnect-subtitle"></div>
+        </div>
+      `;
+      document.body.appendChild(overlay);
+    }
+    const subtitle = document.getElementById('reconnect-subtitle');
+    if (subtitle) {
+      subtitle.textContent = `Tentando reconectar… (tentativa ${attempt})`;
+    }
+  }
+
+  private hideReconnectOverlay(): void {
+    document.getElementById('reconnect-overlay')?.remove();
+  }
+
   private setupGlobalEventListeners(): void {
     // Network Connect / Disconnect
     appEvents.on('network.connected', (payload: AuthSuccessPayload) => {
+      // Preserve the voice channel we were in so we can auto-rejoin after an
+      // automatic reconnection (null on a fresh connect, so this no-ops then).
+      const previousVoiceChannelId = voiceStore.currentVoiceChannelId;
+
       serverStore.setServerDetails(payload.server, payload.currentUser);
       participantManager.clear();
       participantManager.setUsers(payload.server.members);
@@ -78,11 +109,24 @@ class App {
       }
 
       webRtcManager.setCurrentUserId(payload.currentUser.id);
+      // Drop any stale peer connections left over from a dropped session.
+      webRtcManager.closeAllPeers();
 
       this.mainView.render();
+      this.hideReconnectOverlay();
+
+      const stillHasVoiceChannel =
+        !!previousVoiceChannelId &&
+        payload.server.channels.some(
+          (c) => c.id === previousVoiceChannelId && c.type === 'VOICE'
+        );
+      if (stillHasVoiceChannel) {
+        this.mainView.rejoinVoiceChannel(previousVoiceChannelId!);
+      }
     });
 
     appEvents.on('network.disconnected', () => {
+      this.hideReconnectOverlay();
       serverStore.clear();
       chatStore.clear();
       voiceStore.reset();
@@ -90,6 +134,11 @@ class App {
       webRtcManager.closeAllPeers();
 
       this.connectionView.render();
+    });
+
+    // Reconnection feedback overlay
+    appEvents.on('network.reconnecting', (data: { attempt: number; delay: number }) => {
+      this.showReconnectOverlay(data.attempt);
     });
 
     // Protocol Server -> Client Broadcast Handlers
@@ -157,6 +206,25 @@ class App {
     // Modals
     appEvents.on('modal.open_screenshare_picker', () => {
       screenSharePickerModal.open();
+    });
+
+    // Screen-share start/stop sound cue (covers all paths: picker, quick-stop,
+    // switching to camera, and the OS "stop sharing" button).
+    appEvents.on('local.screen_started', () => {
+      soundEffects.play('screen_share_start');
+    });
+    appEvents.on('local.screen_stopped', () => {
+      soundEffects.play('screen_share_stop');
+    });
+
+    // Host closed the server: show a friendly notice (the network layer already
+    // returned us to the home screen).
+    appEvents.on('network.server_shutdown', (data: { reason?: string }) => {
+      showAlert({
+        title: 'Servidor encerrado',
+        message: data?.reason || 'O anfitrião encerrou o servidor. Você foi desconectado.',
+        variant: 'warning',
+      });
     });
   }
 }

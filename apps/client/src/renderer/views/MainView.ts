@@ -152,6 +152,9 @@ export class MainView {
         <div class="channel-item ${c.id === serverStore.activeTextChannelId && this.activeContentView === 'chat' ? 'active' : ''}" data-channel-id="${c.id}" data-channel-type="TEXT">
           <span class="material-symbols-outlined md-16 channel-icon" style="color: var(--text-muted);">tag</span>
           <span class="channel-name">${escapeHtml(c.name)}</span>
+          <button class="channel-delete-btn" data-del-channel="${c.id}" title="Apagar canal">
+            <span class="material-symbols-outlined md-14">delete</span>
+          </button>
         </div>
       `).join('');
     }
@@ -167,6 +170,9 @@ export class MainView {
               <span class="material-symbols-outlined md-16 channel-icon" style="color: ${isActive ? 'var(--success)' : 'var(--text-muted)'};">volume_up</span>
               <span class="channel-name">${escapeHtml(c.name)}</span>
               ${isActive ? '<span style="font-size: 11px; color: var(--success); font-weight: 600; margin-left: auto;">(Você)</span>' : ''}
+              <button class="channel-delete-btn" data-del-channel="${c.id}" title="Apagar canal">
+                <span class="material-symbols-outlined md-14">delete</span>
+              </button>
             </div>
 
             ${inVoice.length > 0 ? `
@@ -179,7 +185,9 @@ export class MainView {
                   return `
                     <div id="voice-mini-user-${p.user.id}" class="voice-participant-mini ${isSpeaking ? 'speaking' : ''}" data-user-id="${p.user.id}" title="${escapeHtml(p.user.nickname)} (Clique c/ botão direito p/ ajustar volume)">
                       <img class="voice-mini-avatar" src="${avatar}">
-                      <span>${escapeHtml(p.user.nickname)}</span>
+                      <span class="voice-mini-name">${escapeHtml(p.user.nickname)}</span>
+                      ${p.voiceState?.isScreenSharing ? '<span class="material-symbols-outlined md-14 voice-mini-icon live" title="Compartilhando tela">screen_share</span>' : ''}
+                      ${p.voiceState?.isCameraOn ? '<span class="material-symbols-outlined md-14 voice-mini-icon" title="Câmera ligada">videocam</span>' : ''}
                     </div>
                   `;
                 }).join('')}
@@ -206,7 +214,8 @@ export class MainView {
 
     // Attach click listeners to channel items
     this.container.querySelectorAll('.channel-item').forEach((item) => {
-      item.addEventListener('click', async () => {
+      item.addEventListener('click', async (e) => {
+        if ((e.target as HTMLElement).closest('.channel-delete-btn')) return;
         const channelId = item.getAttribute('data-channel-id')!;
         const type = item.getAttribute('data-channel-type')!;
 
@@ -221,6 +230,16 @@ export class MainView {
           this.voiceStageView?.setChannel(channelId);
           this.renderChannels();
         }
+      });
+    });
+
+    // Attach delete listeners
+    this.container.querySelectorAll('.channel-delete-btn').forEach((btn) => {
+      btn.addEventListener('click', async (e) => {
+        e.stopPropagation();
+        const channelId = btn.getAttribute('data-del-channel');
+        if (!channelId) return;
+        await this.handleDeleteChannel(channelId);
       });
     });
   }
@@ -261,6 +280,45 @@ export class MainView {
     }
   }
 
+  public async rejoinVoiceChannel(channelId: string): Promise<void> {
+    // Reset the stored voice channel so handleJoinVoiceChannel performs a full
+    // (re)join instead of early-returning, then reconnect the mesh.
+    voiceStore.setChannel(null);
+    this.activeContentView = 'stage';
+    await this.handleJoinVoiceChannel(channelId);
+    this.voiceStageView?.setChannel(channelId);
+    this.renderChannels();
+  }
+
+  private async handleDeleteChannel(channelId: string): Promise<void> {
+    if (!serverStore.serverDetails) return;
+    const channel = serverStore.serverDetails.channels.find((c) => c.id === channelId);
+    if (!channel) return;
+
+    const isText = channel.type === 'TEXT';
+    const confirmed = await showConfirm({
+      title: isText ? 'Apagar canal de texto' : 'Apagar canal de voz',
+      message: isText
+        ? `Deseja apagar o canal "${channel.name}"? Todo o histórico de mensagens será removido permanentemente.`
+        : `Deseja apagar o canal de voz "${channel.name}"? Todos que estiverem nele serão desconectados.`,
+      confirmLabel: 'Apagar',
+      variant: 'danger',
+    });
+    if (!confirmed) return;
+
+    // If we are currently in this voice channel, leave it first locally.
+    if (channel.type === 'VOICE' && voiceStore.currentVoiceChannelId === channelId) {
+      networkClient.send(MessageType.VOICE_LEAVE, { channelId });
+      webRtcManager.closeAllPeers();
+      audioProcessor.stopMicrophone();
+      voiceStore.reset();
+      this.voiceStageView?.setChannel(null);
+      this.activeContentView = 'chat';
+    }
+
+    networkClient.send(MessageType.CHANNEL_DELETE, { channelId });
+  }
+
   private renderMembers(): void {
     if (!serverStore.serverDetails) return;
 
@@ -276,7 +334,7 @@ export class MainView {
     if (listEl) {
       listEl.innerHTML = members.map((m) => {
         const isLocal = m.id === serverStore.currentUser?.id;
-        const voiceState = serverStore.serverDetails?.voiceStates[m.id];
+        const voiceState = participantManager.get(m.id)?.voiceState;
         const inVoice = !!voiceState;
         const avatar = getAvatarUrl(m.avatarUrl);
 
@@ -290,6 +348,8 @@ export class MainView {
               <div class="member-name-row">
                 <span class="member-name">${escapeHtml(m.nickname)}</span>
                 ${isLocal ? '<span class="member-badge-you">Você</span>' : ''}
+                ${voiceState?.isScreenSharing ? '<span class="member-live-badge" title="Compartilhando tela">LIVE</span>' : ''}
+                ${voiceState?.isCameraOn ? '<span class="material-symbols-outlined md-14 member-cam-icon" title="Câmera ligada">videocam</span>' : ''}
               </div>
               <span class="member-subtext">${inVoice ? 'No canal de voz' : 'Online'}</span>
             </div>
@@ -442,7 +502,19 @@ export class MainView {
       if (titleEl) titleEl.innerText = payload.name;
     });
 
-    this.unbindEvents.push(u1, u2, u3, u4, u5, u6, u7);
+    const u8 = appEvents.on(`message.${MessageType.CHANNEL_DELETED}`, () => {
+      // If the text channel currently shown was removed, fall back to the
+      // remaining active channel so the chat view is never left orphaned.
+      if (
+        this.activeContentView === 'chat' &&
+        serverStore.activeTextChannelId &&
+        this.chatView
+      ) {
+        this.chatView.setChannel(serverStore.activeTextChannelId);
+      }
+    });
+
+    this.unbindEvents.push(u1, u2, u3, u4, u5, u6, u7, u8);
   }
 
   public destroy(): void {

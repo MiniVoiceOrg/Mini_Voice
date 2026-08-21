@@ -28,6 +28,7 @@ export class NetworkClient {
   private currentServerUrl: string = '';
   private lastConnectPayload: AuthConnectPayload | null = null;
   private manualDisconnect: boolean = false;
+  private hasEverConnected: boolean = false;
 
   public getStatus(): ConnectionStatus {
     return this.status;
@@ -52,6 +53,7 @@ export class NetworkClient {
       // Only reset the backoff counter for user-initiated connects, so that
       // automatic reconnection preserves its exponential backoff.
       this.reconnectAttempt = 0;
+      this.hasEverConnected = false;
     }
     this.clearReconnect();
 
@@ -92,6 +94,7 @@ export class NetworkClient {
           .then((res) => {
             this.setStatus('CONNECTED');
             this.reconnectAttempt = 0;
+            this.hasEverConnected = true;
             appEvents.emit('network.connected', res);
             resolve(res);
           })
@@ -114,6 +117,18 @@ export class NetworkClient {
 
       this.ws.onclose = () => {
         clearTimeout(connectionTimeout);
+        // A close while still in the CONNECTING phase means the server refused
+        // the connection or is unreachable (offline / closed / wrong IP:port).
+        // Reject with a friendly message and do NOT enter the reconnect loop.
+        if (this.status === 'CONNECTING') {
+          this.setStatus('DISCONNECTED');
+          reject(
+            new Error(
+              'Não foi possível conectar. O servidor pode estar offline ou fechado, ou o IP/porta podem estar incorretos.'
+            )
+          );
+          return;
+        }
         this.handleSocketClosed();
       };
 
@@ -168,6 +183,14 @@ export class NetworkClient {
   private handleIncomingMessage(message: ProtocolMessage): void {
     const { type, requestId, payload } = message;
 
+    // Host shut the server down: notify the UI and stop any reconnection.
+    if (type === MessageType.SERVER_SHUTDOWN) {
+      const reason = (payload as { reason?: string })?.reason;
+      appEvents.emit('network.server_shutdown', { reason });
+      this.disconnect();
+      return;
+    }
+
     // Check if matching a pending request
     if (requestId && this.pendingRequests.has(requestId)) {
       const pending = this.pendingRequests.get(requestId)!;
@@ -207,7 +230,12 @@ export class NetworkClient {
   }
 
   private scheduleReconnect(): void {
-    if (this.manualDisconnect || !this.lastConnectPayload) return;
+    // Never auto-reconnect when the drop happened before we had a successful
+    // session (e.g. a refused initial connect or an auth failure).
+    if (this.manualDisconnect || !this.lastConnectPayload || !this.hasEverConnected) {
+      this.setStatus('DISCONNECTED');
+      return;
+    }
 
     this.setStatus('RECONNECTING');
     const delay = RECONNECT_DELAYS_MS[Math.min(this.reconnectAttempt, RECONNECT_DELAYS_MS.length - 1)];

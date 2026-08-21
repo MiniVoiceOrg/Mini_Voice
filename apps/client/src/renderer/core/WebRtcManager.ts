@@ -165,11 +165,17 @@ export class WebRtcManager {
       if (event.track.kind === 'video') {
         const videoEl = document.getElementById(`video-${peerUserId}`) as HTMLVideoElement;
         if (videoEl) {
+          // Audio is routed exclusively through the dedicated <audio> element so
+          // it can honour per-user volume, deafen and speaker selection. Keep
+          // stage video elements muted to avoid a duplicate, un-deafenable
+          // audio path when a peer shares camera/screen.
+          videoEl.muted = true;
           videoEl.srcObject = remoteStream;
           videoEl.play().catch((e) => console.warn('[WebRTC] Video play error:', e));
         }
         const miniVideoEl = document.getElementById(`video-mini-${peerUserId}`) as HTMLVideoElement;
         if (miniVideoEl) {
+          miniVideoEl.muted = true;
           miniVideoEl.srcObject = remoteStream;
           miniVideoEl.play().catch(() => {});
         }
@@ -191,11 +197,13 @@ export class WebRtcManager {
         } else if (event.track.kind === 'video') {
           const videoEl = document.getElementById(`video-${peerUserId}`) as HTMLVideoElement;
           if (videoEl) {
+            videoEl.muted = true;
             videoEl.srcObject = remoteStream;
             videoEl.play().catch(() => {});
           }
           const miniVideoEl = document.getElementById(`video-mini-${peerUserId}`) as HTMLVideoElement;
           if (miniVideoEl) {
+            miniVideoEl.muted = true;
             miniVideoEl.srcObject = remoteStream;
             miniVideoEl.play().catch(() => {});
           }

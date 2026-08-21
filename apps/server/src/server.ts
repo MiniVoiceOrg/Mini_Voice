@@ -95,6 +95,37 @@ export class MiniVoiceServer {
         res.end(JSON.stringify({ status: 'ok', time: Date.now() }));
         return;
       }
+      if (req.url === '/preview') {
+        const online = getOnlineUsers() as Map<string, { user: { nickname: string; avatarUrl?: string | null } }>;
+        const users = Array.from(online.values())
+          .slice(0, 10)
+          .map((entry) => ({
+            nickname: entry.user.nickname,
+            avatarUrl: entry.user.avatarUrl || null,
+          }));
+        serverRepo
+          .getServer()
+          .then((server) => {
+            res.writeHead(200, {
+              'Content-Type': 'application/json',
+              'Access-Control-Allow-Origin': '*',
+            });
+            res.end(
+              JSON.stringify({
+                name: server?.name || config.serverName || 'Mini Voice Server',
+                hasPassword: !!(server?.passwordHash && server.passwordHash.length > 0),
+                userCount: online.size,
+                maxUsers: server?.maxUsers || LIMITS.MAX_USERS_DEFAULT,
+                users,
+              })
+            );
+          })
+          .catch(() => {
+            res.writeHead(500, { 'Access-Control-Allow-Origin': '*' });
+            res.end();
+          });
+        return;
+      }
       if (req.url && req.url.startsWith('/avatars/')) {
         const requested = decodeURIComponent(req.url.slice('/avatars/'.length).split('?')[0]);
         const avatar = avatarStorage.getAvatarFile(requested);

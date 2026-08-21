@@ -19,6 +19,7 @@ export interface ElectronApi {
     getDesktopSources: () => Promise<Array<{
         id: string;
         name: string;
+        type: 'screen' | 'window';
         thumbnailDataUrl: string;
         appIconDataUrl: string | null;
     }>>;

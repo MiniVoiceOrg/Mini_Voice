@@ -13,6 +13,8 @@ import { updateService } from '../core/UpdateService';
 
 export class SettingsModal {
   private modalEl: HTMLElement | null = null;
+  private previewStream: MediaStream | null = null;
+  private previewOwned = false;
 
   public async open(): Promise<void> {
     this.close();
@@ -33,12 +35,12 @@ export class SettingsModal {
 
         <!-- Nickname & Profile -->
         <div style="display: flex; gap: 16px; align-items: center; padding: 12px; background: var(--bg-card); border-radius: var(--radius-md); margin-bottom: 16px; border: 1px solid var(--border-color);">
-          <img id="settings-avatar-preview" style="width: 52px; height: 52px; border-radius: 50%; object-fit: cover;" src="${getAvatarUrl(serverStore.currentUser?.avatarUrl)}">
+          <img id="settings-avatar-preview" style="width: 52px; height: 52px; border-radius: 50%; object-fit: cover;" src="${serverStore.currentUser?.avatarUrl ? getAvatarUrl(serverStore.currentUser.avatarUrl) : (connectionStore.savedAvatarBase64 || getAvatarUrl(null))}">
           <div style="flex: 1;">
             <div class="form-group" style="margin-bottom: 0;">
               <label>Seu Nickname</label>
               <div style="display: flex; gap: 8px; margin-top: 4px;">
-                <input id="settings-nickname-input" type="text" value="${serverStore.currentUser?.nickname || ''}" style="flex: 1;" maxlength="32">
+                <input id="settings-nickname-input" type="text" value="${serverStore.currentUser?.nickname || connectionStore.savedNickname || ''}" style="flex: 1;" maxlength="32">
                 <button id="btn-save-nickname" class="btn btn-secondary" style="font-size: 12px; padding: 6px 12px;">Salvar</button>
               </div>
             </div>
@@ -103,6 +105,13 @@ export class SettingsModal {
           <select id="select-cam">
             <option value="">Carregando câmeras...</option>
           </select>
+          <div style="margin-top: 8px;">
+            <button id="btn-toggle-cam-preview" class="btn btn-secondary" style="font-size: 12px; padding: 6px 12px;">
+              <span class="material-symbols-outlined md-16" style="margin-right: 4px;">visibility</span>
+              Testar / Pré-visualizar câmera
+            </button>
+          </div>
+          <video id="settings-cam-preview" class="settings-cam-preview" autoplay playsinline muted style="display: none;"></video>
         </div>
 
         <!-- Quality Preset -->
@@ -325,11 +334,37 @@ export class SettingsModal {
           console.warn('Error switching camera device:', err);
         }
       }
+      // If a local (owned) preview is active, restart it on the new device.
+      if (this.previewStream && this.previewOwned) {
+        await this.startCameraPreview(selectCam.value);
+      }
+    });
+
+    const btnPreview = this.modalEl.querySelector('#btn-toggle-cam-preview');
+    btnPreview?.addEventListener('click', async () => {
+      if (this.previewStream) {
+        this.stopCameraPreview();
+      } else {
+        await this.startCameraPreview(selectCam?.value || undefined);
+      }
     });
 
     btnSaveNick?.addEventListener('click', async () => {
       const newNick = inputNick?.value.trim();
-      if (!newNick || newNick === serverStore.currentUser?.nickname) return;
+      if (!newNick) return;
+
+      // Offline (not connected to a server): persist the nickname locally so it
+      // is used on the next connection.
+      if (!serverStore.currentUser) {
+        connectionStore.saveUserProfile(newNick);
+        btnSaveNick.textContent = 'Salvo!';
+        setTimeout(() => {
+          if (btnSaveNick) btnSaveNick.textContent = 'Salvar';
+        }, 1500);
+        return;
+      }
+
+      if (newNick === serverStore.currentUser?.nickname) return;
 
       try {
         await networkClient.sendRequest(MessageType.USER_CHANGE_NICKNAME, {
@@ -353,6 +388,13 @@ export class SettingsModal {
       if (window.api?.selectImageDialog) {
         const file = await window.api.selectImageDialog();
         if (file) {
+          // Offline: store the avatar locally only.
+          if (!serverStore.currentUser) {
+            const preview = document.getElementById('settings-avatar-preview') as HTMLImageElement;
+            if (preview) preview.src = file.base64;
+            connectionStore.saveUserProfile(connectionStore.savedNickname, file.base64);
+            return;
+          }
           try {
             await networkClient.sendRequest(MessageType.USER_UPDATE_AVATAR, {
               avatarBase64: file.base64,
@@ -370,6 +412,60 @@ export class SettingsModal {
     });
   }
 
+  private async startCameraPreview(deviceId?: string): Promise<void> {
+    const videoEl = document.getElementById('settings-cam-preview') as HTMLVideoElement | null;
+    const btn = this.modalEl?.querySelector('#btn-toggle-cam-preview') as HTMLElement | null;
+    if (!videoEl) return;
+
+    // Stop any previously-owned preview stream before starting a new one.
+    if (this.previewStream && this.previewOwned) {
+      this.previewStream.getTracks().forEach((t) => t.stop());
+      this.previewStream = null;
+    }
+
+    try {
+      // Reuse the active in-call camera stream if the camera is already on to
+      // avoid grabbing the device twice.
+      const activeStream = voiceStore.isCameraOn ? videoService.getCameraStream() : null;
+      if (activeStream) {
+        this.previewStream = activeStream;
+        this.previewOwned = false;
+      } else {
+        this.previewStream = await navigator.mediaDevices.getUserMedia({
+          video: deviceId ? { deviceId: { exact: deviceId } } : true,
+          audio: false,
+        });
+        this.previewOwned = true;
+      }
+      videoEl.srcObject = this.previewStream;
+      videoEl.style.display = 'block';
+      if (btn) {
+        btn.innerHTML =
+          '<span class="material-symbols-outlined md-16" style="margin-right: 4px;">visibility_off</span> Parar pré-visualização';
+      }
+    } catch (err: any) {
+      this.showError(err?.message || 'Não foi possível acessar a câmera');
+    }
+  }
+
+  private stopCameraPreview(): void {
+    const videoEl = document.getElementById('settings-cam-preview') as HTMLVideoElement | null;
+    const btn = this.modalEl?.querySelector('#btn-toggle-cam-preview') as HTMLElement | null;
+    if (this.previewStream && this.previewOwned) {
+      this.previewStream.getTracks().forEach((t) => t.stop());
+    }
+    this.previewStream = null;
+    this.previewOwned = false;
+    if (videoEl) {
+      videoEl.srcObject = null;
+      videoEl.style.display = 'none';
+    }
+    if (btn) {
+      btn.innerHTML =
+        '<span class="material-symbols-outlined md-16" style="margin-right: 4px;">visibility</span> Testar / Pré-visualizar câmera';
+    }
+  }
+
   private showError(msg: string): void {
     const banner = document.getElementById('settings-error-banner');
     if (banner) {
@@ -379,6 +475,7 @@ export class SettingsModal {
   }
 
   public close(): void {
+    this.stopCameraPreview();
     if (this.modalEl) {
       this.modalEl.remove();
       this.modalEl = null;

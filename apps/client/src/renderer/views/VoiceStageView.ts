@@ -286,11 +286,13 @@ export class VoiceStageView {
         if (stream) {
           const videoEl = document.getElementById(`video-${p.user.id}`) as HTMLVideoElement;
           if (videoEl && videoEl.srcObject !== stream) {
+            videoEl.muted = true;
             videoEl.srcObject = stream;
             videoEl.play().catch(() => {});
           }
           const miniVideoEl = document.getElementById(`video-mini-${p.user.id}`) as HTMLVideoElement;
           if (miniVideoEl && miniVideoEl.srcObject !== stream) {
+            miniVideoEl.muted = true;
             miniVideoEl.srcObject = stream;
             miniVideoEl.play().catch(() => {});
           }
@@ -310,7 +312,7 @@ export class VoiceStageView {
 
     return `
       ${(isCamOn || isScreenOn) ? `
-        <video id="${videoId}" class="stage-video-element ${isScreenOn ? 'screen-share' : ''}" autoplay playsinline ${isLocal ? 'muted' : ''}></video>
+        <video id="${videoId}" class="stage-video-element ${isScreenOn ? 'screen-share' : ''}" autoplay playsinline muted></video>
       ` : `
         <div class="stage-avatar-wrapper">
           <img class="stage-avatar-img" src="${avatarSrc}">
@@ -501,24 +503,10 @@ export class VoiceStageView {
       this.renderParticipants();
     });
 
-    btnScreen?.addEventListener('click', async () => {
-      if (voiceStore.isScreenSharing) {
-        const confirmed = await showConfirm({
-          title: 'Parar compartilhamento',
-          message: 'Deseja parar o compartilhamento de tela?',
-          confirmLabel: 'Parar',
-          variant: 'warning',
-        });
-        if (!confirmed) return;
-        videoService.stopScreenShare();
-        await webRtcManager.setLocalScreenTrack(null);
-        voiceStore.setScreenSharing(false);
-        networkClient.send(MessageType.VOICE_STATE_UPDATE, { isScreenSharing: false });
-        this.updateControlsUI();
-        this.renderParticipants();
-      } else {
-        appEvents.emit('modal.open_screenshare_picker');
-      }
+    btnScreen?.addEventListener('click', () => {
+      // Always open the picker: when not sharing, to start; when already sharing,
+      // to switch source or stop (handled inside the modal).
+      appEvents.emit('modal.open_screenshare_picker');
     });
 
     btnLeave?.addEventListener('click', async () => {
