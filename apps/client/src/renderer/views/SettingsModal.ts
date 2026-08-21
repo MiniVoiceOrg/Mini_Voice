@@ -9,6 +9,7 @@ import { webRtcManager } from '../core/WebRtcManager';
 import { videoService } from '../core/VideoService';
 import { connectionStore } from '../stores/connectionStore';
 import { getAvatarUrl } from '../utils/avatar';
+import { updateService } from '../core/UpdateService';
 
 export class SettingsModal {
   private modalEl: HTMLElement | null = null;
@@ -118,6 +119,26 @@ export class SettingsModal {
           </select>
         </div>
 
+        <!-- Updates -->
+        <div class="form-group" style="border-top: 1px solid var(--border-color); padding-top: 14px; margin-top: 10px;">
+          <label style="display: flex; align-items: center; gap: 6px;">
+            <span class="material-symbols-outlined md-16" style="color: var(--accent-primary);">system_update</span>
+            Atualizações
+          </label>
+          <div style="display: flex; align-items: center; justify-content: space-between; gap: 12px;">
+            <div style="flex: 1;">
+              <div style="font-size: 12px; color: var(--text-secondary);">
+                Versão atual: <span id="settings-app-version" style="font-family: var(--font-mono);">…</span>
+              </div>
+              <div id="settings-update-status" style="font-size: 11px; color: var(--text-muted); margin-top: 2px;"></div>
+            </div>
+            <button id="btn-check-updates" class="btn btn-secondary" style="font-size: 12px; padding: 6px 12px;">
+              <span class="material-symbols-outlined md-16" style="margin-right: 4px;">refresh</span>
+              Verificar atualizações
+            </button>
+          </div>
+        </div>
+
         <div class="modal-footer" style="margin-top: 20px;">
           <button id="btn-settings-close" class="btn btn-primary">Pronto</button>
         </div>
@@ -127,6 +148,45 @@ export class SettingsModal {
     document.body.appendChild(this.modalEl);
     this.attachEvents();
     await this.refreshDevices();
+    await this.loadAppVersion();
+  }
+
+  private async loadAppVersion(): Promise<void> {
+    if (!this.modalEl || !window.api?.getAppVersion) return;
+    try {
+      const version = await window.api.getAppVersion();
+      const el = this.modalEl.querySelector('#settings-app-version');
+      if (el) el.textContent = version;
+    } catch {
+      // Ignore — version display is non-critical.
+    }
+  }
+
+  private async checkUpdates(): Promise<void> {
+    const btn = this.modalEl?.querySelector('#btn-check-updates') as HTMLButtonElement | null;
+    const status = this.modalEl?.querySelector('#settings-update-status') as HTMLElement | null;
+    if (!btn || !status) return;
+
+    const orig = btn.innerHTML;
+    btn.disabled = true;
+    btn.innerHTML =
+      '<span class="material-symbols-outlined md-16" style="margin-right: 4px;">autorenew</span> Verificando...';
+
+    const result = await updateService.checkManually();
+
+    btn.disabled = false;
+    btn.innerHTML = orig;
+
+    if (result.status === 'available') {
+      status.textContent = `Nova versão ${result.version} disponível! Veja o aviso no topo para atualizar.`;
+      status.style.color = 'var(--accent-primary)';
+    } else if (result.status === 'latest') {
+      status.textContent = 'Você já está na versão mais recente.';
+      status.style.color = 'var(--success)';
+    } else {
+      status.textContent = 'Não foi possível verificar agora. Tente novamente.';
+      status.style.color = 'var(--danger)';
+    }
   }
 
   private async refreshDevices(): Promise<void> {
@@ -206,6 +266,9 @@ export class SettingsModal {
 
     btnClose?.addEventListener('click', () => this.close());
     btnDone?.addEventListener('click', () => this.close());
+
+    const btnCheckUpdates = this.modalEl.querySelector('#btn-check-updates');
+    btnCheckUpdates?.addEventListener('click', () => this.checkUpdates());
 
     btnRefresh?.addEventListener('click', async () => {
       const origText = btnRefresh.innerHTML;
