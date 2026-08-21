@@ -45,12 +45,24 @@ class App {
     }
 
     this.setupGlobalEventListeners();
+    this.setupTitleBar();
 
     // Render connection view initially
     this.connectionView.render();
 
     // Start checking for app updates (non-blocking)
     updateService.init();
+  }
+
+  private setupTitleBar(): void {
+    const titlebar = document.getElementById('titlebar');
+    if (window.api?.platform === 'darwin') {
+      titlebar?.classList.add('titlebar--mac');
+    }
+
+    document.getElementById('win-min')?.addEventListener('click', () => window.api?.minimize());
+    document.getElementById('win-max')?.addEventListener('click', () => window.api?.maximize());
+    document.getElementById('win-close')?.addEventListener('click', () => window.api?.close());
   }
 
   private setupGlobalEventListeners(): void {

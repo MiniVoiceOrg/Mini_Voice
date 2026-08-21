@@ -12,6 +12,23 @@
   <link rel="stylesheet" href="./styles/theme.css">
 </head>
 <body>
+  <div id="titlebar" class="titlebar">
+    <div class="titlebar__drag">
+      <img class="titlebar__logo" src="./assets/Logo.png" alt="" />
+      <span class="titlebar__title">Mini Voice</span>
+    </div>
+    <div class="titlebar__controls">
+      <button id="win-min" class="titlebar__btn" aria-label="Minimizar" title="Minimizar">
+        <span class="material-symbols-outlined md-18">remove</span>
+      </button>
+      <button id="win-max" class="titlebar__btn" aria-label="Maximizar" title="Maximizar">
+        <span class="material-symbols-outlined md-18">crop_square</span>
+      </button>
+      <button id="win-close" class="titlebar__btn titlebar__btn--close" aria-label="Fechar" title="Fechar">
+        <span class="material-symbols-outlined md-18">close</span>
+      </button>
+    </div>
+  </div>
   <div id="app"></div>
   <script type="module" src="./main.ts"></script>
 </body>

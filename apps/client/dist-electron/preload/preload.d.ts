@@ -53,6 +53,7 @@ export interface ElectronApi {
     openExternal: (url: string) => Promise<{
         success: boolean;
     }>;
+    platform: string;
 }
 declare global {
     interface Window {

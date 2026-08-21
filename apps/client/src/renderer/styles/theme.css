@@ -48,7 +48,79 @@ body {
   color: var(--text-primary);
   height: 100vh;
   overflow: hidden;
+  display: flex;
+  flex-direction: column;
   -webkit-font-smoothing: antialiased;
+}
+
+/* ── Custom Title Bar ─────────────────────────────────────── */
+.titlebar {
+  flex-shrink: 0;
+  height: 32px;
+  display: flex;
+  align-items: stretch;
+  justify-content: space-between;
+  background: var(--bg-sidebar);
+  border-bottom: 1px solid var(--border-color);
+  -webkit-app-region: drag;
+}
+
+.titlebar__drag {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding-left: 12px;
+  flex: 1;
+  min-width: 0;
+}
+
+.titlebar__logo {
+  width: 16px;
+  height: 16px;
+  object-fit: contain;
+}
+
+.titlebar__title {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-secondary);
+  white-space: nowrap;
+}
+
+.titlebar__controls {
+  display: flex;
+  -webkit-app-region: no-drag;
+}
+
+.titlebar__btn {
+  width: 46px;
+  border: none;
+  background: transparent;
+  color: var(--text-secondary);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: background 0.15s ease, color 0.15s ease;
+}
+
+.titlebar__btn:hover {
+  background: var(--bg-card-hover);
+  color: var(--text-primary);
+}
+
+.titlebar__btn--close:hover {
+  background: var(--danger);
+  color: #fff;
+}
+
+/* macOS: native traffic lights on the left; hide our controls and inset drag. */
+.titlebar--mac .titlebar__controls {
+  display: none;
+}
+
+.titlebar--mac .titlebar__drag {
+  padding-left: 78px;
 }
 
 /* Google Material Symbols Font Setup */
@@ -121,7 +193,8 @@ body {
 }
 
 #app {
-  height: 100vh;
+  flex: 1 1 auto;
+  min-height: 0;
   width: 100vw;
   display: flex;
   flex-direction: column;
@@ -1316,7 +1389,7 @@ input:focus, textarea:focus, select:focus {
 /* ── Update Banner ───────────────────────────────────────── */
 .update-banner {
   position: fixed;
-  top: 12px;
+  top: 44px;
   left: 50%;
   transform: translateX(-50%);
   z-index: 9999;
