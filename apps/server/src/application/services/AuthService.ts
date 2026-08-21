@@ -7,7 +7,7 @@ import {
   UserSummary,
   authConnectSchema,
 } from '@mini-voice/shared';
-import { UserRecord } from '../../domain/entities';
+import { ServerRecord } from '../../domain/entities';
 import { IChannelRepository, IServerRepository, IUserRepository } from '../../domain/repositories';
 import { AvatarStorageService } from '../../infrastructure/security/AvatarStorageService';
 import { PasswordService } from '../../infrastructure/security/PasswordService';
@@ -118,7 +118,7 @@ export class AuthService {
       id: userRecord.id,
       clientId: userRecord.clientId,
       nickname: userRecord.nickname,
-      avatarUrl: userRecord.avatarPath ? this.avatarStorage.getAvatarAsDataUrl(userRecord.avatarPath) : null,
+      avatarUrl: this.avatarStorage.getPublicUrl(userRecord.avatarPath),
       status: 'ONLINE',
       joinedAt: now,
     };
@@ -172,7 +172,7 @@ export class AuthService {
       return { success: false, errorMessage: 'Servidor não encontrado' };
     }
 
-    const updates: Partial<UserRecord & { name?: string; passwordHash?: string }> = {};
+    const updates: Partial<ServerRecord> = {};
 
     if (payload.name && payload.name.trim().length >= 2) {
       updates.name = payload.name.trim();
@@ -186,7 +186,7 @@ export class AuthService {
       }
     }
 
-    await this.serverRepo.updateServer(updates as any);
+    await this.serverRepo.updateServer(updates);
     const updatedServer = await this.serverRepo.getServer();
 
     return {

@@ -33,15 +33,26 @@ export class NetworkClient {
     return this.status;
   }
 
+  /** Returns the HTTP base URL of the currently connected server (e.g. http://host:port). */
+  public getHttpBaseUrl(): string {
+    if (!this.currentServerUrl) return '';
+    return this.currentServerUrl.replace(/^ws:\/\//, 'http://').replace(/^wss:\/\//, 'https://');
+  }
+
   public async connect(
     host: string,
     port: number,
     clientId: string,
     nickname: string,
-    password?: string
+    password?: string,
+    isReconnect = false
   ): Promise<AuthSuccessPayload> {
     this.manualDisconnect = false;
-    this.reconnectAttempt = 0;
+    if (!isReconnect) {
+      // Only reset the backoff counter for user-initiated connects, so that
+      // automatic reconnection preserves its exponential backoff.
+      this.reconnectAttempt = 0;
+    }
     this.clearReconnect();
 
     const cleanHost = host.trim().replace(/^ws:\/\//, '').replace(/^wss:\/\//, '');
@@ -215,7 +226,7 @@ export class NetworkClient {
         const host = urlObj.hostname;
         const port = parseInt(urlObj.port, 10);
 
-        await this.connect(host, port, clientId, nickname, password);
+        await this.connect(host, port, clientId, nickname, password, true);
       } catch (err) {
         console.warn(`[NetworkClient] Reconnection attempt ${this.reconnectAttempt} failed.`);
       }

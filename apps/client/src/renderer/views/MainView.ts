@@ -1,4 +1,5 @@
 import { MessageType } from '@mini-voice/shared';
+import { escapeHtml } from '../utils/html';
 import { appEvents } from '../core/EventBus';
 import { networkClient } from '../core/NetworkClient';
 import { participantManager } from '../core/ParticipantManager';
@@ -42,7 +43,7 @@ export class MainView {
           <div class="server-header">
             <div style="display: flex; align-items: center; gap: 8px; overflow: hidden; flex: 1;">
               <img src="${logoUrl}" alt="Mini Voice" style="width: 22px; height: 22px; object-fit: contain; border-radius: 4px; flex-shrink: 0;">
-              <span id="server-name-title" style="white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-weight: 700;">${this.escapeHtml(s.name)}</span>
+              <span id="server-name-title" style="white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-weight: 700;">${escapeHtml(s.name)}</span>
             </div>
             <div style="display: flex; gap: 6px; align-items: center;">
               <button id="btn-server-settings" class="btn btn-secondary" style="padding: 3px 7px; font-size: 11px; height: 26px;" title="Configurações do Servidor (Alterar/Remover Senha)">
@@ -86,7 +87,7 @@ export class MainView {
                 <img id="main-user-avatar" class="user-avatar-main ${voiceStore.isSpeaking ? 'speaking' : ''}" src="${getAvatarUrl(u.avatarUrl)}">
               </div>
               <div class="user-info-text">
-                <span id="main-user-name" class="user-name-display">${this.escapeHtml(u.nickname)}</span>
+                <span id="main-user-name" class="user-name-display">${escapeHtml(u.nickname)}</span>
                 <span class="user-status-text">Online</span>
               </div>
             </div>
@@ -148,7 +149,7 @@ export class MainView {
       textListEl.innerHTML = textChannels.map((c) => `
         <div class="channel-item ${c.id === serverStore.activeTextChannelId && this.activeContentView === 'chat' ? 'active' : ''}" data-channel-id="${c.id}" data-channel-type="TEXT">
           <span class="material-symbols-outlined md-16 channel-icon" style="color: var(--text-muted);">tag</span>
-          <span class="channel-name">${this.escapeHtml(c.name)}</span>
+          <span class="channel-name">${escapeHtml(c.name)}</span>
         </div>
       `).join('');
     }
@@ -162,7 +163,7 @@ export class MainView {
           <div style="display: flex; flex-direction: column;">
             <div class="channel-item ${isActive ? 'active' : ''}" data-channel-id="${c.id}" data-channel-type="VOICE">
               <span class="material-symbols-outlined md-16 channel-icon" style="color: ${isActive ? 'var(--success)' : 'var(--text-muted)'};">volume_up</span>
-              <span class="channel-name">${this.escapeHtml(c.name)}</span>
+              <span class="channel-name">${escapeHtml(c.name)}</span>
               ${isActive ? '<span style="font-size: 11px; color: var(--success); font-weight: 600; margin-left: auto;">(Você)</span>' : ''}
             </div>
 
@@ -176,7 +177,7 @@ export class MainView {
                   return `
                     <div id="voice-mini-user-${p.user.id}" class="voice-participant-mini ${isSpeaking ? 'speaking' : ''}">
                       <img class="voice-mini-avatar" src="${avatar}">
-                      <span>${this.escapeHtml(p.user.nickname)}</span>
+                      <span>${escapeHtml(p.user.nickname)}</span>
                     </div>
                   `;
                 }).join('')}
@@ -264,14 +265,14 @@ export class MainView {
         const avatar = getAvatarUrl(m.avatarUrl);
 
         return `
-          <div class="member-item" title="${this.escapeHtml(m.nickname)} ${isLocal ? '(Você)' : ''}">
+          <div class="member-item" title="${escapeHtml(m.nickname)} ${isLocal ? '(Você)' : ''}">
             <div class="member-avatar-wrapper">
               <img class="member-avatar-img" src="${avatar}">
               <span class="status-indicator ${inVoice ? 'voice' : 'online'}"></span>
             </div>
             <div class="member-info">
               <div class="member-name-row">
-                <span class="member-name">${this.escapeHtml(m.nickname)}</span>
+                <span class="member-name">${escapeHtml(m.nickname)}</span>
                 ${isLocal ? '<span class="member-badge-you">Você</span>' : ''}
               </div>
               <span class="member-subtext">${inVoice ? 'No canal de voz' : 'Online'}</span>
@@ -350,7 +351,7 @@ export class MainView {
     const u3 = appEvents.on('user.updated', (user) => {
       const avatarEl = document.getElementById('main-user-avatar') as HTMLImageElement;
       const nameEl = document.getElementById('main-user-name');
-      if (avatarEl && user.avatarUrl) avatarEl.src = user.avatarUrl;
+      if (avatarEl) avatarEl.src = getAvatarUrl(user.avatarUrl);
       if (nameEl) nameEl.innerText = user.nickname;
     });
 
@@ -406,15 +407,6 @@ export class MainView {
     });
 
     this.unbindEvents.push(u1, u2, u3, u4, u5, u6, u7);
-  }
-
-  private escapeHtml(unsafe: string): string {
-    return unsafe
-      .replace(/&/g, '&amp;')
-      .replace(/</g, '&lt;')
-      .replace(/>/g, '&gt;')
-      .replace(/"/g, '&quot;')
-      .replace(/'/g, '&#039;');
   }
 
   public destroy(): void {

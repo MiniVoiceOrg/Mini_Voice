@@ -1,4 +1,5 @@
 import { MessageType } from '@mini-voice/shared';
+import { escapeHtml } from '../utils/html';
 import { appEvents } from '../core/EventBus';
 import { networkClient } from '../core/NetworkClient';
 import { participantManager, ParticipantViewModel } from '../core/ParticipantManager';
@@ -50,7 +51,7 @@ export class VoiceStageView {
         <div class="content-header">
           <div class="channel-title-container">
             <span class="material-symbols-outlined" style="color: var(--success); font-size: 20px;">volume_up</span>
-            <span class="channel-title">${this.escapeHtml(channelName)}</span>
+            <span class="channel-title">${escapeHtml(channelName)}</span>
           </div>
 
           <div style="display: flex; align-items: center; gap: 10px;">
@@ -221,7 +222,7 @@ export class VoiceStageView {
               ${otherParticipants.map((p) => {
                 const isOtherSpeaking = (p.user.id === serverStore.currentUser?.id) ? voiceStore.isSpeaking : p.isSpeaking;
                 return `
-                  <div class="stage-mini-card ${isOtherSpeaking ? 'speaking' : ''}" id="card-${p.user.id}" data-user-id="${p.user.id}" title="Clique para focar em ${this.escapeHtml(p.user.nickname)}">
+                  <div class="stage-mini-card ${isOtherSpeaking ? 'speaking' : ''}" id="card-${p.user.id}" data-user-id="${p.user.id}" title="Clique para focar em ${escapeHtml(p.user.nickname)}">
                     ${this.renderCardContent(p, false, true)}
                   </div>
                 `;
@@ -300,13 +301,13 @@ export class VoiceStageView {
         <div class="stage-avatar-wrapper">
           <img class="stage-avatar-img" src="${avatarSrc}">
           ${!isMini ? `
-            <div class="stage-participant-name">${this.escapeHtml(p.user.nickname)} ${isLocal ? '(Você)' : ''}</div>
+            <div class="stage-participant-name">${escapeHtml(p.user.nickname)} ${isLocal ? '(Você)' : ''}</div>
           ` : ''}
         </div>
       `}
 
       <div class="stage-badges-overlay">
-        <span>${this.escapeHtml(p.user.nickname)}</span>
+        <span>${escapeHtml(p.user.nickname)}</span>
         ${isMuted ? '<span class="material-symbols-outlined md-14" style="color: var(--danger);">mic_off</span>' : ''}
         ${isDeafened ? '<span class="material-symbols-outlined md-14" style="color: var(--danger);">headset_off</span>' : ''}
         ${isCamOn ? '<span class="material-symbols-outlined md-14" style="color: var(--accent-primary);">videocam</span>' : ''}
@@ -516,15 +517,6 @@ export class VoiceStageView {
   private unbindListeners(): void {
     this.unbindEvents.forEach((u) => u());
     this.unbindEvents = [];
-  }
-
-  private escapeHtml(unsafe: string): string {
-    return unsafe
-      .replace(/&/g, '&amp;')
-      .replace(/</g, '&lt;')
-      .replace(/>/g, '&gt;')
-      .replace(/"/g, '&quot;')
-      .replace(/'/g, '&#039;');
   }
 
   public destroy(): void {

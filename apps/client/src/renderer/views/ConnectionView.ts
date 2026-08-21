@@ -1,4 +1,6 @@
 import { appEvents } from '../core/EventBus';
+import { escapeHtml } from '../utils/html';
+import { MessageType } from '@mini-voice/shared';
 import { connectionStore } from '../stores/connectionStore';
 import { networkClient } from '../core/NetworkClient';
 import { getAvatarUrl } from '../utils/avatar';
@@ -69,19 +71,19 @@ export class ConnectionView {
                   ${savedServers.map((s) => {
                     const isSelected = this.selectedSavedHost === s.host && this.selectedSavedPort === s.port;
                     return `
-                      <div class="saved-server-item ${isSelected ? 'selected' : ''}" data-host="${this.escapeHtml(s.host)}" data-port="${s.port}" data-password="${this.escapeHtml(s.password || '')}">
+                      <div class="saved-server-item ${isSelected ? 'selected' : ''}" data-host="${escapeHtml(s.host)}" data-port="${s.port}" data-password="${escapeHtml(s.password || '')}">
                         <div style="display: flex; flex-direction: column; overflow: hidden; pointer-events: none;">
                           <span style="font-size: 13px; font-weight: 600; color: var(--text-primary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; display: flex; align-items: center; gap: 6px;">
                             <span class="material-symbols-outlined md-16" style="color: var(--accent-primary);">dns</span>
-                            ${this.escapeHtml(s.name || 'Servidor')}
+                            ${escapeHtml(s.name || 'Servidor')}
                           </span>
-                          <span style="font-size: 11px; color: var(--text-muted); margin-left: 22px;">${this.escapeHtml(s.host)}:${s.port}</span>
+                          <span style="font-size: 11px; color: var(--text-muted); margin-left: 22px;">${escapeHtml(s.host)}:${s.port}</span>
                         </div>
                         <div style="display: flex; gap: 6px; align-items: center;">
-                          <button type="button" class="btn btn-secondary btn-select-saved" data-host="${this.escapeHtml(s.host)}" data-port="${s.port}" data-password="${this.escapeHtml(s.password || '')}" style="padding: 2px 8px; font-size: 11px; height: 24px;">
+                          <button type="button" class="btn btn-secondary btn-select-saved" data-host="${escapeHtml(s.host)}" data-port="${s.port}" data-password="${escapeHtml(s.password || '')}" style="padding: 2px 8px; font-size: 11px; height: 24px;">
                             ${isSelected ? '✓ Selecionado' : 'Usar'}
                           </button>
-                          <button type="button" class="btn-delete-saved-srv" data-host="${this.escapeHtml(s.host)}" data-port="${s.port}" title="Remover dos salvos">
+                          <button type="button" class="btn-delete-saved-srv" data-host="${escapeHtml(s.host)}" data-port="${s.port}" title="Remover dos salvos">
                             <span class="material-symbols-outlined md-16">close</span>
                           </button>
                         </div>
@@ -94,7 +96,7 @@ export class ConnectionView {
 
             <div class="form-group">
               <label>Seu Nickname</label>
-              <input id="join-nickname" type="text" placeholder="Ex: Murilo" value="${this.escapeHtml(savedNick)}" required minlength="2" maxlength="32">
+              <input id="join-nickname" type="text" placeholder="Ex: Murilo" value="${escapeHtml(savedNick)}" required minlength="2" maxlength="32">
             </div>
 
             <div class="form-row">
@@ -130,7 +132,7 @@ export class ConnectionView {
 
             <div class="form-group">
               <label>Seu Nickname (Anfitrião)</label>
-              <input id="host-nickname" type="text" placeholder="Ex: Murilo" value="${this.escapeHtml(savedNick)}" required minlength="2" maxlength="32">
+              <input id="host-nickname" type="text" placeholder="Ex: Murilo" value="${escapeHtml(savedNick)}" required minlength="2" maxlength="32">
             </div>
 
             <div class="form-group">
@@ -295,7 +297,7 @@ export class ConnectionView {
         // If user picked an avatar, update it right after join
         if (this.selectedAvatarBase64) {
           try {
-            await networkClient.sendRequest('USER_UPDATE_AVATAR' as any, {
+            await networkClient.sendRequest(MessageType.USER_UPDATE_AVATAR, {
               avatarBase64: this.selectedAvatarBase64,
               mimeType: 'image/png',
             });
@@ -361,7 +363,7 @@ export class ConnectionView {
         // Upload avatar if chosen
         if (this.selectedAvatarBase64) {
           try {
-            await networkClient.sendRequest('USER_UPDATE_AVATAR' as any, {
+            await networkClient.sendRequest(MessageType.USER_UPDATE_AVATAR, {
               avatarBase64: this.selectedAvatarBase64,
               mimeType: 'image/png',
             });
@@ -398,14 +400,5 @@ export class ConnectionView {
       el.style.display = 'none';
       el.innerText = '';
     }
-  }
-
-  private escapeHtml(str: string): string {
-    return str
-      .replace(/&/g, '&amp;')
-      .replace(/</g, '&lt;')
-      .replace(/>/g, '&gt;')
-      .replace(/"/g, '&quot;')
-      .replace(/'/g, '&#039;');
   }
 }

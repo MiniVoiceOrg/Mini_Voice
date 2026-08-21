@@ -12,7 +12,10 @@ export class DatabaseConnection {
 
   public static async create(dbPath: string): Promise<DatabaseConnection> {
     const driver = await SqlJsDriver.create(dbPath);
-    driver.pragma('journal_mode = WAL');
+    // Note: sql.js runs entirely in-memory (WASM) and is persisted to disk via
+    // a manual, debounced export. WAL journal_mode is therefore meaningless here
+    // and would be silently ignored, so we do not set it. foreign_keys is still
+    // requested to enforce referential integrity when supported by the build.
     driver.pragma('foreign_keys = ON');
 
     const conn = new DatabaseConnection(driver);
@@ -47,8 +50,17 @@ export class DatabaseConnection {
       (this.db.prepare('SELECT version FROM schema_migrations').all() as { version: string }[]).map((r) => r.version)
     );
 
-    for (const file of files) {
-      if (!applied.has(file)) {
+    const pending = files.filter((file) => !applied.has(file));
+    if (pending.length === 0) return;
+
+    // Disable foreign key enforcement while applying migrations. Some migrations
+    // recreate tables (the SQLite-recommended way to alter constraints), and a
+    // DROP TABLE with foreign keys enabled would cascade-delete dependent rows.
+    // PRAGMA foreign_keys is a no-op inside a transaction, so it must be toggled
+    // here, outside of the per-migration transactions below.
+    this.db.pragma('foreign_keys = OFF');
+    try {
+      for (const file of pending) {
         Logger.info('DATABASE', `Applying migration ${file}`);
         const sql = fs.readFileSync(path.join(migrationsDir, file), 'utf8');
         this.db.transaction(() => {
@@ -57,6 +69,8 @@ export class DatabaseConnection {
         })();
         Logger.info('DATABASE', `Migration ${file} applied successfully`);
       }
+    } finally {
+      this.db.pragma('foreign_keys = ON');
     }
   }
 

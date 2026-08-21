@@ -18,6 +18,10 @@ export class SqlJsDriver implements IDatabaseDriver {
   private db!: SqlJsDatabase;
   private dbPath: string;
   private inTransaction: number = 0;
+  private isClosed: boolean = false;
+  private dirty: boolean = false;
+  private saveTimer: ReturnType<typeof setTimeout> | null = null;
+  private static readonly SAVE_DEBOUNCE_MS = 3000;
 
   private constructor(dbPath: string, db: SqlJsDatabase) {
     this.dbPath = dbPath;
@@ -40,18 +44,46 @@ export class SqlJsDriver implements IDatabaseDriver {
     }
 
     const driver = new SqlJsDriver(dbPath, db);
-    driver.saveToDisk();
+    // Ensure the file exists immediately on first creation.
+    driver.flushToDisk();
     return driver;
   }
 
+  /**
+   * Marks the in-memory database as needing persistence and schedules a
+   * debounced flush. This avoids exporting and rewriting the entire database
+   * file on every single write, which is prohibitively expensive with sql.js.
+   */
   private saveToDisk(): void {
-    if (this.inTransaction > 0) {
+    if (this.isClosed || this.inTransaction > 0) {
+      return;
+    }
+    this.dirty = true;
+    if (this.saveTimer === null) {
+      this.saveTimer = setTimeout(() => {
+        this.saveTimer = null;
+        this.flushToDisk();
+      }, SqlJsDriver.SAVE_DEBOUNCE_MS);
+    }
+  }
+
+  /** Synchronously exports the in-memory database to disk if dirty. */
+  private flushToDisk(): void {
+    if (this.isClosed) {
+      return;
+    }
+    if (this.saveTimer !== null) {
+      clearTimeout(this.saveTimer);
+      this.saveTimer = null;
+    }
+    if (!this.dirty && fs.existsSync(this.dbPath)) {
       return;
     }
     try {
       const data = this.db.export();
       const buffer = Buffer.from(data);
       fs.writeFileSync(this.dbPath, buffer);
+      this.dirty = false;
     } catch (e) {
       console.error('[DATABASE] Error persisting sqlite database to disk:', e);
     }
@@ -155,7 +187,12 @@ export class SqlJsDriver implements IDatabaseDriver {
   }
 
   public close(): void {
-    this.saveToDisk();
+    if (this.isClosed) {
+      return;
+    }
+    // Flush any pending debounced writes synchronously before closing.
+    this.flushToDisk();
+    this.isClosed = true;
     this.db.close();
   }
 }

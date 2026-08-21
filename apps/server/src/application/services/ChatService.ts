@@ -79,7 +79,7 @@ export class ChatService {
       channelId: messageRecord.channelId,
       userId: user.id,
       userNickname: user.nickname,
-      userAvatarUrl: user.avatarPath ? this.avatarStorage.getAvatarAsDataUrl(user.avatarPath) : null,
+      userAvatarUrl: this.avatarStorage.getPublicUrl(user.avatarPath),
       content: messageRecord.content,
       createdAt: messageRecord.createdAt,
       isSystem: false,
@@ -97,7 +97,8 @@ export class ChatService {
     beforeTimestamp?: number
   ): Promise<ChatMessage[]> {
     const rawMessages = await this.messageRepo.listByChannel(channelId, limit, beforeTimestamp);
-    const users = await this.userRepo.listAll();
+    const uniqueUserIds = [...new Set(rawMessages.map((m) => m.userId))];
+    const users = await this.userRepo.findByIds(uniqueUserIds);
     const userMap = new Map(users.map((u) => [u.id, u]));
 
     return rawMessages.map((m) => {
@@ -107,7 +108,7 @@ export class ChatService {
         channelId: m.channelId,
         userId: m.userId,
         userNickname: user ? user.nickname : 'Usuário Desconhecido',
-        userAvatarUrl: user?.avatarPath ? this.avatarStorage.getAvatarAsDataUrl(user.avatarPath) : null,
+        userAvatarUrl: this.avatarStorage.getPublicUrl(user?.avatarPath),
         content: m.content,
         createdAt: m.createdAt,
         isSystem: m.isSystem,

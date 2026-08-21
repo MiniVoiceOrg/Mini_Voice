@@ -10,6 +10,26 @@ export interface ParticipantViewModel {
 
 export class ParticipantManager {
   private participants: Map<string, ParticipantViewModel> = new Map();
+  private updateScheduled = false;
+
+  /**
+   * Coalesces multiple rapid mutations (e.g. voice state + stream + speaking
+   * changes during a voice join) into a single 'participants.updated' emit per
+   * animation frame, avoiding redundant full re-renders of the sidebars.
+   */
+  private scheduleUpdate(): void {
+    if (this.updateScheduled) return;
+    this.updateScheduled = true;
+    const flush = () => {
+      this.updateScheduled = false;
+      appEvents.emit('participants.updated');
+    };
+    if (typeof requestAnimationFrame === 'function') {
+      requestAnimationFrame(flush);
+    } else {
+      setTimeout(flush, 0);
+    }
+  }
 
   public setUsers(users: UserSummary[]): void {
     for (const u of users) {
@@ -27,12 +47,12 @@ export class ParticipantManager {
         isSpeaking: false,
       });
     }
-    appEvents.emit('participants.updated');
+    this.scheduleUpdate();
   }
 
   public removeUser(userId: string): void {
     this.participants.delete(userId);
-    appEvents.emit('participants.updated');
+    this.scheduleUpdate();
   }
 
   public updateUser(user: UserSummary): void {
@@ -44,7 +64,7 @@ export class ParticipantManager {
     if (participant) {
       participant.voiceState = voiceState;
       participant.isSpeaking = voiceState.isSpeaking;
-      appEvents.emit('participants.updated');
+      this.scheduleUpdate();
     }
   }
 
@@ -53,7 +73,7 @@ export class ParticipantManager {
     if (participant) {
       participant.voiceState = undefined;
       participant.isSpeaking = false;
-      appEvents.emit('participants.updated');
+      this.scheduleUpdate();
     }
   }
 
@@ -61,7 +81,7 @@ export class ParticipantManager {
     const participant = this.participants.get(userId);
     if (participant) {
       participant.remoteStream = stream;
-      appEvents.emit('participants.updated');
+      this.scheduleUpdate();
     }
   }
 
@@ -87,7 +107,7 @@ export class ParticipantManager {
 
   public clear(): void {
     this.participants.clear();
-    appEvents.emit('participants.updated');
+    this.scheduleUpdate();
   }
 }
 

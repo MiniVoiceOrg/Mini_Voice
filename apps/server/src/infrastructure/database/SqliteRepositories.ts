@@ -2,6 +2,15 @@ import { IDatabaseDriver } from './SqliteWrapper';
 import { ChannelRecord, MessageRecord, ServerRecord, UserRecord } from '../../domain/entities';
 import { IChannelRepository, IMessageRepository, IServerRepository, IUserRepository } from '../../domain/repositories';
 
+/**
+ * Note: all repository methods are declared `async` even though the underlying
+ * sql.js driver is fully synchronous. This is a deliberate design choice: the
+ * repository interfaces (domain/repositories.ts) return Promises so the storage
+ * backend can later be swapped for a genuinely asynchronous driver (e.g.
+ * better-sqlite3 on a worker thread, or PostgreSQL) without changing any caller.
+ * The micro-task overhead is negligible for this application's scale.
+ */
+
 export class SqliteServerRepository implements IServerRepository {
   constructor(private db: IDatabaseDriver) {}
 
@@ -17,15 +26,27 @@ export class SqliteServerRepository implements IServerRepository {
   }
 
   async updateServer(server: Partial<ServerRecord>): Promise<void> {
+    const fields: string[] = [];
+    const values: any[] = [];
+
     if (server.name !== undefined) {
-      this.db.prepare('UPDATE server_meta SET name = ?').run(server.name);
+      fields.push('name = ?');
+      values.push(server.name);
     }
     if (server.passwordHash !== undefined) {
-      this.db.prepare('UPDATE server_meta SET password_hash = ?').run(server.passwordHash);
+      fields.push('password_hash = ?');
+      values.push(server.passwordHash);
     }
     if (server.maxUsers !== undefined) {
-      this.db.prepare('UPDATE server_meta SET max_users = ?').run(server.maxUsers);
+      fields.push('max_users = ?');
+      values.push(server.maxUsers);
     }
+
+    if (fields.length === 0) return;
+
+    this.db.prepare(
+      `UPDATE server_meta SET ${fields.join(', ')} WHERE id = (SELECT id FROM server_meta LIMIT 1)`
+    ).run(...values);
   }
 }
 
@@ -86,6 +107,14 @@ export class SqliteUserRepository implements IUserRepository {
     return this.db.prepare(
       'SELECT id, client_id as clientId, nickname, avatar_path as avatarPath, created_at as createdAt, last_seen_at as lastSeenAt FROM users'
     ).all() as UserRecord[];
+  }
+
+  async findByIds(ids: string[]): Promise<UserRecord[]> {
+    if (ids.length === 0) return [];
+    const placeholders = ids.map(() => '?').join(', ');
+    return this.db.prepare(
+      `SELECT id, client_id as clientId, nickname, avatar_path as avatarPath, created_at as createdAt, last_seen_at as lastSeenAt FROM users WHERE id IN (${placeholders})`
+    ).all(...ids) as UserRecord[];
   }
 }
 

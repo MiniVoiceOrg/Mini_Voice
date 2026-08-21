@@ -320,6 +320,21 @@ export class WebSocketServer {
       return;
     }
 
+    // If it was a voice channel, disconnect any participants still in it so they
+    // are not stranded in a "ghost" channel after it has been removed.
+    const strandedParticipants = this.signalingService.getParticipantsInChannel(payload.channelId);
+    for (const participant of strandedParticipants) {
+      this.signalingService.leaveVoiceChannel(participant.userId);
+      const leavePayload: VoiceUserLeftPayload = {
+        channelId: payload.channelId,
+        userId: participant.userId,
+      };
+      this.broadcast({
+        type: MessageType.VOICE_USER_LEFT,
+        payload: leavePayload,
+      });
+    }
+
     const channelPayload: ChannelDeletedPayload = { channelId: payload.channelId };
     this.broadcast({
       type: MessageType.CHANNEL_DELETED,

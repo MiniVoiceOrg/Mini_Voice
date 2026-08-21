@@ -1,4 +1,5 @@
 import { MessageType, ServerUpdateSettingsPayload } from '@mini-voice/shared';
+import { escapeHtml } from '../utils/html';
 import { networkClient } from '../core/NetworkClient';
 import { serverStore } from '../stores/serverStore';
 
@@ -32,7 +33,7 @@ export class ServerSettingsModal {
         <form id="form-server-settings">
           <div class="form-group">
             <label>Nome do Servidor</label>
-            <input id="input-server-name" type="text" value="${this.escapeHtml(s.name)}" required minlength="2" maxlength="50">
+            <input id="input-server-name" type="text" value="${escapeHtml(s.name)}" required minlength="2" maxlength="50">
           </div>
 
           <div style="margin-top: 18px; border-top: 1px solid var(--border-color); padding-top: 16px;">
@@ -155,15 +156,6 @@ export class ServerSettingsModal {
       this.modalEl = null;
       this.shouldRemovePassword = false;
     }
-  }
-
-  private escapeHtml(str: string): string {
-    return str
-      .replace(/&/g, '&amp;')
-      .replace(/</g, '&lt;')
-      .replace(/>/g, '&gt;')
-      .replace(/"/g, '&quot;')
-      .replace(/'/g, '&#039;');
   }
 }
 

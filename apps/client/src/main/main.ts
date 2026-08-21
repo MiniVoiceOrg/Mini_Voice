@@ -7,6 +7,13 @@ import fs from 'fs';
 
 let mainWindow: BrowserWindow | null = null;
 const serverManager = new ServerManager();
+let isShuttingDown = false;
+
+function shutdownServer(): void {
+  if (isShuttingDown) return;
+  isShuttingDown = true;
+  serverManager.stopServer();
+}
 
 function createWindow(): void {
   const iconCandidates = [
@@ -59,12 +66,12 @@ app.whenReady().then(() => {
 });
 
 app.on('window-all-closed', () => {
-  serverManager.stopServer();
+  shutdownServer();
   if (process.platform !== 'darwin') {
     app.quit();
   }
 });
 
 app.on('before-quit', () => {
-  serverManager.stopServer();
+  shutdownServer();
 });

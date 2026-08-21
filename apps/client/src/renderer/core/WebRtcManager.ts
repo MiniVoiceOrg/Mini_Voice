@@ -20,6 +20,14 @@ export interface PeerSession {
   videoSender?: RTCRtpSender | null;
 }
 
+/**
+ * WebRtcManager implements a full-mesh topology: each participant maintains a
+ * direct RTCPeerConnection to every other participant in the voice channel.
+ * Traffic and encode/upload cost therefore grow as O(N²). This is intentional
+ * and adequate for the project's scope (small groups of friends), bounded by
+ * MAX_PARTICIPANTS_PER_CHANNEL_DEFAULT = 10. Scaling significantly beyond that
+ * would require an SFU (Selective Forwarding Unit) instead of a mesh.
+ */
 export class WebRtcManager {
   private peers: Map<string, PeerSession> = new Map();
   private audioElements: Map<string, HTMLAudioElement> = new Map();

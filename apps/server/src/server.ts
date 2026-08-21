@@ -1,4 +1,5 @@
 import http from 'http';
+import fs from 'fs';
 import path from 'path';
 import { v4 as uuidv4 } from 'uuid';
 import { LIMITS } from '@mini-voice/shared';
@@ -94,6 +95,22 @@ export class MiniVoiceServer {
         res.end(JSON.stringify({ status: 'ok', time: Date.now() }));
         return;
       }
+      if (req.url && req.url.startsWith('/avatars/')) {
+        const requested = decodeURIComponent(req.url.slice('/avatars/'.length).split('?')[0]);
+        const avatar = avatarStorage.getAvatarFile(requested);
+        if (!avatar) {
+          res.writeHead(404);
+          res.end();
+          return;
+        }
+        res.writeHead(200, {
+          'Content-Type': avatar.mimeType,
+          'Cache-Control': 'public, max-age=86400',
+          'Access-Control-Allow-Origin': '*',
+        });
+        fs.createReadStream(avatar.filePath).pipe(res);
+        return;
+      }
       res.writeHead(404);
       res.end();
     });
@@ -169,6 +186,7 @@ export class MiniVoiceServer {
 
   public async stop(): Promise<void> {
     Logger.info('INFO', 'Stopping Mini Voice Server...');
+    this.rateLimiter.dispose();
     this.wsServer.close();
     await new Promise<void>((resolve) => this.httpServer.close(() => resolve()));
     this.dbConn.close();

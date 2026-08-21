@@ -57,7 +57,7 @@ export class UserService {
       id: user.id,
       clientId: user.clientId,
       nickname: user.nickname,
-      avatarUrl: user.avatarPath ? this.avatarStorage.getAvatarAsDataUrl(user.avatarPath) : null,
+      avatarUrl: this.avatarStorage.getPublicUrl(user.avatarPath),
       status: 'ONLINE',
       joinedAt: user.lastSeenAt,
     };
@@ -112,7 +112,7 @@ export class UserService {
       id: user.id,
       clientId: user.clientId,
       nickname: user.nickname,
-      avatarUrl: this.avatarStorage.getAvatarAsDataUrl(newFilename),
+      avatarUrl: this.avatarStorage.getPublicUrl(newFilename),
       status: 'ONLINE',
       joinedAt: user.lastSeenAt,
     };

@@ -10,6 +10,16 @@ import {
 } from '@mini-voice/shared';
 import { MiniVoiceServer } from './server';
 
+/** Rejects if the given promise does not settle within `ms`, preventing a hung test from blocking forever. */
+function withTimeout<T>(promise: Promise<T>, ms: number, label: string): Promise<T> {
+  return Promise.race([
+    promise,
+    new Promise<T>((_, reject) =>
+      setTimeout(() => reject(new Error(`Timeout (${ms}ms) aguardando: ${label}`)), ms)
+    ),
+  ]);
+}
+
 async function runTests() {
   console.log('=== Início dos Testes do Servidor Mini Voice ===');
   const testDataDir = path.join(__dirname, '../../test-data');
@@ -31,7 +41,7 @@ async function runTests() {
   try {
     // Test 1: Connect with wrong password
     const ws1 = new WebSocket('ws://127.0.0.1:3999');
-    await new Promise<void>((resolve, reject) => {
+    await withTimeout(new Promise<void>((resolve, reject) => {
       ws1.on('open', () => {
         const connectMsg: ProtocolMessage = {
           type: MessageType.AUTH_CONNECT,
@@ -56,14 +66,14 @@ async function runTests() {
           reject(new Error(`Esperado AUTH_INVALID_PASSWORD, recebido: ${JSON.stringify(res)}`));
         }
       });
-    });
+    }), 5000, 'Teste 1: senha incorreta');
 
     // Test 2: Connect with correct password
     const ws2 = new WebSocket('ws://127.0.0.1:3999');
     let user2Id = '';
     let textChannelId = '';
 
-    await new Promise<void>((resolve, reject) => {
+    await withTimeout(new Promise<void>((resolve, reject) => {
       ws2.on('open', () => {
         const connectMsg: ProtocolMessage = {
           type: MessageType.AUTH_CONNECT,
@@ -87,11 +97,11 @@ async function runTests() {
           resolve();
         }
       });
-    });
+    }), 5000, 'Teste 2: autenticação');
 
     // Test 3: Connect another user with same nickname (must fail)
     const ws3 = new WebSocket('ws://127.0.0.1:3999');
-    await new Promise<void>((resolve, reject) => {
+    await withTimeout(new Promise<void>((resolve, reject) => {
       ws3.on('open', () => {
         const connectMsg: ProtocolMessage = {
           type: MessageType.AUTH_CONNECT,
@@ -114,10 +124,10 @@ async function runTests() {
           resolve();
         }
       });
-    });
+    }), 5000, 'Teste 3: nickname duplicado');
 
     // Test 4: Send chat message and receive broadcast
-    await new Promise<void>((resolve, reject) => {
+    await withTimeout(new Promise<void>((resolve, reject) => {
       const sendMsg: ProtocolMessage = {
         type: MessageType.CHAT_SEND,
         requestId: 'req-4',
@@ -138,7 +148,7 @@ async function runTests() {
 
       ws2.on('message', handler);
       ws2.send(JSON.stringify(sendMsg));
-    });
+    }), 5000, 'Teste 4: mensagem de chat');
 
     ws2.close();
     console.log('=== Todos os testes do servidor passaram com sucesso! ===');

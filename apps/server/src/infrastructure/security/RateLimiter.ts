@@ -2,6 +2,17 @@ import { LIMITS } from '@mini-voice/shared';
 
 export class RateLimiter {
   private userMessageTimestamps: Map<string, number[]> = new Map();
+  private cleanupTimer: ReturnType<typeof setInterval> | null = null;
+
+  constructor(cleanupIntervalMs: number = 60_000) {
+    // Periodically evict stale entries so the map does not grow unboundedly as
+    // users who stop sending messages would otherwise never be removed.
+    this.cleanupTimer = setInterval(() => this.cleanup(), cleanupIntervalMs);
+    // Do not keep the process alive solely for this timer.
+    if (typeof this.cleanupTimer.unref === 'function') {
+      this.cleanupTimer.unref();
+    }
+  }
 
   /**
    * Checks if an action is within rate limits.
@@ -42,6 +53,14 @@ export class RateLimiter {
       } else {
         this.userMessageTimestamps.set(key, valid);
       }
+    }
+  }
+
+  /** Stops the periodic cleanup timer. Call on server shutdown. */
+  public dispose(): void {
+    if (this.cleanupTimer) {
+      clearInterval(this.cleanupTimer);
+      this.cleanupTimer = null;
     }
   }
 }

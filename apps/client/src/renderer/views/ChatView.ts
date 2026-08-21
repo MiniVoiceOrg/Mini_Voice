@@ -1,4 +1,5 @@
 import { ChatMessage, LIMITS, MessageType } from '@mini-voice/shared';
+import { escapeHtml } from '../utils/html';
 import { appEvents } from '../core/EventBus';
 import { networkClient } from '../core/NetworkClient';
 import { chatStore } from '../stores/chatStore';
@@ -38,7 +39,7 @@ export class ChatView {
         <div class="content-header">
           <div class="channel-title-container">
             <span class="material-symbols-outlined md-18" style="color: var(--text-muted);">tag</span>
-            <span class="channel-title">${this.escapeHtml(channelName)}</span>
+            <span class="channel-title">${escapeHtml(channelName)}</span>
           </div>
           <div class="header-status-badge">Canal de Texto</div>
         </div>
@@ -47,7 +48,7 @@ export class ChatView {
 
         <div class="chat-input-container">
           <div class="chat-input-wrapper">
-            <input id="chat-message-input" class="chat-input-field" type="text" placeholder="Conversar em #${this.escapeHtml(channelName)}..." maxlength="${LIMITS.MAX_MESSAGE_LENGTH}">
+            <input id="chat-message-input" class="chat-input-field" type="text" placeholder="Conversar em #${escapeHtml(channelName)}..." maxlength="${LIMITS.MAX_MESSAGE_LENGTH}">
             <span id="chat-char-counter" class="chat-char-count">0/${LIMITS.MAX_MESSAGE_LENGTH}</span>
             <button id="btn-send-message" class="btn btn-primary" style="padding: 6px 14px; font-size: 13px;">
               <span class="material-symbols-outlined md-16" style="margin-right: 4px;">send</span>
@@ -80,7 +81,7 @@ export class ChatView {
       feed.innerHTML = `
         <div style="display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100%; color: var(--text-muted); gap: 10px;">
           <span class="material-symbols-outlined md-36" style="color: var(--text-dim); font-size: 44px;">forum</span>
-          <div style="font-size: 15px; font-weight: 600; color: var(--text-secondary);">Este é o início do canal #${this.escapeHtml(serverStore.serverDetails?.channels.find((c) => c.id === this.currentChannelId)?.name || 'geral')}</div>
+          <div style="font-size: 15px; font-weight: 600; color: var(--text-secondary);">Este é o início do canal #${escapeHtml(serverStore.serverDetails?.channels.find((c) => c.id === this.currentChannelId)?.name || 'geral')}</div>
           <div style="font-size: 13px;">Envie uma mensagem para começar!</div>
         </div>
       `;
@@ -98,7 +99,7 @@ export class ChatView {
       return `
         <div class="system-message-row">
           <span class="material-symbols-outlined md-14" style="color: var(--accent-primary);">info</span>
-          <span>${this.escapeHtml(m.content)}</span>
+          <span>${escapeHtml(m.content)}</span>
           <span style="font-size: 10px; color: var(--text-muted); margin-left: auto;">${time}</span>
         </div>
       `;
@@ -111,10 +112,10 @@ export class ChatView {
         <img class="chat-author-avatar" src="${avatarSrc}">
         <div class="chat-message-body">
           <div class="chat-author-header">
-            <span class="chat-author-name">${this.escapeHtml(m.userNickname)}</span>
+            <span class="chat-author-name">${escapeHtml(m.userNickname)}</span>
             <span class="chat-timestamp">${time}</span>
           </div>
-          <div class="chat-message-text">${this.escapeHtml(m.content)}</div>
+          <div class="chat-message-text">${escapeHtml(m.content)}</div>
         </div>
       </div>
     `;
@@ -183,15 +184,6 @@ export class ChatView {
     if (feed) {
       feed.scrollTop = feed.scrollHeight;
     }
-  }
-
-  private escapeHtml(unsafe: string): string {
-    return unsafe
-      .replace(/&/g, '&amp;')
-      .replace(/</g, '&lt;')
-      .replace(/>/g, '&gt;')
-      .replace(/"/g, '&quot;')
-      .replace(/'/g, '&#039;');
   }
 
   public destroy(): void {

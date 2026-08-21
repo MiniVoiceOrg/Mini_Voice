@@ -95,21 +95,36 @@ export class AvatarStorageService {
   }
 
   /**
-   * Reads avatar as base64 data URL
+   * Returns the public HTTP path for an avatar (served by the server's HTTP
+   * endpoint), instead of embedding the full image as a base64 data URL. This
+   * keeps WebSocket payloads (UserSummary, ChatMessage) tiny — clients fetch the
+   * image once over HTTP and let the browser cache it.
    */
-  public getAvatarAsDataUrl(filename: string): string | null {
+  public getPublicUrl(filename: string | null | undefined): string | null {
+    if (!filename) return null;
+    return `/avatars/${path.basename(filename)}`;
+  }
+
+  /**
+   * Resolves an avatar filename to an on-disk file for the HTTP handler,
+   * guarding against path traversal. Returns null if the file does not exist.
+   */
+  public getAvatarFile(filename: string): { filePath: string; mimeType: string } | null {
     if (!filename) return null;
     const safeFilename = path.basename(filename);
     const filePath = path.join(this.avatarsDir, safeFilename);
 
+    const resolved = path.resolve(filePath);
+    if (!resolved.startsWith(path.resolve(this.avatarsDir))) {
+      return null;
+    }
     if (!fs.existsSync(filePath)) {
       return null;
     }
 
-    const buffer = fs.readFileSync(filePath);
     const ext = path.extname(safeFilename).toLowerCase().replace('.', '');
-    const mime = ext === 'jpg' ? 'image/jpeg' : `image/${ext}`;
-    return `data:${mime};base64,${buffer.toString('base64')}`;
+    const mimeType = ext === 'jpg' ? 'image/jpeg' : `image/${ext}`;
+    return { filePath, mimeType };
   }
 
   /**

@@ -10,6 +10,13 @@ const serverManager_1 = require("./serverManager");
 const fs_1 = __importDefault(require("fs"));
 let mainWindow = null;
 const serverManager = new serverManager_1.ServerManager();
+let isShuttingDown = false;
+function shutdownServer() {
+    if (isShuttingDown)
+        return;
+    isShuttingDown = true;
+    serverManager.stopServer();
+}
 function createWindow() {
     const iconCandidates = [
         path_1.default.join(__dirname, '../../images/Logo.png'),
@@ -55,12 +62,12 @@ electron_1.app.whenReady().then(() => {
     });
 });
 electron_1.app.on('window-all-closed', () => {
-    serverManager.stopServer();
+    shutdownServer();
     if (process.platform !== 'darwin') {
         electron_1.app.quit();
     }
 });
 electron_1.app.on('before-quit', () => {
-    serverManager.stopServer();
+    shutdownServer();
 });
 //# sourceMappingURL=main.js.map
