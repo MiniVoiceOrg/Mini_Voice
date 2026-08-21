@@ -432,6 +432,23 @@ export class VoiceStageView {
     }
   }
 
+  /**
+   * Leaves the current voice call. Public so it can also be triggered from the
+   * sidebar voice-connection row (#60). No confirmation is shown (#59).
+   */
+  public leaveVoice(): void {
+    if (!this.currentChannelId) return;
+    this.stopPingMonitor();
+    soundEffects.play('leave_voice');
+    networkClient.send(MessageType.VOICE_LEAVE, { channelId: this.currentChannelId });
+    audioProcessor.stopMicrophone();
+    videoService.stopCamera();
+    videoService.stopScreenShare();
+    webRtcManager.closeAllPeers();
+    voiceStore.reset();
+    this.setChannel(null);
+  }
+
   private async handleStopStreaming(): Promise<void> {
     if (voiceStore.isScreenSharing) {
       const confirmed = await showConfirm({
@@ -446,13 +463,6 @@ export class VoiceStageView {
       voiceStore.setScreenSharing(false);
       networkClient.send(MessageType.VOICE_STATE_UPDATE, { isScreenSharing: false });
     } else if (voiceStore.isCameraOn) {
-      const confirmed = await showConfirm({
-        title: 'Desligar câmera',
-        message: 'Deseja desligar sua câmera?',
-        confirmLabel: 'Desligar',
-        variant: 'warning',
-      });
-      if (!confirmed) return;
       videoService.stopCamera();
       await webRtcManager.setLocalCameraTrack(null);
       voiceStore.setCameraOn(false);
@@ -470,13 +480,6 @@ export class VoiceStageView {
    */
   public async toggleCamera(): Promise<void> {
     if (voiceStore.isCameraOn) {
-      const confirmed = await showConfirm({
-        title: 'Desligar câmera',
-        message: 'Deseja desligar a sua câmera?',
-        confirmLabel: 'Desligar',
-        variant: 'warning',
-      });
-      if (!confirmed) return;
       videoService.stopCamera();
       await webRtcManager.setLocalCameraTrack(null);
       voiceStore.setCameraOn(false);
@@ -534,7 +537,19 @@ export class VoiceStageView {
       voiceStore.setMuted(newMuted);
       audioProcessor.setMuted(newMuted);
       soundEffects.play(newMuted ? 'mic_mute' : 'mic_unmute');
-      networkClient.send(MessageType.VOICE_STATE_UPDATE, { isMuted: newMuted });
+      // Unmuting the mic while deafened doesn't make sense (you'd talk but not
+      // hear): also undeafen the audio output in that case (#62).
+      let undeafened = false;
+      if (!newMuted && voiceStore.isDeafened) {
+        voiceStore.setDeafened(false);
+        audioProcessor.setDeafened(false);
+        webRtcManager.setDeafened(false);
+        undeafened = true;
+      }
+      networkClient.send(MessageType.VOICE_STATE_UPDATE, {
+        isMuted: newMuted,
+        ...(undeafened ? { isDeafened: false } : {}),
+      });
       this.updateControlsUI();
       this.renderParticipants();
     });
@@ -580,27 +595,7 @@ export class VoiceStageView {
       this.renderParticipants();
     });
 
-    btnLeave?.addEventListener('click', async () => {
-      const confirmed = await showConfirm({
-        title: 'Sair da chamada',
-        message: 'Deseja sair da chamada de voz?',
-        confirmLabel: 'Sair',
-        variant: 'danger',
-      });
-      if (confirmed) {
-        if (this.currentChannelId) {
-          this.stopPingMonitor();
-          soundEffects.play('leave_voice');
-          networkClient.send(MessageType.VOICE_LEAVE, { channelId: this.currentChannelId });
-          audioProcessor.stopMicrophone();
-          videoService.stopCamera();
-          videoService.stopScreenShare();
-          webRtcManager.closeAllPeers();
-          voiceStore.reset();
-          this.setChannel(null);
-        }
-      }
-    });
+    btnLeave?.addEventListener('click', () => this.leaveVoice());
 
     // Listeners that do NOT destroy the DOM
     const u1 = appEvents.on('participants.updated', () => {

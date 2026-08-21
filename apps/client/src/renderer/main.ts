@@ -189,10 +189,19 @@ class App {
         payload.userId !== serverStore.currentUser?.id
       ) {
         webRtcManager.connectToPeer(payload.userId, false);
+        // Let everyone already in the channel hear that someone joined (#54).
+        soundEffects.play('join_voice');
       }
     });
 
     appEvents.on(`message.${MessageType.VOICE_USER_LEFT}`, (payload: VoiceUserLeftPayload) => {
+      // Play a leave sound for everyone still in the same voice channel (#54).
+      if (
+        voiceStore.currentVoiceChannelId === payload.channelId &&
+        payload.userId !== serverStore.currentUser?.id
+      ) {
+        soundEffects.play('leave_voice');
+      }
       participantManager.removeVoiceState(payload.userId);
       webRtcManager.removePeer(payload.userId);
     });

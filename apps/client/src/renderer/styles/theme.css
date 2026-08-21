@@ -511,7 +511,8 @@ input:focus, textarea:focus, select:focus {
 /* Main App Layout */
 .main-layout {
   display: flex;
-  height: 100vh;
+  height: 100%;
+  min-height: 0;
   width: 100vw;
   background-color: var(--bg-app);
 }
@@ -694,6 +695,7 @@ input:focus, textarea:focus, select:focus {
 .channels-list-container {
   flex: 1;
   overflow-y: auto;
+  min-height: 0;
   padding: 12px 8px;
   display: flex;
   flex-direction: column;
@@ -832,13 +834,15 @@ input:focus, textarea:focus, select:focus {
   display: flex;
   flex-direction: column;
   gap: 6px;
+  flex-shrink: 0;
 }
 
 .user-media-bar {
   display: flex;
   align-items: center;
-  gap: 4px;
+  gap: 6px;
   padding-bottom: 2px;
+  flex-wrap: wrap;
 }
 
 .media-bar-btn {
@@ -847,11 +851,78 @@ input:focus, textarea:focus, select:focus {
   flex-shrink: 0;
 }
 
+/* Larger, wider "large" media buttons in the sidebar (#60). */
+.media-bar-btn-lg {
+  flex: 1;
+  width: auto;
+  height: 40px;
+  border-radius: var(--radius-sm);
+}
+
+/* Sidebar voice-connection row: shown only while in a voice channel (#60). */
+.voice-connection-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 8px;
+  margin-bottom: 2px;
+  background-color: var(--bg-secondary);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-sm);
+}
+
+.voice-conn-info {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: 1;
+  min-width: 0;
+}
+
+.voice-conn-signal {
+  color: var(--success);
+  flex-shrink: 0;
+}
+
+.voice-conn-text {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  line-height: 1.2;
+}
+
+.voice-conn-status {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--success);
+}
+
+.voice-conn-channel {
+  font-size: 12px;
+  color: var(--text-normal);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.voice-conn-ping {
+  font-size: 11px;
+  color: var(--text-muted);
+  flex-shrink: 0;
+  margin-left: auto;
+}
+
+.voice-conn-leave {
+  color: var(--danger);
+  flex-shrink: 0;
+}
+
 .user-control-main {
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 6px;
+  flex-wrap: wrap;
 }
 
 .user-profile-summary {
@@ -906,6 +977,8 @@ input:focus, textarea:focus, select:focus {
   align-items: center;
   gap: 4px;
   flex-shrink: 0;
+  flex-wrap: wrap;
+  justify-content: flex-end;
 }
 
 .user-quick-actions .btn-icon {
@@ -958,6 +1031,7 @@ input:focus, textarea:focus, select:focus {
   display: flex;
   flex-direction: column;
   overflow: hidden;
+  min-height: 0;
   user-select: text;
   -webkit-user-select: text;
 }
@@ -965,6 +1039,7 @@ input:focus, textarea:focus, select:focus {
 .chat-messages-feed {
   flex: 1;
   overflow-y: auto;
+  min-height: 0;
   padding: 20px;
   display: flex;
   flex-direction: column;
@@ -1742,6 +1817,10 @@ button[data-loading="1"]::after {
 }
 
 .voice-mini-icon.live {
+  color: var(--danger);
+}
+
+.voice-mini-icon.muted {
   color: var(--danger);
 }
 

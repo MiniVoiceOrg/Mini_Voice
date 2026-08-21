@@ -36,6 +36,27 @@ export class NetworkClient {
   /** If no PONG is received within this window, the connection is considered dead. */
   private static readonly HEARTBEAT_TIMEOUT_MS = 12000;
 
+  constructor() {
+    // When the OS/network reports it is back online, don't wait for the current
+    // backoff delay — try to reconnect immediately so the "reconnecting"
+    // overlays clear as soon as connectivity returns (#44).
+    if (typeof window !== 'undefined') {
+      window.addEventListener('online', () => this.reconnectNow());
+    }
+  }
+
+  /**
+   * Forces an immediate reconnection attempt, bypassing the backoff timer. Used
+   * when the network comes back so recovery is near-instant (#44).
+   */
+  private reconnectNow(): void {
+    if (this.manualDisconnect || !this.lastConnectPayload || !this.hasEverConnected) return;
+    if (this.status !== 'RECONNECTING') return;
+    this.clearReconnect();
+    this.reconnectAttempt = 0;
+    void this.doReconnect();
+  }
+
   public getStatus(): ConnectionStatus {
     return this.status;
   }
@@ -285,22 +306,26 @@ export class NetworkClient {
 
     appEvents.emit('network.reconnecting', { attempt: this.reconnectAttempt, delay });
 
-    this.reconnectTimeout = setTimeout(async () => {
-      if (this.manualDisconnect || !this.lastConnectPayload) return;
-
-      try {
-        console.log(`[NetworkClient] Trying to reconnect (attempt ${this.reconnectAttempt})...`);
-        const { clientId, nickname, password } = this.lastConnectPayload;
-        // Parse host & port
-        const urlObj = new URL(this.currentServerUrl);
-        const host = urlObj.hostname;
-        const port = parseInt(urlObj.port, 10);
-
-        await this.connect(host, port, clientId, nickname, password, true);
-      } catch (err) {
-        console.warn(`[NetworkClient] Reconnection attempt ${this.reconnectAttempt} failed.`);
-      }
+    this.reconnectTimeout = setTimeout(() => {
+      void this.doReconnect();
     }, delay);
+  }
+
+  private async doReconnect(): Promise<void> {
+    if (this.manualDisconnect || !this.lastConnectPayload) return;
+
+    try {
+      console.log(`[NetworkClient] Trying to reconnect (attempt ${this.reconnectAttempt})...`);
+      const { clientId, nickname, password } = this.lastConnectPayload;
+      // Parse host & port
+      const urlObj = new URL(this.currentServerUrl);
+      const host = urlObj.hostname;
+      const port = parseInt(urlObj.port, 10);
+
+      await this.connect(host, port, clientId, nickname, password, true);
+    } catch (err) {
+      console.warn(`[NetworkClient] Reconnection attempt ${this.reconnectAttempt} failed.`);
+    }
   }
 
   private clearReconnect(): void {
