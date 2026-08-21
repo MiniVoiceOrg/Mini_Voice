@@ -13,6 +13,10 @@
   },
   "description": "Mini Voice — P2P Self-Hosted Voice, Video and Chat",
   "author": "Murilo",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/MiniVoiceOrg/Mini_Voice.git"
+  },
   "dependencies": {
     "@mini-voice/shared": "*",
     "@mini-voice/server": "*",
@@ -34,6 +38,13 @@
     "directories": {
       "output": "../../release"
     },
+    "publish": [
+      {
+        "provider": "github",
+        "owner": "MiniVoiceOrg",
+        "repo": "Mini_Voice"
+      }
+    ],
     "files": [
       "dist/**/*",
       "dist-electron/**/*",
