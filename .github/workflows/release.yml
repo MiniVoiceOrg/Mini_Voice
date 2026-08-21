@@ -50,6 +50,13 @@ jobs:
           cp apps/server/src/infrastructure/database/migrations/*.sql \
              apps/server/dist/infrastructure/database/migrations/
 
+      - name: Set build version
+        shell: bash
+        run: |
+          VERSION="1.0.${{ github.run_number }}"
+          node -e "const f='apps/client/package.json';const p=require('./'+f);p.version='${VERSION}';require('fs').writeFileSync(f, JSON.stringify(p, null, 2)+'\n');"
+          echo "Packaged version set to ${VERSION}"
+
       - name: Build ${{ matrix.platform }} distributables
         working-directory: apps/client
         run: npx --no-install electron-builder --${{ matrix.platform }} --publish never
@@ -81,7 +88,7 @@ jobs:
 
       - name: Resolve version
         id: meta
-        run: echo "version=$(node -p "require('./package.json').version")" >> "$GITHUB_OUTPUT"
+        run: echo "version=1.0.${{ github.run_number }}" >> "$GITHUB_OUTPUT"
 
       - name: Download all build artifacts
         uses: actions/download-artifact@v4
@@ -95,8 +102,8 @@ jobs:
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: v${{ steps.meta.outputs.version }}-build.${{ github.run_number }}
-          name: Mini Voice v${{ steps.meta.outputs.version }} (build ${{ github.run_number }})
+          tag_name: v${{ steps.meta.outputs.version }}
+          name: Mini Voice v${{ steps.meta.outputs.version }}
           body: |
             Automated release generated from commit ${{ github.sha }} on `main`.
 

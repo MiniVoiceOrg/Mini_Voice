@@ -30,6 +30,22 @@ export interface ElectronApi {
     minimize: () => Promise<void>;
     maximize: () => Promise<void>;
     close: () => Promise<void>;
+    getAppVersion: () => Promise<string>;
+    checkForUpdates: () => Promise<{
+        ok: boolean;
+        tag?: string;
+        name?: string;
+        htmlUrl?: string;
+        publishedAt?: string;
+        assets?: Array<{
+            name: string;
+            url: string;
+        }>;
+        error?: string;
+    }>;
+    openExternal: (url: string) => Promise<{
+        success: boolean;
+    }>;
 }
 declare global {
     interface Window {

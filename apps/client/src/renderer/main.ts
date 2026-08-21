@@ -15,6 +15,7 @@ import {
 import { appEvents } from './core/EventBus';
 import { networkClient } from './core/NetworkClient';
 import { participantManager } from './core/ParticipantManager';
+import { updateService } from './core/UpdateService';
 import { webRtcManager } from './core/WebRtcManager';
 import { chatStore } from './stores/chatStore';
 import { connectionStore } from './stores/connectionStore';
@@ -47,6 +48,9 @@ class App {
 
     // Render connection view initially
     this.connectionView.render();
+
+    // Start checking for app updates (non-blocking)
+    updateService.init();
   }
 
   private setupGlobalEventListeners(): void {

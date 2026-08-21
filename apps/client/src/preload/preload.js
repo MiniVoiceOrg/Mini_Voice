@@ -9,6 +9,9 @@ const api = {
     minimize: () => ipcRenderer.invoke('window-minimize'),
     maximize: () => ipcRenderer.invoke('window-maximize'),
     close: () => ipcRenderer.invoke('window-close'),
+    getAppVersion: () => ipcRenderer.invoke('get-app-version'),
+    checkForUpdates: () => ipcRenderer.invoke('check-for-updates'),
+    openExternal: (url) => ipcRenderer.invoke('open-external', url),
 };
 contextBridge.exposeInMainWorld('api', api);
 //# sourceMappingURL=preload.js.map
