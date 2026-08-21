@@ -146,6 +146,15 @@ function setupUpdater(mainWindow) {
             });
             updater.on('update-downloaded', () => {
                 mainWindow.webContents.send('update:downloaded', { manual: false });
+                // Install silently and relaunch automatically — no installer wizard.
+                setTimeout(() => {
+                    try {
+                        updater.quitAndInstall(true, true);
+                    }
+                    catch (e) {
+                        mainWindow.webContents.send('update:error', msg(e));
+                    }
+                }, 1500);
             });
             updater.on('error', (err) => {
                 mainWindow.webContents.send('update:error', msg(err));
@@ -199,7 +208,7 @@ function setupUpdater(mainWindow) {
             return { ok: false, error: 'Updater indisponível' };
         }
         // Defer so the IPC reply is delivered before the app quits to install.
-        setImmediate(() => updater.quitAndInstall());
+        setImmediate(() => updater.quitAndInstall(true, true));
         return { ok: true };
     });
 }

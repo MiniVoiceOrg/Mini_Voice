@@ -20,7 +20,7 @@ type AutoUpdater = {
   on: (event: string, cb: (arg: unknown) => void) => void;
   checkForUpdates: () => Promise<{ updateInfo?: { version: string } } | null>;
   downloadUpdate: () => Promise<unknown>;
-  quitAndInstall: () => void;
+  quitAndInstall: (isSilent?: boolean, isForceRunAfter?: boolean) => void;
 };
 
 let autoUpdater: AutoUpdater | null = null;
@@ -188,6 +188,14 @@ export function setupUpdater(mainWindow: BrowserWindow): void {
       });
       updater.on('update-downloaded', () => {
         mainWindow.webContents.send('update:downloaded', { manual: false });
+        // Install silently and relaunch automatically — no installer wizard.
+        setTimeout(() => {
+          try {
+            updater.quitAndInstall(true, true);
+          } catch (e) {
+            mainWindow.webContents.send('update:error', msg(e));
+          }
+        }, 1500);
       });
       updater.on('error', (err) => {
         mainWindow.webContents.send('update:error', msg(err));
@@ -242,7 +250,7 @@ export function setupUpdater(mainWindow: BrowserWindow): void {
       return { ok: false, error: 'Updater indisponível' };
     }
     // Defer so the IPC reply is delivered before the app quits to install.
-    setImmediate(() => updater.quitAndInstall());
+    setImmediate(() => updater.quitAndInstall(true, true));
     return { ok: true };
   });
 }

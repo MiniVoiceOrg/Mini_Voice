@@ -51,10 +51,9 @@ class UpdateService {
         this.setText('Instalador aberto — arraste o Mini Voice para a pasta Aplicativos e reabra.');
         this.setActions([{ label: '×', dismiss: true, onClick: () => this.dismiss() }]);
       } else {
-        this.setText('Atualização baixada.');
-        this.setActions([
-          { label: 'Reiniciar e instalar', primary: true, onClick: () => window.api.installUpdate() },
-        ]);
+        // Windows: the main process installs silently and relaunches on its own.
+        this.setText('Atualização baixada. Instalando e reiniciando…');
+        this.setActions([]);
       }
     });
 
@@ -86,6 +85,30 @@ class UpdateService {
       this.showAvailable(result.version);
     } catch {
       // Non-fatal: try again on the next interval.
+    }
+  }
+
+  /**
+   * Triggered by the "Verificar atualizações" button in Settings. Unlike the
+   * automatic check, it ignores the dismissed flag and reports the outcome.
+   */
+  public async checkManually(): Promise<{ status: 'available' | 'latest' | 'error'; version?: string }> {
+    if (!window.api?.checkForUpdates) {
+      return { status: 'error' };
+    }
+    try {
+      const result = await window.api.checkForUpdates();
+      if (!result?.ok) {
+        return { status: 'error' };
+      }
+      if (result.available && result.version) {
+        this.latestVersion = result.version;
+        this.showAvailable(result.version);
+        return { status: 'available', version: result.version };
+      }
+      return { status: 'latest' };
+    } catch {
+      return { status: 'error' };
     }
   }
 
