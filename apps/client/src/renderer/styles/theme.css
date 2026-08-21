@@ -842,7 +842,6 @@ input:focus, textarea:focus, select:focus {
   align-items: center;
   gap: 6px;
   padding-bottom: 2px;
-  flex-wrap: wrap;
 }
 
 .media-bar-btn {
@@ -851,10 +850,12 @@ input:focus, textarea:focus, select:focus {
   flex-shrink: 0;
 }
 
-/* Larger, wider "large" media buttons in the sidebar (#60). */
+/* Larger, wider "large" media buttons in the sidebar (#60).
+   The three buttons share the row equally and fill its full width. */
 .media-bar-btn-lg {
-  flex: 1;
+  flex: 1 1 0;
   width: auto;
+  min-width: 0;
   height: 40px;
   border-radius: var(--radius-sm);
 }

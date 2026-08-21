@@ -95,13 +95,13 @@ export class MainView {
           <div class="user-control-bar">
             <div id="voice-connection-row-slot"></div>
             <div class="user-media-bar" id="user-media-bar">
-              <button id="media-btn-camera" class="btn btn-icon media-bar-btn media-bar-btn-lg ${voiceStore.isCameraOn ? 'broadcasting-pulse active' : ''}" title="Ligar/Desligar Câmera">
+              <button id="media-btn-camera" class="btn btn-icon media-bar-btn-lg ${voiceStore.isCameraOn ? 'broadcasting-pulse active' : ''}" title="Ligar/Desligar Câmera">
                 <span class="material-symbols-outlined md-18">${voiceStore.isCameraOn ? 'videocam_off' : 'videocam'}</span>
               </button>
-              <button id="media-btn-screen" class="btn btn-icon media-bar-btn media-bar-btn-lg ${voiceStore.isScreenSharing ? 'broadcasting-pulse active' : ''}" title="Compartilhar Tela">
+              <button id="media-btn-screen" class="btn btn-icon media-bar-btn-lg ${voiceStore.isScreenSharing ? 'broadcasting-pulse active' : ''}" title="Compartilhar Tela">
                 <span class="material-symbols-outlined md-18">${voiceStore.isScreenSharing ? 'stop_screen_share' : 'screen_share'}</span>
               </button>
-              <button id="media-btn-soundboard" class="btn btn-icon media-bar-btn media-bar-btn-lg" style="opacity: 0.5;" title="Soundboard (em breve)" disabled>
+              <button id="media-btn-soundboard" class="btn btn-icon media-bar-btn-lg" style="opacity: 0.5;" title="Soundboard (em breve)" disabled>
                 <span class="material-symbols-outlined md-18">campaign</span>
               </button>
             </div>

@@ -6,6 +6,7 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.setupIpcHandlers = setupIpcHandlers;
 const electron_1 = require("electron");
 const fs_1 = __importDefault(require("fs"));
+const net_1 = __importDefault(require("net"));
 const path_1 = __importDefault(require("path"));
 const uuid_1 = require("uuid");
 function setupIpcHandlers(mainWindow, serverManager) {
@@ -105,6 +106,43 @@ function setupIpcHandlers(mainWindow, serverManager) {
             return { success: true };
         }
         return { success: false };
+    });
+    // TCP reachability probe (#37): distinguishes an unreachable host (offline)
+    // from a reachable host whose port refuses the connection (server closed).
+    electron_1.ipcMain.handle('probe-server', async (_, host, port) => {
+        return await new Promise((resolve) => {
+            const socket = new net_1.default.Socket();
+            let settled = false;
+            const finish = (result) => {
+                if (settled)
+                    return;
+                settled = true;
+                socket.destroy();
+                resolve(result);
+            };
+            socket.setTimeout(5000);
+            socket.once('connect', () => finish({ reachable: true, reason: 'online' }));
+            socket.once('timeout', () => finish({ reachable: false, reason: 'timeout' }));
+            socket.once('error', (err) => {
+                if (err.code === 'ECONNREFUSED') {
+                    // Host answered but the port is closed → machine is online, server is not.
+                    finish({ reachable: false, reason: 'refused' });
+                }
+                else if (err.code === 'ETIMEDOUT') {
+                    finish({ reachable: false, reason: 'timeout' });
+                }
+                else {
+                    // ENOTFOUND / EHOSTUNREACH / ENETUNREACH / etc. → host is offline.
+                    finish({ reachable: false, reason: 'unreachable' });
+                }
+            });
+            try {
+                socket.connect(port, host);
+            }
+            catch {
+                finish({ reachable: false, reason: 'unreachable' });
+            }
+        });
     });
 }
 //# sourceMappingURL=ipcHandlers.js.map

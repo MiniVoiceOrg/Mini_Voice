@@ -32,6 +32,10 @@ export interface ElectronApi {
   onUpdateDownloaded: (cb: (info: { manual: boolean }) => void) => void;
   onUpdateError: (cb: (message: string) => void) => void;
   openExternal: (url: string) => Promise<{ success: boolean }>;
+  probeServer: (
+    host: string,
+    port: number
+  ) => Promise<{ reachable: boolean; reason: 'online' | 'refused' | 'timeout' | 'unreachable' }>;
   platform: string;
 }
 
@@ -53,6 +57,7 @@ const api: ElectronApi = {
   onUpdateDownloaded: (cb) => ipcRenderer.on('update:downloaded', (_e, info) => cb(info)),
   onUpdateError: (cb) => ipcRenderer.on('update:error', (_e, message) => cb(message)),
   openExternal: (url) => ipcRenderer.invoke('open-external', url),
+  probeServer: (host, port) => ipcRenderer.invoke('probe-server', host, port),
   platform: process.platform,
 };
 
