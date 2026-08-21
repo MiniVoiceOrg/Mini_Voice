@@ -11,23 +11,28 @@ Sempre que iniciar um desenvolvimento a partir de uma issue/card do board, siga
 exatamente estas etapas, nesta ordem:
 
 1. **Antes de começar a codar**: mova o card para **In progress**.
-2. **Desenvolva** a solução completa da issue.
-3. **Ao terminar**: abra um Pull Request para o branch padrão (`main`).
+2. **Entenda a issue por completo antes de codar.** Se a issue **não estiver
+   totalmente clara** (requisitos ambíguos, escopo indefinido, critérios de
+   aceite vagos, decisões de design em aberto), **tire dúvidas com o
+   desenvolvedor** antes de prosseguir. **Nunca assuma nada** — pergunte e só
+   comece a implementar depois de esclarecer.
+3. **Desenvolva** a solução completa da issue.
+4. **Ao terminar**: abra um Pull Request para o branch padrão (`main`).
    - O `main` é protegido; todo merge deve passar por PR.
    - Faça o merge com squash e delete do branch após aprovação.
-4. **Comente na issue/card do board (em PT-BR)** descrevendo:
+5. **Comente na issue/card do board (em PT-BR)** descrevendo:
    - **Como foi implementado**: resumo técnico da solução (arquivos/áreas
      alteradas, decisões relevantes).
    - **Como testar**: passo a passo claro para o QA validar (cenários,
      resultados esperados e casos de borda).
    - Objetivo: facilitar o trabalho do QA.
-5. **Após o merge**: mova o card para **QA**.
-6. **Não mova para Done automaticamente.** Após o QA ser concluído, o
+6. **Após o merge**: mova o card para **QA**.
+7. **Não mova para Done automaticamente.** Após o QA ser concluído, o
    desenvolvedor pode pedir ao agente para mover para **Done** ou fazer isso
    manualmente.
 
-> Resumo: `In progress` → (PR para `main`) → (comentário PT-BR: como foi feito +
-> como testar) → `QA` → (após QA) `Done`.
+> Resumo: (esclarecer dúvidas se necessário) → `In progress` → (PR para `main`)
+> → (comentário PT-BR: como foi feito + como testar) → `QA` → (após QA) `Done`.
 
 ### Comando para comentar na issue
 
