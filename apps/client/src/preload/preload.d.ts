@@ -33,16 +33,23 @@ export interface ElectronApi {
     getAppVersion: () => Promise<string>;
     checkForUpdates: () => Promise<{
         ok: boolean;
-        tag?: string;
-        name?: string;
-        htmlUrl?: string;
-        publishedAt?: string;
-        assets?: Array<{
-            name: string;
-            url: string;
-        }>;
+        available?: boolean;
+        version?: string;
         error?: string;
     }>;
+    downloadUpdate: () => Promise<{
+        ok: boolean;
+        error?: string;
+    }>;
+    installUpdate: () => Promise<{
+        ok: boolean;
+        error?: string;
+    }>;
+    onUpdateProgress: (cb: (percent: number) => void) => void;
+    onUpdateDownloaded: (cb: (info: {
+        manual: boolean;
+    }) => void) => void;
+    onUpdateError: (cb: (message: string) => void) => void;
     openExternal: (url: string) => Promise<{
         success: boolean;
     }>;

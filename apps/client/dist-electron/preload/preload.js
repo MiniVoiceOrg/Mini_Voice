@@ -12,7 +12,12 @@ const api = {
     maximize: () => electron_1.ipcRenderer.invoke('window-maximize'),
     close: () => electron_1.ipcRenderer.invoke('window-close'),
     getAppVersion: () => electron_1.ipcRenderer.invoke('get-app-version'),
-    checkForUpdates: () => electron_1.ipcRenderer.invoke('check-for-updates'),
+    checkForUpdates: () => electron_1.ipcRenderer.invoke('update-check'),
+    downloadUpdate: () => electron_1.ipcRenderer.invoke('update-download'),
+    installUpdate: () => electron_1.ipcRenderer.invoke('update-install'),
+    onUpdateProgress: (cb) => electron_1.ipcRenderer.on('update:progress', (_e, percent) => cb(percent)),
+    onUpdateDownloaded: (cb) => electron_1.ipcRenderer.on('update:downloaded', (_e, info) => cb(info)),
+    onUpdateError: (cb) => electron_1.ipcRenderer.on('update:error', (_e, message) => cb(message)),
     openExternal: (url) => electron_1.ipcRenderer.invoke('open-external', url),
 };
 electron_1.contextBridge.exposeInMainWorld('api', api);

@@ -18,8 +18,9 @@
     "url": "https://github.com/MiniVoiceOrg/Mini_Voice.git"
   },
   "dependencies": {
-    "@mini-voice/shared": "*",
     "@mini-voice/server": "*",
+    "@mini-voice/shared": "*",
+    "electron-updater": "^6.8.9",
     "uuid": "^11.1.0"
   },
   "devDependencies": {
@@ -54,11 +55,15 @@
       "target": [
         {
           "target": "nsis",
-          "arch": ["x64"]
+          "arch": [
+            "x64"
+          ]
         },
         {
           "target": "portable",
-          "arch": ["x64"]
+          "arch": [
+            "x64"
+          ]
         }
       ]
     },
@@ -71,11 +76,17 @@
       "target": [
         {
           "target": "dmg",
-          "arch": ["x64", "arm64"]
+          "arch": [
+            "x64",
+            "arm64"
+          ]
         },
         {
           "target": "zip",
-          "arch": ["x64", "arm64"]
+          "arch": [
+            "x64",
+            "arm64"
+          ]
         }
       ]
     }

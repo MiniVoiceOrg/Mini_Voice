@@ -24,15 +24,12 @@ export interface ElectronApi {
   maximize: () => Promise<void>;
   close: () => Promise<void>;
   getAppVersion: () => Promise<string>;
-  checkForUpdates: () => Promise<{
-    ok: boolean;
-    tag?: string;
-    name?: string;
-    htmlUrl?: string;
-    publishedAt?: string;
-    assets?: Array<{ name: string; url: string }>;
-    error?: string;
-  }>;
+  checkForUpdates: () => Promise<{ ok: boolean; available?: boolean; version?: string; error?: string }>;
+  downloadUpdate: () => Promise<{ ok: boolean; error?: string }>;
+  installUpdate: () => Promise<{ ok: boolean; error?: string }>;
+  onUpdateProgress: (cb: (percent: number) => void) => void;
+  onUpdateDownloaded: (cb: (info: { manual: boolean }) => void) => void;
+  onUpdateError: (cb: (message: string) => void) => void;
   openExternal: (url: string) => Promise<{ success: boolean }>;
 }
 
@@ -47,7 +44,12 @@ const api: ElectronApi = {
   maximize: () => ipcRenderer.invoke('window-maximize'),
   close: () => ipcRenderer.invoke('window-close'),
   getAppVersion: () => ipcRenderer.invoke('get-app-version'),
-  checkForUpdates: () => ipcRenderer.invoke('check-for-updates'),
+  checkForUpdates: () => ipcRenderer.invoke('update-check'),
+  downloadUpdate: () => ipcRenderer.invoke('update-download'),
+  installUpdate: () => ipcRenderer.invoke('update-install'),
+  onUpdateProgress: (cb) => ipcRenderer.on('update:progress', (_e, percent) => cb(percent)),
+  onUpdateDownloaded: (cb) => ipcRenderer.on('update:downloaded', (_e, info) => cb(info)),
+  onUpdateError: (cb) => ipcRenderer.on('update:error', (_e, message) => cb(message)),
   openExternal: (url) => ipcRenderer.invoke('open-external', url),
 };
 

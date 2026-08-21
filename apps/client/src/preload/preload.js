@@ -10,7 +10,12 @@ const api = {
     maximize: () => ipcRenderer.invoke('window-maximize'),
     close: () => ipcRenderer.invoke('window-close'),
     getAppVersion: () => ipcRenderer.invoke('get-app-version'),
-    checkForUpdates: () => ipcRenderer.invoke('check-for-updates'),
+    checkForUpdates: () => ipcRenderer.invoke('update-check'),
+    downloadUpdate: () => ipcRenderer.invoke('update-download'),
+    installUpdate: () => ipcRenderer.invoke('update-install'),
+    onUpdateProgress: (cb) => ipcRenderer.on('update:progress', (_e, percent) => cb(percent)),
+    onUpdateDownloaded: (cb) => ipcRenderer.on('update:downloaded', (_e, info) => cb(info)),
+    onUpdateError: (cb) => ipcRenderer.on('update:error', (_e, message) => cb(message)),
     openExternal: (url) => ipcRenderer.invoke('open-external', url),
 };
 contextBridge.exposeInMainWorld('api', api);

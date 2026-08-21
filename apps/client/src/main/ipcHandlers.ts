@@ -4,23 +4,6 @@ import path from 'path';
 import { v4 as uuidv4 } from 'uuid';
 import { HostServerOptions, ServerManager } from './serverManager';
 
-const GITHUB_REPO = 'MiniVoiceOrg/Mini_Voice';
-
-export interface UpdateAsset {
-  name: string;
-  url: string;
-}
-
-export interface UpdateCheckResult {
-  ok: boolean;
-  tag?: string;
-  name?: string;
-  htmlUrl?: string;
-  publishedAt?: string;
-  assets?: UpdateAsset[];
-  error?: string;
-}
-
 export function setupIpcHandlers(mainWindow: BrowserWindow, serverManager: ServerManager): void {
   // Client ID persistence
   ipcMain.handle('get-client-id', async () => {
@@ -120,47 +103,6 @@ export function setupIpcHandlers(mainWindow: BrowserWindow, serverManager: Serve
 
   // App version (for update checks)
   ipcMain.handle('get-app-version', () => app.getVersion());
-
-  // Check GitHub for the latest published release
-  ipcMain.handle('check-for-updates', async (): Promise<UpdateCheckResult> => {
-    try {
-      const res = await fetch(
-        `https://api.github.com/repos/${GITHUB_REPO}/releases/latest`,
-        {
-          headers: {
-            Accept: 'application/vnd.github+json',
-            'User-Agent': 'MiniVoice-App',
-          },
-        }
-      );
-
-      if (!res.ok) {
-        return { ok: false, error: `HTTP ${res.status}` };
-      }
-
-      const data = (await res.json()) as {
-        tag_name?: string;
-        name?: string;
-        html_url?: string;
-        published_at?: string;
-        assets?: Array<{ name: string; browser_download_url: string }>;
-      };
-
-      return {
-        ok: true,
-        tag: data.tag_name,
-        name: data.name,
-        htmlUrl: data.html_url,
-        publishedAt: data.published_at,
-        assets: (data.assets ?? []).map((a) => ({
-          name: a.name,
-          url: a.browser_download_url,
-        })),
-      };
-    } catch (e) {
-      return { ok: false, error: e instanceof Error ? e.message : 'network error' };
-    }
-  });
 
   // Open an external URL in the default browser
   ipcMain.handle('open-external', async (_, url: string) => {
