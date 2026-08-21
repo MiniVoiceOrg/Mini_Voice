@@ -15,7 +15,7 @@ import { settingsModal } from './SettingsModal';
 import { serverSettingsModal } from './ServerSettingsModal';
 import { inviteModal } from './InviteModal';
 import { showConfirm, showAlert } from './Dialog';
-import { setButtonLoading } from '../utils/buttonLoading';
+import { setButtonLoading, withButtonLoading } from '../utils/buttonLoading';
 import { userContextMenu } from './UserContextMenu';
 import { soundEffects } from '../core/SoundEffects';
 import { getAvatarUrl } from '../utils/avatar';
@@ -439,7 +439,7 @@ export class MainView {
     });
   }
 
-  private async handleJoinVoiceChannel(channelId: string): Promise<void> {
+  private async handleJoinVoiceChannel(channelId: string, silent: boolean = false): Promise<void> {
     if (voiceStore.currentVoiceChannelId === channelId) {
       // Already in this channel, just switch view to stage
       this.activeContentView = 'stage';
@@ -463,7 +463,7 @@ export class MainView {
     }
 
     voiceStore.setChannel(channelId);
-    soundEffects.play('join_voice');
+    if (!silent) soundEffects.play('join_voice');
     networkClient.send(MessageType.VOICE_JOIN, { channelId });
 
     // Connect to all peers already in this voice channel
@@ -480,7 +480,7 @@ export class MainView {
     // (re)join instead of early-returning, then reconnect the mesh.
     voiceStore.setChannel(null);
     this.activeContentView = 'stage';
-    await this.handleJoinVoiceChannel(channelId);
+    await this.handleJoinVoiceChannel(channelId, true);
     this.voiceStageView?.setChannel(channelId);
     this.renderChannels();
   }
@@ -585,12 +585,12 @@ export class MainView {
     const btnDeafen = document.getElementById('bar-btn-deafen');
     const btnDisconnect = document.getElementById('bar-btn-disconnect');
 
-    btnAddText?.addEventListener('click', () => createChannelModal.open('TEXT'));
-    btnAddVoice?.addEventListener('click', () => createChannelModal.open('VOICE'));
-    btnInvite?.addEventListener('click', () => { this.closeServerDropdown(); inviteModal.open(); });
-    btnServerSettings?.addEventListener('click', () => { this.closeServerDropdown(); serverSettingsModal.open(); });
-    btnProfile?.addEventListener('click', () => settingsModal.open());
-    btnSettings?.addEventListener('click', () => settingsModal.open());
+    btnAddText?.addEventListener('click', (e) => withButtonLoading(e.currentTarget as HTMLElement, () => createChannelModal.open('TEXT')));
+    btnAddVoice?.addEventListener('click', (e) => withButtonLoading(e.currentTarget as HTMLElement, () => createChannelModal.open('VOICE')));
+    btnInvite?.addEventListener('click', (e) => { this.closeServerDropdown(); withButtonLoading(e.currentTarget as HTMLElement, () => inviteModal.open()); });
+    btnServerSettings?.addEventListener('click', (e) => { this.closeServerDropdown(); withButtonLoading(e.currentTarget as HTMLElement, () => serverSettingsModal.open()); });
+    btnProfile?.addEventListener('click', (e) => withButtonLoading(e.currentTarget as HTMLElement, () => settingsModal.open()));
+    btnSettings?.addEventListener('click', (e) => withButtonLoading(e.currentTarget as HTMLElement, () => settingsModal.open()));
 
     const dropdownToggle = document.getElementById('server-dropdown-toggle');
     dropdownToggle?.addEventListener('click', (e) => {
@@ -627,15 +627,15 @@ export class MainView {
     mediaScreen?.addEventListener('click', () => {
       if (!this.ensureInVoiceChannel()) return;
       if ((mediaScreen as HTMLButtonElement).dataset.loading === '1') return;
-      // Show loading until the share actually starts/stops or the picker closes.
+      // Show loading until the picker modal is actually open (#48).
       setButtonLoading(mediaScreen, true);
+      window.setTimeout(() => setButtonLoading(mediaScreen, false), 10000);
       appEvents.emit('modal.open_screenshare_picker');
     });
     const clearScreenLoading = () => setButtonLoading(mediaScreen, false);
-    const usL1 = appEvents.on('modal.screenshare_picker_closed', clearScreenLoading);
-    const usL2 = appEvents.on('local.screen_started', clearScreenLoading);
-    const usL3 = appEvents.on('local.screen_stopped', clearScreenLoading);
-    this.unbindEvents.push(usL1, usL2, usL3);
+    const usL1 = appEvents.on('modal.screenshare_picker_opened', clearScreenLoading);
+    const usL2 = appEvents.on('modal.screenshare_picker_closed', clearScreenLoading);
+    this.unbindEvents.push(usL1, usL2);
 
     btnMic?.addEventListener('click', () => {
       const newMuted = !voiceStore.isMuted;

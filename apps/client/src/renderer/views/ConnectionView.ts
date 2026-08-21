@@ -5,6 +5,7 @@ import { connectionStore } from '../stores/connectionStore';
 import { networkClient } from '../core/NetworkClient';
 import { getAvatarUrl } from '../utils/avatar';
 import { settingsModal } from './SettingsModal';
+import { withButtonLoading } from '../utils/buttonLoading';
 import logoUrl from '../assets/Logo.png';
 
 export class ConnectionView {
@@ -261,8 +262,8 @@ export class ConnectionView {
     joinNickInput?.addEventListener('input', (e) => handleNickChange((e.target as HTMLInputElement).value));
     hostNickInput?.addEventListener('input', (e) => handleNickChange((e.target as HTMLInputElement).value));
 
-    document.getElementById('btn-open-settings')?.addEventListener('click', () => {
-      settingsModal.open();
+    document.getElementById('btn-open-settings')?.addEventListener('click', (e) => {
+      withButtonLoading(e.currentTarget as HTMLElement, () => settingsModal.open());
     });
 
     this.loadServerPreviews();

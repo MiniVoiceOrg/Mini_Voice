@@ -68,7 +68,7 @@ class App {
     document.getElementById('win-close')?.addEventListener('click', () => window.api?.close());
   }
 
-  private showReconnectOverlay(attempt: number): void {
+  private showReconnectOverlay(): void {
     let overlay = document.getElementById('reconnect-overlay');
     if (!overlay) {
       overlay = document.createElement('div');
@@ -85,7 +85,7 @@ class App {
     }
     const subtitle = document.getElementById('reconnect-subtitle');
     if (subtitle) {
-      subtitle.textContent = `Tentando reconectar… (tentativa ${attempt})`;
+      subtitle.textContent = 'Tentando reconectar…';
     }
   }
 
@@ -138,8 +138,8 @@ class App {
     });
 
     // Reconnection feedback overlay
-    appEvents.on('network.reconnecting', (data: { attempt: number; delay: number }) => {
-      this.showReconnectOverlay(data.attempt);
+    appEvents.on('network.reconnecting', () => {
+      this.showReconnectOverlay();
     });
 
     // Protocol Server -> Client Broadcast Handlers

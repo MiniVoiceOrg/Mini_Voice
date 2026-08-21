@@ -87,6 +87,9 @@ export class ScreenSharePickerModal {
     document.body.appendChild(this.modalEl);
     this.renderSources(sources);
     this.attachEvents(sources);
+    // Signal that the picker is now visible so the triggering button can clear
+    // its loading state (loading should last only until the modal opens) (#48).
+    appEvents.emit('modal.screenshare_picker_opened');
   }
 
   private renderSources(sources: DesktopSource[]): void {
