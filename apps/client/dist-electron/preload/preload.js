@@ -11,6 +11,9 @@ const api = {
     minimize: () => electron_1.ipcRenderer.invoke('window-minimize'),
     maximize: () => electron_1.ipcRenderer.invoke('window-maximize'),
     close: () => electron_1.ipcRenderer.invoke('window-close'),
+    getAppVersion: () => electron_1.ipcRenderer.invoke('get-app-version'),
+    checkForUpdates: () => electron_1.ipcRenderer.invoke('check-for-updates'),
+    openExternal: (url) => electron_1.ipcRenderer.invoke('open-external', url),
 };
 electron_1.contextBridge.exposeInMainWorld('api', api);
 //# sourceMappingURL=preload.js.map
