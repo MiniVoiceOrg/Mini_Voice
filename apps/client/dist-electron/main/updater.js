@@ -47,7 +47,13 @@ function msg(e) {
 }
 let pendingMacAsset = null;
 let downloadedMacPath = null;
-async function checkMacUpdate() {
+/**
+ * Detects updates by querying the GitHub "latest release" API on all platforms
+ * and comparing with the running app version. This is more reliable than
+ * electron-updater's own check (which can return null when a check is cached or
+ * already in progress). On macOS it also records the matching .dmg to download.
+ */
+async function checkViaGitHub() {
     try {
         const res = await fetch(`https://api.github.com/repos/${GITHUB_REPO}/releases/latest`, {
             headers: { Accept: 'application/vnd.github+json', 'User-Agent': 'MiniVoice-App' },
@@ -57,14 +63,17 @@ async function checkMacUpdate() {
         const data = (await res.json());
         const version = (data.tag_name ?? '').replace(/^v/i, '');
         if (!version || !isNewer(version, electron_1.app.getVersion())) {
-            return { ok: true, available: false };
+            return { ok: true, available: false, version };
         }
-        // Pick the .dmg matching the current CPU architecture.
-        const wantArm = process.arch === 'arm64';
-        const dmgs = (data.assets ?? []).filter((a) => a.name.endsWith('.dmg'));
-        const asset = dmgs.find((a) => (wantArm ? /arm64/i.test(a.name) : !/arm64/i.test(a.name))) ?? dmgs[0];
-        if (asset) {
-            pendingMacAsset = { version, name: asset.name, url: asset.browser_download_url };
+        // On macOS, record the .dmg matching the current CPU architecture so the
+        // download step can fetch it directly.
+        if (process.platform === 'darwin') {
+            const wantArm = process.arch === 'arm64';
+            const dmgs = (data.assets ?? []).filter((a) => a.name.endsWith('.dmg'));
+            const asset = dmgs.find((a) => (wantArm ? /arm64/i.test(a.name) : !/arm64/i.test(a.name))) ?? dmgs[0];
+            if (asset) {
+                pendingMacAsset = { version, name: asset.name, url: asset.browser_download_url };
+            }
         }
         return { ok: true, available: true, version };
     }
@@ -162,23 +171,8 @@ function setupUpdater(mainWindow) {
         }
     }
     electron_1.ipcMain.handle('update-check', async () => {
-        if (isMac) {
-            return checkMacUpdate();
-        }
-        const updater = loadAutoUpdater();
-        // electron-updater cannot run without packaging metadata (e.g. in dev).
-        if (!updater || !electron_1.app.isPackaged) {
-            return { ok: true, available: false };
-        }
-        try {
-            const result = await updater.checkForUpdates();
-            const info = result?.updateInfo;
-            const available = info ? isNewer(info.version, electron_1.app.getVersion()) : false;
-            return { ok: true, available, version: info?.version };
-        }
-        catch (e) {
-            return { ok: false, error: msg(e) };
-        }
+        // Detection is done via the GitHub API on every platform for reliability.
+        return checkViaGitHub();
     });
     electron_1.ipcMain.handle('update-download', async () => {
         if (isMac) {
@@ -188,7 +182,12 @@ function setupUpdater(mainWindow) {
         if (!updater) {
             return { ok: false, error: 'Updater indisponível' };
         }
+        if (!electron_1.app.isPackaged) {
+            return { ok: false, error: 'Atualização automática indisponível em modo de desenvolvimento' };
+        }
         try {
+            // electron-updater requires its own check before it can download.
+            await updater.checkForUpdates();
             await updater.downloadUpdate();
             return { ok: true };
         }
