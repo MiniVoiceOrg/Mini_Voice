@@ -20,7 +20,7 @@ export const LIMITS = {
   RECONNECT_GRACE_MS: 20000,
 } as const;
 
-export const RECONNECT_DELAYS_MS = [1000, 2000, 4000, 8000, 16000, 30000] as const;
+export const RECONNECT_DELAYS_MS = [1000, 2000, 3000, 5000] as const;
 
 export type QualityPresetType = 'ECONOMIC' | 'NORMAL' | 'HIGH' | 'GAMING';
 

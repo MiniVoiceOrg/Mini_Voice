@@ -190,8 +190,17 @@ export class WebRtcManager {
         if (event.track.kind === 'audio') {
           const audioEl = this.audioElements.get(peerUserId);
           if (audioEl) {
-            audioEl.srcObject = remoteStream;
-            audioEl.play().catch(() => {});
+            // Only (re)assign srcObject if it actually changed: reassigning the
+            // same stream can reset the element's audio output sink back to the
+            // OS default in Chromium, sending voice to the wrong device (#46).
+            if (audioEl.srcObject !== remoteStream) {
+              audioEl.srcObject = remoteStream;
+            }
+            // Force-reapply the selected speaker before playing, since a track
+            // (re)unmute after rejoining can drop the previously set sink.
+            this.applySinkToElement(audioEl, undefined, true).finally(() => {
+              audioEl.play().catch(() => {});
+            });
           }
         } else if (event.track.kind === 'video') {
           const videoEl = document.getElementById(`video-${peerUserId}`) as HTMLVideoElement;
@@ -437,10 +446,10 @@ export class WebRtcManager {
    * Applies the user-selected speaker to a voice audio element. Falls back to
    * the store's current selection when no explicit device is given (#46).
    */
-  private async applySinkToElement(audioEl: HTMLAudioElement, deviceId?: string): Promise<void> {
+  private async applySinkToElement(audioEl: HTMLAudioElement, deviceId?: string, force = false): Promise<void> {
     const sinkId = deviceId ?? settingsStore.selectedSpeakerId;
     if (!sinkId || typeof (audioEl as any).setSinkId !== 'function') return;
-    if ((audioEl as any).sinkId === sinkId) return;
+    if (!force && (audioEl as any).sinkId === sinkId) return;
     try {
       await (audioEl as any).setSinkId(sinkId);
     } catch (err) {

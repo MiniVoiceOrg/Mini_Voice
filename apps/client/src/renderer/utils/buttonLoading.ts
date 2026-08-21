@@ -22,3 +22,21 @@ export function setButtonLoading(btn: HTMLElement | null, loading: boolean): voi
 export function isButtonLoading(btn: HTMLElement | null): boolean {
   return !!btn && (btn as HTMLButtonElement).dataset.loading === '1';
 }
+
+/**
+ * Wraps an async action that opens a modal, showing a loading state on the
+ * triggering button until the modal is actually open (i.e. until the promise
+ * resolves) (#48).
+ */
+export async function withButtonLoading(
+  btn: HTMLElement | null,
+  action: () => void | Promise<void>
+): Promise<void> {
+  if (!btn || isButtonLoading(btn)) return;
+  setButtonLoading(btn, true);
+  try {
+    await action();
+  } finally {
+    setButtonLoading(btn, false);
+  }
+}

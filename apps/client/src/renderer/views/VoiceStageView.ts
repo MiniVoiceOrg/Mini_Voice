@@ -354,6 +354,12 @@ export class VoiceStageView {
         ${isCamOn ? '<span class="material-symbols-outlined md-14" style="color: var(--accent-primary);">videocam</span>' : ''}
         ${isScreenOn ? '<span class="material-symbols-outlined md-14" style="color: var(--success);">screen_share</span>' : ''}
       </div>
+      ${(!isLocal && p.isReconnecting) ? `
+        <div class="stage-reconnecting-overlay">
+          <div class="reconnect-spinner"></div>
+          <span>Reconectando…</span>
+        </div>
+      ` : ''}
     `;
   }
 
@@ -556,9 +562,9 @@ export class VoiceStageView {
 
     btnScreen?.addEventListener('click', () => {
       if (isButtonLoading(btnScreen)) return;
-      // Show a loading state until the share actually starts/stops or the
-      // picker is closed/cancelled (#48).
+      // Show a loading state until the picker modal is actually open (#48).
       setButtonLoading(btnScreen, true);
+      window.setTimeout(() => setButtonLoading(btnScreen, false), 10000);
       // Always open the picker: when not sharing, to start; when already sharing,
       // to switch source or stop (handled inside the modal).
       appEvents.emit('modal.open_screenshare_picker');
@@ -616,13 +622,13 @@ export class VoiceStageView {
       }
     });
 
-    // Clear the screen-share button loading once the action resolves (#48).
+    // Clear the screen-share button loading once the picker modal is open (or
+    // closed, as a safety) — loading should last only until the modal opens (#48).
     const clearScreenLoading = () => setButtonLoading(btnScreen, false);
-    const u5 = appEvents.on('local.screen_started', clearScreenLoading);
-    const u6 = appEvents.on('local.screen_stopped', clearScreenLoading);
-    const u7 = appEvents.on('modal.screenshare_picker_closed', clearScreenLoading);
+    const u5 = appEvents.on('modal.screenshare_picker_opened', clearScreenLoading);
+    const u6 = appEvents.on('modal.screenshare_picker_closed', clearScreenLoading);
 
-    this.unbindEvents.push(u1, u2, u3, u4, u5, u6, u7);
+    this.unbindEvents.push(u1, u2, u3, u4, u5, u6);
   }
 
   private unbindListeners(): void {
