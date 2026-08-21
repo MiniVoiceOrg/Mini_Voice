@@ -30,6 +30,7 @@
     "appId": "com.minivoice.app",
     "productName": "Mini Voice",
     "electronVersion": "34.2.0",
+    "asar": false,
     "directories": {
       "output": "../../release"
     },
@@ -38,25 +39,32 @@
       "dist-electron/**/*",
       "package.json"
     ],
-    "extraResources": [
-      {
-        "from": "../server/dist",
-        "to": "server/dist"
-      },
-      {
-        "from": "../server/src/infrastructure/database/migrations",
-        "to": "server/dist/infrastructure/database/migrations"
-      }
-    ],
     "win": {
       "target": [
         {
-          "target": "dir",
+          "target": "nsis",
           "arch": ["x64"]
         },
         {
           "target": "portable",
           "arch": ["x64"]
+        }
+      ]
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true
+    },
+    "mac": {
+      "category": "public.app-category.social-networking",
+      "target": [
+        {
+          "target": "dmg",
+          "arch": ["x64", "arm64"]
+        },
+        {
+          "target": "zip",
+          "arch": ["x64", "arm64"]
         }
       ]
     }

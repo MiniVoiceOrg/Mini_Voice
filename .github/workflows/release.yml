@@ -1,0 +1,112 @@
+name: Release
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    name: Build (${{ matrix.platform }})
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: windows-latest
+            platform: win
+          - os: macos-latest
+            platform: mac
+    runs-on: ${{ matrix.os }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build workspaces
+        run: npm run build
+
+      # tsc does not copy the .sql migration files into the compiled server
+      # output, so we copy them next to the compiled DatabaseConnection.js. This
+      # ensures the migrations are bundled inside the packaged @mini-voice/server.
+      - name: Copy database migrations into server dist
+        shell: bash
+        run: |
+          mkdir -p apps/server/dist/infrastructure/database/migrations
+          cp apps/server/src/infrastructure/database/migrations/*.sql \
+             apps/server/dist/infrastructure/database/migrations/
+
+      - name: Build ${{ matrix.platform }} distributables
+        working-directory: apps/client
+        run: npx --no-install electron-builder --${{ matrix.platform }} --publish never
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Upload build artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: dist-${{ matrix.platform }}
+          if-no-files-found: error
+          retention-days: 7
+          path: |
+            release/*.exe
+            release/*.dmg
+            release/*.zip
+            release/*.blockmap
+            release/latest*.yml
+
+  release:
+    name: Publish GitHub Release
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Resolve version
+        id: meta
+        run: echo "version=$(node -p "require('./package.json').version")" >> "$GITHUB_OUTPUT"
+
+      - name: Download all build artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+          merge-multiple: true
+
+      - name: List artifacts
+        run: ls -R artifacts
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: v${{ steps.meta.outputs.version }}-build.${{ github.run_number }}
+          name: Mini Voice v${{ steps.meta.outputs.version }} (build ${{ github.run_number }})
+          body: |
+            Automated release generated from commit ${{ github.sha }} on `main`.
+
+            ### Downloads
+            - **Windows**: `.exe` installer (NSIS) and portable `.exe`
+            - **macOS**: `.dmg` (Intel + Apple Silicon) and `.zip`
+          draft: false
+          prerelease: false
+          fail_on_unmatched_files: false
+          files: |
+            artifacts/**/*.exe
+            artifacts/**/*.dmg
+            artifacts/**/*.zip
