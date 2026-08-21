@@ -4,6 +4,8 @@ import { appEvents } from '../core/EventBus';
 import { networkClient } from '../core/NetworkClient';
 import { chatStore } from '../stores/chatStore';
 import { serverStore } from '../stores/serverStore';
+import { participantManager } from '../core/ParticipantManager';
+import { userContextMenu } from './UserContextMenu';
 import { getAvatarUrl } from '../utils/avatar';
 
 export class ChatView {
@@ -89,6 +91,31 @@ export class ChatView {
     }
 
     feed.innerHTML = messages.map((m) => this.renderMessageRow(m)).join('');
+
+    // Attach right-click context menu on message rows (when not selecting text)
+    feed.querySelectorAll('.chat-message-row').forEach((row) => {
+      row.addEventListener('contextmenu', (e: Event) => {
+        const mouseEvent = e as MouseEvent;
+        // If text is currently highlighted / selected, allow normal browser selection copy
+        const selection = window.getSelection()?.toString();
+        if (selection && selection.trim().length > 0) {
+          return;
+        }
+
+        const userId = row.getAttribute('data-user-id');
+        if (!userId) return;
+
+        const targetUser =
+          participantManager.get(userId)?.user ||
+          serverStore.serverDetails?.members.find((m) => m.id === userId);
+
+        if (targetUser && targetUser.id !== serverStore.currentUser?.id) {
+          mouseEvent.preventDefault();
+          userContextMenu.open(mouseEvent.clientX, mouseEvent.clientY, targetUser);
+        }
+      });
+    });
+
     this.scrollToBottom();
   }
 
@@ -108,7 +135,7 @@ export class ChatView {
     const avatarSrc = getAvatarUrl(m.userAvatarUrl);
 
     return `
-      <div class="chat-message-row">
+      <div class="chat-message-row" data-user-id="${m.userId}">
         <img class="chat-author-avatar" src="${avatarSrc}">
         <div class="chat-message-body">
           <div class="chat-author-header">

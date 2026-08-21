@@ -66,6 +66,14 @@ export class WebRtcManager {
     appEvents.on(`message.${MessageType.RTC_SIGNAL}`, async (payload: WebRtcSignalPayload) => {
       await this.handleIncomingSignal(payload);
     });
+
+    appEvents.on('user_volume.changed', (data: { clientId: string; volume: number }) => {
+      this.setPeerVolumeByClientId(data.clientId, data.volume);
+    });
+
+    appEvents.on('participants.updated', () => {
+      this.applyUserVolumes();
+    });
   }
 
   public async connectToPeer(peerUserId: string, isInitiator: boolean): Promise<void> {
@@ -132,10 +140,13 @@ export class WebRtcManager {
 
       if (event.track.kind === 'audio') {
         let audioEl = this.audioElements.get(peerUserId);
+        const participant = participantManager.get(peerUserId);
+        const clientId = participant?.user.clientId;
+        const volume = clientId ? settingsStore.getUserVolume(clientId) : 100;
         if (!audioEl) {
           audioEl = document.createElement('audio');
           audioEl.autoplay = true;
-          audioEl.volume = 1.0;
+          audioEl.volume = volume / 100;
           if (settingsStore.selectedSpeakerId && typeof (audioEl as any).setSinkId === 'function') {
             (audioEl as any).setSinkId(settingsStore.selectedSpeakerId).catch((err: any) => {
               console.warn('[WebRTC] Could not set sinkId on audio element:', err);
@@ -143,6 +154,8 @@ export class WebRtcManager {
           }
           document.body.appendChild(audioEl);
           this.audioElements.set(peerUserId, audioEl);
+        } else {
+          audioEl.volume = volume / 100;
         }
         audioEl.srcObject = remoteStream;
         audioEl.play().catch((e) => console.warn('[WebRTC] Audio play error:', e));
@@ -537,6 +550,34 @@ export class WebRtcManager {
         vad.ctx.close();
       } catch (e) {}
       this.remoteAudioVads.delete(peerUserId);
+    }
+  }
+
+  public setPeerVolume(peerUserId: string, volume0to100: number): void {
+    const audioEl = this.audioElements.get(peerUserId);
+    if (audioEl) {
+      audioEl.volume = Math.max(0, Math.min(100, volume0to100)) / 100;
+    }
+  }
+
+  public setPeerVolumeByClientId(clientId: string, volume0to100: number): void {
+    const targetVolume = Math.max(0, Math.min(100, volume0to100)) / 100;
+    for (const [peerUserId, audioEl] of this.audioElements.entries()) {
+      const participant = participantManager.get(peerUserId);
+      if (participant?.user.clientId === clientId) {
+        audioEl.volume = targetVolume;
+      }
+    }
+  }
+
+  public applyUserVolumes(): void {
+    for (const [peerUserId, audioEl] of this.audioElements.entries()) {
+      const participant = participantManager.get(peerUserId);
+      const clientId = participant?.user.clientId;
+      if (clientId) {
+        const vol = settingsStore.getUserVolume(clientId);
+        audioEl.volume = vol / 100;
+      }
     }
   }
 
