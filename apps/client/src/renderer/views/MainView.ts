@@ -27,6 +27,7 @@ export class MainView {
   private voiceStageView: VoiceStageView | null = null;
   private unbindEvents: Array<() => void> = [];
   private activeContentView: 'chat' | 'stage' = 'chat';
+  private sidebarPingInterval: number | null = null;
 
   constructor(container: HTMLElement) {
     this.container = container;
@@ -92,15 +93,16 @@ export class MainView {
 
           <!-- Bottom User Bar -->
           <div class="user-control-bar">
+            <div id="voice-connection-row-slot"></div>
             <div class="user-media-bar" id="user-media-bar">
-              <button id="media-btn-camera" class="btn btn-icon media-bar-btn ${voiceStore.isCameraOn ? 'broadcasting-pulse active' : ''}" title="Ligar/Desligar Câmera">
+              <button id="media-btn-camera" class="btn btn-icon media-bar-btn media-bar-btn-lg ${voiceStore.isCameraOn ? 'broadcasting-pulse active' : ''}" title="Ligar/Desligar Câmera">
                 <span class="material-symbols-outlined md-18">${voiceStore.isCameraOn ? 'videocam_off' : 'videocam'}</span>
               </button>
-              <button id="media-btn-screen" class="btn btn-icon media-bar-btn ${voiceStore.isScreenSharing ? 'broadcasting-pulse active' : ''}" title="Compartilhar Tela">
+              <button id="media-btn-screen" class="btn btn-icon media-bar-btn media-bar-btn-lg ${voiceStore.isScreenSharing ? 'broadcasting-pulse active' : ''}" title="Compartilhar Tela">
                 <span class="material-symbols-outlined md-18">${voiceStore.isScreenSharing ? 'stop_screen_share' : 'screen_share'}</span>
               </button>
-              <button id="media-btn-soundboard" class="btn btn-icon media-bar-btn" style="opacity: 0.5;" title="Soundboard (em breve)" disabled>
-                <span class="material-symbols-outlined md-18">graphic_eq</span>
+              <button id="media-btn-soundboard" class="btn btn-icon media-bar-btn media-bar-btn-lg" style="opacity: 0.5;" title="Soundboard (em breve)" disabled>
+                <span class="material-symbols-outlined md-18">campaign</span>
               </button>
             </div>
             <div class="user-control-main">
@@ -159,6 +161,69 @@ export class MainView {
     }
 
     this.attachEvents();
+    this.updateVoiceConnectionRow();
+  }
+
+  /**
+   * Builds (or clears) the sidebar voice-connection row shown only while the
+   * user is in a voice channel: channel name, ping and a leave button (#60).
+   */
+  private updateVoiceConnectionRow(): void {
+    const slot = document.getElementById('voice-connection-row-slot');
+    if (!slot) return;
+
+    const vc = serverStore.serverDetails?.channels.find((c) => c.id === voiceStore.currentVoiceChannelId);
+    if (!voiceStore.currentVoiceChannelId || !vc) {
+      slot.innerHTML = '';
+      this.stopSidebarPing();
+      return;
+    }
+
+    slot.innerHTML = `
+      <div class="voice-connection-row" id="voice-connection-row">
+        <div class="voice-conn-info">
+          <span class="material-symbols-outlined md-16 voice-conn-signal">graphic_eq</span>
+          <div class="voice-conn-text">
+            <span class="voice-conn-status">Voz conectada</span>
+            <span class="voice-conn-channel" id="sidebar-voice-channel">${escapeHtml(vc.name)}</span>
+          </div>
+          <span class="voice-conn-ping" id="sidebar-voice-ping" title="Latência média">-- ms</span>
+        </div>
+        <button id="sidebar-btn-leave-voice" class="btn btn-icon voice-conn-leave" title="Sair da chamada">
+          <span class="material-symbols-outlined md-18">call_end</span>
+        </button>
+      </div>
+    `;
+
+    document.getElementById('sidebar-btn-leave-voice')?.addEventListener('click', () => {
+      this.voiceStageView?.leaveVoice();
+    });
+
+    this.startSidebarPing();
+  }
+
+  private startSidebarPing(): void {
+    this.stopSidebarPing();
+    const update = async () => {
+      const pingEl = document.getElementById('sidebar-voice-ping');
+      if (!pingEl) return;
+      const participants = participantManager.getInVoiceChannel(voiceStore.currentVoiceChannelId || '');
+      if (participants.length <= 1) {
+        pingEl.textContent = '0 ms';
+        return;
+      }
+      const avg = await webRtcManager.getAverageP2pPing();
+      pingEl.textContent = avg !== null ? `${avg} ms` : '-- ms';
+    };
+    update();
+    this.sidebarPingInterval = window.setInterval(update, 2000);
+  }
+
+  private stopSidebarPing(): void {
+    if (this.sidebarPingInterval) {
+      clearInterval(this.sidebarPingInterval);
+      this.sidebarPingInterval = null;
+    }
   }
 
   private closeServerDropdown(): void {
@@ -365,12 +430,16 @@ export class MainView {
                 ${inVoice.map((p) => {
                   const isLocal = p.user.id === serverStore.currentUser?.id;
                   const isSpeaking = isLocal ? voiceStore.isSpeaking : p.isSpeaking;
+                  const isMicMuted = isLocal ? voiceStore.isMuted : (p.voiceState?.isMuted ?? false);
+                  const isAudioMuted = isLocal ? voiceStore.isDeafened : (p.voiceState?.isDeafened ?? false);
                   const avatar = getAvatarUrl(p.user.avatarUrl);
 
                   return `
                     <div id="voice-mini-user-${p.user.id}" class="voice-participant-mini ${isSpeaking ? 'speaking' : ''}" data-user-id="${p.user.id}" title="${escapeHtml(p.user.nickname)} (Clique c/ botão direito p/ ajustar volume)">
                       <img class="voice-mini-avatar" src="${avatar}">
                       <span class="voice-mini-name">${escapeHtml(p.user.nickname)}</span>
+                      ${isMicMuted ? '<span class="material-symbols-outlined md-14 voice-mini-icon muted" title="Microfone mutado">mic_off</span>' : ''}
+                      ${isAudioMuted ? '<span class="material-symbols-outlined md-14 voice-mini-icon muted" title="Áudio mutado">headset_off</span>' : ''}
                       ${p.voiceState?.isScreenSharing ? '<span class="material-symbols-outlined md-14 voice-mini-icon live" title="Compartilhando tela">screen_share</span>' : ''}
                       ${p.voiceState?.isCameraOn ? '<span class="material-symbols-outlined md-14 voice-mini-icon" title="Câmera ligada">videocam</span>' : ''}
                     </div>
@@ -642,10 +711,25 @@ export class MainView {
       voiceStore.setMuted(newMuted);
       audioProcessor.setMuted(newMuted);
       soundEffects.play(newMuted ? 'mic_mute' : 'mic_unmute');
-      networkClient.send(MessageType.VOICE_STATE_UPDATE, { isMuted: newMuted });
+      // Unmuting the mic while deafened also undeafens the audio output (#62).
+      let undeafened = false;
+      if (!newMuted && voiceStore.isDeafened) {
+        voiceStore.setDeafened(false);
+        audioProcessor.setDeafened(false);
+        webRtcManager.setDeafened(false);
+        undeafened = true;
+      }
+      networkClient.send(MessageType.VOICE_STATE_UPDATE, {
+        isMuted: newMuted,
+        ...(undeafened ? { isDeafened: false } : {}),
+      });
       if (btnMic) {
         btnMic.className = `btn btn-icon ${newMuted ? 'danger-active' : ''}`;
         btnMic.innerHTML = `<span class="material-symbols-outlined md-18">${newMuted ? 'mic_off' : 'mic'}</span>`;
+      }
+      if (undeafened && btnDeafen) {
+        btnDeafen.className = 'btn btn-icon';
+        btnDeafen.innerHTML = `<span class="material-symbols-outlined md-18">headphones</span>`;
       }
     });
 
@@ -694,6 +778,9 @@ export class MainView {
       if (nameEl) nameEl.innerText = user.nickname;
     });
 
+    let lastLocalMuted = voiceStore.isMuted;
+    let lastLocalDeafened = voiceStore.isDeafened;
+    let lastVoiceChannelId = voiceStore.currentVoiceChannelId;
     const u4 = appEvents.on('voice.state_updated', () => {
       const avatarEl = document.getElementById('main-user-avatar');
       if (avatarEl) {
@@ -724,6 +811,21 @@ export class MainView {
       if (mediaScreenEl) {
         mediaScreenEl.className = `btn btn-icon media-bar-btn ${voiceStore.isScreenSharing ? 'broadcasting-pulse active' : ''}`;
         mediaScreenEl.innerHTML = `<span class="material-symbols-outlined md-18">${voiceStore.isScreenSharing ? 'stop_screen_share' : 'screen_share'}</span>`;
+      }
+
+      // Keep the local user's mute/deafen icons in the channel sidebar in sync,
+      // but only re-render when those actually change (not on every VAD/speaking
+      // update, which also emits this event) (#58).
+      if (voiceStore.isMuted !== lastLocalMuted || voiceStore.isDeafened !== lastLocalDeafened) {
+        lastLocalMuted = voiceStore.isMuted;
+        lastLocalDeafened = voiceStore.isDeafened;
+        this.renderChannels();
+      }
+
+      // Show/hide the sidebar voice-connection row when joining/leaving a call (#60).
+      if (voiceStore.currentVoiceChannelId !== lastVoiceChannelId) {
+        lastVoiceChannelId = voiceStore.currentVoiceChannelId;
+        this.updateVoiceConnectionRow();
       }
     });
 
@@ -772,6 +874,7 @@ export class MainView {
   }
 
   public destroy(): void {
+    this.stopSidebarPing();
     this.unbindEvents.forEach((u) => u());
     this.unbindEvents = [];
     this.chatView?.destroy();

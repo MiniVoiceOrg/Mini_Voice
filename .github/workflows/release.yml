@@ -104,12 +104,16 @@ jobs:
         with:
           tag_name: v${{ steps.meta.outputs.version }}
           name: Mini Voice v${{ steps.meta.outputs.version }}
+          generate_release_notes: true
           body: |
-            Automated release generated from commit ${{ github.sha }} on `main`.
+            Release automática gerada a partir do commit ${{ github.sha }} na branch `main`.
 
             ### Downloads
-            - **Windows**: `.exe` installer (NSIS) and portable `.exe`
-            - **macOS**: `.dmg` (Intel + Apple Silicon) and `.zip`
+            - **Windows**: instalador `.exe` (NSIS) e `.exe` portátil
+            - **macOS**: `.dmg` (Intel + Apple Silicon) e `.zip`
+
+            ### Changelog
+            As alterações desta versão estão listadas abaixo.
           draft: false
           prerelease: false
           fail_on_unmatched_files: false

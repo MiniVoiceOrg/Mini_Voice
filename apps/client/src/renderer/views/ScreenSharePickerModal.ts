@@ -205,14 +205,19 @@ export class ScreenSharePickerModal {
   }
 
   public close(): void {
+    const wasOpen = this.modalEl !== null;
     if (this.modalEl) {
       this.modalEl.remove();
       this.modalEl = null;
       this.selectedSourceId = null;
     }
     // Let callers (e.g. the screen-share button loading state) know the picker
-    // is no longer open, including on cancel (#48).
-    appEvents.emit('modal.screenshare_picker_closed');
+    // is no longer open, including on cancel (#48). Only emit when something was
+    // actually open, otherwise the close() call at the start of open() would
+    // instantly clear the button loading before the picker even appears.
+    if (wasOpen) {
+      appEvents.emit('modal.screenshare_picker_closed');
+    }
   }
 }
 
