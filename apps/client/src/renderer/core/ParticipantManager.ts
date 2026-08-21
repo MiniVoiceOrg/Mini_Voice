@@ -6,6 +6,7 @@ export interface ParticipantViewModel {
   voiceState?: VoiceParticipantState;
   remoteStream?: MediaStream;
   isSpeaking: boolean;
+  isReconnecting?: boolean;
 }
 
 export class ParticipantManager {
@@ -41,6 +42,8 @@ export class ParticipantManager {
     const existing = this.participants.get(user.id);
     if (existing) {
       existing.user = user;
+      // A (re)join means the user is connected again.
+      existing.isReconnecting = false;
     } else {
       this.participants.set(user.id, {
         user,
@@ -48,6 +51,14 @@ export class ParticipantManager {
       });
     }
     this.scheduleUpdate();
+  }
+
+  public setReconnecting(userId: string, reconnecting: boolean): void {
+    const participant = this.participants.get(userId);
+    if (participant && participant.isReconnecting !== reconnecting) {
+      participant.isReconnecting = reconnecting;
+      this.scheduleUpdate();
+    }
   }
 
   public removeUser(userId: string): void {

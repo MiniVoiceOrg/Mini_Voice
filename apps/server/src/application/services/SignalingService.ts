@@ -31,9 +31,11 @@ export class SignalingService {
       };
     }
 
-    // Check channel capacity
+    // Check channel capacity (excluding the user's own possibly-lingering state,
+    // e.g. when reconnecting into the same channel during the grace period).
     const currentInChannel = this.getParticipantsInChannel(channelId);
-    if (currentInChannel.length >= channel.maxParticipants) {
+    const othersInChannel = currentInChannel.filter((p) => p.userId !== userId);
+    if (othersInChannel.length >= channel.maxParticipants) {
       return {
         success: false,
         errorCode: ProtocolErrorCode.CHANNEL_FULL,
@@ -43,7 +45,7 @@ export class SignalingService {
 
     // If user was already in another voice channel, leave first
     const previousState = this.voiceStates.get(userId);
-    const existingParticipants = [...currentInChannel];
+    const existingParticipants = othersInChannel;
 
     const newState: VoiceParticipantState = {
       userId,

@@ -519,22 +519,169 @@ input:focus, textarea:focus, select:focus {
 /* Channels Sidebar */
 .channels-sidebar {
   width: 250px;
-  min-width: 250px;
+  min-width: 200px;
+  max-width: 25vw;
   background-color: var(--bg-sidebar);
   border-right: 1px solid var(--border-color);
   display: flex;
   flex-direction: column;
+  position: relative;
+}
+
+/* Drag handle to resize the channels sidebar (#35) */
+.channels-resizer {
+  position: absolute;
+  top: 0;
+  right: -3px;
+  width: 6px;
+  height: 100%;
+  cursor: col-resize;
+  z-index: 20;
+  background: transparent;
+}
+
+.channels-resizer:hover {
+  background: var(--primary, #5865f2);
+  opacity: 0.4;
+}
+
+/* Server rail: vertical bar of saved servers + home (#29) */
+.server-rail {
+  width: 60px;
+  min-width: 60px;
+  background-color: var(--bg-app);
+  border-right: 1px solid var(--border-color);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 10px 0;
+  gap: 8px;
+  overflow-y: auto;
+}
+
+.server-rail-home,
+.server-rail-avatar {
+  width: 44px;
+  height: 44px;
+  min-height: 44px;
+  border-radius: 50%;
+  border: none;
+  background-color: var(--bg-card);
+  color: var(--text-normal);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: border-radius 0.15s ease, background-color 0.15s ease;
+  font-weight: 700;
+  font-size: 16px;
+  flex-shrink: 0;
+}
+
+.server-rail-home:hover,
+.server-rail-avatar:hover {
+  border-radius: 30%;
+  background-color: var(--primary, #5865f2);
+  color: #fff;
+}
+
+.server-rail-avatar.active {
+  border-radius: 30%;
+  box-shadow: 0 0 0 2px var(--primary, #5865f2);
+}
+
+.server-rail-divider {
+  width: 32px;
+  height: 2px;
+  border-radius: 1px;
+  background-color: var(--border-color);
+  flex-shrink: 0;
+}
+
+.server-rail-list {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
 }
 
 .server-header {
   height: 52px;
-  padding: 0 16px;
+  padding: 0 10px;
   display: flex;
   align-items: center;
   justify-content: space-between;
   border-bottom: 1px solid var(--border-color);
   font-weight: 700;
   font-size: 15px;
+  position: relative;
+}
+
+/* Server name dropdown (#29) */
+.server-dropdown-toggle {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  overflow: hidden;
+  flex: 1;
+  background: transparent;
+  border: none;
+  color: var(--text-normal);
+  cursor: pointer;
+  padding: 6px 8px;
+  border-radius: 6px;
+  height: 40px;
+}
+
+.server-dropdown-toggle:hover {
+  background-color: var(--bg-card);
+}
+
+.server-dropdown-caret {
+  margin-left: auto;
+  color: var(--text-muted);
+  transition: transform 0.15s ease;
+}
+
+.server-dropdown-toggle.open .server-dropdown-caret {
+  transform: rotate(180deg);
+}
+
+.server-dropdown-menu {
+  position: absolute;
+  top: 50px;
+  left: 8px;
+  right: 8px;
+  background-color: var(--bg-panel);
+  border: 1px solid var(--border-color);
+  border-radius: 8px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.35);
+  z-index: 50;
+  flex-direction: column;
+  padding: 6px;
+  gap: 2px;
+}
+
+.server-dropdown-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 9px 10px;
+  background: transparent;
+  border: none;
+  border-radius: 6px;
+  color: var(--text-normal);
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  text-align: left;
+  width: 100%;
+}
+
+.server-dropdown-item:hover {
+  background-color: var(--primary, #5865f2);
+  color: #fff;
 }
 
 .server-status-dot {
@@ -679,13 +826,32 @@ input:focus, textarea:focus, select:focus {
 
 /* Bottom User Bar */
 .user-control-bar {
-  height: 60px;
   background-color: var(--bg-panel);
   border-top: 1px solid var(--border-color);
-  padding: 0 10px;
+  padding: 6px 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.user-media-bar {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding-bottom: 2px;
+}
+
+.media-bar-btn {
+  width: 30px;
+  height: 30px;
+  flex-shrink: 0;
+}
+
+.user-control-main {
   display: flex;
   align-items: center;
   justify-content: space-between;
+  gap: 6px;
 }
 
 .user-profile-summary {
@@ -694,22 +860,26 @@ input:focus, textarea:focus, select:focus {
   gap: 8px;
   overflow: hidden;
   cursor: pointer;
+  flex: 1;
+  min-width: 0;
 }
 
 .user-avatar-container {
   position: relative;
+  padding: 2px;
 }
 
 .user-avatar-main {
-  width: 36px;
-  height: 36px;
+  width: 32px;
+  height: 32px;
   border-radius: 50%;
   object-fit: cover;
   background-color: var(--bg-card);
+  display: block;
 }
 
 .user-avatar-main.speaking {
-  box-shadow: 0 0 0 2px var(--success), 0 0 10px var(--success-glow);
+  box-shadow: 0 0 0 2px var(--success), 0 0 8px var(--success-glow);
 }
 
 .user-info-text {
@@ -735,6 +905,12 @@ input:focus, textarea:focus, select:focus {
   display: flex;
   align-items: center;
   gap: 4px;
+  flex-shrink: 0;
+}
+
+.user-quick-actions .btn-icon {
+  width: 30px;
+  height: 30px;
 }
 
 /* Main Content Area (Chat or Voice Stage) */
@@ -967,7 +1143,7 @@ input:focus, textarea:focus, select:focus {
 
 .chat-input-wrapper {
   display: flex;
-  align-items: center;
+  align-items: flex-end;
   background-color: var(--bg-input);
   border: 1px solid var(--border-color);
   border-radius: var(--radius-md);
@@ -985,6 +1161,15 @@ input:focus, textarea:focus, select:focus {
   padding: 8px 6px;
   color: var(--text-primary);
   font-size: 14px;
+  font-family: inherit;
+  resize: none;
+  line-height: 1.4;
+  max-height: 120px;
+  overflow-y: auto;
+}
+
+.chat-input-field:focus {
+  outline: none;
 }
 
 .chat-char-count {
@@ -992,6 +1177,8 @@ input:focus, textarea:focus, select:focus {
   color: var(--text-muted);
   font-family: var(--font-mono);
   margin-right: 8px;
+  align-self: flex-end;
+  margin-bottom: 10px;
 }
 
 /* Voice & Video Stage Layout */
@@ -1045,6 +1232,32 @@ input:focus, textarea:focus, select:focus {
 .stage-card.speaking {
   border-color: #23a55a !important;
   box-shadow: 0 0 20px rgba(35, 165, 90, 0.6), inset 0 0 10px rgba(35, 165, 90, 0.2) !important;
+}
+
+/* Expanded grid (#29): cameras/screens fill the whole stage, split equally. */
+.stage-grid--expanded {
+  display: grid;
+  gap: 8px;
+  padding: 8px;
+  align-items: stretch;
+  justify-content: stretch;
+  align-content: stretch;
+  overflow: hidden;
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  grid-auto-rows: 1fr;
+}
+
+.stage-grid--expanded .stage-card {
+  aspect-ratio: auto;
+  width: 100%;
+  height: 100%;
+  max-width: none;
+  min-width: 0;
+  min-height: 0;
+}
+
+.stage-grid--expanded .stage-video-element.screen-share {
+  object-fit: cover;
 }
 
 /* Focused Mode Layout */
@@ -1257,6 +1470,21 @@ input:focus, textarea:focus, select:focus {
   background-color: #000000;
 }
 
+/* Loading overlay shown while a camera/screen stream is buffering (#48) */
+.stage-loading-overlay {
+  position: absolute;
+  inset: 0;
+  z-index: 3;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  background-color: rgba(0, 0, 0, 0.55);
+  color: var(--text-normal);
+  font-size: 13px;
+}
+
 .stage-badges-overlay {
   position: absolute;
   bottom: 12px;
@@ -1372,6 +1600,33 @@ input:focus, textarea:focus, select:focus {
 
 .status-indicator.voice {
   background-color: var(--accent-primary);
+}
+
+.status-indicator.reconnecting {
+  background-color: var(--warning, #faa61a);
+}
+
+.member-item.reconnecting {
+  opacity: 0.7;
+}
+
+.member-reconnecting-badge {
+  display: inline-flex;
+  align-items: center;
+  color: var(--warning, #faa61a);
+}
+
+.spin {
+  animation: reconnect-spin 1s linear infinite;
+}
+
+.channel-item.joining {
+  opacity: 0.7;
+  pointer-events: none;
+}
+
+.channel-icon.channel-loading {
+  animation: reconnect-spin 1s linear infinite;
 }
 
 .member-info {
@@ -1516,6 +1771,30 @@ input:focus, textarea:focus, select:focus {
   aspect-ratio: 16 / 9;
   object-fit: cover;
   border: 1px solid var(--border-color);
+}
+
+.vad-meter {
+  position: relative;
+  height: 8px;
+  margin-top: 8px;
+  border-radius: 4px;
+  background: var(--bg-input);
+  border: 1px solid var(--border-color);
+  overflow: hidden;
+}
+.vad-meter-fill {
+  height: 100%;
+  width: 0%;
+  background: var(--accent-online, #3ba55d);
+  transition: width 0.05s linear;
+}
+.vad-meter-threshold {
+  position: absolute;
+  top: -2px;
+  bottom: -2px;
+  width: 2px;
+  background: var(--text-primary);
+  transform: translateX(-1px);
 }
 
 .server-preview-row {

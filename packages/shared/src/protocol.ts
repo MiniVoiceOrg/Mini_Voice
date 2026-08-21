@@ -32,6 +32,7 @@ export enum MessageType {
   VOICE_STATE_UPDATE = 'VOICE_STATE_UPDATE',
   RTC_SIGNAL = 'RTC_SIGNAL',
   PING = 'PING',
+  USER_LOGOUT = 'USER_LOGOUT',
 
   // Server -> Client
   AUTH_SUCCESS = 'AUTH_SUCCESS',
@@ -42,6 +43,7 @@ export enum MessageType {
   USER_JOINED = 'USER_JOINED',
   USER_LEFT = 'USER_LEFT',
   USER_UPDATED = 'USER_UPDATED',
+  USER_CONNECTION_STATE = 'USER_CONNECTION_STATE',
   CHANNEL_CREATED = 'CHANNEL_CREATED',
   CHANNEL_DELETED = 'CHANNEL_DELETED',
   CHAT_MESSAGE = 'CHAT_MESSAGE',
@@ -146,6 +148,12 @@ export interface UserJoinedPayload {
 export interface UserLeftPayload {
   userId: string;
   nickname: string;
+}
+
+export interface UserConnectionStatePayload {
+  userId: string;
+  nickname: string;
+  status: 'reconnecting' | 'online';
 }
 
 export interface UserUpdatedPayload {

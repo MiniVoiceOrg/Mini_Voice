@@ -21,6 +21,7 @@ import {
   UserChangeNicknamePayload,
   UserJoinedPayload,
   UserLeftPayload,
+  UserConnectionStatePayload,
   UserSummary,
   UserUpdateAvatarPayload,
   UserUpdatedPayload,
@@ -44,12 +45,18 @@ interface ClientSession {
   user?: UserSummary;
   isAlive: boolean;
   ip: string;
+  /** True when this session was replaced by a newer connection of the same user. */
+  replaced?: boolean;
+  /** True when the client explicitly logged out (graceful disconnect). */
+  intentionalLogout?: boolean;
 }
 
 export class WebSocketServer {
   private wss: WSServer;
   private sessions: Map<WebSocket, ClientSession> = new Map();
   private userSockets: Map<string, WebSocket> = new Map();
+  /** Pending "user left" timers for users that dropped and may still reconnect. */
+  private reconnectTimers: Map<string, NodeJS.Timeout> = new Map();
   private heartbeatTimer?: NodeJS.Timeout;
 
   constructor(
@@ -180,6 +187,12 @@ export class WebSocketServer {
         this.handleRtcSignal(session, payload as WebRtcSignalPayload, requestId);
         break;
 
+      case MessageType.USER_LOGOUT:
+        // Graceful logout: mark the session so the disconnect handler treats it
+        // as an intentional leave (immediate USER_LEFT, no reconnecting grace).
+        session.intentionalLogout = true;
+        break;
+
       default:
         Logger.warn('NETWORK', `Unknown message type received: ${type}`);
         this.sendError(session.ws, ProtocolErrorCode.BAD_REQUEST, `Tipo de mensagem não suportado: ${type}`, requestId);
@@ -204,7 +217,44 @@ export class WebSocketServer {
     }
 
     session.user = result.user;
+
+    // Prevent duplicate sessions for the same user. A lingering/zombie socket
+    // (e.g. after a reconnect where the old TCP connection was not yet cleaned
+    // up) would otherwise receive every broadcast twice, causing duplicated
+    // messages/channels on the client. Replace the old session cleanly.
+    const existingWs = this.userSockets.get(result.user.id);
+    if (existingWs && existingWs !== session.ws) {
+      const staleSession = this.sessions.get(existingWs);
+      if (staleSession) {
+        staleSession.replaced = true;
+        this.sessions.delete(existingWs);
+      }
+      try {
+        existingWs.close();
+      } catch {
+        /* ignore */
+      }
+      Logger.info('NETWORK', `Replaced stale session for user ${result.user.id}`);
+    }
+
     this.userSockets.set(result.user.id, session.ws);
+
+    // If this user had a pending "reconnecting" grace timer (from a recent
+    // ungraceful drop), cancel it and tell everyone they are back online (#44).
+    const pendingTimer = this.reconnectTimers.get(result.user.id);
+    if (pendingTimer) {
+      clearTimeout(pendingTimer);
+      this.reconnectTimers.delete(result.user.id);
+      const backOnlinePayload: UserConnectionStatePayload = {
+        userId: result.user.id,
+        nickname: result.user.nickname,
+        status: 'online',
+      };
+      this.broadcast({
+        type: MessageType.USER_CONNECTION_STATE,
+        payload: backOnlinePayload,
+      }, session.ws);
+    }
 
     // Populate current voice states into serverDetails
     result.serverDetails.voiceStates = this.signalingService.getAllVoiceStates();
@@ -532,34 +582,84 @@ export class WebSocketServer {
   private handleDisconnect(session: ClientSession): void {
     this.sessions.delete(session.ws);
 
-    if (session.user) {
-      this.userSockets.delete(session.user.id);
+    // If this session was replaced by a newer connection of the same user, it
+    // is a stale/zombie socket. Do not broadcast USER_LEFT nor touch the
+    // userSockets mapping (which now points at the newer session).
+    if (session.replaced) {
+      return;
+    }
 
-      // Leave voice channel if in one
-      const previousVoice = this.signalingService.leaveVoiceChannel(session.user.id);
-      if (previousVoice) {
-        const leavePayload: VoiceUserLeftPayload = {
-          channelId: previousVoice.channelId,
-          userId: session.user.id,
-        };
-        this.broadcast({
-          type: MessageType.VOICE_USER_LEFT,
-          payload: leavePayload,
-        });
-      }
+    if (!session.user) {
+      return;
+    }
 
-      // Broadcast USER_LEFT
-      const userLeftPayload: UserLeftPayload = {
-        userId: session.user.id,
-        nickname: session.user.nickname,
+    const user = session.user;
+
+    // Only clear the mapping if it still points at this exact socket.
+    if (this.userSockets.get(user.id) === session.ws) {
+      this.userSockets.delete(user.id);
+    }
+
+    // Graceful logout (user clicked disconnect / switched servers): remove them
+    // immediately. Otherwise treat it as a possible temporary connection loss
+    // and give them a grace period to reconnect before announcing USER_LEFT.
+    if (session.intentionalLogout) {
+      this.finalizeUserLeave(user);
+      return;
+    }
+
+    // Notify everyone else that this user lost connection (#44).
+    const reconnectingPayload: UserConnectionStatePayload = {
+      userId: user.id,
+      nickname: user.nickname,
+      status: 'reconnecting',
+    };
+    this.broadcast({
+      type: MessageType.USER_CONNECTION_STATE,
+      payload: reconnectingPayload,
+    });
+    Logger.info('NETWORK', `User ${user.nickname} lost connection (aguardando reconexão)`);
+
+    // Clear any previous timer just in case, then start the grace period.
+    const existingTimer = this.reconnectTimers.get(user.id);
+    if (existingTimer) clearTimeout(existingTimer);
+    const timer = setTimeout(() => {
+      this.reconnectTimers.delete(user.id);
+      // Only finalize if the user hasn't reconnected in the meantime.
+      if (this.userSockets.has(user.id)) return;
+      this.finalizeUserLeave(user);
+    }, LIMITS.RECONNECT_GRACE_MS);
+    this.reconnectTimers.set(user.id, timer);
+  }
+
+  /**
+   * Removes a user from voice, announces USER_LEFT and logs the departure. Used
+   * both for graceful logouts and when the reconnection grace period expires.
+   */
+  private finalizeUserLeave(user: UserSummary): void {
+    // Leave voice channel if in one
+    const previousVoice = this.signalingService.leaveVoiceChannel(user.id);
+    if (previousVoice) {
+      const leavePayload: VoiceUserLeftPayload = {
+        channelId: previousVoice.channelId,
+        userId: user.id,
       };
       this.broadcast({
-        type: MessageType.USER_LEFT,
-        payload: userLeftPayload,
+        type: MessageType.VOICE_USER_LEFT,
+        payload: leavePayload,
       });
-
-      Logger.info('NETWORK', `User ${session.user.nickname} disconnected`);
     }
+
+    const userLeftPayload: UserLeftPayload = {
+      userId: user.id,
+      nickname: user.nickname,
+    };
+    this.broadcast({
+      type: MessageType.USER_LEFT,
+      payload: userLeftPayload,
+    });
+
+    Logger.info('NETWORK', `User ${user.nickname} disconnected`);
   }
 
   private startHeartbeat(): void {
@@ -605,6 +705,10 @@ export class WebSocketServer {
     if (this.heartbeatTimer) {
       clearInterval(this.heartbeatTimer);
     }
+    for (const timer of this.reconnectTimers.values()) {
+      clearTimeout(timer);
+    }
+    this.reconnectTimers.clear();
     // Let connected clients know the host is shutting the server down so they can
     // show a friendly notice and return to the home screen instead of silently
     // trying to reconnect forever.

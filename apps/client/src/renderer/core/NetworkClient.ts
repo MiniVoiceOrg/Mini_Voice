@@ -40,6 +40,10 @@ export class NetworkClient {
     return this.currentServerUrl.replace(/^ws:\/\//, 'http://').replace(/^wss:\/\//, 'https://');
   }
 
+  public getCurrentServerUrl(): string {
+    return this.currentServerUrl;
+  }
+
   public async connect(
     host: string,
     port: number,
@@ -71,6 +75,20 @@ export class NetworkClient {
       this.setStatus('CONNECTING');
 
       try {
+        // Tear down any pre-existing socket so we never leave a zombie
+        // connection alive (which would receive broadcasts twice).
+        if (this.ws) {
+          this.ws.onopen = null;
+          this.ws.onmessage = null;
+          this.ws.onclose = null;
+          this.ws.onerror = null;
+          try {
+            this.ws.close();
+          } catch {
+            /* ignore */
+          }
+          this.ws = null;
+        }
         this.ws = new WebSocket(this.currentServerUrl);
       } catch (err: any) {
         this.setStatus('DISCONNECTED');
@@ -142,6 +160,15 @@ export class NetworkClient {
     this.manualDisconnect = true;
     this.clearReconnect();
     if (this.ws) {
+      // Tell the server this is an intentional logout so it announces our
+      // departure immediately instead of showing a "reconnecting" state (#44).
+      if (this.ws.readyState === WebSocket.OPEN) {
+        try {
+          this.ws.send(JSON.stringify({ type: MessageType.USER_LOGOUT, payload: {} }));
+        } catch {
+          /* ignore */
+        }
+      }
       this.ws.close();
       this.ws = null;
     }

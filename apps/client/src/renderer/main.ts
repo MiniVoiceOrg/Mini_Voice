@@ -7,6 +7,7 @@ import {
   MessageType,
   UserJoinedPayload,
   UserLeftPayload,
+  UserConnectionStatePayload,
   UserUpdatedPayload,
   VoiceStateChangedPayload,
   VoiceUserJoinedPayload,
@@ -149,6 +150,11 @@ class App {
     appEvents.on(`message.${MessageType.USER_LEFT}`, (payload: UserLeftPayload) => {
       participantManager.removeUser(payload.userId);
       webRtcManager.removePeer(payload.userId);
+    });
+
+    appEvents.on(`message.${MessageType.USER_CONNECTION_STATE}`, (payload: UserConnectionStatePayload) => {
+      // Reflect other users' temporary connection loss / recovery (#44).
+      participantManager.setReconnecting(payload.userId, payload.status === 'reconnecting');
     });
 
     appEvents.on(`message.${MessageType.USER_UPDATED}`, (payload: UserUpdatedPayload) => {
