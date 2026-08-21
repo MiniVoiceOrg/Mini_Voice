@@ -10,6 +10,7 @@ import { videoService } from '../core/VideoService';
 import { webRtcManager } from '../core/WebRtcManager';
 import { soundEffects } from '../core/SoundEffects';
 import { getAvatarUrl } from '../utils/avatar';
+import { userContextMenu } from './UserContextMenu';
 
 export class VoiceStageView {
   private container: HTMLElement;
@@ -246,7 +247,7 @@ export class VoiceStageView {
       `;
     }
 
-    // Attach click listeners to cards for focus toggle
+    // Attach click listeners to cards for focus toggle & right-click for volume adjustment
     const allCards = area.querySelectorAll('[data-user-id]');
     allCards.forEach((card) => {
       card.addEventListener('click', () => {
@@ -254,6 +255,18 @@ export class VoiceStageView {
         if (userId) {
           this.focusedUserId = (this.focusedUserId === userId ? null : userId);
           this.renderParticipants();
+        }
+      });
+
+      card.addEventListener('contextmenu', (e: Event) => {
+        const mouseEvent = e as MouseEvent;
+        mouseEvent.preventDefault();
+        mouseEvent.stopPropagation();
+        const userId = card.getAttribute('data-user-id');
+        if (!userId) return;
+        const participant = participantManager.get(userId);
+        if (participant?.user) {
+          userContextMenu.open(mouseEvent.clientX, mouseEvent.clientY, participant.user);
         }
       });
     });

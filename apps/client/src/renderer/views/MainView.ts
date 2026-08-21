@@ -13,6 +13,7 @@ import { createChannelModal } from './CreateChannelModal';
 import { settingsModal } from './SettingsModal';
 import { serverSettingsModal } from './ServerSettingsModal';
 import { inviteModal } from './InviteModal';
+import { userContextMenu } from './UserContextMenu';
 import { soundEffects } from '../core/SoundEffects';
 import { getAvatarUrl } from '../utils/avatar';
 import logoUrl from '../assets/Logo.png';
@@ -175,7 +176,7 @@ export class MainView {
                   const avatar = getAvatarUrl(p.user.avatarUrl);
 
                   return `
-                    <div id="voice-mini-user-${p.user.id}" class="voice-participant-mini ${isSpeaking ? 'speaking' : ''}">
+                    <div id="voice-mini-user-${p.user.id}" class="voice-participant-mini ${isSpeaking ? 'speaking' : ''}" data-user-id="${p.user.id}" title="${escapeHtml(p.user.nickname)} (Clique c/ botão direito p/ ajustar volume)">
                       <img class="voice-mini-avatar" src="${avatar}">
                       <span>${escapeHtml(p.user.nickname)}</span>
                     </div>
@@ -187,6 +188,20 @@ export class MainView {
         `;
       }).join('');
     }
+
+    // Attach right-click context menu listeners to voice mini participant items
+    this.container.querySelectorAll('.voice-participant-mini').forEach((miniEl) => {
+      miniEl.addEventListener('contextmenu', (e: Event) => {
+        const mouseEvent = e as MouseEvent;
+        mouseEvent.preventDefault();
+        const userId = miniEl.getAttribute('data-user-id');
+        if (!userId) return;
+        const participant = participantManager.get(userId);
+        if (participant?.user) {
+          userContextMenu.open(mouseEvent.clientX, mouseEvent.clientY, participant.user);
+        }
+      });
+    });
 
     // Attach click listeners to channel items
     this.container.querySelectorAll('.channel-item').forEach((item) => {
@@ -265,7 +280,7 @@ export class MainView {
         const avatar = getAvatarUrl(m.avatarUrl);
 
         return `
-          <div class="member-item" title="${escapeHtml(m.nickname)} ${isLocal ? '(Você)' : ''}">
+          <div class="member-item" data-user-id="${m.id}" title="${escapeHtml(m.nickname)} ${isLocal ? '(Você)' : '(Botão direito para ajustar volume)'}">
             <div class="member-avatar-wrapper">
               <img class="member-avatar-img" src="${avatar}">
               <span class="status-indicator ${inVoice ? 'voice' : 'online'}"></span>
@@ -280,6 +295,20 @@ export class MainView {
           </div>
         `;
       }).join('');
+
+      // Attach contextmenu listeners to member items
+      listEl.querySelectorAll('.member-item').forEach((item) => {
+        item.addEventListener('contextmenu', (e: Event) => {
+          const mouseEvent = e as MouseEvent;
+          mouseEvent.preventDefault();
+          const userId = item.getAttribute('data-user-id');
+          if (!userId) return;
+          const member = serverStore.serverDetails?.members.find((u) => u.id === userId);
+          if (member) {
+            userContextMenu.open(mouseEvent.clientX, mouseEvent.clientY, member);
+          }
+        });
+      });
     }
   }
 
