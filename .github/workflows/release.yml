@@ -117,3 +117,5 @@ jobs:
             artifacts/**/*.exe
             artifacts/**/*.dmg
             artifacts/**/*.zip
+            artifacts/**/*.blockmap
+            artifacts/**/latest*.yml

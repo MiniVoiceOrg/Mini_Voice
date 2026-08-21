@@ -8,7 +8,6 @@ const electron_1 = require("electron");
 const fs_1 = __importDefault(require("fs"));
 const path_1 = __importDefault(require("path"));
 const uuid_1 = require("uuid");
-const GITHUB_REPO = 'MiniVoiceOrg/Mini_Voice';
 function setupIpcHandlers(mainWindow, serverManager) {
     // Client ID persistence
     electron_1.ipcMain.handle('get-client-id', async () => {
@@ -98,35 +97,6 @@ function setupIpcHandlers(mainWindow, serverManager) {
     });
     // App version (for update checks)
     electron_1.ipcMain.handle('get-app-version', () => electron_1.app.getVersion());
-    // Check GitHub for the latest published release
-    electron_1.ipcMain.handle('check-for-updates', async () => {
-        try {
-            const res = await fetch(`https://api.github.com/repos/${GITHUB_REPO}/releases/latest`, {
-                headers: {
-                    Accept: 'application/vnd.github+json',
-                    'User-Agent': 'MiniVoice-App',
-                },
-            });
-            if (!res.ok) {
-                return { ok: false, error: `HTTP ${res.status}` };
-            }
-            const data = (await res.json());
-            return {
-                ok: true,
-                tag: data.tag_name,
-                name: data.name,
-                htmlUrl: data.html_url,
-                publishedAt: data.published_at,
-                assets: (data.assets ?? []).map((a) => ({
-                    name: a.name,
-                    url: a.browser_download_url,
-                })),
-            };
-        }
-        catch (e) {
-            return { ok: false, error: e instanceof Error ? e.message : 'network error' };
-        }
-    });
     // Open an external URL in the default browser
     electron_1.ipcMain.handle('open-external', async (_, url) => {
         if (typeof url === 'string' && /^https:\/\//i.test(url)) {

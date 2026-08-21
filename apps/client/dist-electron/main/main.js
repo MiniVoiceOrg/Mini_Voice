@@ -6,6 +6,7 @@ Object.defineProperty(exports, "__esModule", { value: true });
 const electron_1 = require("electron");
 const path_1 = __importDefault(require("path"));
 const ipcHandlers_1 = require("./ipcHandlers");
+const updater_1 = require("./updater");
 const serverManager_1 = require("./serverManager");
 const fs_1 = __importDefault(require("fs"));
 let mainWindow = null;
@@ -42,6 +43,7 @@ function createWindow() {
         },
     });
     (0, ipcHandlers_1.setupIpcHandlers)(mainWindow, serverManager);
+    (0, updater_1.setupUpdater)(mainWindow);
     // In dev, load Vite dev server if running, otherwise load dist/index.html
     if (process.env.VITE_DEV_SERVER_URL) {
         mainWindow.loadURL(process.env.VITE_DEV_SERVER_URL);

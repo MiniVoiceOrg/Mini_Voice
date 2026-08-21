@@ -1,124 +1,162 @@
 import { escapeHtml } from '../utils/html';
 
-interface UpdateAsset {
-  name: string;
-  url: string;
-}
-
-interface UpdateCheckResult {
-  ok: boolean;
-  tag?: string;
-  name?: string;
-  htmlUrl?: string;
-  publishedAt?: string;
-  assets?: UpdateAsset[];
-  error?: string;
-}
-
 const DISMISSED_KEY = 'mini_voice_dismissed_update';
 const CHECK_INTERVAL_MS = 60 * 60 * 1000; // 1 hour
+const RELEASES_URL = 'https://github.com/MiniVoiceOrg/Mini_Voice/releases/latest';
+
+interface BannerAction {
+  label: string;
+  primary?: boolean;
+  dismiss?: boolean;
+  onClick: () => void;
+}
 
 /**
- * Checks GitHub for newer releases on startup and periodically, showing a
- * dismissible banner that links to the download when an update is available.
+ * Handles the in-app auto-update flow.
+ *
+ * - Windows: uses electron-updater (download + install + relaunch on click).
+ * - macOS: downloads the matching .dmg and opens it (drag to Applications),
+ *   since unsigned auto-update is not permitted by macOS.
+ *
+ * Checks run on startup and hourly, showing a dismissible banner.
  */
 class UpdateService {
-  private currentVersion = '0.0.0';
   private banner: HTMLElement | null = null;
+  private textEl: HTMLElement | null = null;
+  private actionsEl: HTMLElement | null = null;
+  private latestVersion = '';
+  private listenersBound = false;
 
   public async init(): Promise<void> {
-    if (!window.api?.checkForUpdates || !window.api?.getAppVersion) {
+    if (!window.api?.checkForUpdates) {
       return;
     }
 
-    try {
-      this.currentVersion = await window.api.getAppVersion();
-    } catch {
-      // Keep default; a failed version read simply disables the check.
-      return;
-    }
+    this.bindUpdateEvents();
 
-    // Slight delay so the app finishes booting before we hit the network.
     setTimeout(() => this.check(), 4000);
     setInterval(() => this.check(), CHECK_INTERVAL_MS);
+  }
+
+  private bindUpdateEvents(): void {
+    if (this.listenersBound) return;
+    this.listenersBound = true;
+
+    window.api.onUpdateProgress((percent) => {
+      this.setText(`Baixando atualização… ${percent}%`);
+    });
+
+    window.api.onUpdateDownloaded((info) => {
+      if (info.manual) {
+        this.setText('Instalador aberto — arraste o Mini Voice para a pasta Aplicativos e reabra.');
+        this.setActions([{ label: '×', dismiss: true, onClick: () => this.dismiss() }]);
+      } else {
+        this.setText('Atualização baixada.');
+        this.setActions([
+          { label: 'Reiniciar e instalar', primary: true, onClick: () => window.api.installUpdate() },
+        ]);
+      }
+    });
+
+    window.api.onUpdateError(() => {
+      this.setText('Falha ao baixar a atualização.');
+      this.setActions([
+        {
+          label: 'Baixar manualmente',
+          primary: true,
+          onClick: () => window.api.openExternal(RELEASES_URL),
+        },
+        { label: '×', dismiss: true, onClick: () => this.dismiss() },
+      ]);
+    });
   }
 
   private async check(): Promise<void> {
     try {
       const result = await window.api.checkForUpdates();
-      if (!result?.ok || !result.tag) {
+      if (!result?.ok || !result.available || !result.version) {
         return;
       }
 
-      if (!this.isNewer(this.parse(result.tag), this.parse(this.currentVersion))) {
+      if (localStorage.getItem(DISMISSED_KEY) === result.version) {
         return;
       }
 
-      if (localStorage.getItem(DISMISSED_KEY) === result.tag) {
-        return;
-      }
-
-      this.showBanner(result);
+      this.latestVersion = result.version;
+      this.showAvailable(result.version);
     } catch {
-      // Network/parse errors are non-fatal for update checks.
+      // Non-fatal: try again on the next interval.
     }
   }
 
-  private parse(version: string): number[] {
-    return String(version)
-      .replace(/^v/i, '')
-      .split('-')[0]
-      .split('.')
-      .map((n) => parseInt(n, 10) || 0);
+  private showAvailable(version: string): void {
+    this.ensureBanner();
+    this.setText(`Nova versão <strong>${escapeHtml(version)}</strong> disponível.`);
+    this.setActions([
+      {
+        label: 'Atualizar agora',
+        primary: true,
+        onClick: () => {
+          this.setText('Iniciando download…');
+          this.setActions([]);
+          window.api.downloadUpdate();
+        },
+      },
+      { label: '×', dismiss: true, onClick: () => this.dismiss() },
+    ]);
   }
 
-  private isNewer(a: number[], b: number[]): boolean {
-    const len = Math.max(a.length, b.length);
-    for (let i = 0; i < len; i++) {
-      const x = a[i] ?? 0;
-      const y = b[i] ?? 0;
-      if (x > y) return true;
-      if (x < y) return false;
+  private dismiss(): void {
+    if (this.latestVersion) {
+      localStorage.setItem(DISMISSED_KEY, this.latestVersion);
     }
-    return false;
+    this.banner?.remove();
+    this.banner = null;
+    this.textEl = null;
+    this.actionsEl = null;
   }
 
-  private showBanner(result: UpdateCheckResult): void {
-    if (this.banner) {
-      this.banner.remove();
-    }
-
-    const version = escapeHtml(result.tag ?? '');
-    const downloadUrl = result.htmlUrl ?? '';
+  private ensureBanner(): void {
+    if (this.banner) return;
 
     const banner = document.createElement('div');
     banner.className = 'update-banner';
-    banner.innerHTML = `
-      <span class="update-banner__text">
-        Nova versão <strong>${version}</strong> disponível.
-      </span>
-      <div class="update-banner__actions">
-        <button type="button" class="update-banner__download">Baixar atualização</button>
-        <button type="button" class="update-banner__dismiss" aria-label="Dispensar">&times;</button>
-      </div>
-    `;
 
-    banner.querySelector('.update-banner__download')?.addEventListener('click', () => {
-      if (downloadUrl) {
-        window.api.openExternal(downloadUrl);
-      }
-    });
+    const text = document.createElement('span');
+    text.className = 'update-banner__text';
 
-    banner.querySelector('.update-banner__dismiss')?.addEventListener('click', () => {
-      if (result.tag) {
-        localStorage.setItem(DISMISSED_KEY, result.tag);
-      }
-      banner.remove();
-      this.banner = null;
-    });
+    const actions = document.createElement('div');
+    actions.className = 'update-banner__actions';
 
+    banner.appendChild(text);
+    banner.appendChild(actions);
     document.body.appendChild(banner);
+
     this.banner = banner;
+    this.textEl = text;
+    this.actionsEl = actions;
+  }
+
+  private setText(html: string): void {
+    this.ensureBanner();
+    if (this.textEl) {
+      this.textEl.innerHTML = html;
+    }
+  }
+
+  private setActions(actions: BannerAction[]): void {
+    this.ensureBanner();
+    if (!this.actionsEl) return;
+    this.actionsEl.innerHTML = '';
+
+    for (const action of actions) {
+      const btn = document.createElement('button');
+      btn.type = 'button';
+      btn.textContent = action.label;
+      btn.className = action.dismiss ? 'update-banner__dismiss' : 'update-banner__download';
+      btn.addEventListener('click', action.onClick);
+      this.actionsEl.appendChild(btn);
+    }
   }
 }
 

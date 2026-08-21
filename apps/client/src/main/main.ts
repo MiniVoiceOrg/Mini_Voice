@@ -1,6 +1,7 @@
 import { app, BrowserWindow } from 'electron';
 import path from 'path';
 import { setupIpcHandlers } from './ipcHandlers';
+import { setupUpdater } from './updater';
 import { ServerManager } from './serverManager';
 
 import fs from 'fs';
@@ -42,6 +43,7 @@ function createWindow(): void {
   });
 
   setupIpcHandlers(mainWindow, serverManager);
+  setupUpdater(mainWindow);
 
   // In dev, load Vite dev server if running, otherwise load dist/index.html
   if (process.env.VITE_DEV_SERVER_URL) {
