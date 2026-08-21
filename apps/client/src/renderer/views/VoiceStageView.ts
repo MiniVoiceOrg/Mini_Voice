@@ -10,6 +10,7 @@ import { videoService } from '../core/VideoService';
 import { webRtcManager } from '../core/WebRtcManager';
 import { soundEffects } from '../core/SoundEffects';
 import { getAvatarUrl } from '../utils/avatar';
+import { showAlert, showConfirm } from './Dialog';
 import { userContextMenu } from './UserContextMenu';
 
 export class VoiceStageView {
@@ -400,13 +401,25 @@ export class VoiceStageView {
 
   private async handleStopStreaming(): Promise<void> {
     if (voiceStore.isScreenSharing) {
-      if (!confirm('Deseja parar o compartilhamento de tela?')) return;
+      const confirmed = await showConfirm({
+        title: 'Parar compartilhamento',
+        message: 'Deseja parar o compartilhamento de tela?',
+        confirmLabel: 'Parar',
+        variant: 'warning',
+      });
+      if (!confirmed) return;
       videoService.stopScreenShare();
       await webRtcManager.setLocalScreenTrack(null);
       voiceStore.setScreenSharing(false);
       networkClient.send(MessageType.VOICE_STATE_UPDATE, { isScreenSharing: false });
     } else if (voiceStore.isCameraOn) {
-      if (!confirm('Deseja desligar sua câmera?')) return;
+      const confirmed = await showConfirm({
+        title: 'Desligar câmera',
+        message: 'Deseja desligar sua câmera?',
+        confirmLabel: 'Desligar',
+        variant: 'warning',
+      });
+      if (!confirmed) return;
       videoService.stopCamera();
       await webRtcManager.setLocalCameraTrack(null);
       voiceStore.setCameraOn(false);
@@ -446,16 +459,26 @@ export class VoiceStageView {
 
     btnCam?.addEventListener('click', async () => {
       if (voiceStore.isCameraOn) {
-        if (!confirm('Deseja desligar a sua câmera?')) return;
+        const confirmed = await showConfirm({
+          title: 'Desligar câmera',
+          message: 'Deseja desligar a sua câmera?',
+          confirmLabel: 'Desligar',
+          variant: 'warning',
+        });
+        if (!confirmed) return;
         videoService.stopCamera();
         await webRtcManager.setLocalCameraTrack(null);
         voiceStore.setCameraOn(false);
         networkClient.send(MessageType.VOICE_STATE_UPDATE, { isCameraOn: false });
       } else {
         if (voiceStore.isScreenSharing) {
-          if (!confirm('O compartilhamento de tela será pausado para ligar a câmera. Deseja continuar?')) {
-            return;
-          }
+          const confirmed = await showConfirm({
+            title: 'Ligar câmera',
+            message: 'O compartilhamento de tela será pausado para ligar a câmera. Deseja continuar?',
+            confirmLabel: 'Continuar',
+            variant: 'warning',
+          });
+          if (!confirmed) return;
           videoService.stopScreenShare();
           await webRtcManager.setLocalScreenTrack(null);
           voiceStore.setScreenSharing(false);
@@ -467,7 +490,11 @@ export class VoiceStageView {
           voiceStore.setCameraOn(true);
           networkClient.send(MessageType.VOICE_STATE_UPDATE, { isCameraOn: true, isScreenSharing: false });
         } catch (err: any) {
-          alert(`Não foi possível acessar a câmera: ${err.message}`);
+          await showAlert({
+            title: 'Erro na câmera',
+            message: `Não foi possível acessar a câmera: ${err.message}`,
+            variant: 'danger',
+          });
         }
       }
       this.updateControlsUI();
@@ -476,7 +503,13 @@ export class VoiceStageView {
 
     btnScreen?.addEventListener('click', async () => {
       if (voiceStore.isScreenSharing) {
-        if (!confirm('Deseja parar o compartilhamento de tela?')) return;
+        const confirmed = await showConfirm({
+          title: 'Parar compartilhamento',
+          message: 'Deseja parar o compartilhamento de tela?',
+          confirmLabel: 'Parar',
+          variant: 'warning',
+        });
+        if (!confirmed) return;
         videoService.stopScreenShare();
         await webRtcManager.setLocalScreenTrack(null);
         voiceStore.setScreenSharing(false);
@@ -488,8 +521,14 @@ export class VoiceStageView {
       }
     });
 
-    btnLeave?.addEventListener('click', () => {
-      if (confirm('Deseja sair da chamada de voz?')) {
+    btnLeave?.addEventListener('click', async () => {
+      const confirmed = await showConfirm({
+        title: 'Sair da chamada',
+        message: 'Deseja sair da chamada de voz?',
+        confirmLabel: 'Sair',
+        variant: 'danger',
+      });
+      if (confirmed) {
         if (this.currentChannelId) {
           this.stopPingMonitor();
           soundEffects.play('leave_voice');
