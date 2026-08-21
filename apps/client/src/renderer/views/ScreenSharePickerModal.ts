@@ -1,5 +1,6 @@
 import { MessageType } from '@mini-voice/shared';
 import { escapeHtml } from '../utils/html';
+import { appEvents } from '../core/EventBus';
 import { networkClient } from '../core/NetworkClient';
 import { videoService } from '../core/VideoService';
 import { voiceStore } from '../stores/voiceStore';
@@ -206,6 +207,9 @@ export class ScreenSharePickerModal {
       this.modalEl = null;
       this.selectedSourceId = null;
     }
+    // Let callers (e.g. the screen-share button loading state) know the picker
+    // is no longer open, including on cancel (#48).
+    appEvents.emit('modal.screenshare_picker_closed');
   }
 }
 

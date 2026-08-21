@@ -12,6 +12,7 @@ import { soundEffects } from '../core/SoundEffects';
 import { getAvatarUrl } from '../utils/avatar';
 import { showAlert, showConfirm } from './Dialog';
 import { userContextMenu } from './UserContextMenu';
+import { setButtonLoading, isButtonLoading } from '../utils/buttonLoading';
 
 export class VoiceStageView {
   private container: HTMLElement;
@@ -544,19 +545,20 @@ export class VoiceStageView {
     });
 
     btnCam?.addEventListener('click', async () => {
-      const b = btnCam as HTMLButtonElement;
-      if (b.dataset.busy === '1') return;
-      b.dataset.busy = '1';
-      b.setAttribute('disabled', 'true');
+      if (isButtonLoading(btnCam)) return;
+      setButtonLoading(btnCam, true);
       try {
         await this.toggleCamera();
       } finally {
-        b.removeAttribute('disabled');
-        delete b.dataset.busy;
+        setButtonLoading(btnCam, false);
       }
     });
 
     btnScreen?.addEventListener('click', () => {
+      if (isButtonLoading(btnScreen)) return;
+      // Show a loading state until the share actually starts/stops or the
+      // picker is closed/cancelled (#48).
+      setButtonLoading(btnScreen, true);
       // Always open the picker: when not sharing, to start; when already sharing,
       // to switch source or stop (handled inside the modal).
       appEvents.emit('modal.open_screenshare_picker');
@@ -614,7 +616,13 @@ export class VoiceStageView {
       }
     });
 
-    this.unbindEvents.push(u1, u2, u3, u4);
+    // Clear the screen-share button loading once the action resolves (#48).
+    const clearScreenLoading = () => setButtonLoading(btnScreen, false);
+    const u5 = appEvents.on('local.screen_started', clearScreenLoading);
+    const u6 = appEvents.on('local.screen_stopped', clearScreenLoading);
+    const u7 = appEvents.on('modal.screenshare_picker_closed', clearScreenLoading);
+
+    this.unbindEvents.push(u1, u2, u3, u4, u5, u6, u7);
   }
 
   private unbindListeners(): void {

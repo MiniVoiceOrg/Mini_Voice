@@ -29,6 +29,12 @@ export class NetworkClient {
   private lastConnectPayload: AuthConnectPayload | null = null;
   private manualDisconnect: boolean = false;
   private hasEverConnected: boolean = false;
+  private heartbeatInterval: any = null;
+  private lastPongAt: number = 0;
+  /** How often the client pings the server to detect a dead connection. */
+  private static readonly HEARTBEAT_INTERVAL_MS = 5000;
+  /** If no PONG is received within this window, the connection is considered dead. */
+  private static readonly HEARTBEAT_TIMEOUT_MS = 12000;
 
   public getStatus(): ConnectionStatus {
     return this.status;
@@ -113,6 +119,7 @@ export class NetworkClient {
             this.setStatus('CONNECTED');
             this.reconnectAttempt = 0;
             this.hasEverConnected = true;
+            this.startHeartbeat();
             appEvents.emit('network.connected', res);
             resolve(res);
           })
@@ -159,6 +166,7 @@ export class NetworkClient {
   public disconnect(): void {
     this.manualDisconnect = true;
     this.clearReconnect();
+    this.stopHeartbeat();
     if (this.ws) {
       // Tell the server this is an intentional logout so it announces our
       // departure immediately instead of showing a "reconnecting" state (#44).
@@ -210,6 +218,12 @@ export class NetworkClient {
   private handleIncomingMessage(message: ProtocolMessage): void {
     const { type, requestId, payload } = message;
 
+    // Heartbeat response: mark the connection as alive.
+    if (type === MessageType.PONG) {
+      this.lastPongAt = Date.now();
+      return;
+    }
+
     // Host shut the server down: notify the UI and stop any reconnection.
     if (type === MessageType.SERVER_SHUTDOWN) {
       const reason = (payload as { reason?: string })?.reason;
@@ -239,6 +253,7 @@ export class NetworkClient {
 
   private handleSocketClosed(): void {
     this.ws = null;
+    this.stopHeartbeat();
 
     // Reject all pending requests
     for (const [id, pending] of this.pendingRequests.entries()) {
@@ -292,6 +307,54 @@ export class NetworkClient {
     if (this.reconnectTimeout) {
       clearTimeout(this.reconnectTimeout);
       this.reconnectTimeout = null;
+    }
+  }
+
+  /**
+   * Starts an application-level heartbeat. Browser/Electron WebSockets do not
+   * detect a silently dropped connection (e.g. Wi-Fi turned off) quickly, so we
+   * actively ping the server and, if no PONG arrives within the timeout, treat
+   * the socket as dead and force the reconnection flow. This makes both the
+   * local "reconnecting" overlay and the auto-reconnect trigger promptly (#44).
+   */
+  private startHeartbeat(): void {
+    this.stopHeartbeat();
+    this.lastPongAt = Date.now();
+    this.heartbeatInterval = setInterval(() => {
+      if (!this.ws || this.ws.readyState !== WebSocket.OPEN) return;
+
+      // No PONG for too long: the connection is dead. Force close so onclose
+      // runs handleSocketClosed -> scheduleReconnect.
+      if (Date.now() - this.lastPongAt > NetworkClient.HEARTBEAT_TIMEOUT_MS) {
+        console.warn('[NetworkClient] Heartbeat timeout, connection considered dead. Forcing reconnect.');
+        this.stopHeartbeat();
+        try {
+          this.ws.close();
+        } catch {
+          /* ignore */
+        }
+        // In case the close event does not fire (dead socket), drive the
+        // reconnection flow manually.
+        if (this.ws) {
+          this.ws.onclose = null;
+          this.ws = null;
+          this.handleSocketClosed();
+        }
+        return;
+      }
+
+      try {
+        this.ws.send(JSON.stringify({ type: MessageType.PING, payload: { timestamp: Date.now() } }));
+      } catch {
+        /* ignore */
+      }
+    }, NetworkClient.HEARTBEAT_INTERVAL_MS);
+  }
+
+  private stopHeartbeat(): void {
+    if (this.heartbeatInterval) {
+      clearInterval(this.heartbeatInterval);
+      this.heartbeatInterval = null;
     }
   }
 

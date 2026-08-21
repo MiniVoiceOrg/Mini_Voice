@@ -146,19 +146,18 @@ export class WebRtcManager {
         if (!audioEl) {
           audioEl = document.createElement('audio');
           audioEl.autoplay = true;
-          audioEl.volume = volume / 100;
-          if (settingsStore.selectedSpeakerId && typeof (audioEl as any).setSinkId === 'function') {
-            (audioEl as any).setSinkId(settingsStore.selectedSpeakerId).catch((err: any) => {
-              console.warn('[WebRTC] Could not set sinkId on audio element:', err);
-            });
-          }
           document.body.appendChild(audioEl);
           this.audioElements.set(peerUserId, audioEl);
-        } else {
-          audioEl.volume = volume / 100;
         }
+        audioEl.volume = volume / 100;
         audioEl.srcObject = remoteStream;
-        audioEl.play().catch((e) => console.warn('[WebRTC] Audio play error:', e));
+        // Route voice to the user-selected speaker (not the OS default) BEFORE
+        // playing, otherwise Chromium may start playback on the default device
+        // and never switch (#46).
+        const el = audioEl;
+        this.applySinkToElement(el).finally(() => {
+          el.play().catch((e) => console.warn('[WebRTC] Audio play error:', e));
+        });
         this.setupRemoteVad(peerUserId, remoteStream);
       }
 
@@ -430,13 +429,22 @@ export class WebRtcManager {
 
   public async setSpeakerDeviceId(deviceId: string): Promise<void> {
     for (const audioEl of this.audioElements.values()) {
-      if (typeof (audioEl as any).setSinkId === 'function') {
-        try {
-          await (audioEl as any).setSinkId(deviceId);
-        } catch (err) {
-          console.warn('[WebRTC] Error setting sink ID for speaker device:', err);
-        }
-      }
+      await this.applySinkToElement(audioEl, deviceId);
+    }
+  }
+
+  /**
+   * Applies the user-selected speaker to a voice audio element. Falls back to
+   * the store's current selection when no explicit device is given (#46).
+   */
+  private async applySinkToElement(audioEl: HTMLAudioElement, deviceId?: string): Promise<void> {
+    const sinkId = deviceId ?? settingsStore.selectedSpeakerId;
+    if (!sinkId || typeof (audioEl as any).setSinkId !== 'function') return;
+    if ((audioEl as any).sinkId === sinkId) return;
+    try {
+      await (audioEl as any).setSinkId(sinkId);
+    } catch (err) {
+      console.warn('[WebRTC] Error setting sink ID for speaker device:', err);
     }
   }
 

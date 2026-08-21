@@ -44,13 +44,14 @@ export class SoundEffectManager {
    * Routes an audio element to the speaker device selected in the app so that
    * sound effects respect the user's choice instead of the OS default.
    */
-  private applySink(audio: HTMLAudioElement): void {
+  private applySink(audio: HTMLAudioElement): Promise<void> {
     const deviceId = settingsStore.selectedSpeakerId;
-    if (deviceId && typeof (audio as any).setSinkId === 'function') {
-      (audio as any).setSinkId(deviceId).catch(() => {
+    if (deviceId && typeof (audio as any).setSinkId === 'function' && (audio as any).sinkId !== deviceId) {
+      return (audio as any).setSinkId(deviceId).catch(() => {
         /* device may be gone; ignore and fall back to default */
       });
     }
+    return Promise.resolve();
   }
 
   /** Reapplies the currently selected speaker to all preloaded sound effects. */
@@ -115,10 +116,13 @@ export class SoundEffectManager {
     try {
       const audio = this.audioMap[key];
       if (audio) {
-        this.applySink(audio);
         audio.currentTime = 0;
-        audio.play().catch((err) => {
-          console.debug(`[SoundEffects] Play prevented for ${key}:`, err);
+        // Apply the selected speaker BEFORE playing so the sound doesn't briefly
+        // (or entirely) come out of the OS default device (#46).
+        this.applySink(audio).finally(() => {
+          audio.play().catch((err) => {
+            console.debug(`[SoundEffects] Play prevented for ${key}:`, err);
+          });
         });
       }
     } catch (e) {

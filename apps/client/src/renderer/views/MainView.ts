@@ -15,6 +15,7 @@ import { settingsModal } from './SettingsModal';
 import { serverSettingsModal } from './ServerSettingsModal';
 import { inviteModal } from './InviteModal';
 import { showConfirm, showAlert } from './Dialog';
+import { setButtonLoading } from '../utils/buttonLoading';
 import { userContextMenu } from './UserContextMenu';
 import { soundEffects } from '../core/SoundEffects';
 import { getAvatarUrl } from '../utils/avatar';
@@ -615,21 +616,26 @@ export class MainView {
     const mediaScreen = document.getElementById('media-btn-screen');
     mediaCam?.addEventListener('click', async () => {
       if (!this.ensureInVoiceChannel()) return;
-      const btn = mediaCam as HTMLButtonElement;
-      if (btn.dataset.busy === '1') return;
-      btn.dataset.busy = '1';
-      btn.setAttribute('disabled', 'true');
+      if ((mediaCam as HTMLButtonElement).dataset.loading === '1') return;
+      setButtonLoading(mediaCam, true);
       try {
         await this.voiceStageView?.toggleCamera();
       } finally {
-        btn.removeAttribute('disabled');
-        delete btn.dataset.busy;
+        setButtonLoading(mediaCam, false);
       }
     });
     mediaScreen?.addEventListener('click', () => {
       if (!this.ensureInVoiceChannel()) return;
+      if ((mediaScreen as HTMLButtonElement).dataset.loading === '1') return;
+      // Show loading until the share actually starts/stops or the picker closes.
+      setButtonLoading(mediaScreen, true);
       appEvents.emit('modal.open_screenshare_picker');
     });
+    const clearScreenLoading = () => setButtonLoading(mediaScreen, false);
+    const usL1 = appEvents.on('modal.screenshare_picker_closed', clearScreenLoading);
+    const usL2 = appEvents.on('local.screen_started', clearScreenLoading);
+    const usL3 = appEvents.on('local.screen_stopped', clearScreenLoading);
+    this.unbindEvents.push(usL1, usL2, usL3);
 
     btnMic?.addEventListener('click', () => {
       const newMuted = !voiceStore.isMuted;
