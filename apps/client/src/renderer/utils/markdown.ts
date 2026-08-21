@@ -9,26 +9,32 @@ import { escapeHtml } from './html';
  * the `data-external-link` hook wired up by the ChatView.
  *
  * Supported syntax:
- *   ```code block```      → <pre><code>
- *   `inline code`         → <code>
- *   **bold**              → <strong>
- *   *italic* / _italic_   → <em>
- *   ~~strike~~            → <del>
- *   [text](https://url)   → <a>
- *   bare https://url      → <a>
- *   newlines              → <br>
+ *   # .. ###### h1..h6    -> <h1>..<h6>
+ *   > quote               -> <blockquote>
+ *   - / * / + item        -> <ul><li>
+ *   1. item               -> <ol><li>
+ *   --- / *** / ___       -> <hr>
+ *   ```code block```      -> <pre><code>
+ *   `inline code`         -> <code>
+ *   **bold**              -> <strong>
+ *   *italic* / _italic_   -> <em>
+ *   ~~strike~~            -> <del>
+ *   [text](https://url)   -> <a>
+ *   bare https://url      -> <a>
+ *   newlines              -> <br> (inside paragraphs/quotes)
  */
 export function renderMarkdown(raw: string): string {
   if (!raw) return '';
 
-  // 1. Escape everything up-front — no raw HTML from users can survive this.
+  // 1. Escape everything up-front - no raw HTML from users can survive this.
   let text = escapeHtml(raw);
 
-  // 2. Fenced code blocks (```...```). Placeholder them out so inner content is
-  //    not touched by the inline rules below.
+  // 2. Fenced code blocks (```...```). Placeholder them out so their content is
+  //    not touched by any rule below.
   const codeBlocks: string[] = [];
   text = text.replace(/```([\s\S]*?)```/g, (_m, code) => {
-    const idx = codeBlocks.push(`<pre class="md-codeblock"><code>${code.replace(/^\n/, '')}</code></pre>`) - 1;
+    const body = code.replace(/^\n/, '').replace(/\n$/, '');
+    const idx = codeBlocks.push(`<pre class="md-codeblock"><code>${body}</code></pre>`) - 1;
     return `\u0000CB${idx}\u0000`;
   });
 
@@ -39,28 +45,123 @@ export function renderMarkdown(raw: string): string {
     return `\u0000IC${idx}\u0000`;
   });
 
-  // 4. Links: [label](url) — only http/https.
-  text = text.replace(/\[([^\]]+?)\]\((https?:\/\/[^\s)]+)\)/g, (_m, label, url) => {
-    return `<a href="${url}" class="md-link" data-external-link="${url}">${label}</a>`;
-  });
+  // Inline-level formatting applied to the text content of each block.
+  const applyInline = (s: string): string => {
+    // Links: [label](url) - only http/https.
+    s = s.replace(/\[([^\]]+?)\]\((https?:\/\/[^\s)]+)\)/g, (_m, label, url) => {
+      return `<a href="${url}" class="md-link" data-external-link="${url}">${label}</a>`;
+    });
+    // Bare URLs (not already inside an anchor from the rule above).
+    s = s.replace(/(^|[\s])(https?:\/\/[^\s<]+)/g, (_m, pre, url) => {
+      return `${pre}<a href="${url}" class="md-link" data-external-link="${url}">${url}</a>`;
+    });
+    // Emphasis. Order matters: bold before italic.
+    s = s.replace(/\*\*([^\n]+?)\*\*/g, '<strong>$1</strong>');
+    s = s.replace(/~~([^\n]+?)~~/g, '<del>$1</del>');
+    s = s.replace(/(^|[^\w*])\*([^\s*][^*\n]*?)\*(?![\w*])/g, '$1<em>$2</em>');
+    s = s.replace(/(^|[^\w_])_([^\s_][^_\n]*?)_(?![\w_])/g, '$1<em>$2</em>');
+    return s;
+  };
 
-  // 5. Bare URLs (not already inside an anchor from step 4).
-  text = text.replace(/(^|[\s])(https?:\/\/[^\s<]+)/g, (_m, pre, url) => {
-    return `${pre}<a href="${url}" class="md-link" data-external-link="${url}">${url}</a>`;
-  });
+  // 4. Block-level parsing, line by line.
+  const lines = text.split('\n');
+  const out: string[] = [];
+  let paragraph: string[] = [];
+  let i = 0;
 
-  // 6. Emphasis. Order matters: bold before italic.
-  text = text.replace(/\*\*([^\n]+?)\*\*/g, '<strong>$1</strong>');
-  text = text.replace(/~~([^\n]+?)~~/g, '<del>$1</del>');
-  text = text.replace(/(^|[^\w*])\*([^\s*][^*\n]*?)\*(?![\w*])/g, '$1<em>$2</em>');
-  text = text.replace(/(^|[^\w_])_([^\s_][^_\n]*?)_(?![\w_])/g, '$1<em>$2</em>');
+  const flushParagraph = () => {
+    if (paragraph.length) {
+      out.push(`<p class="md-p">${applyInline(paragraph.join('<br>'))}</p>`);
+      paragraph = [];
+    }
+  };
 
-  // 7. Newlines to <br> (outside code blocks, which were placeholdered out).
-  text = text.replace(/\n/g, '<br>');
+  while (i < lines.length) {
+    const line = lines[i];
+    const trimmed = line.trim();
 
-  // 8. Restore placeholders.
-  text = text.replace(/\u0000IC(\d+)\u0000/g, (_m, i) => inlineCodes[Number(i)]);
-  text = text.replace(/\u0000CB(\d+)\u0000/g, (_m, i) => codeBlocks[Number(i)]);
+    // Standalone fenced-code-block placeholder.
+    const cb = trimmed.match(/^\u0000CB(\d+)\u0000$/);
+    if (cb) {
+      flushParagraph();
+      out.push(codeBlocks[Number(cb[1])]);
+      i++;
+      continue;
+    }
 
-  return text;
+    // Blank line ends the current paragraph.
+    if (trimmed === '') {
+      flushParagraph();
+      i++;
+      continue;
+    }
+
+    // Heading (# .. ######).
+    const h = trimmed.match(/^(#{1,6})\s+(.*)$/);
+    if (h) {
+      flushParagraph();
+      const level = h[1].length;
+      out.push(`<h${level} class="md-h md-h${level}">${applyInline(h[2].trim())}</h${level}>`);
+      i++;
+      continue;
+    }
+
+    // Horizontal rule.
+    if (/^(-{3,}|\*{3,}|_{3,})$/.test(trimmed)) {
+      flushParagraph();
+      out.push('<hr class="md-hr">');
+      i++;
+      continue;
+    }
+
+    // Blockquote (consume consecutive `>` lines). Note the `>` has already
+    // been HTML-escaped to `&gt;` by this point.
+    if (/^&gt;\s?/.test(trimmed)) {
+      flushParagraph();
+      const quote: string[] = [];
+      while (i < lines.length && /^&gt;\s?/.test(lines[i].trim())) {
+        quote.push(lines[i].trim().replace(/^&gt;\s?/, ''));
+        i++;
+      }
+      out.push(`<blockquote class="md-quote">${applyInline(quote.join('<br>'))}</blockquote>`);
+      continue;
+    }
+
+    // Unordered list.
+    if (/^[-*+]\s+/.test(trimmed)) {
+      flushParagraph();
+      const items: string[] = [];
+      while (i < lines.length && /^[-*+]\s+/.test(lines[i].trim())) {
+        items.push(`<li>${applyInline(lines[i].trim().replace(/^[-*+]\s+/, ''))}</li>`);
+        i++;
+      }
+      out.push(`<ul class="md-ul">${items.join('')}</ul>`);
+      continue;
+    }
+
+    // Ordered list.
+    if (/^\d+\.\s+/.test(trimmed)) {
+      flushParagraph();
+      const items: string[] = [];
+      while (i < lines.length && /^\d+\.\s+/.test(lines[i].trim())) {
+        items.push(`<li>${applyInline(lines[i].trim().replace(/^\d+\.\s+/, ''))}</li>`);
+        i++;
+      }
+      out.push(`<ol class="md-ol">${items.join('')}</ol>`);
+      continue;
+    }
+
+    // Plain paragraph line.
+    paragraph.push(line);
+    i++;
+  }
+  flushParagraph();
+
+  let html = out.join('');
+
+  // 5. Restore placeholders (inline code, plus any code block left inline).
+  html = html.replace(/\u0000IC(\d+)\u0000/g, (_m, idx) => inlineCodes[Number(idx)]);
+  html = html.replace(/\u0000CB(\d+)\u0000/g, (_m, idx) => codeBlocks[Number(idx)]);
+
+  return html;
 }
