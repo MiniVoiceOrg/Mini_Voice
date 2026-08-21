@@ -1,4 +1,4 @@
-import { app, BrowserWindow } from 'electron';
+import { app, BrowserWindow, Menu } from 'electron';
 import path from 'path';
 import { setupIpcHandlers } from './ipcHandlers';
 import { setupUpdater } from './updater';
@@ -24,13 +24,19 @@ function createWindow(): void {
   ];
   const iconPath = iconCandidates.find((p) => fs.existsSync(p));
 
+  const isMac = process.platform === 'darwin';
+
   mainWindow = new BrowserWindow({
     width: 1200,
     height: 800,
     minWidth: 900,
     minHeight: 600,
     backgroundColor: '#0e1117',
-    frame: true,
+    // Windows/Linux: fully frameless (custom title bar in the renderer).
+    // macOS: keep the native traffic-light buttons but hide the title bar.
+    frame: isMac,
+    titleBarStyle: isMac ? 'hidden' : 'default',
+    trafficLightPosition: isMac ? { x: 14, y: 12 } : undefined,
     title: 'Mini Voice',
     icon: iconPath,
     webPreferences: {
@@ -58,6 +64,9 @@ function createWindow(): void {
 }
 
 app.whenReady().then(() => {
+  // Remove the default application menu (File / Edit / View ...).
+  Menu.setApplicationMenu(null);
+
   createWindow();
 
   app.on('activate', () => {

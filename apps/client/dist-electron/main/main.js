@@ -25,13 +25,18 @@ function createWindow() {
         path_1.default.join(electron_1.app.getAppPath(), 'images/Logo.png'),
     ];
     const iconPath = iconCandidates.find((p) => fs_1.default.existsSync(p));
+    const isMac = process.platform === 'darwin';
     mainWindow = new electron_1.BrowserWindow({
         width: 1200,
         height: 800,
         minWidth: 900,
         minHeight: 600,
         backgroundColor: '#0e1117',
-        frame: true,
+        // Windows/Linux: fully frameless (custom title bar in the renderer).
+        // macOS: keep the native traffic-light buttons but hide the title bar.
+        frame: isMac,
+        titleBarStyle: isMac ? 'hidden' : 'default',
+        trafficLightPosition: isMac ? { x: 14, y: 12 } : undefined,
         title: 'Mini Voice',
         icon: iconPath,
         webPreferences: {
@@ -56,6 +61,8 @@ function createWindow() {
     });
 }
 electron_1.app.whenReady().then(() => {
+    // Remove the default application menu (File / Edit / View ...).
+    electron_1.Menu.setApplicationMenu(null);
     createWindow();
     electron_1.app.on('activate', () => {
         if (electron_1.BrowserWindow.getAllWindows().length === 0) {

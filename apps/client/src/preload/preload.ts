@@ -31,6 +31,7 @@ export interface ElectronApi {
   onUpdateDownloaded: (cb: (info: { manual: boolean }) => void) => void;
   onUpdateError: (cb: (message: string) => void) => void;
   openExternal: (url: string) => Promise<{ success: boolean }>;
+  platform: string;
 }
 
 const api: ElectronApi = {
@@ -51,6 +52,7 @@ const api: ElectronApi = {
   onUpdateDownloaded: (cb) => ipcRenderer.on('update:downloaded', (_e, info) => cb(info)),
   onUpdateError: (cb) => ipcRenderer.on('update:error', (_e, message) => cb(message)),
   openExternal: (url) => ipcRenderer.invoke('open-external', url),
+  platform: process.platform,
 };
 
 contextBridge.exposeInMainWorld('api', api);

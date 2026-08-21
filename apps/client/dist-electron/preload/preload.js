@@ -19,6 +19,7 @@ const api = {
     onUpdateDownloaded: (cb) => electron_1.ipcRenderer.on('update:downloaded', (_e, info) => cb(info)),
     onUpdateError: (cb) => electron_1.ipcRenderer.on('update:error', (_e, message) => cb(message)),
     openExternal: (url) => electron_1.ipcRenderer.invoke('open-external', url),
+    platform: process.platform,
 };
 electron_1.contextBridge.exposeInMainWorld('api', api);
 //# sourceMappingURL=preload.js.map
