@@ -4,6 +4,14 @@
   "private": true,
   "type": "module",
   "description": "Mini Voice — P2P Self-Hosted Voice, Video, Screen Share and Chat Application",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/MiniVoiceOrg/Mini_Voice.git"
+  },
+  "bugs": {
+    "url": "https://github.com/MiniVoiceOrg/Mini_Voice/issues"
+  },
+  "homepage": "https://github.com/MiniVoiceOrg/Mini_Voice#readme",
   "workspaces": [
     "packages/*",
     "apps/*"

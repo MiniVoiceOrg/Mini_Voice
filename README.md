@@ -28,7 +28,7 @@ Aplicativo desktop desenvolvido com **Electron**, **TypeScript**, **WebRTC P2P M
 ## 📁 Estrutura do Projeto
 
 ```text
-NovoDiscord/
+Mini_Voice/
 ├── packages/
 │   └── shared/                 # Protocolo, modelos, constantes e validadores
 ├── apps/
