@@ -11,6 +11,13 @@ Sempre que iniciar um desenvolvimento a partir de uma issue/card do board, siga
 exatamente estas etapas, nesta ordem:
 
 1. **Antes de começar a codar**: mova o card para **In progress**.
+   - **Nunca desenvolva cards que estejam na coluna `Blocked`.** Cards
+     bloqueados não devem ser trabalhados enquanto estiverem nessa coluna. Se o
+     desenvolvedor quiser que algo em `Blocked` seja desenvolvido, **solicite
+     que ele (ou alguém com permissão) mova o card para fora de `Blocked`**
+     (ex.: `Ready`/`In progress`) antes de qualquer implementação. Não mova o
+     card para fora de `Blocked` por conta própria — peça a autorização/ação de
+     quem tem permissão.
 2. **Entenda a issue por completo antes de codar.** Se a issue **não estiver
    totalmente clara** (requisitos ambíguos, escopo indefinido, critérios de
    aceite vagos, decisões de design em aberto), **tire dúvidas com o
