@@ -69,10 +69,15 @@
     },
     "nsis": {
       "oneClick": false,
-      "allowToChangeInstallationDirectory": true
+      "allowToChangeInstallationDirectory": true,
+      "artifactName": "Mini-Voice-Setup-${version}-${arch}.${ext}"
+    },
+    "portable": {
+      "artifactName": "Mini-Voice-Portable-${version}-${arch}.${ext}"
     },
     "mac": {
       "category": "public.app-category.social-networking",
+      "artifactName": "Mini-Voice-${version}-mac-${arch}.${ext}",
       "target": [
         {
           "target": "dmg",
