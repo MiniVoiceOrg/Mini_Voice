@@ -13,6 +13,7 @@ import { createChannelModal } from './CreateChannelModal';
 import { settingsModal } from './SettingsModal';
 import { serverSettingsModal } from './ServerSettingsModal';
 import { inviteModal } from './InviteModal';
+import { showConfirm } from './Dialog';
 import { userContextMenu } from './UserContextMenu';
 import { soundEffects } from '../core/SoundEffects';
 import { getAvatarUrl } from '../utils/avatar';
@@ -358,8 +359,14 @@ export class MainView {
       }
     });
 
-    btnDisconnect?.addEventListener('click', () => {
-      if (confirm('Deseja realmente desconectar do servidor?')) {
+    btnDisconnect?.addEventListener('click', async () => {
+      const confirmed = await showConfirm({
+        title: 'Desconectar',
+        message: 'Deseja realmente desconectar do servidor?',
+        confirmLabel: 'Desconectar',
+        variant: 'danger',
+      });
+      if (confirmed) {
         soundEffects.play('leave_voice');
         audioProcessor.stopMicrophone();
         webRtcManager.closeAllPeers();

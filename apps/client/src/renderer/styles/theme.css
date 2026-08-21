@@ -1360,6 +1360,17 @@ input:focus, textarea:focus, select:focus {
   color: var(--text-primary);
 }
 
+.dialog-card {
+  max-width: 440px;
+}
+
+.dialog-message {
+  font-size: 14px;
+  line-height: 1.5;
+  color: var(--text-secondary);
+  white-space: pre-wrap;
+}
+
 .modal-footer {
   display: flex;
   justify-content: flex-end;

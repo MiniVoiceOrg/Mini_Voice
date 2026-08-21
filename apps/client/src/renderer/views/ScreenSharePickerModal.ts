@@ -3,6 +3,7 @@ import { networkClient } from '../core/NetworkClient';
 import { videoService } from '../core/VideoService';
 import { voiceStore } from '../stores/voiceStore';
 import { webRtcManager } from '../core/WebRtcManager';
+import { showAlert } from './Dialog';
 
 export class ScreenSharePickerModal {
   private modalEl: HTMLElement | null = null;
@@ -101,7 +102,11 @@ export class ScreenSharePickerModal {
       networkClient.send(MessageType.VOICE_STATE_UPDATE, { isScreenSharing: true, isCameraOn: false });
       this.close();
     } catch (err: any) {
-      alert(`Não foi possível iniciar o compartilhamento de tela: ${err.message}`);
+      await showAlert({
+        title: 'Erro ao compartilhar tela',
+        message: `Não foi possível iniciar o compartilhamento de tela: ${err.message}`,
+        variant: 'danger',
+      });
     }
   }
 
