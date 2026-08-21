@@ -70,10 +70,10 @@
     "nsis": {
       "oneClick": false,
       "allowToChangeInstallationDirectory": true,
-      "artifactName": "Mini-Voice-Setup-${version}-${arch}.${ext}"
+      "artifactName": "Mini-Voice-${version}-win-${arch}-setup.${ext}"
     },
     "portable": {
-      "artifactName": "Mini-Voice-Portable-${version}-${arch}.${ext}"
+      "artifactName": "Mini-Voice-${version}-win-${arch}-portable.${ext}"
     },
     "mac": {
       "category": "public.app-category.social-networking",
