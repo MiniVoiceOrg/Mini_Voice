@@ -1,5 +1,6 @@
 import { app, BrowserWindow, desktopCapturer, dialog, ipcMain, shell } from 'electron';
 import fs from 'fs';
+import net from 'net';
 import path from 'path';
 import { v4 as uuidv4 } from 'uuid';
 import { HostServerOptions, ServerManager } from './serverManager';
@@ -112,5 +113,43 @@ export function setupIpcHandlers(mainWindow: BrowserWindow, serverManager: Serve
       return { success: true };
     }
     return { success: false };
+  });
+
+  // TCP reachability probe (#37): distinguishes an unreachable host (offline)
+  // from a reachable host whose port refuses the connection (server closed).
+  ipcMain.handle('probe-server', async (_, host: string, port: number) => {
+    return await new Promise<{ reachable: boolean; reason: 'online' | 'refused' | 'timeout' | 'unreachable' }>(
+      (resolve) => {
+        const socket = new net.Socket();
+        let settled = false;
+        const finish = (result: { reachable: boolean; reason: 'online' | 'refused' | 'timeout' | 'unreachable' }) => {
+          if (settled) return;
+          settled = true;
+          socket.destroy();
+          resolve(result);
+        };
+
+        socket.setTimeout(5000);
+        socket.once('connect', () => finish({ reachable: true, reason: 'online' }));
+        socket.once('timeout', () => finish({ reachable: false, reason: 'timeout' }));
+        socket.once('error', (err: NodeJS.ErrnoException) => {
+          if (err.code === 'ECONNREFUSED') {
+            // Host answered but the port is closed → machine is online, server is not.
+            finish({ reachable: false, reason: 'refused' });
+          } else if (err.code === 'ETIMEDOUT') {
+            finish({ reachable: false, reason: 'timeout' });
+          } else {
+            // ENOTFOUND / EHOSTUNREACH / ENETUNREACH / etc. → host is offline.
+            finish({ reachable: false, reason: 'unreachable' });
+          }
+        });
+
+        try {
+          socket.connect(port, host);
+        } catch {
+          finish({ reachable: false, reason: 'unreachable' });
+        }
+      }
+    );
   });
 }

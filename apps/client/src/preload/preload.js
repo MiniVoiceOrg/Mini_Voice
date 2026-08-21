@@ -17,6 +17,7 @@ const api = {
     onUpdateDownloaded: (cb) => ipcRenderer.on('update:downloaded', (_e, info) => cb(info)),
     onUpdateError: (cb) => ipcRenderer.on('update:error', (_e, message) => cb(message)),
     openExternal: (url) => ipcRenderer.invoke('open-external', url),
+    probeServer: (host, port) => ipcRenderer.invoke('probe-server', host, port),
     platform: process.platform,
 };
 contextBridge.exposeInMainWorld('api', api);

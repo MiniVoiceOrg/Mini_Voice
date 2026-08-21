@@ -57,6 +57,46 @@ export class NetworkClient {
     void this.doReconnect();
   }
 
+  /**
+   * When an initial connection attempt fails, probe the host via a raw TCP
+   * connection to tell the user *why* it failed: host offline/unreachable vs.
+   * host online but the server (port) is closed/refused (#37). Falls back to a
+   * generic message if the probe API is unavailable (e.g. web build).
+   */
+  private async diagnoseConnectionFailure(host: string, port: number): Promise<Error> {
+    const probe = (window as any).api?.probeServer;
+    if (typeof probe !== 'function') {
+      return new Error(
+        'Não foi possível conectar. O servidor pode estar offline ou fechado, ou o IP/porta podem estar incorretos.'
+      );
+    }
+    try {
+      const result: { reachable: boolean; reason: string } = await probe(host, port);
+      switch (result.reason) {
+        case 'online':
+          // The TCP port accepted the connection but the WebSocket handshake
+          // still failed — likely an incompatible/non-MiniVoice service.
+          return new Error(
+            `O endereço ${host}:${port} respondeu, mas não é um servidor Mini Voice válido. Verifique a porta.`
+          );
+        case 'refused':
+          return new Error(
+            `O computador ${host} está online, mas nenhum servidor Mini Voice está ativo na porta ${port}. Verifique se o servidor foi iniciado.`
+          );
+        case 'timeout':
+        case 'unreachable':
+        default:
+          return new Error(
+            `Não foi possível alcançar o servidor em ${host}:${port}. Ele parece estar offline. Verifique o IP, a porta e sua conexão.`
+          );
+      }
+    } catch {
+      return new Error(
+        'Não foi possível conectar. O servidor pode estar offline ou fechado, ou o IP/porta podem estar incorretos.'
+      );
+    }
+  }
+
   public getStatus(): ConnectionStatus {
     return this.status;
   }
@@ -126,7 +166,11 @@ export class NetworkClient {
         if (this.status === 'CONNECTING') {
           this.ws?.close();
           this.setStatus('DISCONNECTED');
-          reject(new Error('Tempo limite de conexão esgotado. Verifique o IP e a porta.'));
+          if (isReconnect) {
+            reject(new Error('Tempo limite de conexão esgotado. Verifique o IP e a porta.'));
+          } else {
+            void this.diagnoseConnectionFailure(cleanHost, port).then(reject);
+          }
         }
       }, 8000);
 
@@ -168,11 +212,15 @@ export class NetworkClient {
         // Reject with a friendly message and do NOT enter the reconnect loop.
         if (this.status === 'CONNECTING') {
           this.setStatus('DISCONNECTED');
-          reject(
-            new Error(
-              'Não foi possível conectar. O servidor pode estar offline ou fechado, ou o IP/porta podem estar incorretos.'
-            )
-          );
+          if (isReconnect) {
+            reject(
+              new Error(
+                'Não foi possível conectar. O servidor pode estar offline ou fechado, ou o IP/porta podem estar incorretos.'
+              )
+            );
+          } else {
+            void this.diagnoseConnectionFailure(cleanHost, port).then(reject);
+          }
           return;
         }
         this.handleSocketClosed();

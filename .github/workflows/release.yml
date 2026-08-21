@@ -85,10 +85,44 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - name: Resolve version
         id: meta
         run: echo "version=1.0.${{ github.run_number }}" >> "$GITHUB_OUTPUT"
+
+      - name: Generate changelog
+        id: changelog
+        run: |
+          PREV_TAG=$(git tag --sort=-creatordate | grep -E '^v[0-9]' | head -n1 || true)
+          echo "Previous tag: ${PREV_TAG:-<none>}"
+          if [ -n "$PREV_TAG" ]; then
+            RANGE="${PREV_TAG}..HEAD"
+          else
+            RANGE=""
+          fi
+
+          # Prefer the descriptive per-issue lines from commit bodies
+          # (e.g. "#44: reconecta imediatamente ..."); fall back to commit
+          # subjects when a commit has no such lines. This yields a written
+          # changelog that still references the issues.
+          ITEM_LINES=$(git log $RANGE --no-merges --pretty=format:'%b' \
+            | grep -E '^#[0-9]+:' | sed -E 's/^/- /' || true)
+          if [ -z "$ITEM_LINES" ]; then
+            ITEM_LINES=$(git log $RANGE --no-merges --pretty=format:'- %s' || true)
+          fi
+          if [ -z "$ITEM_LINES" ]; then
+            ITEM_LINES="- Melhorias diversas e correções."
+          fi
+
+          {
+            echo "notes<<CHANGELOG_EOF"
+            echo "$ITEM_LINES"
+            echo ""
+            echo "**Comparação completa**: https://github.com/${GITHUB_REPOSITORY}/compare/${PREV_TAG}...v1.0.${{ github.run_number }}"
+            echo "CHANGELOG_EOF"
+          } >> "$GITHUB_OUTPUT"
 
       - name: Download all build artifacts
         uses: actions/download-artifact@v4
@@ -104,7 +138,6 @@ jobs:
         with:
           tag_name: v${{ steps.meta.outputs.version }}
           name: Mini Voice v${{ steps.meta.outputs.version }}
-          generate_release_notes: true
           body: |
             Release automática gerada a partir do commit ${{ github.sha }} na branch `main`.
 
@@ -113,7 +146,7 @@ jobs:
             - **macOS**: `.dmg` (Intel + Apple Silicon) e `.zip`
 
             ### Changelog
-            As alterações desta versão estão listadas abaixo.
+            ${{ steps.changelog.outputs.notes }}
           draft: false
           prerelease: false
           fail_on_unmatched_files: false

@@ -54,6 +54,10 @@ export interface ElectronApi {
     openExternal: (url: string) => Promise<{
         success: boolean;
     }>;
+    probeServer: (host: string, port: number) => Promise<{
+        reachable: boolean;
+        reason: 'online' | 'refused' | 'timeout' | 'unreachable';
+    }>;
     platform: string;
 }
 declare global {
