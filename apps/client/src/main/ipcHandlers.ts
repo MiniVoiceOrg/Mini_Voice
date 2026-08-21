@@ -53,6 +53,7 @@ export function setupIpcHandlers(mainWindow: BrowserWindow, serverManager: Serve
     return sources.map((s) => ({
       id: s.id,
       name: s.name,
+      type: s.id.startsWith('screen:') ? 'screen' : 'window',
       thumbnailDataUrl: s.thumbnail.toDataURL(),
       appIconDataUrl: s.appIcon ? s.appIcon.toDataURL() : null,
     }));

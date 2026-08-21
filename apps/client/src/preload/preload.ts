@@ -15,6 +15,7 @@ export interface ElectronApi {
     Array<{
       id: string;
       name: string;
+      type: 'screen' | 'window';
       thumbnailDataUrl: string;
       appIconDataUrl: string | null;
     }>

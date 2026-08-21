@@ -1,1 +1,1 @@
-{"version":3,"file":"ipcHandlers.d.ts","sourceRoot":"","sources":["../../src/main/ipcHandlers.ts"],"names":[],"mappings":"AAAA,OAAO,EAAO,aAAa,EAA2C,MAAM,UAAU,CAAC;AAIvF,OAAO,EAAqB,aAAa,EAAE,MAAM,iBAAiB,CAAC;AAEnE,wBAAgB,gBAAgB,CAAC,UAAU,EAAE,aAAa,EAAE,aAAa,EAAE,aAAa,GAAG,IAAI,CA4G9F"}
+{"version":3,"file":"ipcHandlers.d.ts","sourceRoot":"","sources":["../../src/main/ipcHandlers.ts"],"names":[],"mappings":"AAAA,OAAO,EAAO,aAAa,EAA2C,MAAM,UAAU,CAAC;AAIvF,OAAO,EAAqB,aAAa,EAAE,MAAM,iBAAiB,CAAC;AAEnE,wBAAgB,gBAAgB,CAAC,UAAU,EAAE,aAAa,EAAE,aAAa,EAAE,aAAa,GAAG,IAAI,CA6G9F"}

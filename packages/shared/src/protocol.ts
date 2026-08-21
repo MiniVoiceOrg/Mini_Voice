@@ -38,6 +38,7 @@ export enum MessageType {
   AUTH_FAILED = 'AUTH_FAILED',
   SERVER_STATE = 'SERVER_STATE',
   SERVER_SETTINGS_UPDATED = 'SERVER_SETTINGS_UPDATED',
+  SERVER_SHUTDOWN = 'SERVER_SHUTDOWN',
   USER_JOINED = 'USER_JOINED',
   USER_LEFT = 'USER_LEFT',
   USER_UPDATED = 'USER_UPDATED',
@@ -132,6 +133,10 @@ export interface ServerErrorPayload {
 export interface ServerSettingsUpdatedPayload {
   name: string;
   hasPassword: boolean;
+}
+
+export interface ServerShutdownPayload {
+  reason?: string;
 }
 
 export interface UserJoinedPayload {

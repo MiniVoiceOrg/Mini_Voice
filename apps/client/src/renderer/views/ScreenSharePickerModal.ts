@@ -1,73 +1,131 @@
 import { MessageType } from '@mini-voice/shared';
+import { escapeHtml } from '../utils/html';
 import { networkClient } from '../core/NetworkClient';
 import { videoService } from '../core/VideoService';
 import { voiceStore } from '../stores/voiceStore';
 import { webRtcManager } from '../core/WebRtcManager';
 import { showAlert } from './Dialog';
 
+type DesktopSource = {
+  id: string;
+  name: string;
+  type: 'screen' | 'window';
+  thumbnailDataUrl: string;
+  appIconDataUrl: string | null;
+};
+
 export class ScreenSharePickerModal {
   private modalEl: HTMLElement | null = null;
   private selectedSourceId: string | null = null;
+  private activeTab: 'screen' | 'window' = 'screen';
 
   public async open(): Promise<void> {
     this.close();
 
-    let sources: Array<{ id: string; name: string; thumbnailDataUrl: string; appIconDataUrl: string | null }> = [];
+    let sources: DesktopSource[] = [];
     if (window.api?.getDesktopSources) {
-      sources = await window.api.getDesktopSources();
+      sources = (await window.api.getDesktopSources()) as DesktopSource[];
     }
+
+    // When there is nothing on a given tab, fall back to the one that has sources.
+    const hasScreens = sources.some((s) => s.type === 'screen');
+    if (!hasScreens && sources.some((s) => s.type === 'window')) {
+      this.activeTab = 'window';
+    }
+
+    const alreadySharing = voiceStore.isScreenSharing;
 
     this.modalEl = document.createElement('div');
     this.modalEl.className = 'modal-backdrop';
     this.modalEl.innerHTML = `
-      <div class="modal-card" style="max-width: 640px;">
+      <div class="modal-card" style="max-width: 680px;">
         <div class="modal-header">
           <div class="modal-title" style="display: flex; align-items: center; gap: 8px;">
             <span class="material-symbols-outlined" style="color: var(--accent-primary);">screen_share</span>
-            <span>Compartilhar Tela ou Janela</span>
+            <span>${alreadySharing ? 'Trocar Fonte de Compartilhamento' : 'Compartilhar Tela ou Janela'}</span>
           </div>
           <button id="modal-close" class="modal-close-btn">&times;</button>
         </div>
 
-        ${sources.length > 0 ? `
-          <div class="screen-sources-grid">
-            ${sources.map((s) => `
-              <div class="source-item" data-source-id="${s.id}">
-                <img class="source-thumbnail" src="${s.thumbnailDataUrl}" alt="${s.name}">
-                <div class="source-name" title="${s.name}">${s.name}</div>
-              </div>
-            `).join('')}
+        ${alreadySharing ? `
+          <div class="share-active-banner">
+            <span class="live-pulse-dot"></span>
+            <span>Você está compartilhando agora. Escolha outra fonte para trocar ou pare de compartilhar.</span>
           </div>
-        ` : `
-          <div style="padding: 20px; text-align: center; color: var(--text-muted);">
-            Selecione uma tela para compartilhar na janela do navegador.
-          </div>
-        `}
+        ` : ''}
+
+        <div class="nav-tabs" style="margin-bottom: 12px;">
+          <button type="button" id="share-tab-screen" class="tab-button ${this.activeTab === 'screen' ? 'active' : ''}">
+            <span class="material-symbols-outlined md-16" style="margin-right: 4px; vertical-align: middle;">desktop_windows</span>
+            Telas
+          </button>
+          <button type="button" id="share-tab-window" class="tab-button ${this.activeTab === 'window' ? 'active' : ''}">
+            <span class="material-symbols-outlined md-16" style="margin-right: 4px; vertical-align: middle;">web_asset</span>
+            Aplicativos
+          </button>
+        </div>
+
+        <div id="share-sources-panel"></div>
 
         <div class="modal-footer">
+          ${alreadySharing ? `
+            <button type="button" id="btn-stop-share" class="btn btn-danger" style="margin-right: auto;">
+              <span class="material-symbols-outlined md-16" style="margin-right: 4px;">stop_screen_share</span>
+              Parar de Compartilhar
+            </button>
+          ` : ''}
           <button type="button" id="btn-cancel" class="btn btn-secondary">Cancelar</button>
-          <button type="button" id="btn-share" class="btn btn-primary" ${sources.length > 0 ? 'disabled' : ''}>
+          <button type="button" id="btn-share" class="btn btn-primary" disabled>
             <span class="material-symbols-outlined md-16" style="margin-right: 4px;">present_to_all</span>
-            Compartilhar Tela
+            ${alreadySharing ? 'Trocar Fonte' : 'Compartilhar'}
           </button>
         </div>
       </div>
     `;
 
     document.body.appendChild(this.modalEl);
+    this.renderSources(sources);
     this.attachEvents(sources);
   }
 
-  private attachEvents(sources: any[]): void {
-    if (!this.modalEl) return;
+  private renderSources(sources: DesktopSource[]): void {
+    const panel = this.modalEl?.querySelector('#share-sources-panel');
+    if (!panel) return;
 
-    const btnClose = this.modalEl.querySelector('#modal-close');
-    const btnCancel = this.modalEl.querySelector('#btn-cancel');
+    const filtered = sources.filter((s) => s.type === this.activeTab);
+
+    if (filtered.length === 0) {
+      panel.innerHTML = `
+        <div style="padding: 24px; text-align: center; color: var(--text-muted);">
+          ${this.activeTab === 'screen'
+            ? 'Nenhuma tela detectada.'
+            : 'Nenhuma janela de aplicativo aberta foi detectada.'}
+        </div>
+      `;
+      return;
+    }
+
+    panel.innerHTML = `
+      <div class="screen-sources-grid">
+        ${filtered.map((s) => `
+          <div class="source-item ${this.selectedSourceId === s.id ? 'selected' : ''}" data-source-id="${escapeHtml(s.id)}">
+            <img class="source-thumbnail" src="${s.thumbnailDataUrl}" alt="${escapeHtml(s.name)}">
+            <div class="source-name" title="${escapeHtml(s.name)}">
+              ${s.appIconDataUrl ? `<img src="${s.appIconDataUrl}" style="width: 14px; height: 14px; vertical-align: middle; margin-right: 4px;">` : ''}
+              ${escapeHtml(s.name)}
+            </div>
+          </div>
+        `).join('')}
+      </div>
+    `;
+
+    this.attachSourceEvents();
+  }
+
+  private attachSourceEvents(): void {
+    if (!this.modalEl) return;
     const btnShare = this.modalEl.querySelector('#btn-share') as HTMLButtonElement;
     const sourceItems = this.modalEl.querySelectorAll('.source-item');
-
-    btnClose?.addEventListener('click', () => this.close());
-    btnCancel?.addEventListener('click', () => this.close());
 
     sourceItems.forEach((item) => {
       item.addEventListener('click', () => {
@@ -82,10 +140,34 @@ export class ScreenSharePickerModal {
         this.startSharing();
       });
     });
+  }
 
-    btnShare?.addEventListener('click', () => {
-      this.startSharing();
-    });
+  private attachEvents(sources: DesktopSource[]): void {
+    if (!this.modalEl) return;
+
+    const btnClose = this.modalEl.querySelector('#modal-close');
+    const btnCancel = this.modalEl.querySelector('#btn-cancel');
+    const btnShare = this.modalEl.querySelector('#btn-share') as HTMLButtonElement;
+    const btnStop = this.modalEl.querySelector('#btn-stop-share');
+    const tabScreen = this.modalEl.querySelector('#share-tab-screen');
+    const tabWindow = this.modalEl.querySelector('#share-tab-window');
+
+    btnClose?.addEventListener('click', () => this.close());
+    btnCancel?.addEventListener('click', () => this.close());
+    btnShare?.addEventListener('click', () => this.startSharing());
+    btnStop?.addEventListener('click', () => this.stopSharing());
+
+    const switchTab = (tab: 'screen' | 'window') => {
+      this.activeTab = tab;
+      this.selectedSourceId = null;
+      if (btnShare) btnShare.disabled = true;
+      tabScreen?.classList.toggle('active', tab === 'screen');
+      tabWindow?.classList.toggle('active', tab === 'window');
+      this.renderSources(sources);
+    };
+
+    tabScreen?.addEventListener('click', () => switchTab('screen'));
+    tabWindow?.addEventListener('click', () => switchTab('window'));
   }
 
   private async startSharing(): Promise<void> {
@@ -108,6 +190,14 @@ export class ScreenSharePickerModal {
         variant: 'danger',
       });
     }
+  }
+
+  private async stopSharing(): Promise<void> {
+    videoService.stopScreenShare();
+    await webRtcManager.setLocalScreenTrack(null);
+    voiceStore.setScreenSharing(false);
+    networkClient.send(MessageType.VOICE_STATE_UPDATE, { isScreenSharing: false });
+    this.close();
   }
 
   public close(): void {
