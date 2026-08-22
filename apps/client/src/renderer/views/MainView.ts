@@ -900,7 +900,17 @@ export class MainView {
       }
     });
 
-    this.unbindEvents.push(u1, u2, u3, u4, u5, u6, u7, u8);
+    // Joining/leaving a voice channel emits `voice.channel_changed` (not
+    // `voice.state_updated`), so update the sidebar voice-connection row and the
+    // channel list highlight here — otherwise the row only appeared by luck when
+    // a later state update happened to fire (#60).
+    const u9 = appEvents.on('voice.channel_changed', () => {
+      lastVoiceChannelId = voiceStore.currentVoiceChannelId;
+      this.updateVoiceConnectionRow();
+      this.renderChannels();
+    });
+
+    this.unbindEvents.push(u1, u2, u3, u4, u5, u6, u7, u8, u9);
   }
 
   public destroy(): void {
