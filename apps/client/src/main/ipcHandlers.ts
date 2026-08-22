@@ -9,7 +9,7 @@ import { HostServerOptions, ServerManager } from './serverManager';
 // Screen audio native module (compiled only on CI — graceful fallback)
 let screenAudio: { isSupported: () => boolean; start: (opts: any, cb: (buf: Buffer) => void) => { success: boolean; error?: string }; stop: () => { success: boolean } } | null = null;
 try {
-  screenAudio = require('../native/screen-audio');
+  screenAudio = require('@mini-voice/screen-audio');
 } catch {
   screenAudio = null;
 }
