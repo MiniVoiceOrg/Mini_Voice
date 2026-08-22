@@ -26,6 +26,7 @@ import { serverStore } from './stores/serverStore';
 import { voiceStore } from './stores/voiceStore';
 import { ConnectionView } from './views/ConnectionView';
 import { MainView } from './views/MainView';
+import { screenAudioService } from './core/ScreenAudioService';
 import { screenSharePickerModal } from './views/ScreenSharePickerModal';
 import { showAlert } from './views/Dialog';
 
@@ -234,6 +235,10 @@ class App {
     });
     appEvents.on('local.screen_stopped', () => {
       soundEffects.play('screen_share_stop');
+      // Auto-stop screen audio when screen share ends
+      if (screenAudioService.getIsCapturing()) {
+        screenAudioService.stop();
+      }
     });
 
     // Host closed the server: show a friendly notice (the network layer already

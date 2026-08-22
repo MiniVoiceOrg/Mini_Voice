@@ -18,6 +18,7 @@ export interface PeerSession {
   candidateQueue: RTCIceCandidateInit[];
   audioSender?: RTCRtpSender | null;
   videoSender?: RTCRtpSender | null;
+  screenAudioSender?: RTCRtpSender | null;
 }
 
 /**
@@ -31,10 +32,14 @@ export interface PeerSession {
 export class WebRtcManager {
   private peers: Map<string, PeerSession> = new Map();
   private audioElements: Map<string, HTMLAudioElement> = new Map();
+  private screenAudioElements: Map<string, HTMLAudioElement> = new Map();
+  private screenAudioStreamIds: Set<string> = new Set();
   private remoteAudioVads: Map<string, { ctx: AudioContext; interval: any }> = new Map();
   private localAudioTrack: MediaStreamTrack | null = null;
   private localCameraTrack: MediaStreamTrack | null = null;
   private localScreenTrack: MediaStreamTrack | null = null;
+  private localScreenAudioTrack: MediaStreamTrack | null = null;
+  private screenAudioStreamId: string | null = null;
   private currentPreset: QualityPresetType = 'NORMAL';
   private currentUserId: string = '';
 
@@ -110,6 +115,19 @@ export class WebRtcManager {
       pc.addTransceiver('video', { direction: 'sendrecv' });
     }
 
+    // Setup Screen Audio Track (if currently sharing)
+    if (this.localScreenAudioTrack && this.screenAudioStreamId) {
+      // Announce stream ID before adding track
+      networkClient.send(MessageType.RTC_SIGNAL, {
+        targetUserId: peerUserId,
+        fromUserId: this.currentUserId,
+        signalType: 'screen-audio-meta',
+        streamId: this.screenAudioStreamId,
+      });
+      const screenAudioStream = new MediaStream([this.localScreenAudioTrack]);
+      session.screenAudioSender = pc.addTrack(this.localScreenAudioTrack, screenAudioStream);
+    }
+
     // ICE Candidate handler
     pc.onicecandidate = (event) => {
       if (event.candidate) {
@@ -125,6 +143,35 @@ export class WebRtcManager {
     // Remote Track handler (Audio & Video)
     pc.ontrack = (event) => {
       console.log(`[WebRTC] Received remote track (${event.track.kind}) from ${peerUserId}`);
+
+      // Check if this is a screen audio track
+      const incomingStreamId = event.streams?.[0]?.id;
+      if (event.track.kind === 'audio' && incomingStreamId && this.screenAudioStreamIds.has(incomingStreamId)) {
+        // Screen audio track — route to dedicated element with per-user volume (#75)
+        let screenAudioEl = this.screenAudioElements.get(peerUserId);
+        if (!screenAudioEl) {
+          screenAudioEl = document.createElement('audio');
+          screenAudioEl.autoplay = true;
+          document.body.appendChild(screenAudioEl);
+          this.screenAudioElements.set(peerUserId, screenAudioEl);
+        }
+        const screenStream = new MediaStream([event.track]);
+        screenAudioEl.srcObject = screenStream;
+        const participant = participantManager.get(peerUserId);
+        const clientId = participant?.user.clientId;
+        const volume = clientId ? settingsStore.getScreenAudioVolume(clientId) : 100;
+        screenAudioEl.volume = volume / 100;
+        this.applySinkToElement(screenAudioEl).finally(() => {
+          screenAudioEl!.play().catch((e) => console.warn('[WebRTC] Screen audio play error:', e));
+        });
+
+        event.track.onended = () => {
+          if (screenAudioEl) {
+            screenAudioEl.srcObject = null;
+          }
+        };
+        return;
+      }
 
       // If new video track, remove any old ended video tracks
       if (event.track.kind === 'video') {
@@ -258,7 +305,15 @@ export class WebRtcManager {
   }
 
   private async handleIncomingSignal(payload: WebRtcSignalPayload): Promise<void> {
-    const { fromUserId, signalType, sdp, candidate } = payload;
+    const { fromUserId, signalType, sdp, candidate, streamId } = payload;
+
+    // Handle screen-audio-meta: register the stream ID so ontrack can route it
+    if (signalType === 'screen-audio-meta') {
+      if (streamId) {
+        this.screenAudioStreamIds.add(streamId);
+      }
+      return;
+    }
 
     let session = this.peers.get(fromUserId);
     if (!session && signalType === 'offer') {
@@ -405,6 +460,58 @@ export class WebRtcManager {
     await this.updateVideoTrackAcrossPeers(activeVideoTrack);
   }
 
+  /**
+   * Set the local screen audio track (from native capture) and add it to all peers.
+   * Announces the stream ID via screen-audio-meta signaling before adding the track.
+   */
+  public async setLocalScreenAudioTrack(track: MediaStreamTrack | null): Promise<void> {
+    this.localScreenAudioTrack = track;
+
+    if (track) {
+      // Wrap in a dedicated MediaStream so receivers can identify it
+      const stream = new MediaStream([track]);
+      this.screenAudioStreamId = stream.id;
+
+      // Announce stream ID to all peers BEFORE adding the track
+      for (const session of this.peers.values()) {
+        networkClient.send(MessageType.RTC_SIGNAL, {
+          targetUserId: session.peerUserId,
+          fromUserId: this.currentUserId,
+          signalType: 'screen-audio-meta',
+          streamId: this.screenAudioStreamId,
+        });
+      }
+
+      // Add track to all peers
+      for (const session of this.peers.values()) {
+        try {
+          session.screenAudioSender = session.pc.addTrack(track, stream);
+          if (session.pc.signalingState === 'stable') {
+            await this.sendOffer(session);
+          }
+        } catch (err) {
+          console.warn(`[WebRTC] Error adding screen audio track for ${session.peerUserId}:`, err);
+        }
+      }
+    } else {
+      // Remove screen audio track from all peers
+      for (const session of this.peers.values()) {
+        if (session.screenAudioSender) {
+          try {
+            session.pc.removeTrack(session.screenAudioSender);
+            session.screenAudioSender = null;
+            if (session.pc.signalingState === 'stable') {
+              await this.sendOffer(session);
+            }
+          } catch (err) {
+            console.warn(`[WebRTC] Error removing screen audio track for ${session.peerUserId}:`, err);
+          }
+        }
+      }
+      this.screenAudioStreamId = null;
+    }
+  }
+
   private async updateVideoTrackAcrossPeers(track: MediaStreamTrack | null): Promise<void> {
     for (const session of this.peers.values()) {
       try {
@@ -433,6 +540,9 @@ export class WebRtcManager {
   public setDeafened(deafened: boolean): void {
     for (const audioEl of this.audioElements.values()) {
       audioEl.muted = deafened;
+    }
+    for (const screenAudioEl of this.screenAudioElements.values()) {
+      screenAudioEl.muted = deafened;
     }
   }
 
@@ -622,6 +732,12 @@ export class WebRtcManager {
       audioEl.srcObject = null;
       audioEl.remove();
       this.audioElements.delete(peerUserId);
+    }
+    const screenAudioEl = this.screenAudioElements.get(peerUserId);
+    if (screenAudioEl) {
+      screenAudioEl.srcObject = null;
+      screenAudioEl.remove();
+      this.screenAudioElements.delete(peerUserId);
     }
 
     const session = this.peers.get(peerUserId);

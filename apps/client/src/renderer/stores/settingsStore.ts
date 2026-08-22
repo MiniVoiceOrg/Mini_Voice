@@ -14,6 +14,7 @@ export class SettingsStore {
   public soundboardFolderPath: string = '';
   public soundboardVolume: number = 80; // 0 - 100
   public soundboardMuted: boolean = false;
+  public screenAudioVolumes: Record<string, number> = {}; // per-user screen audio volume (#75)
 
   constructor() {
     this.load();
@@ -40,6 +41,9 @@ export class SettingsStore {
         if (typeof this.soundboardMuted !== 'boolean') {
           this.soundboardMuted = false;
         }
+        if (!this.screenAudioVolumes || typeof this.screenAudioVolumes !== 'object') {
+          this.screenAudioVolumes = {};
+        }
       }
     } catch (e) {}
   }
@@ -58,6 +62,20 @@ export class SettingsStore {
     appEvents.emit('user_volume.changed', { clientId, volume: clamped });
   }
 
+  public getScreenAudioVolume(clientId: string): number {
+    if (!clientId) return 100;
+    const vol = this.screenAudioVolumes[clientId];
+    return typeof vol === 'number' && !isNaN(vol) ? Math.max(0, Math.min(100, vol)) : 100;
+  }
+
+  public setScreenAudioVolume(clientId: string, volume: number): void {
+    if (!clientId) return;
+    const clamped = Math.max(0, Math.min(100, Math.round(volume)));
+    this.screenAudioVolumes[clientId] = clamped;
+    this.save();
+    appEvents.emit('screen_audio_volume.changed', { clientId, volume: clamped });
+  }
+
   public save(): void {
     try {
       localStorage.setItem('mini_voice_settings', JSON.stringify({
@@ -73,6 +91,7 @@ export class SettingsStore {
         soundboardFolderPath: this.soundboardFolderPath,
         soundboardVolume: this.soundboardVolume,
         soundboardMuted: this.soundboardMuted,
+        screenAudioVolumes: this.screenAudioVolumes,
       }));
       appEvents.emit('settings.updated');
     } catch (e) {}

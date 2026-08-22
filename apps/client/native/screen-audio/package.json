@@ -1,0 +1,12 @@
+{
+  "name": "@mini-voice/screen-audio",
+  "version": "1.0.0",
+  "description": "Native screen audio capture (WASAPI loopback on Windows, ScreenCaptureKit on macOS)",
+  "main": "index.js",
+  "types": "index.d.ts",
+  "gypfile": true,
+  "private": true,
+  "dependencies": {
+    "node-addon-api": "^8.0.0"
+  }
+}
