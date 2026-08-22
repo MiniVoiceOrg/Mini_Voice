@@ -413,9 +413,8 @@ export class MainView {
   }
 
   private clampSidebarWidth(width: number): number {
-    const min = 200;
-    // #35: cap the channels sidebar at ~25% of the viewport width.
-    const max = Math.max(min, Math.floor(window.innerWidth * 0.25));
+    const min = 220;
+    const max = Math.max(min, Math.floor(window.innerWidth * 0.35));
     return Math.min(max, Math.max(min, width));
   }
 
