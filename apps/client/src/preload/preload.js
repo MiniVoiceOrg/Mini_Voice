@@ -5,6 +5,7 @@ const api = {
     onLanDiscoveryFound: (cb) => ipcRenderer.on('lan-discovery:found', (_e, server) => cb(server)),
     onLanDiscoveryLost: (cb) => ipcRenderer.on('lan-discovery:lost', (_e, server) => cb(server)),
     getClientId: () => ipcRenderer.invoke('get-client-id'),
+    maximizeWindow: () => ipcRenderer.invoke('window:maximize'),
     hostServerStart: (options) => ipcRenderer.invoke('host-server-start', options),
     hostServerStop: () => ipcRenderer.invoke('host-server-stop'),
     hostServerStatus: () => ipcRenderer.invoke('host-server-status'),

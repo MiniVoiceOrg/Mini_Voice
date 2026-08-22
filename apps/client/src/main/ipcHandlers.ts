@@ -17,6 +17,12 @@ try {
 export function setupIpcHandlers(mainWindow: BrowserWindow, serverManager: ServerManager): void {
   const lanDiscovery = new LanDiscovery(mainWindow);
 
+  ipcMain.handle('window:maximize', () => {
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.maximize();
+    }
+  });
+
   // Client ID persistence
   ipcMain.handle('get-client-id', async () => {
     const clientIdFile = path.join(app.getPath('userData'), 'client-id.json');

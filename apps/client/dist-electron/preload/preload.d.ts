@@ -14,6 +14,7 @@ export interface ElectronApi {
         version: string;
     }) => void) => void;
     getClientId: () => Promise<string>;
+    maximizeWindow: () => Promise<void>;
     hostServerStart: (options: {
         port: number;
         serverName: string;
