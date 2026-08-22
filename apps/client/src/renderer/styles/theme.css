@@ -322,21 +322,21 @@ input:focus, textarea:focus, select:focus {
   display: flex;
   justify-content: center;
   align-items: flex-start;
-  background: radial-gradient(circle at top, #161b26 0%, #0b0e14 100%);
-  padding: 20px 16px;
+  background: transparent;
+  padding: 0;
   box-sizing: border-box;
 }
 
 .connection-card {
   width: 100%;
-  max-width: 620px;
+  max-width: 100%;
   position: relative;
   background-color: var(--bg-panel);
-  border: 1px solid var(--border-color);
-  border-radius: var(--radius-lg);
+  border: none;
+  border-radius: 0;
   padding: 22px 26px;
-  box-shadow: 0 12px 36px rgba(0, 0, 0, 0.4);
-  margin: auto;
+  box-shadow: none;
+  margin: 0;
 }
 
 .brand-header {
