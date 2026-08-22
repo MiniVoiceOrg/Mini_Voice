@@ -1,9 +1,9 @@
-import micUnmuteUrl from '../assets/sounds/Desmutando_Mic.mp3';
-import micMuteUrl from '../assets/sounds/Mutando_Mic.mp3';
-import deafenUrl from '../assets/sounds/Mutar_Auto-Falante.mp3';
-import undeafenUrl from '../assets/sounds/Desmutar_Auto-Falante.mp3';
-import joinVoiceUrl from '../assets/sounds/Entrando_Na_Call.mp3';
-import leaveVoiceUrl from '../assets/sounds/Saindo_Da_Call.mp3';
+import micUnmuteUrl from '../assets/sounds/Desmutando_Mic.wav';
+import micMuteUrl from '../assets/sounds/Mutando_Mic.wav';
+import deafenUrl from '../assets/sounds/Mutar_Auto-Falante.wav';
+import undeafenUrl from '../assets/sounds/Desmutar_Auto-Falante.wav';
+import joinVoiceUrl from '../assets/sounds/Entrando_Na_Call.wav';
+import leaveVoiceUrl from '../assets/sounds/Saindo_Da_Call.wav';
 import { settingsStore } from '../stores/settingsStore';
 
 export type SoundEffectType =

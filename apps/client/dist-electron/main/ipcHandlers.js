@@ -13,7 +13,7 @@ const lanDiscovery_1 = require("./lanDiscovery");
 // Screen audio native module (compiled only on CI — graceful fallback)
 let screenAudio = null;
 try {
-    screenAudio = require('../native/screen-audio');
+    screenAudio = require('@mini-voice/screen-audio');
 }
 catch {
     screenAudio = null;
