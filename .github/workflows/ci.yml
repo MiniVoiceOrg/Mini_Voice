@@ -42,8 +42,6 @@ jobs:
 
       - name: Install dependencies
         run: npm ci
-        env:
-          GYP_MSVS_VERSION: '2022'
 
       - name: Build workspaces
         run: npm run build
@@ -67,4 +65,3 @@ jobs:
         run: npx --no-install electron-builder --${{ matrix.platform }} --dir --publish never
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          GYP_MSVS_VERSION: '2022'
