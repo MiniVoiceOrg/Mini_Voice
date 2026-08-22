@@ -9,7 +9,17 @@ const fs_1 = __importDefault(require("fs"));
 const net_1 = __importDefault(require("net"));
 const path_1 = __importDefault(require("path"));
 const uuid_1 = require("uuid");
+const lanDiscovery_1 = require("./lanDiscovery");
+// Screen audio native module (compiled only on CI — graceful fallback)
+let screenAudio = null;
+try {
+    screenAudio = require('../native/screen-audio');
+}
+catch {
+    screenAudio = null;
+}
 function setupIpcHandlers(mainWindow, serverManager) {
+    const lanDiscovery = new lanDiscovery_1.LanDiscovery(mainWindow);
     // Client ID persistence
     electron_1.ipcMain.handle('get-client-id', async () => {
         const clientIdFile = path_1.default.join(electron_1.app.getPath('userData'), 'client-id.json');
@@ -43,6 +53,12 @@ function setupIpcHandlers(mainWindow, serverManager) {
     });
     electron_1.ipcMain.handle('host-server-status', async () => {
         return serverManager.getStatus();
+    });
+    electron_1.ipcMain.handle('lan-discovery-start', async () => {
+        await lanDiscovery.start();
+    });
+    electron_1.ipcMain.handle('lan-discovery-stop', async () => {
+        await lanDiscovery.stop();
     });
     // Desktop Screen Sharing sources
     electron_1.ipcMain.handle('get-desktop-sources', async () => {
@@ -223,6 +239,30 @@ function setupIpcHandlers(mainWindow, serverManager) {
                 finish({ reachable: false, reason: 'unreachable' });
             }
         });
+    });
+    // Screen Audio Capture (native module)
+    electron_1.ipcMain.handle('screen-audio-supported', () => {
+        return screenAudio ? screenAudio.isSupported() : false;
+    });
+    electron_1.ipcMain.handle('screen-audio-start', () => {
+        if (!screenAudio || !screenAudio.isSupported()) {
+            return { success: false, error: 'Not supported on this platform' };
+        }
+        const excludePid = process.pid;
+        const result = screenAudio.start({ excludePid, sampleRate: 48000, channels: 2 }, (buffer) => {
+            if (!mainWindow.isDestroyed()) {
+                mainWindow.webContents.send('screen-audio:frame', buffer);
+            }
+        });
+        return result;
+    });
+    electron_1.ipcMain.handle('screen-audio-stop', () => {
+        if (!screenAudio)
+            return { success: false };
+        return screenAudio.stop();
+    });
+    mainWindow.on('closed', () => {
+        void lanDiscovery.stop();
     });
 }
 //# sourceMappingURL=ipcHandlers.js.map

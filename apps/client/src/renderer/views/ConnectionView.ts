@@ -162,7 +162,7 @@ export class ConnectionView {
 
           <div class="nav-tabs" style="margin-bottom: 14px;">
             <button id="tab-join" class="tab-button ${this.activeTab === 'join' ? 'active' : ''}">Entrar no Servidor</button>
-            <button id="tab-host" class="tab-button ${this.activeTab === 'host' ? 'active' : ''}">Criar Servidor</button>
+            <button id="tab-host" class="tab-button ${this.activeTab === 'host' ? 'active' : ''}">Meus Servidores</button>
           </div>
 
           <div id="error-banner" class="error-banner"></div>
@@ -250,58 +250,67 @@ export class ConnectionView {
             </button>
           </form>
 
-          <!-- Tab 2: Host Server -->
+          <!-- Tab 2: Meus Servidores -->
           <form id="form-host" style="display: ${this.activeTab === 'host' ? 'block' : 'none'};">
-            <div style="background: rgba(88, 101, 242, 0.1); border: 1px solid rgba(88, 101, 242, 0.3); border-radius: var(--radius-md); padding: 10px 12px; font-size: 12px; color: var(--text-secondary); margin-bottom: 14px; line-height: 1.4; display: flex; gap: 8px; align-items: flex-start;">
-              <span class="material-symbols-outlined md-18" style="color: var(--accent-primary); flex-shrink: 0; margin-top: 1px;">info</span>
-              <div>
-                <b>Como funciona:</b> Ao criar o servidor, ele roda na sua própria máquina e escuta em todas as suas interfaces de rede na porta escolhida. Seus amigos usam o seu IP (público ou de VPN) para entrar!
-              </div>
-            </div>
-
             ${this.getCreatedServersSectionHtml(createdServers)}
 
-            <div style="display: flex; align-items: center; gap: 6px; font-size: 11px; font-weight: 700; color: var(--text-muted); text-transform: uppercase; margin-bottom: 10px;">
-              <span class="material-symbols-outlined md-14" style="color: var(--accent-primary);">add_circle</span>
-              Criar Novo Servidor
+            <div id="host-create-toggle" style="margin-bottom: 10px;">
+              <button type="button" id="btn-show-create-form" class="btn btn-secondary" style="width: 100%; padding: 8px 12px; font-size: 12px;">
+                <span class="material-symbols-outlined md-18" style="margin-right: 6px;">add_circle</span>
+                Criar Servidor
+              </button>
             </div>
 
-            <div class="form-group">
-              <label>Seu Nickname (Anfitrião)</label>
-              <input id="host-nickname" type="text" placeholder="Ex: Murilo" value="${escapeHtml(savedNick)}" required minlength="2" maxlength="32">
-            </div>
-
-            <div class="form-group">
-              <label>Nome do Servidor</label>
-              <input id="host-name" type="text" placeholder="Ex: QG dos Amigos" value="Servidor dos Amigos" required minlength="2" maxlength="50">
-            </div>
-
-            <div class="form-row">
-              <div class="form-group">
-                <label>Porta Local</label>
-                <input id="host-port" type="number" value="3000" required min="1024" max="65535">
+            <div id="host-create-form-section" style="display: none;">
+              <div style="display: flex; align-items: center; gap: 6px; font-size: 11px; font-weight: 700; color: var(--text-muted); text-transform: uppercase; margin-bottom: 10px;">
+                <span class="material-symbols-outlined md-14" style="color: var(--accent-primary);">add_circle</span>
+                Criar Novo Servidor
               </div>
-              <div class="form-group">
-                <label>Senha de Acesso</label>
-                <input id="host-password" type="password" placeholder="Opcional">
-              </div>
-            </div>
 
-            <div class="form-row">
-              <div class="form-group">
-                <label>Canal de Texto</label>
-                <input id="host-text-channel" type="text" value="geral" required>
+              <div style="background: rgba(88, 101, 242, 0.1); border: 1px solid rgba(88, 101, 242, 0.3); border-radius: var(--radius-md); padding: 10px 12px; font-size: 12px; color: var(--text-secondary); margin-bottom: 14px; line-height: 1.4; display: flex; gap: 8px; align-items: flex-start;">
+                <span class="material-symbols-outlined md-18" style="color: var(--accent-primary); flex-shrink: 0; margin-top: 1px;">info</span>
+                <div>
+                  <b>Como funciona:</b> Ao criar o servidor, ele roda na sua própria máquina e escuta em todas as suas interfaces de rede na porta escolhida. Seus amigos usam o seu IP (público ou de VPN) para entrar!
+                </div>
               </div>
-              <div class="form-group">
-                <label>Canal de Voz</label>
-                <input id="host-voice-channel" type="text" value="Geral" required>
-              </div>
-            </div>
 
-            <button type="submit" id="btn-submit-host" class="btn btn-primary" style="width: 100%; margin-top: 8px;">
-              <span class="material-symbols-outlined md-18" style="margin-right: 6px;">add_circle</span>
-              Criar e Iniciar Servidor
-            </button>
+              <div class="form-group">
+                <label>Seu Nickname (Anfitrião)</label>
+                <input id="host-nickname" type="text" placeholder="Ex: Murilo" value="${escapeHtml(savedNick)}" required minlength="2" maxlength="32">
+              </div>
+
+              <div class="form-group">
+                <label>Nome do Servidor</label>
+                <input id="host-name" type="text" placeholder="Ex: QG dos Amigos" value="Servidor dos Amigos" required minlength="2" maxlength="50">
+              </div>
+
+              <div class="form-row">
+                <div class="form-group">
+                  <label>Porta Local</label>
+                  <input id="host-port" type="number" value="3000" required min="1024" max="65535">
+                </div>
+                <div class="form-group">
+                  <label>Senha de Acesso</label>
+                  <input id="host-password" type="password" placeholder="Opcional">
+                </div>
+              </div>
+
+              <div class="form-row">
+                <div class="form-group">
+                  <label>Canal de Texto</label>
+                  <input id="host-text-channel" type="text" value="geral" required>
+                </div>
+                <div class="form-group">
+                  <label>Canal de Voz</label>
+                  <input id="host-voice-channel" type="text" value="Geral" required>
+                </div>
+              </div>
+
+              <button type="submit" id="btn-submit-host" class="btn btn-primary" style="width: 100%; margin-top: 8px;">
+                <span class="material-symbols-outlined md-18" style="margin-right: 6px;">add_circle</span>
+                Criar e Iniciar Servidor
+              </button>
+            </div>
           </form>
 
         </div>
@@ -519,7 +528,10 @@ export class ConnectionView {
             <span class="material-symbols-outlined md-14" style="color: #3ba55d;">wifi</span>
             Servidores na Rede (${servers.length})
           </span>
-          <span style="font-size: 10px; font-weight: normal; color: var(--text-muted);">Descoberta automática na LAN</span>
+          <button type="button" id="btn-scan-lan" class="btn btn-secondary" style="padding: 2px 10px; font-size: 10px; height: 22px;">
+            <span class="material-symbols-outlined md-14" style="margin-right: 3px;">radar</span>
+            Buscar
+          </button>
         </div>
         ${servers.length > 0 ? `
           <div class="saved-servers-list">
@@ -546,8 +558,8 @@ export class ConnectionView {
             `).join('')}
           </div>
         ` : `
-          <div style="padding: 12px; border: 1px dashed rgba(255, 255, 255, 0.12); border-radius: var(--radius-md); color: var(--text-muted); font-size: 12px;">
-            Nenhum servidor Mini Voice encontrado na sua rede no momento.
+          <div style="padding: 8px 12px; border: 1px dashed rgba(255, 255, 255, 0.12); border-radius: var(--radius-md); color: var(--text-muted); font-size: 12px;">
+            Clique em "Buscar" para procurar servidores na rede local.
           </div>
         `}
       </div>
@@ -566,6 +578,24 @@ export class ConnectionView {
     const joinPortInput = document.getElementById('join-port') as HTMLInputElement | null;
     const formJoin = document.getElementById('form-join') as HTMLFormElement | null;
 
+    // Scan button — starts discovery for 5s then stops
+    const scanBtn = this.container.querySelector('#btn-scan-lan') as HTMLButtonElement | null;
+    scanBtn?.addEventListener('click', async () => {
+      scanBtn.disabled = true;
+      scanBtn.innerHTML = '<span class="material-symbols-outlined md-14" style="margin-right: 3px;">radar</span> Buscando...';
+      this.discoveredServers.clear();
+      this.renderDiscoveredServersSection();
+      await window.api?.startLanDiscovery?.();
+      setTimeout(async () => {
+        await window.api?.stopLanDiscovery?.();
+        const btn2 = this.container.querySelector('#btn-scan-lan') as HTMLButtonElement | null;
+        if (btn2) {
+          btn2.disabled = false;
+          btn2.innerHTML = '<span class="material-symbols-outlined md-14" style="margin-right: 3px;">radar</span> Buscar';
+        }
+      }, 5000);
+    });
+
     const buttons = this.container.querySelectorAll('.btn-join-discovered-server');
     buttons.forEach((button) => {
       button.addEventListener('click', () => {
@@ -583,14 +613,12 @@ export class ConnectionView {
   }
 
   private async syncLanDiscoveryForActiveTab(): Promise<void> {
-    if (this.activeTab === 'join') {
-      await window.api?.startLanDiscovery?.();
-      return;
+    // Discovery is manual now — only stop when leaving join tab
+    if (this.activeTab !== 'join') {
+      this.discoveredServers.clear();
+      this.renderDiscoveredServersSection();
+      await window.api?.stopLanDiscovery?.();
     }
-
-    this.discoveredServers.clear();
-    this.renderDiscoveredServersSection();
-    await window.api?.stopLanDiscovery?.();
   }
 
   private getDiscoveredServerKey(host: string, port: number): string {
@@ -678,6 +706,19 @@ export class ConnectionView {
     this.loadServerPreviews();
     this.attachDiscoveredServerEvents();
     void this.syncLanDiscoveryForActiveTab();
+
+    // Toggle create server form visibility
+    document.getElementById('btn-show-create-form')?.addEventListener('click', () => {
+      const section = document.getElementById('host-create-form-section');
+      const toggleBtn = document.getElementById('btn-show-create-form');
+      if (section && toggleBtn) {
+        const visible = section.style.display !== 'none';
+        section.style.display = visible ? 'none' : 'block';
+        toggleBtn.innerHTML = visible
+          ? '<span class="material-symbols-outlined md-18" style="margin-right: 6px;">add_circle</span> Criar Servidor'
+          : '<span class="material-symbols-outlined md-18" style="margin-right: 6px;">close</span> Cancelar';
+      }
+    });
 
     startCreatedButtons.forEach((btn) => {
       btn.addEventListener('click', async (e) => {
