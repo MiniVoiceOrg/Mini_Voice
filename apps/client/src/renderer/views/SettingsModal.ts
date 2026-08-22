@@ -13,6 +13,10 @@ import { getAvatarUrl } from '../utils/avatar';
 import { updateService } from '../core/UpdateService';
 import { soundboardService } from '../core/SoundboardService';
 
+const IDEAS_URL = 'https://github.com/MiniVoiceOrg/Mini_Voice/discussions/categories/ideias';
+const NEW_IDEA_URL = 'https://github.com/MiniVoiceOrg/Mini_Voice/discussions/new?category=ideias';
+const NEW_ISSUE_URL = 'https://github.com/MiniVoiceOrg/Mini_Voice/issues/new/choose';
+
 export class SettingsModal {
   private modalEl: HTMLElement | null = null;
   private previewStream: MediaStream | null = null;
@@ -228,6 +232,31 @@ export class SettingsModal {
           </div>
         </div>
 
+        <!-- Community -->
+        <div class="form-group" style="border-top: 1px solid var(--border-color); padding-top: 14px; margin-top: 10px;">
+          <label style="display: flex; align-items: center; gap: 6px;">
+            <span class="material-symbols-outlined md-16" style="color: var(--accent-primary);">forum</span>
+            Comunidade
+          </label>
+          <small style="display: block; margin-bottom: 8px; color: var(--text-muted); font-size: 11px;">
+            O Mini Voice é open source. As ideias mais votadas pela comunidade viram as próximas features.
+          </small>
+          <div style="display: flex; gap: 8px; flex-wrap: wrap;">
+            <button id="btn-suggest-idea" class="btn btn-secondary" style="font-size: 12px; padding: 6px 12px;">
+              <span class="material-symbols-outlined md-16" style="margin-right: 4px;">lightbulb</span>
+              Sugerir uma ideia
+            </button>
+            <button id="btn-vote-ideas" class="btn btn-secondary" style="font-size: 12px; padding: 6px 12px;">
+              <span class="material-symbols-outlined md-16" style="margin-right: 4px;">how_to_vote</span>
+              Votar nas ideias
+            </button>
+            <button id="btn-report-bug" class="btn btn-secondary" style="font-size: 12px; padding: 6px 12px;">
+              <span class="material-symbols-outlined md-16" style="margin-right: 4px;">bug_report</span>
+              Reportar um bug
+            </button>
+          </div>
+        </div>
+
         <div class="modal-footer" style="margin-top: 20px;">
           <button id="btn-settings-close" class="btn btn-primary">Pronto</button>
         </div>
@@ -359,6 +388,14 @@ export class SettingsModal {
 
     const btnCheckUpdates = this.modalEl.querySelector('#btn-check-updates');
     btnCheckUpdates?.addEventListener('click', () => this.checkUpdates());
+
+    const btnSuggestIdea = this.modalEl.querySelector('#btn-suggest-idea');
+    const btnVoteIdeas = this.modalEl.querySelector('#btn-vote-ideas');
+    const btnReportBug = this.modalEl.querySelector('#btn-report-bug');
+
+    btnSuggestIdea?.addEventListener('click', () => window.api?.openExternal(NEW_IDEA_URL));
+    btnVoteIdeas?.addEventListener('click', () => window.api?.openExternal(IDEAS_URL));
+    btnReportBug?.addEventListener('click', () => window.api?.openExternal(NEW_ISSUE_URL));
 
     btnRefresh?.addEventListener('click', async () => {
       const origText = btnRefresh.innerHTML;
