@@ -20,6 +20,11 @@ catch {
 }
 function setupIpcHandlers(mainWindow, serverManager) {
     const lanDiscovery = new lanDiscovery_1.LanDiscovery(mainWindow);
+    electron_1.ipcMain.handle('window:maximize', () => {
+        if (mainWindow && !mainWindow.isDestroyed()) {
+            mainWindow.maximize();
+        }
+    });
     // Client ID persistence
     electron_1.ipcMain.handle('get-client-id', async () => {
         const clientIdFile = path_1.default.join(electron_1.app.getPath('userData'), 'client-id.json');

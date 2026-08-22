@@ -390,6 +390,8 @@ export class ConnectionView {
       password: updatedServer.password,
       lastConnected: startedAt,
     });
+
+    await window.api?.maximizeWindow?.();
   }
 
   private async stopHostedServer(serverId?: string): Promise<void> {
@@ -666,6 +668,7 @@ export class ConnectionView {
       });
 
       await window.api?.stopLanDiscovery?.();
+      await window.api?.maximizeWindow?.();
     } catch (err: any) {
       this.showError(err.message || 'Não foi possível conectar ao servidor. Verifique o IP, porta e senha.');
     } finally {

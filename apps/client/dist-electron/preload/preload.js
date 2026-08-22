@@ -7,6 +7,7 @@ const api = {
     onLanDiscoveryFound: (cb) => electron_1.ipcRenderer.on('lan-discovery:found', (_e, server) => cb(server)),
     onLanDiscoveryLost: (cb) => electron_1.ipcRenderer.on('lan-discovery:lost', (_e, server) => cb(server)),
     getClientId: () => electron_1.ipcRenderer.invoke('get-client-id'),
+    maximizeWindow: () => electron_1.ipcRenderer.invoke('window:maximize'),
     hostServerStart: (options) => electron_1.ipcRenderer.invoke('host-server-start', options),
     hostServerStop: () => electron_1.ipcRenderer.invoke('host-server-stop'),
     hostServerStatus: () => electron_1.ipcRenderer.invoke('host-server-status'),
