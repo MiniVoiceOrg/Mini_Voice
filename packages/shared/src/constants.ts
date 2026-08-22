@@ -48,7 +48,7 @@ export const QUALITY_PRESETS: Record<QualityPresetType, QualityProfile> = {
     screenWidth: 854,
     screenHeight: 480,
     screenFps: 15,
-    screenBitrateKbps: 500,
+    screenBitrateKbps: 900,
   },
   NORMAL: {
     name: 'Normal',
@@ -60,7 +60,7 @@ export const QUALITY_PRESETS: Record<QualityPresetType, QualityProfile> = {
     screenWidth: 1280,
     screenHeight: 720,
     screenFps: 30,
-    screenBitrateKbps: 1000,
+    screenBitrateKbps: 2000,
   },
   HIGH: {
     name: 'Alta Qualidade',
@@ -72,7 +72,7 @@ export const QUALITY_PRESETS: Record<QualityPresetType, QualityProfile> = {
     screenWidth: 1920,
     screenHeight: 1080,
     screenFps: 30,
-    screenBitrateKbps: 1500,
+    screenBitrateKbps: 3500,
   },
   GAMING: {
     name: 'Gaming Mode',
@@ -83,7 +83,7 @@ export const QUALITY_PRESETS: Record<QualityPresetType, QualityProfile> = {
     cameraBitrateKbps: 300,
     screenWidth: 1280,
     screenHeight: 720,
-    screenFps: 20,
-    screenBitrateKbps: 600,
+    screenFps: 60,
+    screenBitrateKbps: 3500,
   },
 };

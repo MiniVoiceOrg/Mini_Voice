@@ -128,13 +128,17 @@ export class SettingsModal {
           <label style="display: flex; align-items: center; gap: 6px;">
             <span class="material-symbols-outlined md-16" style="color: var(--accent-primary);">speed</span>
             Perfil de Qualidade e Desempenho
+            <span class="material-symbols-outlined md-16" style="color: var(--text-muted); cursor: help;" title="Afeta APENAS o que você transmite (sua voz, câmera e tela). A qualidade do que você recebe depende da configuração de cada pessoa. Perfis mais altos usam mais internet e CPU.">help</span>
           </label>
           <select id="select-preset">
-            <option value="ECONOMIC" ${settingsStore.qualityPreset === 'ECONOMIC' ? 'selected' : ''}>Econômico (Voz 24k, Câmera 360p, Tela 480p) — Menor uso de banda</option>
-            <option value="NORMAL" ${settingsStore.qualityPreset === 'NORMAL' ? 'selected' : ''}>Normal (Voz 32k, Câmera 480p, Tela 720p) — Balanceado</option>
-            <option value="HIGH" ${settingsStore.qualityPreset === 'HIGH' ? 'selected' : ''}>Alta Qualidade (Voz 48k, Câmera 720p, Tela 1080p)</option>
-            <option value="GAMING" ${settingsStore.qualityPreset === 'GAMING' ? 'selected' : ''}>Gaming Mode (Voz 28k Prioritária, Câmera/Tela Reduzidas) — Sem lag em jogos</option>
+            <option value="ECONOMIC" ${settingsStore.qualityPreset === 'ECONOMIC' ? 'selected' : ''}>Econômico — para internet lenta (menor resolução, prioriza estabilidade)</option>
+            <option value="NORMAL" ${settingsStore.qualityPreset === 'NORMAL' ? 'selected' : ''}>Normal (recomendado) — bom equilíbrio entre qualidade e banda</option>
+            <option value="HIGH" ${settingsStore.qualityPreset === 'HIGH' ? 'selected' : ''}>Alta Qualidade — para internet rápida (mais nitidez, usa mais banda e CPU)</option>
+            <option value="GAMING" ${settingsStore.qualityPreset === 'GAMING' ? 'selected' : ''}>Gaming — tela fluida em 60 FPS para jogos (reduz a câmera)</option>
           </select>
+          <small style="display: block; margin-top: 6px; color: var(--text-muted); font-size: 11px;">
+            Afeta apenas o que <strong>você transmite</strong>. A qualidade que você recebe depende de cada pessoa.
+          </small>
         </div>
 
         <!-- Updates -->

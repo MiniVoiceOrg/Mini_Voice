@@ -93,7 +93,13 @@ export class VideoService {
     }
 
     // Auto-detect when user stops sharing via browser UI
-    this.screenStream!.getVideoTracks()[0].onended = () => {
+    const screenTrack = this.screenStream!.getVideoTracks()[0];
+
+    // Hint the encoder about the content type so it optimizes correctly:
+    // gaming favors fluid motion, desktop sharing favors sharp detail.
+    screenTrack.contentHint = this.currentPreset === 'GAMING' ? 'motion' : 'detail';
+
+    screenTrack.onended = () => {
       this.stopScreenShare();
     };
 
