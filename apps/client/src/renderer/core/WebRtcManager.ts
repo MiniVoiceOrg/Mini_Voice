@@ -472,7 +472,16 @@ export class WebRtcManager {
           if (sender.track.kind === 'audio') {
             params.encodings[0].maxBitrate = profile.audioBitrateKbps * 1000;
           } else if (sender.track.kind === 'video') {
-            params.encodings[0].maxBitrate = profile.cameraBitrateKbps * 1000;
+            const isScreen = sender.track === this.localScreenTrack;
+            params.encodings[0].maxBitrate =
+              (isScreen ? profile.screenBitrateKbps : profile.cameraBitrateKbps) * 1000;
+
+            // Gaming favors fluid motion (drop resolution before framerate);
+            // desktop/camera favors sharpness (drop framerate before resolution).
+            (params as any).degradationPreference =
+              isScreen && this.currentPreset === 'GAMING'
+                ? 'maintain-framerate'
+                : 'maintain-resolution';
           }
 
           await sender.setParameters(params);
