@@ -767,6 +767,8 @@ export class MainView {
       const newDeafened = !voiceStore.isDeafened;
       voiceStore.setDeafened(newDeafened);
       audioProcessor.setDeafened(newDeafened);
+      // Restore the mic track to its (possibly restored) pre-deafen state (#74).
+      audioProcessor.setMuted(voiceStore.isMuted);
       webRtcManager.setDeafened(newDeafened);
       soundEffects.play(newDeafened ? 'deafen' : 'undeafen');
       networkClient.send(MessageType.VOICE_STATE_UPDATE, { isDeafened: newDeafened, isMuted: voiceStore.isMuted });

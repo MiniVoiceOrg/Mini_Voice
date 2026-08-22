@@ -4,6 +4,7 @@ export class VoiceStore {
   public currentVoiceChannelId: string | null = null;
   public isMuted: boolean = false;
   public isDeafened: boolean = false;
+  private micMutedBeforeDeafen: boolean = false;
   public isSpeaking: boolean = false;
   public isCameraOn: boolean = false;
   public isScreenSharing: boolean = false;
@@ -24,10 +25,17 @@ export class VoiceStore {
   }
 
   public setDeafened(deafened: boolean): void {
-    this.isDeafened = deafened;
-    if (deafened) {
+    if (deafened && !this.isDeafened) {
+      // Entering deafen: remember whether the mic was already muted, then mute it.
+      this.micMutedBeforeDeafen = this.isMuted;
       this.isMuted = true;
+    } else if (!deafened && this.isDeafened) {
+      // Leaving deafen: restore the mic only if it wasn't muted before deafening (#74).
+      if (!this.micMutedBeforeDeafen) {
+        this.isMuted = false;
+      }
     }
+    this.isDeafened = deafened;
     appEvents.emit('voice.state_updated');
   }
 
@@ -53,6 +61,7 @@ export class VoiceStore {
     this.currentVoiceChannelId = null;
     this.isMuted = false;
     this.isDeafened = false;
+    this.micMutedBeforeDeafen = false;
     this.isSpeaking = false;
     this.isCameraOn = false;
     this.isScreenSharing = false;
