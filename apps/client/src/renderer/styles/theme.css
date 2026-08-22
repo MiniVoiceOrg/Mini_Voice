@@ -520,7 +520,7 @@ input:focus, textarea:focus, select:focus {
 /* Channels Sidebar */
 .channels-sidebar {
   width: 280px;
-  min-width: 220px;
+  min-width: 280px;
   max-width: 35vw;
   background-color: var(--bg-sidebar);
   border-right: 1px solid var(--border-color);

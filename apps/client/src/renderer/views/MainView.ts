@@ -413,7 +413,7 @@ export class MainView {
   }
 
   private clampSidebarWidth(width: number): number {
-    const min = 220;
+    const min = 280;
     const max = Math.max(min, Math.floor(window.innerWidth * 0.35));
     return Math.min(max, Math.max(min, width));
   }
