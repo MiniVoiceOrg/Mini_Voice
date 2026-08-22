@@ -1,6 +1,20 @@
 import { contextBridge, ipcRenderer } from 'electron';
 
 export interface ElectronApi {
+  startLanDiscovery: () => Promise<void>;
+  stopLanDiscovery: () => Promise<void>;
+  onLanDiscoveryFound: (cb: (server: {
+    host: string;
+    port: number;
+    serverName: string;
+    version: string;
+  }) => void) => void;
+  onLanDiscoveryLost: (cb: (server: {
+    host: string;
+    port: number;
+    serverName: string;
+    version: string;
+  }) => void) => void;
   getClientId: () => Promise<string>;
   hostServerStart: (options: {
     port: number;
@@ -63,6 +77,10 @@ export interface ElectronApi {
 }
 
 const api: ElectronApi = {
+  startLanDiscovery: () => ipcRenderer.invoke('lan-discovery-start'),
+  stopLanDiscovery: () => ipcRenderer.invoke('lan-discovery-stop'),
+  onLanDiscoveryFound: (cb) => ipcRenderer.on('lan-discovery:found', (_e, server) => cb(server)),
+  onLanDiscoveryLost: (cb) => ipcRenderer.on('lan-discovery:lost', (_e, server) => cb(server)),
   getClientId: () => ipcRenderer.invoke('get-client-id'),
   hostServerStart: (options) => ipcRenderer.invoke('host-server-start', options),
   hostServerStop: () => ipcRenderer.invoke('host-server-stop'),
