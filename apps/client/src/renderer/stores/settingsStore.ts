@@ -1,8 +1,9 @@
-import { QualityPresetType } from '@mini-voice/shared';
+import { QualityPresetType, QualityProfile, DEFAULT_CUSTOM_PROFILE } from '@mini-voice/shared';
 import { appEvents } from '../core/EventBus';
 
 export class SettingsStore {
   public qualityPreset: QualityPresetType = 'NORMAL';
+  public customProfile: QualityProfile = { ...DEFAULT_CUSTOM_PROFILE };
   public vadSensitivity: number = 25; // 0 - 100
   public selectedMicrophoneId: string = '';
   public selectedSpeakerId: string = '';
@@ -18,6 +19,7 @@ export class SettingsStore {
   public screenShareTelemetryEnabled: boolean = false;
   public screenShareTelemetryPosition: 'top-left' | 'top-right' | 'bottom-left' | 'bottom-right' = 'top-right';
   public screenShareTelemetryMode: 'simple' | 'complete' = 'simple';
+  public customSounds: Partial<Record<string, string>> = {}; // key → file path
 
   constructor() {
     this.load();
@@ -55,6 +57,12 @@ export class SettingsStore {
         }
         if (!['simple', 'complete'].includes(this.screenShareTelemetryMode)) {
           this.screenShareTelemetryMode = 'simple';
+        }
+        if (!this.customProfile || typeof this.customProfile !== 'object' || !this.customProfile.audioBitrateKbps) {
+          this.customProfile = { ...DEFAULT_CUSTOM_PROFILE };
+        }
+        if (!this.customSounds || typeof this.customSounds !== 'object') {
+          this.customSounds = {};
         }
       }
     } catch (e) {}
@@ -107,6 +115,8 @@ export class SettingsStore {
         screenShareTelemetryEnabled: this.screenShareTelemetryEnabled,
         screenShareTelemetryPosition: this.screenShareTelemetryPosition,
         screenShareTelemetryMode: this.screenShareTelemetryMode,
+        customProfile: this.customProfile,
+        customSounds: this.customSounds,
       }));
       appEvents.emit('settings.updated');
     } catch (e) {}

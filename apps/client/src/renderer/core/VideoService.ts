@@ -12,6 +12,7 @@ export class VideoService {
   }
 
   public getProfile(): QualityProfile {
+    if (this.currentPreset === 'CUSTOM') return settingsStore.customProfile;
     return QUALITY_PRESETS[this.currentPreset];
   }
 

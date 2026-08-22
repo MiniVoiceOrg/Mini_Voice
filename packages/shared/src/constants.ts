@@ -22,7 +22,7 @@ export const LIMITS = {
 
 export const RECONNECT_DELAYS_MS = [1000, 2000, 3000, 5000] as const;
 
-export type QualityPresetType = 'ECONOMIC' | 'NORMAL' | 'HIGH' | 'GAMING';
+export type QualityPresetType = 'ECONOMIC' | 'NORMAL' | 'HIGH' | 'GAMING' | 'CUSTOM';
 
 export interface QualityProfile {
   name: string;
@@ -37,7 +37,7 @@ export interface QualityProfile {
   screenBitrateKbps: number;
 }
 
-export const QUALITY_PRESETS: Record<QualityPresetType, QualityProfile> = {
+export const QUALITY_PRESETS: Record<Exclude<QualityPresetType, 'CUSTOM'>, QualityProfile> = {
   ECONOMIC: {
     name: 'Econômico',
     audioBitrateKbps: 24,
@@ -81,9 +81,22 @@ export const QUALITY_PRESETS: Record<QualityPresetType, QualityProfile> = {
     cameraHeight: 360,
     cameraFps: 20,
     cameraBitrateKbps: 300,
-    screenWidth: 1280,
-    screenHeight: 720,
+    screenWidth: 1920,
+    screenHeight: 1080,
     screenFps: 60,
-    screenBitrateKbps: 3500,
+    screenBitrateKbps: 6000,
   },
+};
+
+export const DEFAULT_CUSTOM_PROFILE: QualityProfile = {
+  name: 'Personalizado',
+  audioBitrateKbps: 32,
+  cameraWidth: 1280,
+  cameraHeight: 720,
+  cameraFps: 30,
+  cameraBitrateKbps: 500,
+  screenWidth: 1920,
+  screenHeight: 1080,
+  screenFps: 30,
+  screenBitrateKbps: 3000,
 };

@@ -116,6 +116,24 @@ export function setupIpcHandlers(mainWindow: BrowserWindow, serverManager: Serve
     };
   });
 
+  // Custom sound file selection (#7)
+  ipcMain.handle('dialog-select-sound-file', async () => {
+    const result = await dialog.showOpenDialog(mainWindow, {
+      title: 'Selecionar Arquivo de Som',
+      filters: [
+        { name: 'Áudio (WAV, MP3, OGG)', extensions: ['wav', 'mp3', 'ogg', 'webm'] },
+      ],
+      properties: ['openFile'],
+    });
+    if (result.canceled || result.filePaths.length === 0) return null;
+    const filePath = result.filePaths[0];
+    const buffer = fs.readFileSync(filePath);
+    const ext = path.extname(filePath).toLowerCase().replace('.', '');
+    const mime = ext === 'mp3' ? 'audio/mpeg' : ext === 'ogg' ? 'audio/ogg' : ext === 'webm' ? 'audio/webm' : 'audio/wav';
+    const base64 = buffer.toString('base64');
+    return `data:${mime};base64,${base64}`;
+  });
+
   // Soundboard Folder Selection
   ipcMain.handle('dialog-select-soundboard-folder', async () => {
     const result = await dialog.showOpenDialog(mainWindow, {

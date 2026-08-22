@@ -152,6 +152,7 @@ export class WebRtcManager {
         if (!screenAudioEl) {
           screenAudioEl = document.createElement('audio');
           screenAudioEl.autoplay = true;
+          screenAudioEl.setAttribute('data-screen-audio-user', peerUserId);
           document.body.appendChild(screenAudioEl);
           this.screenAudioElements.set(peerUserId, screenAudioEl);
         }
@@ -568,7 +569,7 @@ export class WebRtcManager {
   }
 
   private async applyBitrateConstraints(): Promise<void> {
-    const profile = QUALITY_PRESETS[this.currentPreset];
+    const profile = this.currentPreset === 'CUSTOM' ? settingsStore.customProfile : QUALITY_PRESETS[this.currentPreset];
     for (const session of this.peers.values()) {
       for (const sender of session.pc.getSenders()) {
         if (!sender.track) continue;
