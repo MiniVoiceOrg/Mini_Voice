@@ -72,6 +72,7 @@ async function runTests() {
     const ws2 = new WebSocket('ws://127.0.0.1:3999');
     let user2Id = '';
     let textChannelId = '';
+    let voiceChannelId = '';
 
     await withTimeout(new Promise<void>((resolve, reject) => {
       ws2.on('open', () => {
@@ -94,6 +95,7 @@ async function runTests() {
           console.log('✔ Teste 2 passou: Conexão autenticada com sucesso! Servidor:', res.payload.server.name);
           user2Id = res.payload.currentUser.id;
           textChannelId = res.payload.server.channels.find((c: any) => c.type === 'TEXT').id;
+          voiceChannelId = res.payload.server.channels.find((c: any) => c.type === 'VOICE').id;
           resolve();
         }
       });
@@ -149,6 +151,78 @@ async function runTests() {
       ws2.on('message', handler);
       ws2.send(JSON.stringify(sendMsg));
     }), 5000, 'Teste 4: mensagem de chat');
+
+    // Test 5: Soundboard Play and receive broadcast
+    await withTimeout(new Promise<void>((resolve, reject) => {
+      const soundMsg: ProtocolMessage = {
+        type: MessageType.SOUNDBOARD_PLAY,
+        requestId: 'req-5',
+        payload: {
+          channelId: voiceChannelId,
+          soundName: 'Airhorn',
+          audioBase64: 'UklGRiQAAABXQVZFZm10IBAAAAABAAEAQB8AAEAfAAABAAgAZGF0YQAAAAA=',
+          mimeType: 'audio/wav',
+        },
+      };
+
+      const handler = (data: any) => {
+        const res = JSON.parse(data.toString());
+        if (res.type === MessageType.SOUNDBOARD_PLAYED && res.payload.soundName === 'Airhorn') {
+          console.log('✔ Teste 5 passou: Reprodução de soundboard transmitida com sucesso!');
+          ws2.off('message', handler);
+          resolve();
+        }
+      };
+
+      ws2.on('message', handler);
+      ws2.send(JSON.stringify(soundMsg));
+    }), 5000, 'Teste 5: reprodução de soundboard');
+
+    // Test 6: Disable Soundboard via server settings and verify play is rejected
+    await withTimeout(new Promise<void>((resolve, reject) => {
+      const updateSettingsMsg: ProtocolMessage = {
+        type: MessageType.SERVER_UPDATE_SETTINGS,
+        requestId: 'req-6-update',
+        payload: {
+          name: 'Servidor Sem Soundboard',
+          allowSoundboard: false,
+        },
+      };
+
+      const settingsHandler = (data: any) => {
+        const res = JSON.parse(data.toString());
+        if (res.type === MessageType.SERVER_SETTINGS_UPDATED && res.payload.allowSoundboard === false) {
+          ws2.off('message', settingsHandler);
+
+          // Try playing soundboard now
+          const soundMsg: ProtocolMessage = {
+            type: MessageType.SOUNDBOARD_PLAY,
+            requestId: 'req-6-play',
+            payload: {
+              channelId: voiceChannelId,
+              soundName: 'Airhorn Blocked',
+              audioBase64: 'UklGRiQAAABXQVZFZm10IBAAAAABAAEAQB8AAEAfAAABAAgAZGF0YQAAAAA=',
+              mimeType: 'audio/wav',
+            },
+          };
+
+          const soundHandler = (d: any) => {
+            const r = JSON.parse(d.toString());
+            if (r.type === MessageType.SERVER_ERROR && r.payload.message.includes('desabilitada')) {
+              console.log('✔ Teste 6 passou: Soundboard bloqueado com sucesso após desabilitação no servidor!');
+              ws2.off('message', soundHandler);
+              resolve();
+            }
+          };
+
+          ws2.on('message', soundHandler);
+          ws2.send(JSON.stringify(soundMsg));
+        }
+      };
+
+      ws2.on('message', settingsHandler);
+      ws2.send(JSON.stringify(updateSettingsMsg));
+    }), 5000, 'Teste 6: desabilitar soundboard no servidor');
 
     ws2.close();
     console.log('=== Todos os testes do servidor passaram com sucesso! ===');

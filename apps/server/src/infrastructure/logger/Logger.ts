@@ -1,4 +1,4 @@
-export type LogCategory = 'INFO' | 'WARN' | 'ERROR' | 'SECURITY' | 'NETWORK' | 'DATABASE' | 'WEBRTC';
+export type LogCategory = 'INFO' | 'WARN' | 'ERROR' | 'SECURITY' | 'NETWORK' | 'DATABASE' | 'WEBRTC' | 'SOUNDBOARD';
 
 export class Logger {
   public static log(category: LogCategory, message: string, meta?: any): void {

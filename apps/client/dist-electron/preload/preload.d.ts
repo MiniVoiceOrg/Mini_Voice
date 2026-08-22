@@ -28,6 +28,22 @@ export interface ElectronApi {
         mimeType: string;
         base64: string;
     } | null>;
+    selectSoundboardFolder: () => Promise<string | null>;
+    listSoundboardSounds: (folderPath: string) => Promise<Array<{
+        name: string;
+        fileName: string;
+        filePath: string;
+        sizeBytes: number;
+        ext: string;
+    }>>;
+    readSoundboardSound: (filePath: string) => Promise<{
+        fileName: string;
+        soundName: string;
+        mimeType: string;
+        base64: string;
+        dataUrl: string;
+        sizeBytes: number;
+    } | null>;
     minimize: () => Promise<void>;
     maximize: () => Promise<void>;
     close: () => Promise<void>;

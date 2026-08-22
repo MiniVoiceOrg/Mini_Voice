@@ -17,6 +17,7 @@ import { appEvents } from './core/EventBus';
 import { networkClient } from './core/NetworkClient';
 import { participantManager } from './core/ParticipantManager';
 import { soundEffects } from './core/SoundEffects';
+import { soundboardService } from './core/SoundboardService';
 import { updateService } from './core/UpdateService';
 import { webRtcManager } from './core/WebRtcManager';
 import { chatStore } from './stores/chatStore';
@@ -52,6 +53,9 @@ class App {
 
     // Render connection view initially
     this.connectionView.render();
+
+    // Load soundboard sounds if configured
+    soundboardService.loadSounds().catch(() => {});
 
     // Start checking for app updates (non-blocking)
     updateService.init();

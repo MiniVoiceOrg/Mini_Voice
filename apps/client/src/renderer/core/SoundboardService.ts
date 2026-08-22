@@ -1,0 +1,169 @@
+import { MessageType, SoundboardPlayedPayload } from '@mini-voice/shared';
+import { appEvents } from './EventBus';
+import { networkClient } from './NetworkClient';
+import { settingsStore } from '../stores/settingsStore';
+import { voiceStore } from '../stores/voiceStore';
+import { serverStore } from '../stores/serverStore';
+
+export interface SoundItem {
+  name: string;
+  fileName: string;
+  filePath: string;
+  sizeBytes: number;
+  ext: string;
+}
+
+export class SoundboardService {
+  private sounds: SoundItem[] = [];
+  private audioContext: AudioContext | null = null;
+  private sinkId: string = '';
+
+  constructor() {
+    this.setupListeners();
+  }
+
+  private setupListeners(): void {
+    // Listen to network events when another user or server sends a soundboard play
+    appEvents.on(`message.${MessageType.SOUNDBOARD_PLAYED}`, (payload: SoundboardPlayedPayload) => {
+      this.handleIncomingSound(payload);
+    });
+
+    // Update speaker device when settings change
+    appEvents.on('settings.updated', () => {
+      if (settingsStore.selectedSpeakerId && settingsStore.selectedSpeakerId !== this.sinkId) {
+        this.setSinkId(settingsStore.selectedSpeakerId);
+      }
+    });
+  }
+
+  public setSinkId(sinkId: string): void {
+    this.sinkId = sinkId;
+  }
+
+  public async loadSounds(): Promise<SoundItem[]> {
+    const folder = settingsStore.soundboardFolderPath;
+    if (!folder || !window.api?.listSoundboardSounds) {
+      this.sounds = [];
+      appEvents.emit('soundboard.sounds_loaded', this.sounds);
+      return [];
+    }
+
+    try {
+      this.sounds = await window.api.listSoundboardSounds(folder);
+      appEvents.emit('soundboard.sounds_loaded', this.sounds);
+      return this.sounds;
+    } catch (err) {
+      console.warn('[SoundboardService] Error loading sounds from folder:', err);
+      this.sounds = [];
+      appEvents.emit('soundboard.sounds_loaded', this.sounds);
+      return [];
+    }
+  }
+
+  public getSounds(): SoundItem[] {
+    return this.sounds;
+  }
+
+  public async selectFolder(): Promise<string | null> {
+    if (!window.api?.selectSoundboardFolder) return null;
+    const folder = await window.api.selectSoundboardFolder();
+    if (folder) {
+      settingsStore.soundboardFolderPath = folder;
+      settingsStore.save();
+      await this.loadSounds();
+    }
+    return folder;
+  }
+
+  public async playSound(filePath: string): Promise<boolean> {
+    if (!window.api?.readSoundboardSound) return false;
+
+    // Must be in a voice channel to broadcast sound to the room
+    const currentChannelId = voiceStore.currentVoiceChannelId;
+    if (!currentChannelId) {
+      console.warn('[SoundboardService] Cannot play sound: not in a voice channel');
+      // Local preview if clicked outside call
+      await this.playLocalPreview(filePath);
+      return true;
+    }
+
+    // Check if server allows soundboard
+    if (serverStore.serverDetails?.allowSoundboard === false) {
+      console.warn('[SoundboardService] Soundboard is disabled on this server');
+      return false;
+    }
+
+    try {
+      const soundData = await window.api.readSoundboardSound(filePath);
+      if (!soundData) {
+        console.warn('[SoundboardService] Failed to read sound file:', filePath);
+        return false;
+      }
+
+      // Send to server via WebSocket to broadcast to channel members
+      networkClient.send(MessageType.SOUNDBOARD_PLAY, {
+        channelId: currentChannelId,
+        soundName: soundData.soundName,
+        audioBase64: soundData.base64,
+        mimeType: soundData.mimeType,
+      });
+
+      return true;
+    } catch (err) {
+      console.error('[SoundboardService] Error playing soundboard sound:', err);
+      return false;
+    }
+  }
+
+  private async playLocalPreview(filePath: string): Promise<void> {
+    try {
+      const soundData = await window.api.readSoundboardSound(filePath);
+      if (!soundData) return;
+
+      if (settingsStore.soundboardMuted || settingsStore.soundboardVolume <= 0) {
+        return;
+      }
+
+      const audio = new Audio(soundData.dataUrl);
+      audio.volume = Math.max(0, Math.min(1, settingsStore.soundboardVolume / 100));
+
+      if (this.sinkId && typeof (audio as any).setSinkId === 'function') {
+        (audio as any).setSinkId(this.sinkId).catch(() => {});
+      }
+
+      await audio.play();
+    } catch (err) {
+      console.warn('[SoundboardService] Local preview failed:', err);
+    }
+  }
+
+  public async handleIncomingSound(payload: SoundboardPlayedPayload): Promise<void> {
+    appEvents.emit('soundboard.played', payload);
+
+    // If local user has muted soundboards or set volume to 0, do not play
+    if (settingsStore.soundboardMuted || settingsStore.soundboardVolume <= 0) {
+      return;
+    }
+
+    try {
+      const dataUrl = payload.audioBase64.startsWith('data:')
+        ? payload.audioBase64
+        : `data:${payload.mimeType || 'audio/mp3'};base64,${payload.audioBase64}`;
+
+      const audio = new Audio(dataUrl);
+      audio.volume = Math.max(0, Math.min(1, settingsStore.soundboardVolume / 100));
+
+      const targetSink = this.sinkId || settingsStore.selectedSpeakerId;
+      if (targetSink && typeof (audio as any).setSinkId === 'function') {
+        (audio as any).setSinkId(targetSink).catch(() => {});
+      }
+
+      // Simultaneous polyphonic mixing
+      await audio.play();
+    } catch (err) {
+      console.warn('[SoundboardService] Failed to play incoming soundboard audio:', err);
+    }
+  }
+}
+
+export const soundboardService = new SoundboardService();

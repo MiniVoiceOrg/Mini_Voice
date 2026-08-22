@@ -6,6 +6,7 @@ export interface ServerRecord {
   passwordHash: string;
   createdAt: number;
   maxUsers: number;
+  allowSoundboard?: boolean;
 }
 
 export interface UserRecord {

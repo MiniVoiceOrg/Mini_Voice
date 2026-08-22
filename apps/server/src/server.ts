@@ -152,7 +152,8 @@ export class MiniVoiceServer {
       userService,
       channelService,
       chatService,
-      signalingService
+      signalingService,
+      serverRepo
     );
 
     getOnlineUsers = () => wsServer.getOnlineUsersMap();
@@ -177,6 +178,7 @@ export class MiniVoiceServer {
         passwordHash,
         createdAt: now,
         maxUsers: config.maxUsers || LIMITS.MAX_USERS_DEFAULT,
+        allowSoundboard: true,
       });
 
       // Create default text channel
