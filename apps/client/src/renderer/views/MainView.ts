@@ -16,6 +16,7 @@ import { serverSettingsModal } from './ServerSettingsModal';
 import { inviteModal } from './InviteModal';
 import { showConfirm, showAlert } from './Dialog';
 import { setButtonLoading, withButtonLoading } from '../utils/buttonLoading';
+import { checkServerOnline } from '../utils/serverStatus';
 import { userContextMenu } from './UserContextMenu';
 import { soundEffects } from '../core/SoundEffects';
 import { getAvatarUrl } from '../utils/avatar';
@@ -259,6 +260,7 @@ export class MainView {
       return `
         <button class="server-rail-avatar ${isCurrent ? 'active' : ''}" data-host="${escapeHtml(srv.host)}" data-port="${srv.port}" title="${escapeHtml(srv.name || `${srv.host}:${srv.port}`)}">
           <span>${escapeHtml(initial)}</span>
+          <span class="server-rail-status-dot" data-status="${isCurrent ? 'online' : 'checking'}"></span>
         </button>
       `;
     }).join('');
@@ -296,6 +298,34 @@ export class MainView {
         if (target) this.connectToSavedServer(target);
       });
     });
+
+    void this.refreshServerRailStatuses();
+  }
+
+  /**
+   * Checks each saved server (except the one we're already connected to) and
+   * updates its online/offline dot in the sidebar rail (#37).
+   */
+  private async refreshServerRailStatuses(): Promise<void> {
+    const railEl = document.getElementById('server-rail');
+    if (!railEl) return;
+    const dots = Array.from(
+      railEl.querySelectorAll('.server-rail-avatar')
+    ) as HTMLElement[];
+
+    await Promise.all(
+      dots.map(async (btn) => {
+        const dot = btn.querySelector('.server-rail-status-dot') as HTMLElement | null;
+        if (!dot || dot.getAttribute('data-status') === 'online') return;
+        const host = btn.getAttribute('data-host');
+        const port = parseInt(btn.getAttribute('data-port') || '0', 10);
+        if (!host || !port) return;
+        const online = await checkServerOnline(host, port);
+        dot.setAttribute('data-status', online ? 'online' : 'offline');
+        const baseTitle = btn.getAttribute('title')?.split(' • ')[0] || '';
+        btn.title = `${baseTitle} • ${online ? 'Online' : 'Offline'}`;
+      })
+    );
   }
 
   private async connectToSavedServer(server: SavedServer): Promise<void> {
@@ -804,12 +834,12 @@ export class MainView {
 
       const mediaCamEl = document.getElementById('media-btn-camera');
       if (mediaCamEl) {
-        mediaCamEl.className = `btn btn-icon media-bar-btn ${voiceStore.isCameraOn ? 'broadcasting-pulse active' : ''}`;
+        mediaCamEl.className = `btn btn-icon media-bar-btn-lg ${voiceStore.isCameraOn ? 'broadcasting-pulse active' : ''}`;
         mediaCamEl.innerHTML = `<span class="material-symbols-outlined md-18">${voiceStore.isCameraOn ? 'videocam_off' : 'videocam'}</span>`;
       }
       const mediaScreenEl = document.getElementById('media-btn-screen');
       if (mediaScreenEl) {
-        mediaScreenEl.className = `btn btn-icon media-bar-btn ${voiceStore.isScreenSharing ? 'broadcasting-pulse active' : ''}`;
+        mediaScreenEl.className = `btn btn-icon media-bar-btn-lg ${voiceStore.isScreenSharing ? 'broadcasting-pulse active' : ''}`;
         mediaScreenEl.innerHTML = `<span class="material-symbols-outlined md-18">${voiceStore.isScreenSharing ? 'stop_screen_share' : 'screen_share'}</span>`;
       }
 
