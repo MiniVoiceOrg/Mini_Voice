@@ -80,6 +80,7 @@ export class ConnectionView {
                       <div class="saved-server-item ${isSelected ? 'selected' : ''}" data-host="${escapeHtml(s.host)}" data-port="${s.port}" data-password="${escapeHtml(s.password || '')}">
                         <div style="display: flex; flex-direction: column; overflow: hidden; pointer-events: none;">
                           <span style="font-size: 13px; font-weight: 600; color: var(--text-primary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; display: flex; align-items: center; gap: 6px;">
+                            <span class="server-status-dot" data-status="checking" data-host="${escapeHtml(s.host)}" data-port="${s.port}" title="Verificando status…"></span>
                             <span class="material-symbols-outlined md-16" style="color: var(--accent-primary);">dns</span>
                             ${escapeHtml(s.name || 'Servidor')}
                           </span>
@@ -199,13 +200,27 @@ export class ConnectionView {
           signal: controller.signal,
         });
         clearTimeout(timeout);
-        if (!res.ok) continue;
+        if (!res.ok) {
+          this.setServerStatusDot(host, port, 'offline');
+          continue;
+        }
+        this.setServerStatusDot(host, port, 'online');
         const info = await res.json();
         this.renderServerPreview(node, host, port, info);
       } catch {
-        // Server offline/unreachable — leave the preview empty silently.
+        // Server offline/unreachable — mark the indicator and leave the preview empty.
+        this.setServerStatusDot(host, port, 'offline');
       }
     }
+  }
+
+  private setServerStatusDot(host: string, port: string, status: 'online' | 'offline'): void {
+    const dot = this.container.querySelector(
+      `.server-status-dot[data-host="${CSS.escape(host)}"][data-port="${CSS.escape(port)}"]`
+    ) as HTMLElement | null;
+    if (!dot) return;
+    dot.setAttribute('data-status', status);
+    dot.title = status === 'online' ? 'Servidor online' : 'Servidor offline';
   }
 
   private renderServerPreview(

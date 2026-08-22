@@ -83,11 +83,17 @@ export class NetworkClient {
           return new Error(
             `O computador ${host} está online, mas nenhum servidor Mini Voice está ativo na porta ${port}. Verifique se o servidor foi iniciado.`
           );
-        case 'timeout':
         case 'unreachable':
-        default:
           return new Error(
-            `Não foi possível alcançar o servidor em ${host}:${port}. Ele parece estar offline. Verifique o IP, a porta e sua conexão.`
+            `Não foi possível encontrar o servidor em ${host}:${port}. O computador parece estar offline. Verifique o IP e sua conexão.`
+          );
+        case 'timeout':
+        default:
+          // A silent timeout can't be told apart from an offline host at the TCP
+          // level: the server may be closed/blocked by a firewall, or the host
+          // may be offline. Be honest about both possibilities.
+          return new Error(
+            `O servidor em ${host}:${port} não respondeu. Ele pode estar fechado (ou bloqueado por um firewall) ou o computador pode estar offline. Verifique se o servidor está rodando e se a porta está liberada.`
           );
       }
     } catch {

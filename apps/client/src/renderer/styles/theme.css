@@ -579,6 +579,56 @@ input:focus, textarea:focus, select:focus {
   flex-shrink: 0;
 }
 
+.server-rail-avatar {
+  position: relative;
+}
+
+/* Online/offline indicator on saved-server avatars in the sidebar rail (#37). */
+.server-rail-status-dot {
+  position: absolute;
+  right: -1px;
+  bottom: -1px;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  border: 2px solid var(--bg-app);
+  background-color: var(--text-muted);
+}
+
+.server-rail-status-dot[data-status='online'] {
+  background-color: var(--success);
+}
+
+.server-rail-status-dot[data-status='offline'] {
+  background-color: var(--danger);
+}
+
+.server-rail-status-dot[data-status='checking'] {
+  background-color: var(--text-muted);
+}
+
+/* Online/offline indicator in the saved-servers list on the home screen (#37). */
+.server-status-dot {
+  display: inline-block;
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  flex-shrink: 0;
+  background-color: var(--text-muted);
+}
+
+.server-status-dot[data-status='online'] {
+  background-color: var(--success);
+}
+
+.server-status-dot[data-status='offline'] {
+  background-color: var(--danger);
+}
+
+.server-status-dot[data-status='checking'] {
+  background-color: var(--text-muted);
+}
+
 .server-rail-home:hover,
 .server-rail-avatar:hover {
   border-radius: 30%;
