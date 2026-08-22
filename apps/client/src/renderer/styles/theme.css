@@ -316,7 +316,7 @@ input:focus, textarea:focus, select:focus {
 /* Connection Screen Styles */
 .connection-layout {
   width: 100vw;
-  min-height: 100vh;
+  height: 100vh;
   overflow-y: auto;
   overflow-x: hidden;
   display: flex;

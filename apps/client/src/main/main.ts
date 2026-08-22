@@ -26,15 +26,14 @@ function createWindow(): void {
 
   const isMac = process.platform === 'darwin';
 
-  const { width: screenW, height: screenH } = screen.getPrimaryDisplay().workAreaSize;
+  const { width: screenW } = screen.getPrimaryDisplay().workAreaSize;
   const winWidth = Math.min(700, Math.round(screenW * 0.85));
 
   mainWindow = new BrowserWindow({
     width: winWidth,
-    height: 750,
+    height: 950,
     minWidth: 600,
     minHeight: 500,
-    useContentSize: true,
     backgroundColor: '#0e1117',
     // Windows/Linux: fully frameless (custom title bar in the renderer).
     // macOS: keep the native traffic-light buttons but hide the title bar.
@@ -61,24 +60,6 @@ function createWindow(): void {
   } else {
     mainWindow.loadFile(path.join(__dirname, '../../dist/index.html'));
   }
-
-  // Auto-fit window height to content (avoids scroll on home)
-  mainWindow.webContents.on('did-finish-load', () => {
-    if (!mainWindow) return;
-    // Wait for JS to render the content before measuring
-    setTimeout(() => {
-      if (!mainWindow) return;
-      mainWindow.webContents.executeJavaScript(
-        `document.documentElement.scrollHeight`
-      ).then((contentHeight: number) => {
-        if (!mainWindow || contentHeight < 500) return;
-        const { height: maxH } = screen.getPrimaryDisplay().workAreaSize;
-        const finalHeight = Math.min(contentHeight + 50, maxH - 40);
-        const [w] = mainWindow.getContentSize();
-        mainWindow.setContentSize(w, finalHeight);
-      }).catch(() => {});
-    }, 500);
-  });
 
   mainWindow.on('closed', () => {
     mainWindow = null;
