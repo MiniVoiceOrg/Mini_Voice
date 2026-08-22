@@ -63,14 +63,19 @@ function createWindow() {
     mainWindow.webContents.on('did-finish-load', () => {
         if (!mainWindow)
             return;
-        mainWindow.webContents.executeJavaScript(`document.documentElement.scrollHeight`).then((contentHeight) => {
-            if (!mainWindow || contentHeight < 500)
+        // Wait for JS to render the content before measuring
+        setTimeout(() => {
+            if (!mainWindow)
                 return;
-            const { height: maxH } = electron_1.screen.getPrimaryDisplay().workAreaSize;
-            const finalHeight = Math.min(contentHeight + 40, maxH - 40);
-            const [w] = mainWindow.getContentSize();
-            mainWindow.setContentSize(w, finalHeight);
-        }).catch(() => { });
+            mainWindow.webContents.executeJavaScript(`document.documentElement.scrollHeight`).then((contentHeight) => {
+                if (!mainWindow || contentHeight < 500)
+                    return;
+                const { height: maxH } = electron_1.screen.getPrimaryDisplay().workAreaSize;
+                const finalHeight = Math.min(contentHeight + 50, maxH - 40);
+                const [w] = mainWindow.getContentSize();
+                mainWindow.setContentSize(w, finalHeight);
+            }).catch(() => { });
+        }, 500);
     });
     mainWindow.on('closed', () => {
         mainWindow = null;
