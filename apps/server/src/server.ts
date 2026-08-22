@@ -16,6 +16,7 @@ import {
   SqliteUserRepository,
 } from './infrastructure/database/SqliteRepositories';
 import { Logger } from './infrastructure/logger/Logger';
+import { LanBroadcaster } from './infrastructure/discovery/LanBroadcaster';
 import { AvatarStorageService } from './infrastructure/security/AvatarStorageService';
 import { PasswordService } from './infrastructure/security/PasswordService';
 import { RateLimiter } from './infrastructure/security/RateLimiter';
@@ -25,6 +26,7 @@ export interface ServerConfig {
   port: number;
   dataDir: string;
   serverName?: string;
+  discoveryPort?: number;
   password?: string;
   maxUsers?: number;
   initialVoiceChannel?: string;
@@ -37,6 +39,7 @@ export class MiniVoiceServer {
   private wsServer: WebSocketServer;
   private avatarStorage: AvatarStorageService;
   private rateLimiter: RateLimiter;
+  private lanBroadcaster: LanBroadcaster;
 
   private constructor(
     private config: ServerConfig,
@@ -44,13 +47,15 @@ export class MiniVoiceServer {
     httpServer: http.Server,
     wsServer: WebSocketServer,
     avatarStorage: AvatarStorageService,
-    rateLimiter: RateLimiter
+    rateLimiter: RateLimiter,
+    lanBroadcaster: LanBroadcaster
   ) {
     this.dbConn = dbConn;
     this.httpServer = httpServer;
     this.wsServer = wsServer;
     this.avatarStorage = avatarStorage;
     this.rateLimiter = rateLimiter;
+    this.lanBroadcaster = lanBroadcaster;
   }
 
   public static async create(config: ServerConfig): Promise<MiniVoiceServer> {
@@ -158,7 +163,13 @@ export class MiniVoiceServer {
 
     getOnlineUsers = () => wsServer.getOnlineUsersMap();
 
-    return new MiniVoiceServer(config, dbConn, httpServer, wsServer, avatarStorage, rateLimiter);
+    const lanBroadcaster = new LanBroadcaster({
+      serverName: config.serverName || 'Mini Voice Server',
+      serverPort: config.port,
+      discoveryPort: config.discoveryPort,
+    });
+
+    return new MiniVoiceServer(config, dbConn, httpServer, wsServer, avatarStorage, rateLimiter, lanBroadcaster);
   }
 
   private static async seedServer(
@@ -212,13 +223,17 @@ export class MiniVoiceServer {
       this.httpServer.listen(this.config.port, '0.0.0.0', () => {
         Logger.info('INFO', `Mini Voice Server running on 0.0.0.0:${this.config.port}`);
         Logger.info('INFO', `Data directory: ${this.config.dataDir}`);
-        resolve();
+        this.lanBroadcaster
+          .start()
+          .catch((error) => Logger.warn('NETWORK', 'LAN discovery broadcast unavailable; continuing without it.', error))
+          .finally(() => resolve());
       });
     });
   }
 
   public async stop(): Promise<void> {
     Logger.info('INFO', 'Stopping Mini Voice Server...');
+    await this.lanBroadcaster.stop();
     this.rateLimiter.dispose();
     this.wsServer.close();
     await new Promise<void>((resolve) => this.httpServer.close(() => resolve()));

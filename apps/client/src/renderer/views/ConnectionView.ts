@@ -1,12 +1,19 @@
-import { appEvents } from '../core/EventBus';
 import { escapeHtml } from '../utils/html';
 import { MessageType } from '@mini-voice/shared';
-import { connectionStore } from '../stores/connectionStore';
+import { connectionStore, type CreatedServer } from '../stores/connectionStore';
 import { networkClient } from '../core/NetworkClient';
 import { getAvatarUrl } from '../utils/avatar';
 import { settingsModal } from './SettingsModal';
 import { withButtonLoading } from '../utils/buttonLoading';
+import { showConfirm } from './Dialog';
 import logoUrl from '../assets/Logo.png';
+
+interface DiscoveredServer {
+  host: string;
+  port: number;
+  serverName: string;
+  version: string;
+}
 
 export class ConnectionView {
   private container: HTMLElement;
@@ -14,17 +21,127 @@ export class ConnectionView {
   private selectedAvatarBase64: string = '';
   private selectedSavedHost: string | null = null;
   private selectedSavedPort: number | null = null;
+  private isHostedServerRunning: boolean = false;
+  private runningCreatedServerId: string | null = null;
+  private readonly discoveredServers: Map<string, DiscoveredServer> = new Map();
 
   constructor(container: HTMLElement) {
     this.container = container;
     connectionStore.loadUserProfile();
     connectionStore.loadSavedServers();
+    connectionStore.loadCreatedServers();
     this.selectedAvatarBase64 = connectionStore.savedAvatarBase64 || '';
+    this.setupLanDiscoveryListeners();
+    void this.syncHostedServerStatus();
+  }
+
+  private async syncHostedServerStatus(): Promise<void> {
+    if (!window.api?.hostServerStatus) return;
+
+    try {
+      const status = await window.api.hostServerStatus();
+      this.isHostedServerRunning = !!status.isRunning;
+      if (!this.isHostedServerRunning) {
+        this.runningCreatedServerId = null;
+      }
+    } catch {
+      this.isHostedServerRunning = false;
+      this.runningCreatedServerId = null;
+    }
+  }
+
+  private formatDateTime(timestamp: number): string {
+    if (!timestamp) return 'Nunca iniciado';
+
+    try {
+      return new Intl.DateTimeFormat('pt-BR', {
+        dateStyle: 'short',
+        timeStyle: 'short',
+      }).format(timestamp);
+    } catch {
+      return new Date(timestamp).toLocaleString('pt-BR');
+    }
+  }
+
+  private createCreatedServerId(): string {
+    return `created-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+  }
+
+  private getHostNicknameValue(): string {
+    const input = document.getElementById('host-nickname') as HTMLInputElement | null;
+    return (input?.value || connectionStore.savedNickname || '').trim();
+  }
+
+  private getCreatedServersSectionHtml(createdServers: CreatedServer[]): string {
+    if (createdServers.length === 0) {
+      return `
+        <div class="saved-servers-container" style="margin-bottom: 14px;">
+          <div style="font-size: 11px; font-weight: 700; color: var(--text-muted); text-transform: uppercase; margin-bottom: 8px; display: flex; align-items: center; gap: 4px;">
+            <span class="material-symbols-outlined md-14" style="color: var(--accent-primary);">dns</span>
+            Servidores Criados
+          </div>
+          <div style="font-size: 12px; color: var(--text-secondary); line-height: 1.45;">
+            Nenhum servidor salvo ainda. Crie um servidor abaixo para poder iniciá-lo novamente com um clique depois.
+          </div>
+        </div>
+      `;
+    }
+
+    return `
+      <div class="saved-servers-container" style="margin-bottom: 14px;">
+        <div style="font-size: 11px; font-weight: 700; color: var(--text-muted); text-transform: uppercase; margin-bottom: 8px; display: flex; justify-content: space-between; align-items: center;">
+          <span style="display: flex; align-items: center; gap: 4px;">
+            <span class="material-symbols-outlined md-14" style="color: var(--accent-primary);">dns</span>
+            Servidores Criados (${createdServers.length}/10)
+          </span>
+          <span style="font-size: 10px; font-weight: normal; color: var(--text-muted);">Inicie ou remova rapidamente</span>
+        </div>
+        <div class="saved-servers-list" style="max-height: 220px;">
+          ${createdServers.map((server) => {
+            const isRunning = this.isHostedServerRunning && this.runningCreatedServerId === server.id;
+            return `
+              <div class="saved-server-item" style="cursor: default;" data-created-server-id="${escapeHtml(server.id)}">
+                <div style="display: flex; flex-direction: column; overflow: hidden; min-width: 0;">
+                  <span style="font-size: 13px; font-weight: 600; color: var(--text-primary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; display: flex; align-items: center; gap: 6px;">
+                    <span class="material-symbols-outlined md-16" style="color: ${isRunning ? 'var(--success)' : 'var(--accent-primary)'};">${isRunning ? 'radio_button_checked' : 'storage'}</span>
+                    ${escapeHtml(server.name)}
+                  </span>
+                  <span style="font-size: 11px; color: var(--text-muted); margin-left: 22px;">Porta ${server.port}${server.password ? ' • Com senha' : ' • Sem senha'}</span>
+                  <span style="font-size: 11px; color: var(--text-muted); margin-left: 22px;">#${escapeHtml(server.textChannel)} • ${escapeHtml(server.voiceChannel)}</span>
+                  <span style="font-size: 10px; color: ${isRunning ? 'var(--success)' : 'var(--text-muted)'}; margin-left: 22px; margin-top: 4px;">
+                    ${isRunning ? 'Servidor local em execução' : `Última inicialização: ${escapeHtml(this.formatDateTime(server.lastStarted))}`}
+                  </span>
+                </div>
+                <div style="display: flex; gap: 6px; align-items: center; margin-left: 10px; flex-shrink: 0;">
+                  ${
+                    isRunning
+                      ? `
+                        <button type="button" class="btn btn-danger btn-stop-created-server" data-created-server-id="${escapeHtml(server.id)}" style="padding: 2px 10px; font-size: 11px; height: 28px;">
+                          Parar
+                        </button>
+                      `
+                      : `
+                        <button type="button" class="btn btn-start-created-server" data-created-server-id="${escapeHtml(server.id)}" style="padding: 2px 10px; font-size: 11px; height: 28px; background: var(--success); color: #fff; border: 1px solid var(--success);">
+                          Iniciar
+                        </button>
+                      `
+                  }
+                  <button type="button" class="btn-delete-saved-srv btn-remove-created-server" data-created-server-id="${escapeHtml(server.id)}" title="Excluir servidor salvo" style="color: var(--danger); background: rgba(242, 63, 67, 0.12);">
+                    <span class="material-symbols-outlined md-16">close</span>
+                  </button>
+                </div>
+              </div>
+            `;
+          }).join('')}
+        </div>
+      </div>
+    `;
   }
 
   public render(): void {
     const savedNick = connectionStore.savedNickname || '';
     const savedServers = connectionStore.savedServers || [];
+    const createdServers = connectionStore.createdServers || [];
 
     this.container.innerHTML = `
       <div class="connection-layout">
@@ -64,6 +181,10 @@ export class ConnectionView {
 
           <!-- Tab 1: Join Server -->
           <form id="form-join" style="display: ${this.activeTab === 'join' ? 'block' : 'none'};">
+            <div id="lan-discovery-section">
+              ${this.getDiscoveredServersSectionHtml()}
+            </div>
+
             ${savedServers.length > 0 ? `
               <div class="saved-servers-container">
                 <div style="font-size: 11px; font-weight: 700; color: var(--text-muted); text-transform: uppercase; margin-bottom: 8px; display: flex; justify-content: space-between; align-items: center;">
@@ -138,6 +259,13 @@ export class ConnectionView {
               </div>
             </div>
 
+            ${this.getCreatedServersSectionHtml(createdServers)}
+
+            <div style="display: flex; align-items: center; gap: 6px; font-size: 11px; font-weight: 700; color: var(--text-muted); text-transform: uppercase; margin-bottom: 10px;">
+              <span class="material-symbols-outlined md-14" style="color: var(--accent-primary);">add_circle</span>
+              Criar Novo Servidor
+            </div>
+
             <div class="form-group">
               <label>Seu Nickname (Anfitrião)</label>
               <input id="host-nickname" type="text" placeholder="Ex: Murilo" value="${escapeHtml(savedNick)}" required minlength="2" maxlength="32">
@@ -181,6 +309,127 @@ export class ConnectionView {
     `;
 
     this.attachEvents();
+  }
+
+  private async startHostedServer(server: CreatedServer, nickname: string): Promise<void> {
+    connectionStore.saveUserProfile(nickname, this.selectedAvatarBase64);
+
+    await this.syncHostedServerStatus();
+    if (this.isHostedServerRunning && window.api?.hostServerStop) {
+      const confirmed = await showConfirm({
+        title: 'Servidor local já está em execução',
+        message: 'Deseja encerrar o servidor atual para iniciar este servidor salvo?',
+        confirmLabel: 'Trocar servidor',
+        cancelLabel: 'Cancelar',
+        variant: 'warning',
+      });
+      if (!confirmed) return;
+
+      const stopRes = await window.api.hostServerStop();
+      if (!stopRes.success) {
+        throw new Error('Não foi possível encerrar o servidor local atual.');
+      }
+
+      this.isHostedServerRunning = false;
+      this.runningCreatedServerId = null;
+    }
+
+    if (window.api?.hostServerStart) {
+      const hostRes = await window.api.hostServerStart({
+        port: server.port,
+        serverName: server.name,
+        password: server.password,
+        initialTextChannel: server.textChannel,
+        initialVoiceChannel: server.voiceChannel,
+      });
+
+      if (!hostRes.success) {
+        throw new Error(hostRes.error || 'Falha ao iniciar servidor local');
+      }
+    }
+
+    const startedAt = Date.now();
+    const updatedServer: CreatedServer = {
+      ...server,
+      lastStarted: startedAt,
+    };
+    connectionStore.saveCreatedServer(updatedServer);
+    this.isHostedServerRunning = true;
+    this.runningCreatedServerId = updatedServer.id;
+
+    let clientId = connectionStore.clientId;
+    if (!clientId && window.api?.getClientId) {
+      clientId = await window.api.getClientId();
+      connectionStore.clientId = clientId;
+    }
+
+    await networkClient.connect('127.0.0.1', updatedServer.port, clientId, nickname, updatedServer.password);
+
+    if (this.selectedAvatarBase64) {
+      try {
+        await networkClient.sendRequest(MessageType.USER_UPDATE_AVATAR, {
+          avatarBase64: this.selectedAvatarBase64,
+          mimeType: 'image/png',
+        });
+      } catch (err) {}
+    }
+
+    connectionStore.addSavedServer({
+      host: '127.0.0.1',
+      port: updatedServer.port,
+      name: updatedServer.name,
+      password: updatedServer.password,
+      lastConnected: startedAt,
+    });
+  }
+
+  private async stopHostedServer(serverId?: string): Promise<void> {
+    if (!window.api?.hostServerStop) return;
+
+    const stopRes = await window.api.hostServerStop();
+    if (!stopRes.success) {
+      throw new Error('Não foi possível encerrar o servidor local.');
+    }
+
+    this.isHostedServerRunning = false;
+    if (!serverId || this.runningCreatedServerId === serverId) {
+      this.runningCreatedServerId = null;
+    }
+  }
+
+  private async removeCreatedServer(server: CreatedServer): Promise<void> {
+    const needsStop = this.isHostedServerRunning && this.runningCreatedServerId === server.id;
+    const confirmed = await showConfirm({
+      title: 'Excluir servidor salvo',
+      message: needsStop
+        ? `Deseja excluir "${server.name}"? O servidor local também será encerrado.`
+        : `Deseja excluir "${server.name}" da sua lista de servidores criados?`,
+      confirmLabel: 'Excluir',
+      cancelLabel: 'Cancelar',
+      variant: 'danger',
+    });
+    if (!confirmed) return;
+
+    if (needsStop) {
+      await this.stopHostedServer(server.id);
+    }
+
+    connectionStore.removeCreatedServer(server.id);
+    this.render();
+  }
+
+  private setupLanDiscoveryListeners(): void {
+    if (!window.api?.onLanDiscoveryFound || !window.api?.onLanDiscoveryLost) return;
+
+    window.api.onLanDiscoveryFound((server) => {
+      this.discoveredServers.set(this.getDiscoveredServerKey(server.host, server.port), server);
+      this.renderDiscoveredServersSection();
+    });
+
+    window.api.onLanDiscoveryLost((server) => {
+      this.discoveredServers.delete(this.getDiscoveredServerKey(server.host, server.port));
+      this.renderDiscoveredServersSection();
+    });
   }
 
   private async loadServerPreviews(): Promise<void> {
@@ -255,6 +504,148 @@ export class ConnectionView {
     `;
   }
 
+  private getDiscoveredServersSectionHtml(): string {
+    const servers = Array.from(this.discoveredServers.values()).sort((a, b) => {
+      if (a.serverName !== b.serverName) {
+        return a.serverName.localeCompare(b.serverName, 'pt-BR');
+      }
+      return a.host.localeCompare(b.host, 'pt-BR') || a.port - b.port;
+    });
+
+    return `
+      <div class="saved-servers-container" style="margin-bottom: 14px;">
+        <div style="font-size: 11px; font-weight: 700; color: var(--text-muted); text-transform: uppercase; margin-bottom: 8px; display: flex; justify-content: space-between; align-items: center;">
+          <span style="display: flex; align-items: center; gap: 4px;">
+            <span class="material-symbols-outlined md-14" style="color: #3ba55d;">wifi</span>
+            Servidores na Rede (${servers.length})
+          </span>
+          <span style="font-size: 10px; font-weight: normal; color: var(--text-muted);">Descoberta automática na LAN</span>
+        </div>
+        ${servers.length > 0 ? `
+          <div class="saved-servers-list">
+            ${servers.map((server) => `
+              <div class="saved-server-item">
+                <div style="display: flex; flex-direction: column; overflow: hidden;">
+                  <span style="font-size: 13px; font-weight: 600; color: var(--text-primary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; display: flex; align-items: center; gap: 6px;">
+                    <span title="Servidor descoberto na rede" style="width: 9px; height: 9px; border-radius: 50%; background: #3ba55d; box-shadow: 0 0 0 2px rgba(59, 165, 93, 0.16); display: inline-block;"></span>
+                    <span class="material-symbols-outlined md-16" style="color: #3ba55d;">lan</span>
+                    ${escapeHtml(server.serverName)}
+                  </span>
+                  <span style="font-size: 11px; color: var(--text-muted); margin-left: 21px;">${escapeHtml(server.host)}:${server.port} • v${escapeHtml(server.version)}</span>
+                </div>
+                <button
+                  type="button"
+                  class="btn btn-primary btn-join-discovered-server"
+                  data-host="${escapeHtml(server.host)}"
+                  data-port="${server.port}"
+                  style="padding: 2px 10px; font-size: 11px; height: 28px; flex-shrink: 0;"
+                >
+                  Entrar
+                </button>
+              </div>
+            `).join('')}
+          </div>
+        ` : `
+          <div style="padding: 12px; border: 1px dashed rgba(255, 255, 255, 0.12); border-radius: var(--radius-md); color: var(--text-muted); font-size: 12px;">
+            Nenhum servidor Mini Voice encontrado na sua rede no momento.
+          </div>
+        `}
+      </div>
+    `;
+  }
+
+  private renderDiscoveredServersSection(): void {
+    const section = this.container.querySelector('#lan-discovery-section') as HTMLElement | null;
+    if (!section) return;
+    section.innerHTML = this.getDiscoveredServersSectionHtml();
+    this.attachDiscoveredServerEvents();
+  }
+
+  private attachDiscoveredServerEvents(): void {
+    const joinHostInput = document.getElementById('join-host') as HTMLInputElement | null;
+    const joinPortInput = document.getElementById('join-port') as HTMLInputElement | null;
+    const formJoin = document.getElementById('form-join') as HTMLFormElement | null;
+
+    const buttons = this.container.querySelectorAll('.btn-join-discovered-server');
+    buttons.forEach((button) => {
+      button.addEventListener('click', () => {
+        const host = button.getAttribute('data-host');
+        const port = button.getAttribute('data-port');
+        if (!host || !port || !joinHostInput || !joinPortInput || !formJoin) return;
+
+        joinHostInput.value = host;
+        joinPortInput.value = port;
+        this.selectedSavedHost = host;
+        this.selectedSavedPort = parseInt(port, 10);
+        formJoin.requestSubmit();
+      });
+    });
+  }
+
+  private async syncLanDiscoveryForActiveTab(): Promise<void> {
+    if (this.activeTab === 'join') {
+      await window.api?.startLanDiscovery?.();
+      return;
+    }
+
+    this.discoveredServers.clear();
+    this.renderDiscoveredServersSection();
+    await window.api?.stopLanDiscovery?.();
+  }
+
+  private getDiscoveredServerKey(host: string, port: number): string {
+    return `${host}:${port}`;
+  }
+
+  private async submitJoinForm(): Promise<void> {
+    this.hideError();
+
+    const nickname = (document.getElementById('join-nickname') as HTMLInputElement).value.trim();
+    const host = (document.getElementById('join-host') as HTMLInputElement).value.trim();
+    const port = parseInt((document.getElementById('join-port') as HTMLInputElement).value, 10);
+    const password = (document.getElementById('join-password') as HTMLInputElement).value;
+
+    connectionStore.saveUserProfile(nickname, this.selectedAvatarBase64);
+
+    const btn = document.getElementById('btn-submit-join') as HTMLButtonElement;
+    btn.disabled = true;
+    btn.innerText = 'Conectando...';
+
+    try {
+      let clientId = connectionStore.clientId;
+      if (!clientId && window.api?.getClientId) {
+        clientId = await window.api.getClientId();
+        connectionStore.clientId = clientId;
+      }
+
+      const res = await networkClient.connect(host, port, clientId, nickname, password);
+
+      if (this.selectedAvatarBase64) {
+        try {
+          await networkClient.sendRequest(MessageType.USER_UPDATE_AVATAR, {
+            avatarBase64: this.selectedAvatarBase64,
+            mimeType: 'image/png',
+          });
+        } catch {}
+      }
+
+      connectionStore.addSavedServer({
+        host,
+        port,
+        name: res.server.name,
+        password: password || undefined,
+        lastConnected: Date.now(),
+      });
+
+      await window.api?.stopLanDiscovery?.();
+    } catch (err: any) {
+      this.showError(err.message || 'Não foi possível conectar ao servidor. Verifique o IP, porta e senha.');
+    } finally {
+      btn.disabled = false;
+      btn.innerHTML = `<span class="material-symbols-outlined md-18" style="margin-right: 6px;">login</span> Entrar no Servidor`;
+    }
+  }
+
   private attachEvents(): void {
     const tabJoin = document.getElementById('tab-join');
     const tabHost = document.getElementById('tab-host');
@@ -266,6 +657,9 @@ export class ConnectionView {
     const joinHostInput = document.getElementById('join-host') as HTMLInputElement;
     const joinPortInput = document.getElementById('join-port') as HTMLInputElement;
     const joinPassInput = document.getElementById('join-password') as HTMLInputElement;
+    const startCreatedButtons = this.container.querySelectorAll('.btn-start-created-server');
+    const stopCreatedButtons = this.container.querySelectorAll('.btn-stop-created-server');
+    const removeCreatedButtons = this.container.querySelectorAll('.btn-remove-created-server');
 
     // Sync and save nickname as user types
     const handleNickChange = (val: string) => {
@@ -282,6 +676,86 @@ export class ConnectionView {
     });
 
     this.loadServerPreviews();
+    this.attachDiscoveredServerEvents();
+    void this.syncLanDiscoveryForActiveTab();
+
+    startCreatedButtons.forEach((btn) => {
+      btn.addEventListener('click', async (e) => {
+        e.preventDefault();
+        this.hideError();
+
+        const serverId = btn.getAttribute('data-created-server-id');
+        const server = connectionStore.createdServers.find((item) => item.id === serverId);
+        const nickname = this.getHostNicknameValue();
+        if (!server) return;
+
+        if (nickname.length < 2) {
+          this.showError('Informe seu nickname de anfitrião antes de iniciar um servidor salvo.');
+          hostNickInput?.focus();
+          return;
+        }
+
+        const button = btn as HTMLButtonElement;
+        const originalHtml = button.innerHTML;
+        button.disabled = true;
+        button.textContent = 'Iniciando...';
+
+        try {
+          await this.startHostedServer(server, nickname);
+          await window.api?.stopLanDiscovery?.();
+        } catch (err: any) {
+          this.render();
+          this.showError(err.message || 'Erro ao iniciar o servidor salvo.');
+          return;
+        } finally {
+          if (button.isConnected) {
+            button.disabled = false;
+            button.innerHTML = originalHtml;
+          }
+        }
+      });
+    });
+
+    stopCreatedButtons.forEach((btn) => {
+      btn.addEventListener('click', async (e) => {
+        e.preventDefault();
+        this.hideError();
+
+        const button = btn as HTMLButtonElement;
+        const originalHtml = button.innerHTML;
+        button.disabled = true;
+        button.textContent = 'Parando...';
+
+        try {
+          await this.stopHostedServer(btn.getAttribute('data-created-server-id') || undefined);
+          this.render();
+        } catch (err: any) {
+          this.showError(err.message || 'Erro ao encerrar o servidor local.');
+          if (button.isConnected) {
+            button.disabled = false;
+            button.innerHTML = originalHtml;
+          }
+        }
+      });
+    });
+
+    removeCreatedButtons.forEach((btn) => {
+      btn.addEventListener('click', async (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        this.hideError();
+
+        const serverId = btn.getAttribute('data-created-server-id');
+        const server = connectionStore.createdServers.find((item) => item.id === serverId);
+        if (!server) return;
+
+        try {
+          await this.removeCreatedServer(server);
+        } catch (err: any) {
+          this.showError(err.message || 'Erro ao excluir o servidor salvo.');
+        }
+      });
+    });
 
     // Handle clicking a saved server card
     const savedServerItems = this.container.querySelectorAll('.saved-server-item');
@@ -331,6 +805,7 @@ export class ConnectionView {
       formJoin.style.display = 'block';
       formHost.style.display = 'none';
       this.hideError();
+      void this.syncLanDiscoveryForActiveTab();
     });
 
     tabHost?.addEventListener('click', () => {
@@ -340,6 +815,7 @@ export class ConnectionView {
       formHost.style.display = 'block';
       formJoin.style.display = 'none';
       this.hideError();
+      void this.syncLanDiscoveryForActiveTab();
     });
 
     btnSelectAvatar?.addEventListener('click', async (e) => {
@@ -358,51 +834,7 @@ export class ConnectionView {
 
     formJoin?.addEventListener('submit', async (e) => {
       e.preventDefault();
-      this.hideError();
-
-      const nickname = (document.getElementById('join-nickname') as HTMLInputElement).value.trim();
-      const host = (document.getElementById('join-host') as HTMLInputElement).value.trim();
-      const port = parseInt((document.getElementById('join-port') as HTMLInputElement).value, 10);
-      const password = (document.getElementById('join-password') as HTMLInputElement).value;
-
-      connectionStore.saveUserProfile(nickname, this.selectedAvatarBase64);
-
-      const btn = document.getElementById('btn-submit-join') as HTMLButtonElement;
-      btn.disabled = true;
-      btn.innerText = 'Conectando...';
-
-      try {
-        let clientId = connectionStore.clientId;
-        if (!clientId && window.api?.getClientId) {
-          clientId = await window.api.getClientId();
-          connectionStore.clientId = clientId;
-        }
-
-        const res = await networkClient.connect(host, port, clientId, nickname, password);
-
-        // If user picked an avatar, update it right after join
-        if (this.selectedAvatarBase64) {
-          try {
-            await networkClient.sendRequest(MessageType.USER_UPDATE_AVATAR, {
-              avatarBase64: this.selectedAvatarBase64,
-              mimeType: 'image/png',
-            });
-          } catch (err) {}
-        }
-
-        connectionStore.addSavedServer({
-          host,
-          port,
-          name: res.server.name,
-          password: password || undefined,
-          lastConnected: Date.now(),
-        });
-      } catch (err: any) {
-        this.showError(err.message || 'Não foi possível conectar ao servidor. Verifique o IP, porta e senha.');
-      } finally {
-        btn.disabled = false;
-        btn.innerHTML = `<span class="material-symbols-outlined md-18" style="margin-right: 6px;">login</span> Entrar no Servidor`;
-      }
+      await this.submitJoinForm();
     });
 
     formHost?.addEventListener('submit', async (e) => {
@@ -423,51 +855,35 @@ export class ConnectionView {
       btn.innerText = 'Iniciando servidor local...';
 
       try {
-        if (window.api?.hostServerStart) {
-          const hostRes = await window.api.hostServerStart({
-            port,
-            serverName,
-            password,
-            initialTextChannel: initialText,
-            initialVoiceChannel: initialVoice,
-          });
-
-          if (!hostRes.success) {
-            throw new Error(hostRes.error || 'Falha ao iniciar servidor local');
-          }
-        }
-
-        // Connect client to the newly hosted local server
-        let clientId = connectionStore.clientId;
-        if (!clientId && window.api?.getClientId) {
-          clientId = await window.api.getClientId();
-          connectionStore.clientId = clientId;
-        }
-
-        const res = await networkClient.connect('127.0.0.1', port, clientId, nickname, password);
-
-        // Upload avatar if chosen
-        if (this.selectedAvatarBase64) {
-          try {
-            await networkClient.sendRequest(MessageType.USER_UPDATE_AVATAR, {
-              avatarBase64: this.selectedAvatarBase64,
-              mimeType: 'image/png',
-            });
-          } catch (err) {}
-        }
-
-        connectionStore.addSavedServer({
-          host: '127.0.0.1',
-          port,
+        const now = Date.now();
+        const existingServer = connectionStore.createdServers.find((server) =>
+          server.name === serverName &&
+          server.port === port &&
+          (server.password || '') === password &&
+          server.textChannel === initialText &&
+          server.voiceChannel === initialVoice
+        );
+        const createdServer: CreatedServer = {
+          id: existingServer?.id || this.createCreatedServerId(),
           name: serverName,
+          port,
           password: password || undefined,
-          lastConnected: Date.now(),
-        });
+          textChannel: initialText,
+          voiceChannel: initialVoice,
+          createdAt: existingServer?.createdAt || now,
+          lastStarted: now,
+        };
+
+        await this.startHostedServer(createdServer, nickname);
+        await window.api?.stopLanDiscovery?.();
       } catch (err: any) {
+        this.render();
         this.showError(err.message || 'Erro ao criar e conectar ao servidor local.');
       } finally {
-        btn.disabled = false;
-        btn.innerHTML = `<span class="material-symbols-outlined md-18" style="margin-right: 6px;">add_circle</span> Criar e Iniciar Servidor`;
+        if (btn.isConnected) {
+          btn.disabled = false;
+          btn.innerHTML = `<span class="material-symbols-outlined md-18" style="margin-right: 6px;">add_circle</span> Criar e Iniciar Servidor`;
+        }
       }
     });
   }

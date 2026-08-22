@@ -212,6 +212,25 @@ class App {
     });
 
     appEvents.on(`message.${MessageType.VOICE_STATE_CHANGED}`, (payload: VoiceStateChangedPayload) => {
+      const previousVoiceState = participantManager.get(payload.voiceState.userId)?.voiceState;
+      const isRemoteUser = payload.voiceState.userId !== serverStore.currentUser?.id;
+      const isSameVoiceChannel =
+        voiceStore.currentVoiceChannelId === payload.voiceState.channelId;
+
+      if (isRemoteUser && isSameVoiceChannel && !voiceStore.isDeafened) {
+        if (
+          previousVoiceState?.isScreenSharing === false &&
+          payload.voiceState.isScreenSharing === true
+        ) {
+          soundEffects.play('screen_share_start');
+        } else if (
+          previousVoiceState?.isScreenSharing === true &&
+          payload.voiceState.isScreenSharing === false
+        ) {
+          soundEffects.play('screen_share_stop');
+        }
+      }
+
       participantManager.updateVoiceState(payload.voiceState);
     });
 

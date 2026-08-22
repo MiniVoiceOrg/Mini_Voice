@@ -3,6 +3,7 @@ import fs from 'fs';
 import net from 'net';
 import path from 'path';
 import { v4 as uuidv4 } from 'uuid';
+import { LanDiscovery } from './lanDiscovery';
 import { HostServerOptions, ServerManager } from './serverManager';
 
 // Screen audio native module (compiled only on CI — graceful fallback)
@@ -14,6 +15,8 @@ try {
 }
 
 export function setupIpcHandlers(mainWindow: BrowserWindow, serverManager: ServerManager): void {
+  const lanDiscovery = new LanDiscovery(mainWindow);
+
   // Client ID persistence
   ipcMain.handle('get-client-id', async () => {
     const clientIdFile = path.join(app.getPath('userData'), 'client-id.json');
@@ -49,6 +52,14 @@ export function setupIpcHandlers(mainWindow: BrowserWindow, serverManager: Serve
 
   ipcMain.handle('host-server-status', async () => {
     return serverManager.getStatus();
+  });
+
+  ipcMain.handle('lan-discovery-start', async () => {
+    await lanDiscovery.start();
+  });
+
+  ipcMain.handle('lan-discovery-stop', async () => {
+    await lanDiscovery.stop();
   });
 
   // Desktop Screen Sharing sources
@@ -264,5 +275,9 @@ export function setupIpcHandlers(mainWindow: BrowserWindow, serverManager: Serve
   ipcMain.handle('screen-audio-stop', () => {
     if (!screenAudio) return { success: false };
     return screenAudio.stop();
+  });
+
+  mainWindow.on('closed', () => {
+    void lanDiscovery.stop();
   });
 }
