@@ -8,6 +8,7 @@ const electron_1 = require("electron");
 const fs_1 = __importDefault(require("fs"));
 const https_1 = __importDefault(require("https"));
 const path_1 = __importDefault(require("path"));
+const i18n_1 = require("./i18n");
 const GITHUB_REPO = 'MiniVoiceOrg/Mini_Voice';
 let autoUpdater = null;
 function loadAutoUpdater() {
@@ -123,7 +124,7 @@ function downloadToFile(url, destPath, onProgress) {
 }
 async function downloadMacDmg(mainWindow) {
     if (!pendingMacAsset) {
-        return { ok: false, error: 'Nenhuma atualização pendente' };
+        return { ok: false, error: (0, i18n_1.mt)('error.noPendingUpdate') };
     }
     try {
         const destPath = path_1.default.join(electron_1.app.getPath('temp'), pendingMacAsset.name);
@@ -180,10 +181,10 @@ function setupUpdater(mainWindow) {
         }
         const updater = loadAutoUpdater();
         if (!updater) {
-            return { ok: false, error: 'Updater indisponível' };
+            return { ok: false, error: (0, i18n_1.mt)('error.updaterUnavailable') };
         }
         if (!electron_1.app.isPackaged) {
-            return { ok: false, error: 'Atualização automática indisponível em modo de desenvolvimento' };
+            return { ok: false, error: (0, i18n_1.mt)('error.updaterDevMode') };
         }
         try {
             // electron-updater requires its own check before it can download.
@@ -204,7 +205,7 @@ function setupUpdater(mainWindow) {
         }
         const updater = loadAutoUpdater();
         if (!updater) {
-            return { ok: false, error: 'Updater indisponível' };
+            return { ok: false, error: (0, i18n_1.mt)('error.updaterUnavailable') };
         }
         // Defer so the IPC reply is delivered before the app quits to install.
         setImmediate(() => updater.quitAndInstall(true, true));

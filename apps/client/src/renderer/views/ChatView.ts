@@ -8,6 +8,7 @@ import { participantManager } from '../core/ParticipantManager';
 import { userContextMenu } from './UserContextMenu';
 import { getAvatarUrl } from '../utils/avatar';
 import { renderMarkdown } from '../utils/markdown';
+import { getLanguage, t } from '../i18n';
 
 export class ChatView {
   private container: HTMLElement;
@@ -28,7 +29,7 @@ export class ChatView {
     if (!this.currentChannelId || !serverStore.serverDetails) {
       this.container.innerHTML = `
         <div style="display: flex; align-items: center; justify-content: center; height: 100%; color: var(--text-muted);">
-          Selecione um canal para conversar
+          ${t('chat.selectChannel')}
         </div>
       `;
       return;
@@ -44,18 +45,18 @@ export class ChatView {
             <span class="material-symbols-outlined md-18" style="color: var(--text-muted);">tag</span>
             <span class="channel-title">${escapeHtml(channelName)}</span>
           </div>
-          <div class="header-status-badge">Canal de Texto</div>
+          <div class="header-status-badge">${t('chat.textChannelBadge')}</div>
         </div>
 
         <div id="chat-messages-feed" class="chat-messages-feed"></div>
 
         <div class="chat-input-container">
           <div class="chat-input-wrapper">
-            <textarea id="chat-message-input" class="chat-input-field" rows="1" placeholder="Conversar em #${escapeHtml(channelName)}... (Shift+Enter para quebrar linha)" maxlength="${LIMITS.MAX_MESSAGE_LENGTH}"></textarea>
+            <textarea id="chat-message-input" class="chat-input-field" rows="1" placeholder="${t('chat.inputPlaceholder', { channel: escapeHtml(channelName) })}" maxlength="${LIMITS.MAX_MESSAGE_LENGTH}"></textarea>
             <span id="chat-char-counter" class="chat-char-count">0/${LIMITS.MAX_MESSAGE_LENGTH}</span>
             <button id="btn-send-message" class="btn btn-primary" style="padding: 6px 14px; font-size: 13px;">
               <span class="material-symbols-outlined md-16" style="margin-right: 4px;">send</span>
-              Enviar
+              ${t('chat.send')}
             </button>
           </div>
         </div>
@@ -84,8 +85,8 @@ export class ChatView {
       feed.innerHTML = `
         <div style="display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100%; color: var(--text-muted); gap: 10px;">
           <span class="material-symbols-outlined md-36" style="color: var(--text-dim); font-size: 44px;">forum</span>
-          <div style="font-size: 15px; font-weight: 600; color: var(--text-secondary);">Este é o início do canal #${escapeHtml(serverStore.serverDetails?.channels.find((c) => c.id === this.currentChannelId)?.name || 'geral')}</div>
-          <div style="font-size: 13px;">Envie uma mensagem para começar!</div>
+          <div style="font-size: 15px; font-weight: 600; color: var(--text-secondary);">${t('chat.emptyTitle', { channel: escapeHtml(serverStore.serverDetails?.channels.find((c) => c.id === this.currentChannelId)?.name || 'geral') })}</div>
+          <div style="font-size: 13px;">${t('chat.emptySubtitle')}</div>
         </div>
       `;
       return;
@@ -132,7 +133,7 @@ export class ChatView {
   }
 
   private renderMessageRow(m: ChatMessage): string {
-    const time = new Date(m.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    const time = new Date(m.createdAt).toLocaleTimeString(getLanguage(), { hour: '2-digit', minute: '2-digit' });
 
     if (m.isSystem) {
       return `

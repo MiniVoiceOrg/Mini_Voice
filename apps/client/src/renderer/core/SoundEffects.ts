@@ -5,6 +5,7 @@ import undeafenUrl from '../assets/sounds/Desmutar_Auto-Falante.wav';
 import joinVoiceUrl from '../assets/sounds/Entrando_Na_Call.wav';
 import leaveVoiceUrl from '../assets/sounds/Saindo_Da_Call.wav';
 import { settingsStore } from '../stores/settingsStore';
+import { t } from '../i18n';
 
 export type SoundEffectType =
   | 'mic_mute'
@@ -25,16 +26,22 @@ const DEFAULT_URLS: Record<string, string> = {
   leave_voice: leaveVoiceUrl,
 };
 
-export const SOUND_LABELS: Record<string, string> = {
-  mic_mute: 'Mutar microfone',
-  mic_unmute: 'Desmutar microfone',
-  deafen: 'Mutar auto-falante',
-  undeafen: 'Desmutar auto-falante',
-  join_voice: 'Entrar no canal',
-  leave_voice: 'Sair do canal',
-  screen_share_start: 'Iniciar compartilhamento',
-  screen_share_stop: 'Parar compartilhamento',
-};
+/**
+ * Rótulos dos efeitos sonoros, resolvidos no idioma ativo a cada chamada (#16)
+ * — por isso é uma função, e não um objeto constante.
+ */
+export function getSoundLabels(): Record<string, string> {
+  return {
+    mic_mute: t('sounds.micMute'),
+    mic_unmute: t('sounds.micUnmute'),
+    deafen: t('sounds.deafen'),
+    undeafen: t('sounds.undeafen'),
+    join_voice: t('sounds.joinVoice'),
+    leave_voice: t('sounds.leaveVoice'),
+    screen_share_start: t('sounds.screenShareStart'),
+    screen_share_stop: t('sounds.screenShareStop'),
+  };
+}
 
 export class SoundEffectManager {
   private audioMap: Partial<Record<SoundEffectType, HTMLAudioElement>> = {};

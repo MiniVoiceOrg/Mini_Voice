@@ -13,6 +13,7 @@ export interface ElectronApi {
         serverName: string;
         version: string;
     }) => void) => void;
+    setLanguage: (language: string) => Promise<void>;
     getClientId: () => Promise<string>;
     maximizeWindow: () => Promise<void>;
     hostServerStart: (options: {
@@ -43,6 +44,7 @@ export interface ElectronApi {
         mimeType: string;
         base64: string;
     } | null>;
+    selectSoundFile: () => Promise<string | null>;
     selectSoundboardFolder: () => Promise<string | null>;
     listSoundboardSounds: (folderPath: string) => Promise<Array<{
         name: string;

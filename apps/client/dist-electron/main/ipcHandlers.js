@@ -10,6 +10,7 @@ const net_1 = __importDefault(require("net"));
 const path_1 = __importDefault(require("path"));
 const uuid_1 = require("uuid");
 const lanDiscovery_1 = require("./lanDiscovery");
+const i18n_1 = require("./i18n");
 // Screen audio native module (compiled only on CI — graceful fallback)
 let screenAudio = null;
 try {
@@ -29,6 +30,11 @@ function setupIpcHandlers(mainWindow, serverManager) {
         mainWindow.setSize(w, h);
         mainWindow.center();
         mainWindow.maximize();
+    });
+    // Active UI language (#16): keeps native dialogs in the same language the
+    // renderer is showing.
+    electron_1.ipcMain.handle('app-set-language', (_event, language) => {
+        (0, i18n_1.setMainLanguage)(language);
     });
     // Client ID persistence
     electron_1.ipcMain.handle('get-client-id', async () => {
@@ -88,7 +94,7 @@ function setupIpcHandlers(mainWindow, serverManager) {
     // Avatar Image Selection Dialog
     electron_1.ipcMain.handle('dialog-select-image', async () => {
         const result = await electron_1.dialog.showOpenDialog(mainWindow, {
-            title: 'Selecionar Foto de Perfil',
+            title: (0, i18n_1.mt)('dialog.selectProfilePhoto'),
             filters: [
                 { name: 'Imagens (PNG, JPG, WebP)', extensions: ['png', 'jpg', 'jpeg', 'webp'] },
             ],
@@ -108,10 +114,28 @@ function setupIpcHandlers(mainWindow, serverManager) {
             base64: `data:${mime};base64,${base64}`,
         };
     });
+    // Custom sound file selection (#7)
+    electron_1.ipcMain.handle('dialog-select-sound-file', async () => {
+        const result = await electron_1.dialog.showOpenDialog(mainWindow, {
+            title: (0, i18n_1.mt)('dialog.selectSoundFile'),
+            filters: [
+                { name: (0, i18n_1.mt)('dialog.audioFilter'), extensions: ['wav', 'mp3', 'ogg', 'webm'] },
+            ],
+            properties: ['openFile'],
+        });
+        if (result.canceled || result.filePaths.length === 0)
+            return null;
+        const filePath = result.filePaths[0];
+        const buffer = fs_1.default.readFileSync(filePath);
+        const ext = path_1.default.extname(filePath).toLowerCase().replace('.', '');
+        const mime = ext === 'mp3' ? 'audio/mpeg' : ext === 'ogg' ? 'audio/ogg' : ext === 'webm' ? 'audio/webm' : 'audio/wav';
+        const base64 = buffer.toString('base64');
+        return `data:${mime};base64,${base64}`;
+    });
     // Soundboard Folder Selection
     electron_1.ipcMain.handle('dialog-select-soundboard-folder', async () => {
         const result = await electron_1.dialog.showOpenDialog(mainWindow, {
-            title: 'Selecionar Pasta de Sons (Soundboard)',
+            title: (0, i18n_1.mt)('dialog.selectSoundboardFolder'),
             properties: ['openDirectory'],
         });
         if (result.canceled || result.filePaths.length === 0) {
@@ -161,7 +185,7 @@ function setupIpcHandlers(mainWindow, serverManager) {
         try {
             const stat = fs_1.default.statSync(filePath);
             if (stat.size > 3 * 1024 * 1024) {
-                throw new Error('Arquivo de áudio muito grande (máximo 3MB)');
+                throw new Error((0, i18n_1.mt)('error.audioFileTooLarge'));
             }
             const buffer = fs_1.default.readFileSync(filePath);
             const ext = path_1.default.extname(filePath).toLowerCase();

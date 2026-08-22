@@ -7,6 +7,7 @@ import { videoService } from '../core/VideoService';
 import { voiceStore } from '../stores/voiceStore';
 import { webRtcManager } from '../core/WebRtcManager';
 import { showAlert } from './Dialog';
+import { t } from '../i18n';
 
 type DesktopSource = {
   id: string;
@@ -44,7 +45,7 @@ export class ScreenSharePickerModal {
         <div class="modal-header">
           <div class="modal-title" style="display: flex; align-items: center; gap: 8px;">
             <span class="material-symbols-outlined" style="color: var(--accent-primary);">screen_share</span>
-            <span>${alreadySharing ? 'Trocar Fonte de Compartilhamento' : 'Compartilhar Tela ou Janela'}</span>
+            <span>${alreadySharing ? t('screenShare.titleSwitch') : t('screenShare.title')}</span>
           </div>
           <button id="modal-close" class="modal-close-btn">&times;</button>
         </div>
@@ -52,18 +53,18 @@ export class ScreenSharePickerModal {
         ${alreadySharing ? `
           <div class="share-active-banner">
             <span class="live-pulse-dot"></span>
-            <span>Você está compartilhando agora. Escolha outra fonte para trocar ou pare de compartilhar.</span>
+            <span>${t('screenShare.alreadySharingNotice')}</span>
           </div>
         ` : ''}
 
         <div class="nav-tabs" style="margin-bottom: 12px;">
           <button type="button" id="share-tab-screen" class="tab-button ${this.activeTab === 'screen' ? 'active' : ''}">
             <span class="material-symbols-outlined md-16" style="margin-right: 4px; vertical-align: middle;">desktop_windows</span>
-            Telas
+            ${t('screenShare.screensTab')}
           </button>
           <button type="button" id="share-tab-window" class="tab-button ${this.activeTab === 'window' ? 'active' : ''}">
             <span class="material-symbols-outlined md-16" style="margin-right: 4px; vertical-align: middle;">web_asset</span>
-            Aplicativos
+            ${t('screenShare.windowsTab')}
           </button>
         </div>
 
@@ -73,18 +74,18 @@ export class ScreenSharePickerModal {
           ${alreadySharing ? `
             <button type="button" id="btn-stop-share" class="btn btn-danger" style="margin-right: auto;">
               <span class="material-symbols-outlined md-16" style="margin-right: 4px;">stop_screen_share</span>
-              Parar de Compartilhar
+              ${t('screenShare.stopSharing')}
             </button>
           ` : ''}
           <label id="share-audio-label" style="display: flex; align-items: center; gap: 6px; margin-right: auto; cursor: pointer; font-size: 0.85rem; color: var(--text-secondary);">
             <input type="checkbox" id="chk-share-audio" style="cursor: pointer;" />
             <span class="material-symbols-outlined md-16">volume_up</span>
-            Compartilhar áudio do PC
+            ${t('screenShare.shareAudio')}
           </label>
-          <button type="button" id="btn-cancel" class="btn btn-secondary">Cancelar</button>
+          <button type="button" id="btn-cancel" class="btn btn-secondary">${t('common.cancel')}</button>
           <button type="button" id="btn-share" class="btn btn-primary" disabled>
             <span class="material-symbols-outlined md-16" style="margin-right: 4px;">present_to_all</span>
-            ${alreadySharing ? 'Trocar Fonte' : 'Compartilhar'}
+            ${alreadySharing ? t('screenShare.confirmSwitch') : t('screenShare.confirm')}
           </button>
         </div>
       </div>
@@ -108,8 +109,8 @@ export class ScreenSharePickerModal {
       panel.innerHTML = `
         <div style="padding: 24px; text-align: center; color: var(--text-muted);">
           ${this.activeTab === 'screen'
-            ? 'Nenhuma tela detectada.'
-            : 'Nenhuma janela de aplicativo aberta foi detectada.'}
+            ? t('screenShare.noScreens')
+            : t('screenShare.noWindows')}
         </div>
       `;
       return;
@@ -202,8 +203,8 @@ export class ScreenSharePickerModal {
       this.close();
     } catch (err: any) {
       await showAlert({
-        title: 'Erro ao compartilhar tela',
-        message: `Não foi possível iniciar o compartilhamento de tela: ${err.message}`,
+        title: t('screenShare.errorTitle'),
+        message: t('screenShare.errorMessage', { error: err.message }),
         variant: 'danger',
       });
     }

@@ -8,6 +8,7 @@ const path_1 = __importDefault(require("path"));
 const fs_1 = __importDefault(require("fs"));
 const electron_1 = require("electron");
 const server_js_1 = require("@mini-voice/server/dist/server.js");
+const i18n_1 = require("./i18n");
 class ServerManager {
     serverInstance = null;
     isRunning = false;
@@ -39,7 +40,7 @@ class ServerManager {
             console.error('[ServerManager] Error starting local server:', err);
             this.isRunning = false;
             this.serverInstance = null;
-            return { success: false, error: err.message || 'Falha ao iniciar servidor' };
+            return { success: false, error: err.message || (0, i18n_1.mt)('error.startServerFailed') };
         }
     }
     async stopServer() {

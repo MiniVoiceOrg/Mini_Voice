@@ -22,6 +22,7 @@ import { soundboardModal } from './SoundboardModal';
 import { soundEffects } from '../core/SoundEffects';
 import { getAvatarUrl } from '../utils/avatar';
 import logoUrl from '../assets/Logo.png';
+import { t } from '../i18n';
 
 export class MainView {
   private container: HTMLElement;
@@ -50,21 +51,21 @@ export class MainView {
 
         <!-- Left Sidebar: Channels & User Controls -->
         <div class="channels-sidebar">
-          <div class="channels-resizer" id="channels-resizer" title="Arraste para redimensionar"></div>
+          <div class="channels-resizer" id="channels-resizer" title="${t('main.resizeHandle')}"></div>
           <div class="server-header">
-            <button id="server-dropdown-toggle" class="server-dropdown-toggle" title="Opções do servidor">
+            <button id="server-dropdown-toggle" class="server-dropdown-toggle" title="${t('main.serverOptions')}">
               <img src="${logoUrl}" alt="Mini Voice" style="width: 22px; height: 22px; object-fit: contain; border-radius: 4px; flex-shrink: 0;">
               <span id="server-name-title" style="white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-weight: 700;">${escapeHtml(s.name)}</span>
               <span class="material-symbols-outlined md-18 server-dropdown-caret">expand_more</span>
             </button>
             <div id="server-dropdown-menu" class="server-dropdown-menu" style="display: none;">
-              <button id="btn-server-settings" class="server-dropdown-item" title="Configurações do Servidor (Alterar/Remover Senha)">
+              <button id="btn-server-settings" class="server-dropdown-item" title="${t('main.serverSettingsTitle')}">
                 <span class="material-symbols-outlined md-18">settings</span>
-                <span>Configurações do Servidor</span>
+                <span>${t('serverSettings.title')}</span>
               </button>
-              <button id="btn-invite-friends" class="server-dropdown-item" title="Convidar Amigos (Copiar IP)">
+              <button id="btn-invite-friends" class="server-dropdown-item" title="${t('main.inviteTitle')}">
                 <span class="material-symbols-outlined md-18">person_add</span>
-                <span>Convidar Amigos</span>
+                <span>${t('invite.title')}</span>
               </button>
             </div>
           </div>
@@ -73,8 +74,8 @@ export class MainView {
             <!-- Text Channels -->
             <div class="channel-category">
               <div class="category-title">
-                <span>Canais de Texto</span>
-                <button id="btn-add-text-channel" class="category-add-btn" title="Criar Canal de Texto">
+                <span>${t('main.textChannels')}</span>
+                <button id="btn-add-text-channel" class="category-add-btn" title="${t('main.createTextChannel')}">
                   <span class="material-symbols-outlined md-14">add</span>
                 </button>
               </div>
@@ -84,8 +85,8 @@ export class MainView {
             <!-- Voice Channels -->
             <div class="channel-category">
               <div class="category-title">
-                <span>Canais de Voz</span>
-                <button id="btn-add-voice-channel" class="category-add-btn" title="Criar Canal de Voz">
+                <span>${t('main.voiceChannels')}</span>
+                <button id="btn-add-voice-channel" class="category-add-btn" title="${t('main.createVoiceChannel')}">
                   <span class="material-symbols-outlined md-14">add</span>
                 </button>
               </div>
@@ -97,38 +98,38 @@ export class MainView {
           <div class="user-control-bar">
             <div id="voice-connection-row-slot"></div>
             <div class="user-media-bar" id="user-media-bar">
-              <button id="media-btn-camera" class="btn btn-icon media-bar-btn-lg ${voiceStore.isCameraOn ? 'broadcasting-pulse active' : ''}" title="Ligar/Desligar Câmera">
+              <button id="media-btn-camera" class="btn btn-icon media-bar-btn-lg ${voiceStore.isCameraOn ? 'broadcasting-pulse active' : ''}" title="${t('main.toggleCamera')}">
                 <span class="material-symbols-outlined md-18">${voiceStore.isCameraOn ? 'videocam_off' : 'videocam'}</span>
               </button>
-              <button id="media-btn-screen" class="btn btn-icon media-bar-btn-lg ${voiceStore.isScreenSharing ? 'broadcasting-pulse active' : ''}" title="Compartilhar Tela">
+              <button id="media-btn-screen" class="btn btn-icon media-bar-btn-lg ${voiceStore.isScreenSharing ? 'broadcasting-pulse active' : ''}" title="${t('main.shareScreen')}">
                 <span class="material-symbols-outlined md-18">${voiceStore.isScreenSharing ? 'stop_screen_share' : 'screen_share'}</span>
               </button>
-              <button id="media-btn-soundboard" class="btn btn-icon media-bar-btn-lg" title="Abrir Soundboard">
+              <button id="media-btn-soundboard" class="btn btn-icon media-bar-btn-lg" title="${t('main.openSoundboard')}">
                 <span class="material-symbols-outlined md-18">music_note</span>
               </button>
             </div>
             <div class="user-control-main">
-              <div id="user-profile-btn" class="user-profile-summary" title="Configurações de Perfil">
+              <div id="user-profile-btn" class="user-profile-summary" title="${t('main.profileSettings')}">
                 <div class="user-avatar-container">
                   <img id="main-user-avatar" class="user-avatar-main ${voiceStore.isSpeaking ? 'speaking' : ''}" src="${getAvatarUrl(u.avatarUrl)}">
                 </div>
                 <div class="user-info-text">
                   <span id="main-user-name" class="user-name-display">${escapeHtml(u.nickname)}</span>
-                  <span class="user-status-text">Online</span>
+                  <span class="user-status-text">${t('main.statusOnline')}</span>
                 </div>
               </div>
 
               <div class="user-quick-actions">
-                <button id="bar-btn-mic" class="btn btn-icon ${voiceStore.isMuted ? 'danger-active' : ''}" title="${voiceStore.isMuted ? 'Desmutar' : 'Mutar'}">
+                <button id="bar-btn-mic" class="btn btn-icon ${voiceStore.isMuted ? 'danger-active' : ''}" title="${voiceStore.isMuted ? t('main.unmute') : t('main.mute')}">
                   <span class="material-symbols-outlined md-18">${voiceStore.isMuted ? 'mic_off' : 'mic'}</span>
                 </button>
-                <button id="bar-btn-deafen" class="btn btn-icon ${voiceStore.isDeafened ? 'danger-active' : ''}" title="${voiceStore.isDeafened ? 'Ouvir' : 'Ensurdecer'}">
+                <button id="bar-btn-deafen" class="btn btn-icon ${voiceStore.isDeafened ? 'danger-active' : ''}" title="${voiceStore.isDeafened ? t('main.undeafen') : t('main.deafen')}">
                   <span class="material-symbols-outlined md-18">${voiceStore.isDeafened ? 'headset_off' : 'headphones'}</span>
                 </button>
-                <button id="bar-btn-settings" class="btn btn-icon" title="Configurações">
+                <button id="bar-btn-settings" class="btn btn-icon" title="${t('connection.settingsTitle')}">
                   <span class="material-symbols-outlined md-18">tune</span>
                 </button>
-                <button id="bar-btn-disconnect" class="btn btn-icon" style="color: var(--danger);" title="Desconectar do Servidor">
+                <button id="bar-btn-disconnect" class="btn btn-icon" style="color: var(--danger);" title="${t('main.disconnectTitle')}">
                   <span class="material-symbols-outlined md-18">logout</span>
                 </button>
               </div>
@@ -142,7 +143,7 @@ export class MainView {
         <!-- Right Sidebar: Connected Members -->
         <div class="members-sidebar">
           <div class="members-header">
-            <span id="members-count-label">MEMBROS — 0</span>
+            <span id="members-count-label">${t('main.membersCount', { count: 0 })}</span>
           </div>
           <div id="members-list-items" class="members-list"></div>
         </div>
@@ -158,7 +159,11 @@ export class MainView {
     this.chatView = new ChatView(centerStageEl);
     this.voiceStageView = new VoiceStageView(centerStageEl);
 
-    if (serverStore.activeTextChannelId) {
+    // A re-render (e.g. after switching languages, #16) must not drop someone
+    // who is watching the voice stage back into the text channel.
+    if (this.activeContentView === 'stage' && voiceStore.currentVoiceChannelId) {
+      this.voiceStageView.setChannel(voiceStore.currentVoiceChannelId);
+    } else if (serverStore.activeTextChannelId) {
       this.chatView.setChannel(serverStore.activeTextChannelId);
     }
 
@@ -186,12 +191,12 @@ export class MainView {
         <div class="voice-conn-info">
           <span class="material-symbols-outlined md-16 voice-conn-signal">graphic_eq</span>
           <div class="voice-conn-text">
-            <span class="voice-conn-status">Voz conectada</span>
+            <span class="voice-conn-status">${t('main.voiceConnected')}</span>
             <span class="voice-conn-channel" id="sidebar-voice-channel">${escapeHtml(vc.name)}</span>
           </div>
-          <span class="voice-conn-ping" id="sidebar-voice-ping" title="Latência média">-- ms</span>
+          <span class="voice-conn-ping" id="sidebar-voice-ping" title="${t('main.averagePing')}">-- ms</span>
         </div>
-        <button id="sidebar-btn-leave-voice" class="btn btn-icon voice-conn-leave" title="Sair da chamada">
+        <button id="sidebar-btn-leave-voice" class="btn btn-icon voice-conn-leave" title="${t('main.leaveCall')}">
           <span class="material-symbols-outlined md-18">call_end</span>
         </button>
       </div>
@@ -238,8 +243,8 @@ export class MainView {
   private ensureInVoiceChannel(): boolean {
     if (!voiceStore.currentVoiceChannelId) {
       showAlert({
-        title: 'Entre em um canal de voz',
-        message: 'Para usar a câmera ou compartilhar a tela, entre primeiro em um canal de voz.',
+        title: t('main.joinVoiceFirstTitle'),
+        message: t('main.joinVoiceFirstMessage'),
         variant: 'warning',
       });
       return false;
@@ -267,7 +272,7 @@ export class MainView {
     }).join('');
 
     railEl.innerHTML = `
-      <button class="server-rail-home" id="server-rail-home" title="Início (voltar à tela de conexão)">
+      <button class="server-rail-home" id="server-rail-home" title="${t('main.homeTitle')}">
         <span class="material-symbols-outlined md-22">home</span>
       </button>
       <div class="server-rail-divider"></div>
@@ -278,9 +283,9 @@ export class MainView {
 
     railEl.querySelector('#server-rail-home')?.addEventListener('click', async () => {
       const confirmed = await showConfirm({
-        title: 'Voltar ao início',
-        message: 'Você será desconectado deste servidor e voltará à tela inicial. Deseja continuar?',
-        confirmLabel: 'Voltar ao início',
+        title: t('main.backHomeTitle'),
+        message: t('main.backHomeMessage'),
+        confirmLabel: t('main.backHomeTitle'),
         variant: 'warning',
       });
       if (!confirmed) return;
@@ -324,7 +329,7 @@ export class MainView {
         const online = await checkServerOnline(host, port);
         dot.setAttribute('data-status', online ? 'online' : 'offline');
         const baseTitle = btn.getAttribute('title')?.split(' • ')[0] || '';
-        btn.title = `${baseTitle} • ${online ? 'Online' : 'Offline'}`;
+        btn.title = `${baseTitle} • ${online ? t('main.statusOnline') : t('main.statusOffline')}`;
       })
     );
   }
@@ -335,9 +340,9 @@ export class MainView {
     if (targetUrl === networkClient.getCurrentServerUrl()) return;
 
     const confirmed = await showConfirm({
-      title: 'Trocar de servidor',
-      message: `Deseja se conectar a "${server.name || server.host}"? Você sairá do servidor atual.`,
-      confirmLabel: 'Conectar',
+      title: t('main.switchServerTitle'),
+      message: t('main.switchServerMessage', { name: server.name || server.host }),
+      confirmLabel: t('main.connect'),
       variant: 'warning',
     });
     if (!confirmed) return;
@@ -353,7 +358,7 @@ export class MainView {
         clientId = await window.api.getClientId();
         connectionStore.clientId = clientId;
       }
-      const nickname = connectionStore.savedNickname || 'Usuário';
+      const nickname = connectionStore.savedNickname || t('connection.unknownUser');
       const res = await networkClient.connect(server.host, server.port, clientId, nickname, server.password);
       connectionStore.addSavedServer({
         host: server.host,
@@ -432,7 +437,7 @@ export class MainView {
         <div class="channel-item ${c.id === serverStore.activeTextChannelId && this.activeContentView === 'chat' ? 'active' : ''}" data-channel-id="${c.id}" data-channel-type="TEXT">
           <span class="material-symbols-outlined md-16 channel-icon" style="color: var(--text-muted);">tag</span>
           <span class="channel-name">${escapeHtml(c.name)}</span>
-          <button class="channel-delete-btn" data-del-channel="${c.id}" title="Apagar canal">
+          <button class="channel-delete-btn" data-del-channel="${c.id}" title="${t('main.deleteChannel')}">
             <span class="material-symbols-outlined md-14">delete</span>
           </button>
         </div>
@@ -449,8 +454,8 @@ export class MainView {
             <div class="channel-item ${isActive ? 'active' : ''}" data-channel-id="${c.id}" data-channel-type="VOICE">
               <span class="material-symbols-outlined md-16 channel-icon" style="color: ${isActive ? 'var(--success)' : 'var(--text-muted)'};">volume_up</span>
               <span class="channel-name">${escapeHtml(c.name)}</span>
-              ${isActive ? '<span style="font-size: 11px; color: var(--success); font-weight: 600; margin-left: auto;">(Você)</span>' : ''}
-              <button class="channel-delete-btn" data-del-channel="${c.id}" title="Apagar canal">
+              ${isActive ? `<span style="font-size: 11px; color: var(--success); font-weight: 600; margin-left: auto;">(${t('common.you')})</span>` : ''}
+              <button class="channel-delete-btn" data-del-channel="${c.id}" title="${t('main.deleteChannel')}">
                 <span class="material-symbols-outlined md-14">delete</span>
               </button>
             </div>
@@ -465,13 +470,13 @@ export class MainView {
                   const avatar = getAvatarUrl(p.user.avatarUrl);
 
                   return `
-                    <div id="voice-mini-user-${p.user.id}" class="voice-participant-mini ${isSpeaking ? 'speaking' : ''}" data-user-id="${p.user.id}" title="${escapeHtml(p.user.nickname)} (Clique c/ botão direito p/ ajustar volume)">
+                    <div id="voice-mini-user-${p.user.id}" class="voice-participant-mini ${isSpeaking ? 'speaking' : ''}" data-user-id="${p.user.id}" title="${escapeHtml(p.user.nickname)} (${t('main.rightClickVolumeShort')})">
                       <img class="voice-mini-avatar" src="${avatar}">
                       <span class="voice-mini-name">${escapeHtml(p.user.nickname)}</span>
-                      ${isMicMuted ? '<span class="material-symbols-outlined md-14 voice-mini-icon muted" title="Microfone mutado">mic_off</span>' : ''}
-                      ${isAudioMuted ? '<span class="material-symbols-outlined md-14 voice-mini-icon muted" title="Áudio mutado">headset_off</span>' : ''}
-                      ${p.voiceState?.isScreenSharing ? '<span class="material-symbols-outlined md-14 voice-mini-icon live" title="Compartilhando tela">screen_share</span>' : ''}
-                      ${p.voiceState?.isCameraOn ? '<span class="material-symbols-outlined md-14 voice-mini-icon" title="Câmera ligada">videocam</span>' : ''}
+                      ${isMicMuted ? `<span class="material-symbols-outlined md-14 voice-mini-icon muted" title="${t('main.micMuted')}">mic_off</span>` : ''}
+                      ${isAudioMuted ? `<span class="material-symbols-outlined md-14 voice-mini-icon muted" title="${t('main.audioMuted')}">headset_off</span>` : ''}
+                      ${p.voiceState?.isScreenSharing ? `<span class="material-symbols-outlined md-14 voice-mini-icon live" title="${t('main.sharingScreen')}">screen_share</span>` : ''}
+                      ${p.voiceState?.isCameraOn ? `<span class="material-symbols-outlined md-14 voice-mini-icon" title="${t('main.cameraOn')}">videocam</span>` : ''}
                     </div>
                   `;
                 }).join('')}
@@ -591,11 +596,11 @@ export class MainView {
 
     const isText = channel.type === 'TEXT';
     const confirmed = await showConfirm({
-      title: isText ? 'Apagar canal de texto' : 'Apagar canal de voz',
+      title: isText ? t('main.deleteTextChannelTitle') : t('main.deleteVoiceChannelTitle'),
       message: isText
-        ? `Deseja apagar o canal "${channel.name}"? Todo o histórico de mensagens será removido permanentemente.`
-        : `Deseja apagar o canal de voz "${channel.name}"? Todos que estiverem nele serão desconectados.`,
-      confirmLabel: 'Apagar',
+        ? t('main.deleteTextChannelMessage', { name: channel.name })
+        : t('main.deleteVoiceChannelMessage', { name: channel.name }),
+      confirmLabel: t('main.delete'),
       variant: 'danger',
     });
     if (!confirmed) return;
@@ -622,7 +627,7 @@ export class MainView {
     const members = serverStore.serverDetails.members;
 
     if (countEl) {
-      countEl.innerText = `MEMBROS — ${members.length}`;
+      countEl.innerText = t('main.membersCount', { count: members.length });
     }
 
     if (listEl) {
@@ -635,7 +640,7 @@ export class MainView {
         const avatar = getAvatarUrl(m.avatarUrl);
 
         return `
-          <div class="member-item ${isReconnecting ? 'reconnecting' : ''}" data-user-id="${m.id}" title="${escapeHtml(m.nickname)} ${isLocal ? '(Você)' : '(Botão direito para ajustar volume)'}">
+          <div class="member-item ${isReconnecting ? 'reconnecting' : ''}" data-user-id="${m.id}" title="${escapeHtml(m.nickname)} ${isLocal ? `(${t('common.you')})` : `(${t('main.rightClickVolume')})`}">
             <div class="member-avatar-wrapper">
               <img class="member-avatar-img" src="${avatar}">
               <span class="status-indicator ${isReconnecting ? 'reconnecting' : (inVoice ? 'voice' : 'online')}"></span>
@@ -643,12 +648,12 @@ export class MainView {
             <div class="member-info">
               <div class="member-name-row">
                 <span class="member-name">${escapeHtml(m.nickname)}</span>
-                ${isLocal ? '<span class="member-badge-you">Você</span>' : ''}
-                ${isReconnecting ? '<span class="member-reconnecting-badge" title="Perdeu a conexão, tentando reconectar"><span class="material-symbols-outlined md-14 spin">sync</span></span>' : ''}
-                ${voiceState?.isScreenSharing ? '<span class="member-live-badge" title="Compartilhando tela">LIVE</span>' : ''}
-                ${voiceState?.isCameraOn ? '<span class="material-symbols-outlined md-14 member-cam-icon" title="Câmera ligada">videocam</span>' : ''}
+                ${isLocal ? `<span class="member-badge-you">${t('common.you')}</span>` : ''}
+                ${isReconnecting ? `<span class="member-reconnecting-badge" title="${t('main.reconnectingTitle')}"><span class="material-symbols-outlined md-14 spin">sync</span></span>` : ''}
+                ${voiceState?.isScreenSharing ? `<span class="member-live-badge" title="${t('main.sharingScreen')}">LIVE</span>` : ''}
+                ${voiceState?.isCameraOn ? `<span class="material-symbols-outlined md-14 member-cam-icon" title="${t('main.cameraOn')}">videocam</span>` : ''}
               </div>
-              <span class="member-subtext">${isReconnecting ? 'Reconectando…' : (inVoice ? 'No canal de voz' : 'Online')}</span>
+              <span class="member-subtext">${isReconnecting ? t('main.reconnecting') : (inVoice ? t('main.inVoiceChannel') : t('main.statusOnline'))}</span>
             </div>
           </div>
         `;
@@ -785,9 +790,9 @@ export class MainView {
 
     btnDisconnect?.addEventListener('click', async () => {
       const confirmed = await showConfirm({
-        title: 'Desconectar',
-        message: 'Deseja realmente desconectar do servidor?',
-        confirmLabel: 'Desconectar',
+        title: t('main.disconnect'),
+        message: t('main.disconnectMessage'),
+        confirmLabel: t('main.disconnect'),
         variant: 'danger',
       });
       if (confirmed) {
@@ -828,14 +833,14 @@ export class MainView {
       const btnMicEl = document.getElementById('bar-btn-mic');
       if (btnMicEl) {
         btnMicEl.className = `btn btn-icon ${voiceStore.isMuted ? 'danger-active' : ''}`;
-        btnMicEl.title = voiceStore.isMuted ? 'Desmutar' : 'Mutar';
+        btnMicEl.title = voiceStore.isMuted ? t('main.unmute') : t('main.mute');
         btnMicEl.innerHTML = `<span class="material-symbols-outlined md-18">${voiceStore.isMuted ? 'mic_off' : 'mic'}</span>`;
       }
 
       const btnDeafenEl = document.getElementById('bar-btn-deafen');
       if (btnDeafenEl) {
         btnDeafenEl.className = `btn btn-icon ${voiceStore.isDeafened ? 'danger-active' : ''}`;
-        btnDeafenEl.title = voiceStore.isDeafened ? 'Ouvir' : 'Ensurdecer';
+        btnDeafenEl.title = voiceStore.isDeafened ? t('main.undeafen') : t('main.deafen');
         btnDeafenEl.innerHTML = `<span class="material-symbols-outlined md-18">${voiceStore.isDeafened ? 'headset_off' : 'headphones'}</span>`;
       }
 

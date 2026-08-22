@@ -10,6 +10,8 @@ import {
   ServerErrorPayload,
 } from '@mini-voice/shared';
 import { appEvents } from './EventBus';
+import { t } from '../i18n';
+import { translateProtocolError } from '../i18n/protocolErrors';
 
 export type ConnectionStatus = 'DISCONNECTED' | 'CONNECTING' | 'CONNECTED' | 'RECONNECTING';
 
@@ -66,9 +68,7 @@ export class NetworkClient {
   private async diagnoseConnectionFailure(host: string, port: number): Promise<Error> {
     const probe = (window as any).api?.probeServer;
     if (typeof probe !== 'function') {
-      return new Error(
-        'Não foi possível conectar. O servidor pode estar offline ou fechado, ou o IP/porta podem estar incorretos.'
-      );
+      return new Error(t('network.genericConnectError'));
     }
     try {
       const result: { reachable: boolean; reason: string } = await probe(host, port);
@@ -76,30 +76,20 @@ export class NetworkClient {
         case 'online':
           // The TCP port accepted the connection but the WebSocket handshake
           // still failed — likely an incompatible/non-MiniVoice service.
-          return new Error(
-            `O endereço ${host}:${port} respondeu, mas não é um servidor Mini Voice válido. Verifique a porta.`
-          );
+          return new Error(t('network.notMiniVoiceServer', { host, port }));
         case 'refused':
-          return new Error(
-            `O computador ${host} está online, mas nenhum servidor Mini Voice está ativo na porta ${port}. Verifique se o servidor foi iniciado.`
-          );
+          return new Error(t('network.portClosed', { host, port }));
         case 'unreachable':
-          return new Error(
-            `Não foi possível encontrar o servidor em ${host}:${port}. O computador parece estar offline. Verifique o IP e sua conexão.`
-          );
+          return new Error(t('network.hostUnreachable', { host, port }));
         case 'timeout':
         default:
           // A silent timeout can't be told apart from an offline host at the TCP
           // level: the server may be closed/blocked by a firewall, or the host
           // may be offline. Be honest about both possibilities.
-          return new Error(
-            `O servidor em ${host}:${port} não respondeu. Ele pode estar fechado (ou bloqueado por um firewall) ou o computador pode estar offline. Verifique se o servidor está rodando e se a porta está liberada.`
-          );
+          return new Error(t('network.connectionTimeout', { host, port }));
       }
     } catch {
-      return new Error(
-        'Não foi possível conectar. O servidor pode estar offline ou fechado, ou o IP/porta podem estar incorretos.'
-      );
+      return new Error(t('network.genericConnectError'));
     }
   }
 
@@ -165,7 +155,7 @@ export class NetworkClient {
         this.ws = new WebSocket(this.currentServerUrl);
       } catch (err: any) {
         this.setStatus('DISCONNECTED');
-        return reject(new Error(`Não foi possível conectar ao endereço ${this.currentServerUrl}: ${err.message}`));
+        return reject(new Error(t('network.addressError', { url: this.currentServerUrl, error: err.message })));
       }
 
       const connectionTimeout = setTimeout(() => {
@@ -173,7 +163,7 @@ export class NetworkClient {
           this.ws?.close();
           this.setStatus('DISCONNECTED');
           if (isReconnect) {
-            reject(new Error('Tempo limite de conexão esgotado. Verifique o IP e a porta.'));
+            reject(new Error(t('network.timeout')));
           } else {
             void this.diagnoseConnectionFailure(cleanHost, port).then(reject);
           }
@@ -219,11 +209,7 @@ export class NetworkClient {
         if (this.status === 'CONNECTING') {
           this.setStatus('DISCONNECTED');
           if (isReconnect) {
-            reject(
-              new Error(
-                'Não foi possível conectar. O servidor pode estar offline ou fechado, ou o IP/porta podem estar incorretos.'
-              )
-            );
+            reject(new Error(t('network.genericConnectError')));
           } else {
             void this.diagnoseConnectionFailure(cleanHost, port).then(reject);
           }
@@ -315,7 +301,7 @@ export class NetworkClient {
 
       if (type === MessageType.SERVER_ERROR) {
         const errorPayload = payload as ServerErrorPayload;
-        pending.reject(new Error(errorPayload.message || errorPayload.code));
+        pending.reject(new Error(translateProtocolError(errorPayload.code, errorPayload.message)));
         return;
       }
 
@@ -333,7 +319,7 @@ export class NetworkClient {
     // Reject all pending requests
     for (const [id, pending] of this.pendingRequests.entries()) {
       clearTimeout(pending.timer);
-      pending.reject(new Error('Conexão encerrada'));
+      pending.reject(new Error(t('network.connectionClosed')));
     }
     this.pendingRequests.clear();
 

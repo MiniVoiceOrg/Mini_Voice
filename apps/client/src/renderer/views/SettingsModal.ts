@@ -7,11 +7,12 @@ import { settingsStore } from '../stores/settingsStore';
 import { voiceStore } from '../stores/voiceStore';
 import { webRtcManager } from '../core/WebRtcManager';
 import { videoService } from '../core/VideoService';
-import { soundEffects, SOUND_LABELS, SoundEffectType } from '../core/SoundEffects';
+import { soundEffects, getSoundLabels, SoundEffectType } from '../core/SoundEffects';
 import { connectionStore } from '../stores/connectionStore';
 import { getAvatarUrl } from '../utils/avatar';
 import { updateService } from '../core/UpdateService';
 import { soundboardService } from '../core/SoundboardService';
+import { getLanguage, setLanguage, SUPPORTED_LANGUAGES, t, tCount, type SupportedLanguage } from '../i18n';
 
 export class SettingsModal {
   private modalEl: HTMLElement | null = null;
@@ -32,7 +33,7 @@ export class SettingsModal {
         <div class="modal-header">
           <div class="modal-title" style="display: flex; align-items: center; gap: 8px;">
             <span class="material-symbols-outlined" style="color: var(--accent-primary);">settings</span>
-            <span>Configurações</span>
+            <span>${t('connection.settingsTitle')}</span>
           </div>
           <button id="modal-close" class="modal-close-btn">&times;</button>
         </div>
@@ -44,27 +45,27 @@ export class SettingsModal {
           <img id="settings-avatar-preview" style="width: 52px; height: 52px; border-radius: 50%; object-fit: cover;" src="${serverStore.currentUser?.avatarUrl ? getAvatarUrl(serverStore.currentUser.avatarUrl) : (connectionStore.savedAvatarBase64 || getAvatarUrl(null))}">
           <div style="flex: 1;">
             <div class="form-group" style="margin-bottom: 0;">
-              <label>Seu Nickname</label>
+              <label>${t('connection.nicknameLabel')}</label>
               <div style="display: flex; gap: 8px; margin-top: 4px;">
                 <input id="settings-nickname-input" type="text" value="${serverStore.currentUser?.nickname || connectionStore.savedNickname || ''}" style="flex: 1;" maxlength="32">
-                <button id="btn-save-nickname" class="btn btn-secondary" style="font-size: 12px; padding: 6px 12px;">Salvar</button>
+                <button id="btn-save-nickname" class="btn btn-secondary" style="font-size: 12px; padding: 6px 12px;">${t('common.save')}</button>
               </div>
             </div>
           </div>
           <button id="btn-change-avatar" class="btn btn-secondary" style="font-size: 12px; padding: 6px 12px;">
             <span class="material-symbols-outlined md-16" style="margin-right: 4px;">photo_camera</span>
-            Foto
+            ${t('settings.photo')}
           </button>
         </div>
 
         <!-- Device Header with Refresh Button -->
         <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 10px; border-top: 1px solid var(--border-color); padding-top: 14px;">
           <span style="font-size: 13px; font-weight: 700; color: var(--text-primary); text-transform: uppercase; letter-spacing: 0.5px;">
-            Dispositivos de Entrada e Saída
+            ${t('settings.devicesSection')}
           </span>
-          <button id="btn-refresh-devices" class="btn btn-secondary" style="font-size: 11px; padding: 3px 8px; height: 26px;" title="Buscar novos microfones e fones conectados">
+          <button id="btn-refresh-devices" class="btn btn-secondary" style="font-size: 11px; padding: 3px 8px; height: 26px;" title="${t('settings.refreshDevicesTitle')}">
             <span class="material-symbols-outlined md-14" style="margin-right: 4px;">refresh</span>
-            Atualizar Lista
+            ${t('settings.refreshDevices')}
           </button>
         </div>
 
@@ -72,27 +73,27 @@ export class SettingsModal {
         <div class="form-group">
           <label style="display: flex; align-items: center; gap: 6px;">
             <span class="material-symbols-outlined md-16" style="color: var(--accent-primary);">mic</span>
-            Microfone
+            ${t('settings.microphone')}
           </label>
           <select id="select-mic">
-            <option value="">Carregando microfones...</option>
+            <option value="">${t('settings.loadingMics')}</option>
           </select>
         </div>
 
         <div class="form-group">
           <label style="display: flex; align-items: center; gap: 6px;">
             <span class="material-symbols-outlined md-16" style="color: var(--accent-primary);">tune</span>
-            Sensibilidade de Voz (VAD)
+            ${t('settings.vadLabel')}
           </label>
           <div style="display: flex; align-items: center; gap: 12px;">
             <input id="slider-vad" type="range" min="5" max="80" value="${settingsStore.vadSensitivity}" style="flex: 1;">
             <span id="vad-val" style="font-family: var(--font-mono); font-size: 12px; min-width: 30px;">${settingsStore.vadSensitivity}</span>
           </div>
-          <div id="vad-meter" class="vad-meter" title="Nível do seu microfone">
+          <div id="vad-meter" class="vad-meter" title="${t('settings.vadMeterTitle')}">
             <div id="vad-meter-fill" class="vad-meter-fill"></div>
             <div id="vad-meter-threshold" class="vad-meter-threshold"></div>
           </div>
-          <div style="font-size: 11px; color: var(--text-muted); margin-top: 2px;">Fale para ver o nível. Ajuste o slider (linha) logo acima de onde o nível fica em silêncio. Valores menores ativam com sussurros; maiores evitam ruídos de fundo.</div>
+          <div style="font-size: 11px; color: var(--text-muted); margin-top: 2px;">${t('settings.vadHint')}</div>
         </div>
 
         <!-- RNNoise Noise Suppression -->
@@ -101,10 +102,10 @@ export class SettingsModal {
             <div>
               <label style="display: flex; align-items: center; gap: 6px; margin-bottom: 2px; cursor: pointer; font-weight: 600;" for="checkbox-rnnoise">
                 <span class="material-symbols-outlined md-16" style="color: var(--accent-primary);">graphic_eq</span>
-                Supressão de Ruído Inteligente (RNNoise)
+                ${t('settings.rnnoiseLabel')}
               </label>
               <div style="font-size: 11px; color: var(--text-muted);">
-                Utiliza Inteligência Artificial (Rede Neural) para remover ruídos de fundo como teclado mecânico, cliques, batidas e respiração.
+                ${t('settings.rnnoiseDesc')}
               </div>
             </div>
             <input id="checkbox-rnnoise" type="checkbox" ${settingsStore.noiseSuppressionEnabled ? 'checked' : ''} style="width: 18px; height: 18px; cursor: pointer; accent-color: var(--accent-primary);">
@@ -115,10 +116,10 @@ export class SettingsModal {
         <div class="form-group" id="group-speaker">
           <label style="display: flex; align-items: center; gap: 6px;">
             <span class="material-symbols-outlined md-16" style="color: var(--accent-primary);">headphones</span>
-            Dispositivo de Saída (Alto-falante / Fone)
+            ${t('settings.outputDevice')}
           </label>
           <select id="select-speaker">
-            <option value="">Carregando dispositivos de saída...</option>
+            <option value="">${t('settings.loadingOutputs')}</option>
           </select>
         </div>
 
@@ -127,32 +128,32 @@ export class SettingsModal {
           <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 10px;">
             <span style="font-size: 13px; font-weight: 700; color: var(--text-primary); text-transform: uppercase; letter-spacing: 0.5px; display: flex; align-items: center; gap: 6px;">
               <span class="material-symbols-outlined md-16" style="color: var(--accent-primary);">music_note</span>
-              Soundboard (Sons de Áudio)
+              ${t('settings.soundboardSection')}
             </span>
           </div>
 
           <div class="form-group" style="margin-bottom: 12px;">
-            <label>Pasta de Sons (MP3 / WAV / OGG)</label>
+            <label>${t('settings.soundFolder')}</label>
             <div style="display: flex; gap: 8px; align-items: center;">
-              <input id="input-soundboard-path" type="text" readonly value="${settingsStore.soundboardFolderPath || ''}" placeholder="Nenhuma pasta selecionada..." style="flex: 1; font-size: 12px; cursor: pointer;">
+              <input id="input-soundboard-path" type="text" readonly value="${settingsStore.soundboardFolderPath || ''}" placeholder="${t('settings.noFolderPlaceholder')}" style="flex: 1; font-size: 12px; cursor: pointer;">
               <button type="button" id="btn-select-soundboard-folder" class="btn btn-secondary" style="font-size: 12px; padding: 6px 12px; white-space: nowrap;">
                 <span class="material-symbols-outlined md-14" style="margin-right: 4px;">folder_open</span>
-                Escolher Pasta
+                ${t('soundboard.chooseFolder')}
               </button>
             </div>
             <div id="soundboard-folder-info" style="font-size: 11px; color: var(--text-muted); margin-top: 4px;">
-              ${settingsStore.soundboardFolderPath ? `${soundboardService.getSounds().length} sons encontrados nesta pasta.` : 'Selecione uma pasta do seu computador contendo arquivos de áudio.'}
+              ${settingsStore.soundboardFolderPath ? tCount('settings.soundsFound', soundboardService.getSounds().length) : t('settings.pickFolderHint')}
             </div>
           </div>
 
           <div class="form-group" style="margin-bottom: 12px;">
             <label style="display: flex; align-items: center; justify-content: space-between;">
-              <span>Volume de Reprodução do Soundboard</span>
+              <span>${t('settings.soundboardVolume')}</span>
               <span id="soundboard-vol-val" style="font-family: var(--font-mono); font-size: 12px;">${settingsStore.soundboardVolume}%</span>
             </label>
             <input id="slider-soundboard-vol" type="range" min="0" max="100" value="${settingsStore.soundboardVolume}" style="width: 100%;">
             <div style="font-size: 11px; color: var(--text-muted); margin-top: 2px;">
-              Ajusta o volume dos sons de soundboard tocados por você e por outros usuários na sala.
+              ${t('settings.soundboardVolumeDesc')}
             </div>
           </div>
 
@@ -161,10 +162,10 @@ export class SettingsModal {
               <div>
                 <label style="display: flex; align-items: center; gap: 6px; margin-bottom: 2px; cursor: pointer; font-weight: 600;" for="checkbox-soundboard-mute">
                   <span class="material-symbols-outlined md-16" style="color: var(--accent-primary);">volume_off</span>
-                  Mutar Sons do Soundboard (apenas para você)
+                  ${t('settings.soundboardMute')}
                 </label>
                 <div style="font-size: 11px; color: var(--text-muted);">
-                  Silencia os sons tocados no soundboard sem afetar a voz dos outros participantes.
+                  ${t('settings.soundboardMuteDesc')}
                 </div>
               </div>
               <input id="checkbox-soundboard-mute" type="checkbox" ${settingsStore.soundboardMuted ? 'checked' : ''} style="width: 18px; height: 18px; cursor: pointer; accent-color: var(--accent-primary);">
@@ -176,15 +177,15 @@ export class SettingsModal {
         <div class="form-group" id="group-camera" style="border-top: 1px solid var(--border-color); padding-top: 14px; margin-top: 14px;">
           <label style="display: flex; align-items: center; gap: 6px;">
             <span class="material-symbols-outlined md-16" style="color: var(--accent-primary);">videocam</span>
-            Câmera de Vídeo
+            ${t('settings.camera')}
           </label>
           <select id="select-cam">
-            <option value="">Carregando câmeras...</option>
+            <option value="">${t('settings.loadingCameras')}</option>
           </select>
           <div style="margin-top: 8px;">
             <button id="btn-toggle-cam-preview" class="btn btn-secondary" style="font-size: 12px; padding: 6px 12px;">
               <span class="material-symbols-outlined md-16" style="margin-right: 4px;">visibility</span>
-              Testar / Pré-visualizar câmera
+              ${t('settings.previewCamera')}
             </button>
           </div>
           <video id="settings-cam-preview" class="settings-cam-preview" autoplay playsinline muted style="display: none;"></video>
@@ -195,7 +196,7 @@ export class SettingsModal {
           <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 10px;">
             <span style="font-size: 13px; font-weight: 700; color: var(--text-primary); text-transform: uppercase; letter-spacing: 0.5px; display: flex; align-items: center; gap: 6px;">
               <span class="material-symbols-outlined md-16" style="color: var(--accent-primary);">screen_share</span>
-              Compartilhamento de Tela
+              ${t('settings.screenShareSection')}
             </span>
           </div>
 
@@ -204,10 +205,10 @@ export class SettingsModal {
               <div>
                 <label style="display: flex; align-items: center; gap: 6px; margin-bottom: 2px; cursor: pointer; font-weight: 600;" for="checkbox-screen-telemetry">
                   <span class="material-symbols-outlined md-16" style="color: var(--accent-primary);">monitoring</span>
-                  Exibir telemetria sobre a transmissão
+                  ${t('settings.telemetryLabel')}
                 </label>
                 <div style="font-size: 11px; color: var(--text-muted);">
-                  Mostra FPS, resolução, bitrate e métricas extras diretamente sobre os vídeos de compartilhamento.
+                  ${t('settings.telemetryDesc')}
                 </div>
               </div>
               <input id="checkbox-screen-telemetry" type="checkbox" ${settingsStore.screenShareTelemetryEnabled ? 'checked' : ''} style="width: 18px; height: 18px; cursor: pointer; accent-color: var(--accent-primary);">
@@ -215,20 +216,20 @@ export class SettingsModal {
           </div>
 
           <div class="form-group" style="margin-bottom: 12px;">
-            <label for="select-screen-telemetry-position">Posição da Overlay</label>
+            <label for="select-screen-telemetry-position">${t('settings.telemetryPosition')}</label>
             <select id="select-screen-telemetry-position">
-              <option value="top-right" ${settingsStore.screenShareTelemetryPosition === 'top-right' ? 'selected' : ''}>Superior direita</option>
-              <option value="top-left" ${settingsStore.screenShareTelemetryPosition === 'top-left' ? 'selected' : ''}>Superior esquerda</option>
-              <option value="bottom-right" ${settingsStore.screenShareTelemetryPosition === 'bottom-right' ? 'selected' : ''}>Inferior direita</option>
-              <option value="bottom-left" ${settingsStore.screenShareTelemetryPosition === 'bottom-left' ? 'selected' : ''}>Inferior esquerda</option>
+              <option value="top-right" ${settingsStore.screenShareTelemetryPosition === 'top-right' ? 'selected' : ''}>${t('settings.positionTopRight')}</option>
+              <option value="top-left" ${settingsStore.screenShareTelemetryPosition === 'top-left' ? 'selected' : ''}>${t('settings.positionTopLeft')}</option>
+              <option value="bottom-right" ${settingsStore.screenShareTelemetryPosition === 'bottom-right' ? 'selected' : ''}>${t('settings.positionBottomRight')}</option>
+              <option value="bottom-left" ${settingsStore.screenShareTelemetryPosition === 'bottom-left' ? 'selected' : ''}>${t('settings.positionBottomLeft')}</option>
             </select>
           </div>
 
           <div class="form-group" style="margin-bottom: 0;">
-            <label for="select-screen-telemetry-mode">Modo da Telemetria</label>
+            <label for="select-screen-telemetry-mode">${t('settings.telemetryMode')}</label>
             <select id="select-screen-telemetry-mode">
-              <option value="simple" ${settingsStore.screenShareTelemetryMode === 'simple' ? 'selected' : ''}>Simples — FPS, resolução e bitrate</option>
-              <option value="complete" ${settingsStore.screenShareTelemetryMode === 'complete' ? 'selected' : ''}>Completo — inclui codec e métricas avançadas</option>
+              <option value="simple" ${settingsStore.screenShareTelemetryMode === 'simple' ? 'selected' : ''}>${t('settings.telemetryModeSimple')}</option>
+              <option value="complete" ${settingsStore.screenShareTelemetryMode === 'complete' ? 'selected' : ''}>${t('settings.telemetryModeComplete')}</option>
             </select>
           </div>
         </div>
@@ -237,21 +238,21 @@ export class SettingsModal {
         <div class="form-group" style="border-top: 1px solid var(--border-color); padding-top: 14px; margin-top: 10px;">
           <label style="display: flex; align-items: center; gap: 6px;">
             <span class="material-symbols-outlined md-16" style="color: var(--accent-primary);">speed</span>
-            Perfil de Qualidade e Desempenho
-            <span class="material-symbols-outlined md-16" style="color: var(--text-muted); cursor: help;" title="Afeta APENAS o que você transmite (sua voz, câmera e tela). A qualidade do que você recebe depende da configuração de cada pessoa. Perfis mais altos usam mais internet e CPU.">help</span>
+            ${t('settings.qualitySection')}
+            <span class="material-symbols-outlined md-16" style="color: var(--text-muted); cursor: help;" title="${t('settings.qualityHelp')}">help</span>
           </label>
           <select id="select-preset">
-            <option value="ECONOMIC" ${settingsStore.qualityPreset === 'ECONOMIC' ? 'selected' : ''}>Econômico — para internet lenta (menor resolução, prioriza estabilidade)</option>
-            <option value="NORMAL" ${settingsStore.qualityPreset === 'NORMAL' ? 'selected' : ''}>Normal (recomendado) — bom equilíbrio entre qualidade e banda</option>
-            <option value="HIGH" ${settingsStore.qualityPreset === 'HIGH' ? 'selected' : ''}>Alta Qualidade — para internet rápida (mais nitidez, usa mais banda e CPU)</option>
-            <option value="GAMING" ${settingsStore.qualityPreset === 'GAMING' ? 'selected' : ''}>Gaming — tela fluida em 60 FPS para jogos (reduz a câmera)</option>
-            <option value="CUSTOM" ${settingsStore.qualityPreset === 'CUSTOM' ? 'selected' : ''}>Personalizado — defina seus próprios valores</option>
+            <option value="ECONOMIC" ${settingsStore.qualityPreset === 'ECONOMIC' ? 'selected' : ''}>${t('settings.presetEconomic')}</option>
+            <option value="NORMAL" ${settingsStore.qualityPreset === 'NORMAL' ? 'selected' : ''}>${t('settings.presetNormal')}</option>
+            <option value="HIGH" ${settingsStore.qualityPreset === 'HIGH' ? 'selected' : ''}>${t('settings.presetHigh')}</option>
+            <option value="GAMING" ${settingsStore.qualityPreset === 'GAMING' ? 'selected' : ''}>${t('settings.presetGaming')}</option>
+            <option value="CUSTOM" ${settingsStore.qualityPreset === 'CUSTOM' ? 'selected' : ''}>${t('settings.presetCustom')}</option>
           </select>
           <div id="preset-details" style="margin-top: 8px; padding: 10px 12px; background: rgba(255,255,255,0.03); border: 1px solid var(--border-color); border-radius: var(--radius-md);">
             ${this.getPresetDetailsHtml(settingsStore.qualityPreset)}
           </div>
           <small style="display: block; margin-top: 6px; color: var(--text-muted); font-size: 11px;">
-            Afeta apenas o que <strong>você transmite</strong>. A qualidade que você recebe depende de cada pessoa.
+            ${t('settings.qualityFootnote')}
           </small>
         </div>
 
@@ -259,39 +260,56 @@ export class SettingsModal {
         <div class="form-group" style="border-top: 1px solid var(--border-color); padding-top: 14px; margin-top: 10px;">
           <label style="display: flex; align-items: center; gap: 6px;">
             <span class="material-symbols-outlined md-16" style="color: var(--accent-primary);">music_note</span>
-            Sons Personalizados
+            ${t('settings.customSounds')}
           </label>
           <div id="custom-sounds-list" style="display: flex; flex-direction: column; gap: 6px; margin-top: 6px;">
             ${this.getCustomSoundsHtml()}
           </div>
           <button id="btn-reset-all-sounds" class="btn btn-secondary" style="margin-top: 8px; font-size: 11px; padding: 4px 10px;">
             <span class="material-symbols-outlined md-14" style="margin-right: 4px;">restart_alt</span>
-            Restaurar todos ao padrão
+            ${t('settings.resetAllSounds')}
           </button>
+        </div>
+
+        <!-- Language (#16) -->
+        <div class="form-group" style="border-top: 1px solid var(--border-color); padding-top: 14px; margin-top: 10px;">
+          <label style="display: flex; align-items: center; gap: 6px;" for="select-language">
+            <span class="material-symbols-outlined md-16" style="color: var(--accent-primary);">language</span>
+            ${t('settings.languageSection')}
+          </label>
+          <select id="select-language">
+            ${SUPPORTED_LANGUAGES.map(
+              (lang) =>
+                `<option value="${lang.code}" ${lang.code === getLanguage() ? 'selected' : ''}>${lang.label}</option>`
+            ).join('')}
+          </select>
+          <small style="display: block; margin-top: 6px; color: var(--text-muted); font-size: 11px;">
+            ${t('settings.languageHint')}
+          </small>
         </div>
 
         <!-- Updates -->
         <div class="form-group" style="border-top: 1px solid var(--border-color); padding-top: 14px; margin-top: 10px;">
           <label style="display: flex; align-items: center; gap: 6px;">
             <span class="material-symbols-outlined md-16" style="color: var(--accent-primary);">system_update</span>
-            Atualizações
+            ${t('settings.updatesSection')}
           </label>
           <div style="display: flex; align-items: center; justify-content: space-between; gap: 12px;">
             <div style="flex: 1;">
               <div style="font-size: 12px; color: var(--text-secondary);">
-                Versão atual: <span id="settings-app-version" style="font-family: var(--font-mono);">…</span>
+                ${t('settings.currentVersion')} <span id="settings-app-version" style="font-family: var(--font-mono);">…</span>
               </div>
               <div id="settings-update-status" style="font-size: 11px; color: var(--text-muted); margin-top: 2px;"></div>
             </div>
             <button id="btn-check-updates" class="btn btn-secondary" style="font-size: 12px; padding: 6px 12px;">
               <span class="material-symbols-outlined md-16" style="margin-right: 4px;">refresh</span>
-              Verificar atualizações
+              ${t('settings.checkUpdates')}
             </button>
           </div>
         </div>
 
         <div class="modal-footer" style="margin-top: 20px;">
-          <button id="btn-settings-close" class="btn btn-primary">Pronto</button>
+          <button id="btn-settings-close" class="btn btn-primary">${t('common.done')}</button>
         </div>
       </div>
     `;
@@ -320,41 +338,41 @@ export class SettingsModal {
           <div style="margin-bottom: 8px; padding-bottom: 6px; border-bottom: 1px solid rgba(255,255,255,0.06);">
             <div style="display: flex; align-items: center; gap: 6px; margin-bottom: 6px;">
               <span class="material-symbols-outlined" style="font-size: 16px; color: var(--accent-primary);">mic</span>
-              <strong style="color: var(--text-secondary);">Áudio</strong>
+              <strong style="color: var(--text-secondary);">${t('settings.audio')}</strong>
             </div>
-            ${inp('audioBitrate', 'Bitrate', p.audioBitrateKbps, 'kbps')}
+            ${inp('audioBitrate', t('settings.bitrate'), p.audioBitrateKbps, 'kbps')}
           </div>
           <div style="margin-bottom: 8px; padding-bottom: 6px; border-bottom: 1px solid rgba(255,255,255,0.06);">
             <div style="display: flex; align-items: center; gap: 6px; margin-bottom: 6px;">
               <span class="material-symbols-outlined" style="font-size: 16px; color: var(--accent-primary);">videocam</span>
-              <strong style="color: var(--text-secondary);">Câmera</strong>
+              <strong style="color: var(--text-secondary);">${t('settings.cameraShort')}</strong>
             </div>
             <div style="display: flex; flex-wrap: wrap; gap: 8px;">
-              ${inp('cameraWidth', 'Largura', p.cameraWidth, 'px')}
-              ${inp('cameraHeight', 'Altura', p.cameraHeight, 'px')}
+              ${inp('cameraWidth', t('settings.width'), p.cameraWidth, 'px')}
+              ${inp('cameraHeight', t('settings.height'), p.cameraHeight, 'px')}
               ${inp('cameraFps', 'FPS', p.cameraFps, '')}
-              ${inp('cameraBitrate', 'Bitrate', p.cameraBitrateKbps, 'kbps')}
+              ${inp('cameraBitrate', t('settings.bitrate'), p.cameraBitrateKbps, 'kbps')}
             </div>
           </div>
           <div style="margin-bottom: 8px; padding-bottom: 6px; border-bottom: 1px solid rgba(255,255,255,0.06);">
             <div style="display: flex; align-items: center; gap: 6px; margin-bottom: 6px;">
               <span class="material-symbols-outlined" style="font-size: 16px; color: var(--accent-primary);">screen_share</span>
-              <strong style="color: var(--text-secondary);">Tela</strong>
+              <strong style="color: var(--text-secondary);">${t('settings.screen')}</strong>
             </div>
             <div style="display: flex; flex-wrap: wrap; gap: 8px;">
-              ${inp('screenWidth', 'Largura', p.screenWidth, 'px')}
-              ${inp('screenHeight', 'Altura', p.screenHeight, 'px')}
+              ${inp('screenWidth', t('settings.width'), p.screenWidth, 'px')}
+              ${inp('screenHeight', t('settings.height'), p.screenHeight, 'px')}
               ${inp('screenFps', 'FPS', p.screenFps, '')}
-              ${inp('screenBitrate', 'Bitrate', p.screenBitrateKbps, 'kbps')}
+              ${inp('screenBitrate', t('settings.bitrate'), p.screenBitrateKbps, 'kbps')}
             </div>
           </div>
           <div style="display: flex; align-items: center; gap: 6px; color: var(--text-muted); font-size: 11px;">
             <span class="material-symbols-outlined" style="font-size: 16px;">speed</span>
-            Banda máx: ~${totalMbps} Mbps
+            ${t('settings.maxBandwidth', { value: totalMbps })}
           </div>
         </div>
         <p style="margin: 8px 0 0; font-size: 11px; color: var(--text-muted);">
-          ⚡ Valores são o teto — o WebRTC adapta automaticamente à sua banda real.
+          ${t('settings.bitrateCeilingNote')}
         </p>
       `;
     }
@@ -368,33 +386,34 @@ export class SettingsModal {
 
     return `
       <div style="font-size: 12px; line-height: 1.5;">
-        ${row('mic', 'Áudio', `${p.audioBitrateKbps} kbps`)}
-        ${row('videocam', 'Câmera', `${p.cameraWidth}×${p.cameraHeight} &nbsp;│&nbsp; ${p.cameraFps} fps &nbsp;│&nbsp; ${p.cameraBitrateKbps} kbps`)}
-        ${row('screen_share', 'Tela', `${p.screenWidth}×${p.screenHeight} &nbsp;│&nbsp; ${p.screenFps} fps &nbsp;│&nbsp; ${p.screenBitrateKbps} kbps`)}
-        ${row('speed', 'Banda máx', `~${totalMbps} Mbps`)}
+        ${row('mic', t('settings.audio'), `${p.audioBitrateKbps} kbps`)}
+        ${row('videocam', t('settings.cameraShort'), `${p.cameraWidth}×${p.cameraHeight} &nbsp;│&nbsp; ${p.cameraFps} fps &nbsp;│&nbsp; ${p.cameraBitrateKbps} kbps`)}
+        ${row('screen_share', t('settings.screen'), `${p.screenWidth}×${p.screenHeight} &nbsp;│&nbsp; ${p.screenFps} fps &nbsp;│&nbsp; ${p.screenBitrateKbps} kbps`)}
+        ${row('speed', t('settings.maxBandwidthLabel'), `~${totalMbps} Mbps`)}
       </div>
       <p style="margin: 8px 0 0; font-size: 11px; color: var(--text-muted);">
-        ⚡ Valores são o teto — o WebRTC adapta automaticamente à sua banda real.
+        ${t('settings.bitrateCeilingNote')}
       </p>
     `;
   }
 
   private getCustomSoundsHtml(): string {
-    const keys = Object.keys(SOUND_LABELS) as SoundEffectType[];
+    const labels = getSoundLabels();
+    const keys = Object.keys(labels) as SoundEffectType[];
     return keys.map((key) => {
-      const label = SOUND_LABELS[key];
+      const label = labels[key];
       const isCustom = !!settingsStore.customSounds[key];
       return `
         <div style="display: flex; align-items: center; gap: 8px; padding: 4px 0;">
           <span style="flex: 1; font-size: 12px; color: var(--text-secondary);">${label}</span>
-          ${isCustom ? `<span style="font-size: 10px; color: var(--accent-primary);">Personalizado</span>` : ''}
-          <button class="btn-sound-preview btn btn-secondary" data-sound-key="${key}" style="font-size: 10px; padding: 2px 8px;" title="Ouvir">
+          ${isCustom ? `<span style="font-size: 10px; color: var(--accent-primary);">${t('settings.customBadge')}</span>` : ''}
+          <button class="btn-sound-preview btn btn-secondary" data-sound-key="${key}" style="font-size: 10px; padding: 2px 8px;" title="${t('settings.playSound')}">
             <span class="material-symbols-outlined md-14">play_arrow</span>
           </button>
-          <button class="btn-sound-change btn btn-secondary" data-sound-key="${key}" style="font-size: 10px; padding: 2px 8px;" title="Trocar">
+          <button class="btn-sound-change btn btn-secondary" data-sound-key="${key}" style="font-size: 10px; padding: 2px 8px;" title="${t('settings.changeSound')}">
             <span class="material-symbols-outlined md-14">folder_open</span>
           </button>
-          ${isCustom ? `<button class="btn-sound-reset btn btn-secondary" data-sound-key="${key}" style="font-size: 10px; padding: 2px 8px;" title="Restaurar padrão">
+          ${isCustom ? `<button class="btn-sound-reset btn btn-secondary" data-sound-key="${key}" style="font-size: 10px; padding: 2px 8px;" title="${t('settings.resetSound')}">
             <span class="material-symbols-outlined md-14">restart_alt</span>
           </button>` : ''}
         </div>`;
@@ -500,7 +519,7 @@ export class SettingsModal {
     const orig = btn.innerHTML;
     btn.disabled = true;
     btn.innerHTML =
-      '<span class="material-symbols-outlined md-16" style="margin-right: 4px;">autorenew</span> Verificando...';
+      `<span class="material-symbols-outlined md-16" style="margin-right: 4px;">autorenew</span> ${t('settings.checking')}`;
 
     const result = await updateService.checkManually();
 
@@ -508,13 +527,13 @@ export class SettingsModal {
     btn.innerHTML = orig;
 
     if (result.status === 'available') {
-      status.textContent = `Nova versão ${result.version} disponível! Veja o aviso no topo para atualizar.`;
+      status.textContent = t('settings.updateAvailable', { version: result.version ?? '' });
       status.style.color = 'var(--accent-primary)';
     } else if (result.status === 'latest') {
-      status.textContent = 'Você já está na versão mais recente.';
+      status.textContent = t('settings.upToDate');
       status.style.color = 'var(--success)';
     } else {
-      status.textContent = 'Não foi possível verificar agora. Tente novamente.';
+      status.textContent = t('settings.updateCheckFailed');
       status.style.color = 'var(--danger)';
     }
   }
@@ -534,10 +553,10 @@ export class SettingsModal {
 
       if (selectMic) {
         if (audioInputs.length === 0) {
-          selectMic.innerHTML = '<option value="">Nenhum microfone detectado</option>';
+          selectMic.innerHTML = `<option value="">${t('settings.noMicDetected')}</option>`;
         } else {
           selectMic.innerHTML = audioInputs
-            .map((d, i) => `<option value="${d.deviceId}" ${d.deviceId === settingsStore.selectedMicrophoneId ? 'selected' : ''}>${d.label || `Microfone ${i + 1}`}</option>`)
+            .map((d, i) => `<option value="${d.deviceId}" ${d.deviceId === settingsStore.selectedMicrophoneId ? 'selected' : ''}>${d.label || t('settings.micFallback', { index: i + 1 })}</option>`)
             .join('');
           if (!settingsStore.selectedMicrophoneId && audioInputs.length > 0) {
             settingsStore.selectedMicrophoneId = audioInputs[0].deviceId;
@@ -548,10 +567,10 @@ export class SettingsModal {
 
       if (selectSpeaker) {
         if (audioOutputs.length === 0) {
-          selectSpeaker.innerHTML = '<option value="">Alto-falante Padrão do Sistema</option>';
+          selectSpeaker.innerHTML = `<option value="">${t('settings.defaultSpeaker')}</option>`;
         } else {
           selectSpeaker.innerHTML = audioOutputs
-            .map((d, i) => `<option value="${d.deviceId}" ${d.deviceId === settingsStore.selectedSpeakerId ? 'selected' : ''}>${d.label || `Saída ${i + 1}`}</option>`)
+            .map((d, i) => `<option value="${d.deviceId}" ${d.deviceId === settingsStore.selectedSpeakerId ? 'selected' : ''}>${d.label || t('settings.outputFallback', { index: i + 1 })}</option>`)
             .join('');
           if (!settingsStore.selectedSpeakerId && audioOutputs.length > 0) {
             settingsStore.selectedSpeakerId = audioOutputs[0].deviceId;
@@ -562,10 +581,10 @@ export class SettingsModal {
 
       if (selectCam) {
         if (videoInputs.length === 0) {
-          selectCam.innerHTML = '<option value="">Nenhuma câmera detectada</option>';
+          selectCam.innerHTML = `<option value="">${t('settings.noCameraDetected')}</option>`;
         } else {
           selectCam.innerHTML = videoInputs
-            .map((d, i) => `<option value="${d.deviceId}" ${d.deviceId === settingsStore.selectedCameraId ? 'selected' : ''}>${d.label || `Câmera ${i + 1}`}</option>`)
+            .map((d, i) => `<option value="${d.deviceId}" ${d.deviceId === settingsStore.selectedCameraId ? 'selected' : ''}>${d.label || t('settings.cameraFallback', { index: i + 1 })}</option>`)
             .join('');
           if (!settingsStore.selectedCameraId && videoInputs.length > 0) {
             settingsStore.selectedCameraId = videoInputs[0].deviceId;
@@ -603,9 +622,20 @@ export class SettingsModal {
     const btnCheckUpdates = this.modalEl.querySelector('#btn-check-updates');
     btnCheckUpdates?.addEventListener('click', () => this.checkUpdates());
 
+    // Language switch (#16): persists the choice, re-renders every open view
+    // (through `i18n.language_changed`) and reopens this modal already
+    // translated, keeping the user where they were.
+    const selectLanguage = this.modalEl.querySelector('#select-language') as HTMLSelectElement | null;
+    selectLanguage?.addEventListener('change', () => {
+      const language = selectLanguage.value as SupportedLanguage;
+      if (language === getLanguage()) return;
+      setLanguage(language);
+      void this.open();
+    });
+
     btnRefresh?.addEventListener('click', async () => {
       const origText = btnRefresh.innerHTML;
-      btnRefresh.innerHTML = '<span class="material-symbols-outlined md-14" style="margin-right: 4px;">autorenew</span> Atualizando...';
+      btnRefresh.innerHTML = `<span class="material-symbols-outlined md-14" style="margin-right: 4px;">autorenew</span> ${t('settings.refreshing')}`;
       await this.refreshDevices();
       setTimeout(() => {
         if (btnRefresh) btnRefresh.innerHTML = origText;
@@ -758,9 +788,9 @@ export class SettingsModal {
       // is used on the next connection.
       if (!serverStore.currentUser) {
         connectionStore.saveUserProfile(newNick);
-        btnSaveNick.textContent = 'Salvo!';
+        btnSaveNick.textContent = t('settings.saved');
         setTimeout(() => {
-          if (btnSaveNick) btnSaveNick.textContent = 'Salvar';
+          if (btnSaveNick) btnSaveNick.textContent = t('common.save');
         }, 1500);
         return;
       }
@@ -776,12 +806,12 @@ export class SettingsModal {
           serverStore.updateCurrentUser(serverStore.currentUser);
         }
         connectionStore.saveUserProfile(newNick);
-        btnSaveNick.textContent = 'Salvo!';
+        btnSaveNick.textContent = t('settings.saved');
         setTimeout(() => {
-          if (btnSaveNick) btnSaveNick.textContent = 'Salvar';
+          if (btnSaveNick) btnSaveNick.textContent = t('common.save');
         }, 1500);
       } catch (err: any) {
-        this.showError(err.message || 'Erro ao alterar nickname');
+        this.showError(err.message || t('settings.nicknameError'));
       }
     });
 
@@ -806,7 +836,7 @@ export class SettingsModal {
             const currentNick = serverStore.currentUser?.nickname || connectionStore.savedNickname;
             connectionStore.saveUserProfile(currentNick, file.base64);
           } catch (err: any) {
-            this.showError(err.message || 'Erro ao atualizar foto de perfil');
+            this.showError(err.message || t('settings.avatarError'));
           }
         }
       }
@@ -842,10 +872,10 @@ export class SettingsModal {
       videoEl.style.display = 'block';
       if (btn) {
         btn.innerHTML =
-          '<span class="material-symbols-outlined md-16" style="margin-right: 4px;">visibility_off</span> Parar pré-visualização';
+          `<span class="material-symbols-outlined md-16" style="margin-right: 4px;">visibility_off</span> ${t('settings.stopPreview')}`;
       }
     } catch (err: any) {
-      this.showError(err?.message || 'Não foi possível acessar a câmera');
+      this.showError(err?.message || t('settings.cameraAccessError'));
     }
   }
 
@@ -863,7 +893,7 @@ export class SettingsModal {
     }
     if (btn) {
       btn.innerHTML =
-        '<span class="material-symbols-outlined md-16" style="margin-right: 4px;">visibility</span> Testar / Pré-visualizar câmera';
+        `<span class="material-symbols-outlined md-16" style="margin-right: 4px;">visibility</span> ${t('settings.previewCamera')}`;
     }
   }
 

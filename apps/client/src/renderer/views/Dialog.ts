@@ -1,4 +1,5 @@
 import { escapeHtml } from '../utils/html';
+import { t } from '../i18n';
 
 type DialogVariant = 'info' | 'warning' | 'danger' | 'success';
 
@@ -92,11 +93,11 @@ function buildDialog(params: {
 export function showAlert(options: AlertOptions): Promise<void> {
   return new Promise((resolve) => {
     buildDialog({
-      title: options.title ?? 'Aviso',
+      title: options.title ?? t('dialog.alertTitle'),
       message: options.message,
       variant: options.variant ?? 'info',
       showCancel: false,
-      confirmLabel: options.okLabel ?? 'OK',
+      confirmLabel: options.okLabel ?? t('common.ok'),
       cancelLabel: '',
       confirmClass: options.variant === 'danger' ? 'btn-danger' : 'btn-primary',
       onResolve: () => resolve(),
@@ -108,12 +109,12 @@ export function showAlert(options: AlertOptions): Promise<void> {
 export function showConfirm(options: ConfirmOptions): Promise<boolean> {
   return new Promise((resolve) => {
     buildDialog({
-      title: options.title ?? 'Confirmação',
+      title: options.title ?? t('dialog.confirmTitle'),
       message: options.message,
       variant: options.variant ?? 'warning',
       showCancel: true,
-      confirmLabel: options.confirmLabel ?? 'Confirmar',
-      cancelLabel: options.cancelLabel ?? 'Cancelar',
+      confirmLabel: options.confirmLabel ?? t('common.confirm'),
+      cancelLabel: options.cancelLabel ?? t('common.cancel'),
       confirmClass: options.variant === 'danger' ? 'btn-danger' : 'btn-primary',
       onResolve: (confirmed) => resolve(confirmed),
     });

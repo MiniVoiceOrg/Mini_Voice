@@ -13,6 +13,7 @@ export interface ElectronApi {
         serverName: string;
         version: string;
     }) => void) => void;
+    setLanguage: (language: string) => Promise<void>;
     getClientId: () => Promise<string>;
     maximizeWindow: () => Promise<void>;
     hostServerStart: (options: {

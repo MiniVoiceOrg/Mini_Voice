@@ -15,6 +15,7 @@ import { showAlert, showConfirm } from './Dialog';
 import { userContextMenu } from './UserContextMenu';
 import { setButtonLoading, isButtonLoading } from '../utils/buttonLoading';
 import { soundboardModal } from './SoundboardModal';
+import { t } from '../i18n';
 
 interface ScreenTelemetrySnapshot {
   kind: 'sender' | 'receiver';
@@ -70,8 +71,8 @@ export class VoiceStageView {
       this.container.innerHTML = `
         <div style="display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100%; color: var(--text-muted); gap: 12px;">
           <span class="material-symbols-outlined md-36" style="color: var(--text-dim); font-size: 48px;">volume_up</span>
-          <div style="font-size: 16px; font-weight: 600; color: var(--text-secondary);">Nenhum canal de voz conectado</div>
-          <div style="font-size: 13px;">Clique em um canal de voz na barra lateral para entrar na chamada!</div>
+          <div style="font-size: 16px; font-weight: 600; color: var(--text-secondary);">${t('stage.noChannelTitle')}</div>
+          <div style="font-size: 13px;">${t('stage.noChannelSubtitle')}</div>
         </div>
       `;
       return;
@@ -90,7 +91,7 @@ export class VoiceStageView {
 
           <div style="display: flex; align-items: center; gap: 10px;">
             <!-- Grid view toggle (#29) -->
-            <button id="stage-btn-viewmode" class="btn btn-secondary" style="padding: 4px 10px; font-size: 12px;" title="Alternar entre visão padrão e visão em grade">
+            <button id="stage-btn-viewmode" class="btn btn-secondary" style="padding: 4px 10px; font-size: 12px;" title="${t('stage.toggleView')}">
               <span class="material-symbols-outlined md-16">${this.gridExpanded ? 'view_agenda' : 'grid_view'}</span>
             </button>
             <!-- Ping / Latency Badge -->
@@ -98,13 +99,13 @@ export class VoiceStageView {
               <span class="ping-dot"></span>
               <span id="stage-ping-text">-- ms</span>
               <div class="ping-tooltip">
-                <div id="ping-tooltip-content">Latência de Voz P2P: Calculando...</div>
+                <div id="ping-tooltip-content">${t('stage.pingCalculating')}</div>
               </div>
             </div>
 
             <div class="header-status-badge" style="background-color: rgba(35, 165, 90, 0.15); color: var(--success); display: flex; align-items: center; gap: 6px;">
               <span class="material-symbols-outlined md-14">wifi_tethering</span>
-              <span>Conectado (Mesh P2P)</span>
+              <span>${t('stage.connectedMesh')}</span>
             </div>
           </div>
         </div>
@@ -117,24 +118,24 @@ export class VoiceStageView {
 
         <!-- Stage Bottom Controls Bar -->
         <div class="stage-controls-bar">
-          <button id="stage-btn-mic" class="btn btn-icon ${voiceStore.isMuted ? 'danger-active' : ''}" title="${voiceStore.isMuted ? 'Desmutar Microfone' : 'Mutar Microfone'}">
+          <button id="stage-btn-mic" class="btn btn-icon ${voiceStore.isMuted ? 'danger-active' : ''}" title="${voiceStore.isMuted ? t('stage.unmuteMic') : t('stage.muteMic')}">
             <span class="material-symbols-outlined">${voiceStore.isMuted ? 'mic_off' : 'mic'}</span>
           </button>
-          <button id="stage-btn-deafen" class="btn btn-icon ${voiceStore.isDeafened ? 'danger-active' : ''}" title="${voiceStore.isDeafened ? 'Ouvir Áudio' : 'Mutar Tudo'}">
+          <button id="stage-btn-deafen" class="btn btn-icon ${voiceStore.isDeafened ? 'danger-active' : ''}" title="${voiceStore.isDeafened ? t('stage.undeafen') : t('stage.deafen')}">
             <span class="material-symbols-outlined">${voiceStore.isDeafened ? 'headset_off' : 'headphones'}</span>
           </button>
-          <button id="stage-btn-camera" class="btn btn-icon ${voiceStore.isCameraOn ? 'broadcasting-pulse active' : ''}" title="${voiceStore.isCameraOn ? 'Desligar Câmera' : 'Ligar Câmera'}">
+          <button id="stage-btn-camera" class="btn btn-icon ${voiceStore.isCameraOn ? 'broadcasting-pulse active' : ''}" title="${voiceStore.isCameraOn ? t('stage.cameraOff') : t('stage.cameraOn')}">
             <span class="material-symbols-outlined">${voiceStore.isCameraOn ? 'videocam_off' : 'videocam'}</span>
           </button>
-          <button id="stage-btn-screen" class="btn btn-icon ${voiceStore.isScreenSharing ? 'broadcasting-pulse active' : ''}" title="${voiceStore.isScreenSharing ? 'Parar Compartilhamento de Tela' : 'Compartilhar Tela'}">
+          <button id="stage-btn-screen" class="btn btn-icon ${voiceStore.isScreenSharing ? 'broadcasting-pulse active' : ''}" title="${voiceStore.isScreenSharing ? t('stage.stopScreenShare') : t('main.shareScreen')}">
             <span class="material-symbols-outlined">${voiceStore.isScreenSharing ? 'stop_screen_share' : 'screen_share'}</span>
           </button>
-          <button id="stage-btn-soundboard" class="btn btn-icon" title="Abrir Soundboard">
+          <button id="stage-btn-soundboard" class="btn btn-icon" title="${t('main.openSoundboard')}">
             <span class="material-symbols-outlined">music_note</span>
           </button>
-          <button id="stage-btn-leave" class="btn btn-danger" style="margin-left: 12px; padding: 0 16px; height: 38px;" title="Desconectar do canal">
+          <button id="stage-btn-leave" class="btn btn-danger" style="margin-left: 12px; padding: 0 16px; height: 38px;" title="${t('stage.leaveChannel')}">
             <span class="material-symbols-outlined md-18" style="margin-right: 4px;">call_end</span>
-            <span>Sair da Voz</span>
+            <span>${t('stage.leaveVoice')}</span>
           </button>
         </div>
       </div>
@@ -151,28 +152,28 @@ export class VoiceStageView {
     const btnMic = document.getElementById('stage-btn-mic');
     if (btnMic) {
       btnMic.className = `btn btn-icon ${voiceStore.isMuted ? 'danger-active' : ''}`;
-      btnMic.title = voiceStore.isMuted ? 'Desmutar Microfone' : 'Mutar Microfone';
+      btnMic.title = voiceStore.isMuted ? t('stage.unmuteMic') : t('stage.muteMic');
       btnMic.innerHTML = `<span class="material-symbols-outlined">${voiceStore.isMuted ? 'mic_off' : 'mic'}</span>`;
     }
 
     const btnDeafen = document.getElementById('stage-btn-deafen');
     if (btnDeafen) {
       btnDeafen.className = `btn btn-icon ${voiceStore.isDeafened ? 'danger-active' : ''}`;
-      btnDeafen.title = voiceStore.isDeafened ? 'Ouvir Áudio' : 'Mutar Tudo';
+      btnDeafen.title = voiceStore.isDeafened ? t('stage.undeafen') : t('stage.deafen');
       btnDeafen.innerHTML = `<span class="material-symbols-outlined">${voiceStore.isDeafened ? 'headset_off' : 'headphones'}</span>`;
     }
 
     const btnCam = document.getElementById('stage-btn-camera');
     if (btnCam) {
       btnCam.className = `btn btn-icon ${voiceStore.isCameraOn ? 'broadcasting-pulse active' : ''}`;
-      btnCam.title = voiceStore.isCameraOn ? 'Desligar Câmera' : 'Ligar Câmera';
+      btnCam.title = voiceStore.isCameraOn ? t('stage.cameraOff') : t('stage.cameraOn');
       btnCam.innerHTML = `<span class="material-symbols-outlined">${voiceStore.isCameraOn ? 'videocam_off' : 'videocam'}</span>`;
     }
 
     const btnScreen = document.getElementById('stage-btn-screen');
     if (btnScreen) {
       btnScreen.className = `btn btn-icon ${voiceStore.isScreenSharing ? 'broadcasting-pulse active' : ''}`;
-      btnScreen.title = voiceStore.isScreenSharing ? 'Parar Compartilhamento de Tela' : 'Compartilhar Tela';
+      btnScreen.title = voiceStore.isScreenSharing ? t('stage.stopScreenShare') : t('main.shareScreen');
       btnScreen.innerHTML = `<span class="material-symbols-outlined">${voiceStore.isScreenSharing ? 'stop_screen_share' : 'screen_share'}</span>`;
     }
 
@@ -187,12 +188,12 @@ export class VoiceStageView {
             <div style="display: flex; align-items: center; gap: 10px;">
               <span class="live-pulse-dot"></span>
               <span style="font-weight: 600; font-size: 12px; color: #ffffff;">
-                ${voiceStore.isScreenSharing ? 'Transmissão de Tela Ativa • Visível para todos na chamada' : 'Câmera ao Vivo • Transmitindo vídeo'}
+                ${voiceStore.isScreenSharing ? t('stage.bannerScreen') : t('stage.bannerCamera')}
               </span>
             </div>
             <button id="btn-stage-quick-stop" class="btn btn-secondary" style="font-size: 11px; padding: 4px 12px; height: 26px; border-color: rgba(242, 63, 67, 0.5); color: #ff7b72;">
               <span class="material-symbols-outlined md-14" style="margin-right: 4px;">stop_circle</span>
-              ${voiceStore.isScreenSharing ? 'Parar Tela' : 'Desligar Câmera'}
+              ${voiceStore.isScreenSharing ? t('stage.stopScreen') : t('stage.cameraOff')}
             </button>
           </div>
         `;
@@ -254,7 +255,7 @@ export class VoiceStageView {
           <div class="stage-focused-main ${isFocusedSpeaking ? 'speaking' : ''}" id="card-${focusedParticipant.user.id}" data-user-id="${focusedParticipant.user.id}">
             <div class="stage-focus-hint-badge">
               <span class="material-symbols-outlined md-14">zoom_in</span>
-              <span>Modo Foco • Clique para restaurar grade</span>
+              <span>${t('stage.focusMode')}</span>
             </div>
             ${this.renderCardContent(focusedParticipant, true)}
           </div>
@@ -264,7 +265,7 @@ export class VoiceStageView {
               ${otherParticipants.map((p) => {
                 const isOtherSpeaking = (p.user.id === serverStore.currentUser?.id) ? voiceStore.isSpeaking : p.isSpeaking;
                 return `
-                  <div class="stage-mini-card ${isOtherSpeaking ? 'speaking' : ''}" id="card-${p.user.id}" data-user-id="${p.user.id}" title="Clique para focar em ${escapeHtml(p.user.nickname)}">
+                  <div class="stage-mini-card ${isOtherSpeaking ? 'speaking' : ''}" id="card-${p.user.id}" data-user-id="${p.user.id}" title="${t('stage.focusOn', { name: escapeHtml(p.user.nickname) })}">
                     ${this.renderCardContent(p, false, true)}
                   </div>
                 `;
@@ -279,7 +280,7 @@ export class VoiceStageView {
           ${participants.map((p) => {
             const isSpeaking = (p.user.id === serverStore.currentUser?.id) ? voiceStore.isSpeaking : p.isSpeaking;
             return `
-              <div class="stage-card ${isSpeaking ? 'speaking' : ''}" id="card-${p.user.id}" data-user-id="${p.user.id}" title="Clique para focar/destacar">
+              <div class="stage-card ${isSpeaking ? 'speaking' : ''}" id="card-${p.user.id}" data-user-id="${p.user.id}" title="${t('stage.focusHint')}">
                 ${this.renderCardContent(p, false, false)}
               </div>
             `;
@@ -411,7 +412,7 @@ export class VoiceStageView {
         <video id="${videoId}" class="stage-video-element ${isScreenOn ? 'screen-share' : ''}" autoplay playsinline muted></video>
         <div class="stage-loading-overlay" id="loading-${videoId}">
           <div class="reconnect-spinner"></div>
-          <span>${isScreenOn ? 'Carregando tela…' : 'Carregando câmera…'}</span>
+          <span>${isScreenOn ? t('stage.loadingScreen') : t('stage.loadingCamera')}</span>
         </div>
         ${isScreenOn ? `
           <div
@@ -421,12 +422,12 @@ export class VoiceStageView {
         ` : ''}
         <div class="stage-controls-bar">
           ${(isScreenOn && !isLocal) ? `
-            <div class="stage-volume-control" title="Volume do áudio da tela">
+            <div class="stage-volume-control" title="${t('stage.screenAudioVolume')}">
               <span class="material-symbols-outlined md-16">volume_up</span>
               <input type="range" class="stage-screen-volume-slider" data-user-id="${p.user.id}" min="0" max="100" value="${settingsStore.getScreenAudioVolume(p.user.id)}" />
             </div>
           ` : ''}
-          <button class="stage-fullscreen-btn" data-fullscreen-target="${videoId}" title="Tela cheia" aria-label="Tela cheia">
+          <button class="stage-fullscreen-btn" data-fullscreen-target="${videoId}" title="${t('stage.fullscreen')}" aria-label="${t('stage.fullscreen')}">
             <span class="material-symbols-outlined md-18">fullscreen</span>
           </button>
         </div>
@@ -434,7 +435,7 @@ export class VoiceStageView {
         <div class="stage-avatar-wrapper">
           <img class="stage-avatar-img" src="${avatarSrc}">
           ${!isMini ? `
-            <div class="stage-participant-name">${escapeHtml(p.user.nickname)} ${isLocal ? '(Você)' : ''}</div>
+            <div class="stage-participant-name">${escapeHtml(p.user.nickname)} ${isLocal ? `(${t('common.you')})` : ''}</div>
           ` : ''}
         </div>
       `}
@@ -449,7 +450,7 @@ export class VoiceStageView {
       ${(!isLocal && p.isReconnecting) ? `
         <div class="stage-reconnecting-overlay">
           <div class="reconnect-spinner"></div>
-          <span>Reconectando…</span>
+          <span>${t('main.reconnecting')}</span>
         </div>
       ` : ''}
     `;
@@ -790,8 +791,7 @@ export class VoiceStageView {
         pingText.textContent = '0 ms';
         if (tooltipContent) {
           tooltipContent.innerHTML = `
-            <b>Status:</b> Conectado localmente<br>
-            <b>Latência:</b> 0 ms (Você é o único no canal)
+            ${t('stage.tooltipSolo')}
           `;
         }
         return;
@@ -802,30 +802,28 @@ export class VoiceStageView {
       if (avgPing !== null) {
         pingText.textContent = `${avgPing} ms`;
 
-        let quality = 'Excelente';
+        let quality = t('stage.qualityExcellentShort');
         if (avgPing < 50) {
           pingBadge.className = 'stage-ping-badge good';
-          quality = 'Excelente (Baixa Latência)';
+          quality = t('stage.qualityExcellent');
         } else if (avgPing < 120) {
           pingBadge.className = 'stage-ping-badge medium';
-          quality = 'Boa conexão';
+          quality = t('stage.qualityGood');
         } else {
           pingBadge.className = 'stage-ping-badge bad';
-          quality = 'Latência Alta';
+          quality = t('stage.qualityPoor');
         }
 
         if (tooltipContent) {
           tooltipContent.innerHTML = `
-            <b>Latência P2P WebRTC:</b> ${avgPing} ms<br>
-            <b>Qualidade:</b> ${quality}<br>
-            <span style="color: var(--text-muted); font-size: 10px;">Comunicação ponto-a-ponto direta entre amigos</span>
+            ${t('stage.tooltipPing', { ping: avgPing, quality })}
           `;
         }
       } else {
         pingText.textContent = 'P2P';
         pingBadge.className = 'stage-ping-badge good';
         if (tooltipContent) {
-          tooltipContent.innerHTML = `<b>Mesh P2P:</b> Estabelecendo rota direta...`;
+          tooltipContent.innerHTML = t('stage.tooltipEstablishing');
         }
       }
     };
@@ -862,9 +860,9 @@ export class VoiceStageView {
   private async handleStopStreaming(): Promise<void> {
     if (voiceStore.isScreenSharing) {
       const confirmed = await showConfirm({
-        title: 'Parar compartilhamento',
-        message: 'Deseja parar o compartilhamento de tela?',
-        confirmLabel: 'Parar',
+        title: t('stage.stopSharingTitle'),
+        message: t('stage.stopSharingMessage'),
+        confirmLabel: t('stage.stop'),
         variant: 'warning',
       });
       if (!confirmed) return;
@@ -898,9 +896,9 @@ export class VoiceStageView {
       const wasScreenSharing = voiceStore.isScreenSharing;
       if (wasScreenSharing) {
         const confirmed = await showConfirm({
-          title: 'Ligar câmera',
-          message: 'O compartilhamento de tela será pausado para ligar a câmera. Deseja continuar?',
-          confirmLabel: 'Continuar',
+          title: t('stage.cameraOn'),
+          message: t('stage.cameraOverScreenMessage'),
+          confirmLabel: t('stage.continue'),
           variant: 'warning',
         });
         if (!confirmed) return;
@@ -925,8 +923,8 @@ export class VoiceStageView {
         voiceStore.setCameraOn(false);
         networkClient.send(MessageType.VOICE_STATE_UPDATE, { isCameraOn: false, isScreenSharing: false });
         await showAlert({
-          title: 'Erro na câmera',
-          message: `Não foi possível acessar a câmera. Verifique se há uma câmera conectada e disponível.\n\nDetalhe: ${err?.message || err}`,
+          title: t('stage.cameraErrorTitle'),
+          message: t('stage.cameraErrorMessage', { error: err?.message || err }),
           variant: 'danger',
         });
       }
