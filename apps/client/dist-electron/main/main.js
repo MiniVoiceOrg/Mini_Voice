@@ -28,7 +28,7 @@ function createWindow() {
     const isMac = process.platform === 'darwin';
     const { width: screenW, height: screenH } = electron_1.screen.getPrimaryDisplay().workAreaSize;
     const winWidth = Math.min(700, Math.round(screenW * 0.85));
-    const winHeight = Math.round(screenH * 0.9);
+    const winHeight = Math.min(850, Math.round(screenH * 0.75));
     mainWindow = new electron_1.BrowserWindow({
         width: winWidth,
         height: winHeight,
