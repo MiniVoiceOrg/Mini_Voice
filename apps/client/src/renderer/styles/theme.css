@@ -1627,6 +1627,36 @@ input:focus, textarea:focus, select:focus {
   z-index: 2;
 }
 
+.stage-fullscreen-btn {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  z-index: 3;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  border: none;
+  border-radius: var(--radius-sm);
+  background-color: rgba(0, 0, 0, 0.55);
+  color: #fff;
+  cursor: pointer;
+  opacity: 0;
+  transition: opacity 0.15s ease, background-color 0.15s ease;
+  backdrop-filter: blur(4px);
+}
+
+.stage-card:hover .stage-fullscreen-btn,
+.stage-focused-main:hover .stage-fullscreen-btn,
+.stage-mini-card:hover .stage-fullscreen-btn {
+  opacity: 1;
+}
+
+.stage-fullscreen-btn:hover {
+  background-color: rgba(0, 0, 0, 0.85);
+}
+
 .stage-badge-icon {
   font-size: 14px;
 }
