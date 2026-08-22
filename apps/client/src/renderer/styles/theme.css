@@ -322,21 +322,21 @@ input:focus, textarea:focus, select:focus {
   display: flex;
   justify-content: center;
   align-items: flex-start;
-  background: transparent;
-  padding: 0;
+  background: var(--bg-panel);
+  padding: 20px 16px;
   box-sizing: border-box;
 }
 
 .connection-card {
   width: 100%;
-  max-width: 100%;
+  max-width: 620px;
   position: relative;
-  background-color: var(--bg-panel);
+  background-color: transparent;
   border: none;
   border-radius: 0;
   padding: 22px 26px;
   box-shadow: none;
-  margin: 0;
+  margin: auto;
 }
 
 .brand-header {
