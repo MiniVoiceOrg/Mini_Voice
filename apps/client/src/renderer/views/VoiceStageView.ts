@@ -13,6 +13,7 @@ import { getAvatarUrl } from '../utils/avatar';
 import { showAlert, showConfirm } from './Dialog';
 import { userContextMenu } from './UserContextMenu';
 import { setButtonLoading, isButtonLoading } from '../utils/buttonLoading';
+import { soundboardModal } from './SoundboardModal';
 
 export class VoiceStageView {
   private container: HTMLElement;
@@ -98,6 +99,9 @@ export class VoiceStageView {
           </button>
           <button id="stage-btn-screen" class="btn btn-icon ${voiceStore.isScreenSharing ? 'broadcasting-pulse active' : ''}" title="${voiceStore.isScreenSharing ? 'Parar Compartilhamento de Tela' : 'Compartilhar Tela'}">
             <span class="material-symbols-outlined">${voiceStore.isScreenSharing ? 'stop_screen_share' : 'screen_share'}</span>
+          </button>
+          <button id="stage-btn-soundboard" class="btn btn-icon" title="Abrir Soundboard">
+            <span class="material-symbols-outlined">music_note</span>
           </button>
           <button id="stage-btn-leave" class="btn btn-danger" style="margin-left: 12px; padding: 0 16px; height: 38px;" title="Desconectar do canal">
             <span class="material-symbols-outlined md-18" style="margin-right: 4px;">call_end</span>
@@ -623,6 +627,11 @@ export class VoiceStageView {
       const icon = btnViewMode.querySelector('.material-symbols-outlined');
       if (icon) icon.textContent = this.gridExpanded ? 'view_agenda' : 'grid_view';
       this.renderParticipants();
+    });
+
+    const btnSoundboard = document.getElementById('stage-btn-soundboard');
+    btnSoundboard?.addEventListener('click', () => {
+      soundboardModal.open();
     });
 
     btnLeave?.addEventListener('click', () => this.leaveVoice());

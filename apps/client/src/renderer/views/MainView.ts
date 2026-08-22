@@ -18,6 +18,7 @@ import { showConfirm, showAlert } from './Dialog';
 import { setButtonLoading, withButtonLoading } from '../utils/buttonLoading';
 import { checkServerOnline } from '../utils/serverStatus';
 import { userContextMenu } from './UserContextMenu';
+import { soundboardModal } from './SoundboardModal';
 import { soundEffects } from '../core/SoundEffects';
 import { getAvatarUrl } from '../utils/avatar';
 import logoUrl from '../assets/Logo.png';
@@ -102,8 +103,8 @@ export class MainView {
               <button id="media-btn-screen" class="btn btn-icon media-bar-btn-lg ${voiceStore.isScreenSharing ? 'broadcasting-pulse active' : ''}" title="Compartilhar Tela">
                 <span class="material-symbols-outlined md-18">${voiceStore.isScreenSharing ? 'stop_screen_share' : 'screen_share'}</span>
               </button>
-              <button id="media-btn-soundboard" class="btn btn-icon media-bar-btn-lg" style="opacity: 0.5;" title="Soundboard (em breve)" disabled>
-                <span class="material-symbols-outlined md-18">campaign</span>
+              <button id="media-btn-soundboard" class="btn btn-icon media-bar-btn-lg" title="Abrir Soundboard">
+                <span class="material-symbols-outlined md-18">music_note</span>
               </button>
             </div>
             <div class="user-control-main">
@@ -735,6 +736,11 @@ export class MainView {
     const usL1 = appEvents.on('modal.screenshare_picker_opened', clearScreenLoading);
     const usL2 = appEvents.on('modal.screenshare_picker_closed', clearScreenLoading);
     this.unbindEvents.push(usL1, usL2);
+
+    const mediaSoundboard = document.getElementById('media-btn-soundboard');
+    mediaSoundboard?.addEventListener('click', () => {
+      soundboardModal.open();
+    });
 
     btnMic?.addEventListener('click', () => {
       const newMuted = !voiceStore.isMuted;

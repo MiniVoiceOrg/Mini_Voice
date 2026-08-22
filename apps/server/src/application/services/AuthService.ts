@@ -138,6 +138,7 @@ export class AuthService {
       createdAt: server.createdAt,
       maxUsers: server.maxUsers,
       hasPassword: !!(server.passwordHash && server.passwordHash.length > 0),
+      allowSoundboard: server.allowSoundboard !== false,
       channels: channels.map((c) => ({
         id: c.id,
         serverId: c.serverId,
@@ -161,10 +162,12 @@ export class AuthService {
   public async updateServerSettings(payload: {
     name?: string;
     password?: string | null;
+    allowSoundboard?: boolean;
   }): Promise<{
     success: boolean;
     name?: string;
     hasPassword?: boolean;
+    allowSoundboard?: boolean;
     errorMessage?: string;
   }> {
     const server = await this.serverRepo.getServer();
@@ -186,6 +189,10 @@ export class AuthService {
       }
     }
 
+    if (payload.allowSoundboard !== undefined) {
+      updates.allowSoundboard = Boolean(payload.allowSoundboard);
+    }
+
     await this.serverRepo.updateServer(updates);
     const updatedServer = await this.serverRepo.getServer();
 
@@ -193,6 +200,7 @@ export class AuthService {
       success: true,
       name: updatedServer?.name || server.name,
       hasPassword: !!(updatedServer?.passwordHash && updatedServer.passwordHash.length > 0),
+      allowSoundboard: updatedServer?.allowSoundboard !== false,
     };
   }
 }

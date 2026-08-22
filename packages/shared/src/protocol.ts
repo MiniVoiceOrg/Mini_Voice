@@ -33,6 +33,7 @@ export enum MessageType {
   RTC_SIGNAL = 'RTC_SIGNAL',
   PING = 'PING',
   USER_LOGOUT = 'USER_LOGOUT',
+  SOUNDBOARD_PLAY = 'SOUNDBOARD_PLAY',
 
   // Server -> Client
   AUTH_SUCCESS = 'AUTH_SUCCESS',
@@ -51,6 +52,7 @@ export enum MessageType {
   VOICE_USER_JOINED = 'VOICE_USER_JOINED',
   VOICE_USER_LEFT = 'VOICE_USER_LEFT',
   VOICE_STATE_CHANGED = 'VOICE_STATE_CHANGED',
+  SOUNDBOARD_PLAYED = 'SOUNDBOARD_PLAYED',
   SERVER_ERROR = 'SERVER_ERROR',
   PONG = 'PONG',
 }
@@ -102,6 +104,14 @@ export interface UserUpdateAvatarPayload {
 export interface ServerUpdateSettingsPayload {
   name?: string;
   password?: string | null; // null or empty string removes the password
+  allowSoundboard?: boolean;
+}
+
+export interface SoundboardPlayPayload {
+  channelId: string;
+  soundName: string;
+  audioBase64: string;
+  mimeType?: string;
 }
 
 export interface VoiceJoinPayload {
@@ -135,6 +145,16 @@ export interface ServerErrorPayload {
 export interface ServerSettingsUpdatedPayload {
   name: string;
   hasPassword: boolean;
+  allowSoundboard?: boolean;
+}
+
+export interface SoundboardPlayedPayload {
+  channelId: string;
+  userId: string;
+  userName: string;
+  soundName: string;
+  audioBase64: string;
+  mimeType?: string;
 }
 
 export interface ServerShutdownPayload {

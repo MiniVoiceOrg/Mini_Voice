@@ -82,6 +82,86 @@ function setupIpcHandlers(mainWindow, serverManager) {
             base64: `data:${mime};base64,${base64}`,
         };
     });
+    // Soundboard Folder Selection
+    electron_1.ipcMain.handle('dialog-select-soundboard-folder', async () => {
+        const result = await electron_1.dialog.showOpenDialog(mainWindow, {
+            title: 'Selecionar Pasta de Sons (Soundboard)',
+            properties: ['openDirectory'],
+        });
+        if (result.canceled || result.filePaths.length === 0) {
+            return null;
+        }
+        return result.filePaths[0];
+    });
+    // Soundboard List Sounds
+    electron_1.ipcMain.handle('soundboard-list-sounds', async (_, folderPath) => {
+        if (!folderPath || typeof folderPath !== 'string' || !fs_1.default.existsSync(folderPath)) {
+            return [];
+        }
+        try {
+            const entries = fs_1.default.readdirSync(folderPath, { withFileTypes: true });
+            const validExts = ['.mp3', '.wav', '.ogg', '.m4a', '.aac', '.webm'];
+            const sounds = [];
+            for (const entry of entries) {
+                if (entry.isFile()) {
+                    const ext = path_1.default.extname(entry.name).toLowerCase();
+                    if (validExts.includes(ext)) {
+                        const fullPath = path_1.default.join(folderPath, entry.name);
+                        const stat = fs_1.default.statSync(fullPath);
+                        const displayName = path_1.default.basename(entry.name, ext);
+                        sounds.push({
+                            name: displayName,
+                            fileName: entry.name,
+                            filePath: fullPath,
+                            sizeBytes: stat.size,
+                            ext,
+                        });
+                    }
+                }
+            }
+            sounds.sort((a, b) => a.name.localeCompare(b.name));
+            return sounds;
+        }
+        catch (e) {
+            console.warn('Error reading soundboard folder:', e);
+            return [];
+        }
+    });
+    // Soundboard Read Sound
+    electron_1.ipcMain.handle('soundboard-read-sound', async (_, filePath) => {
+        if (!filePath || typeof filePath !== 'string' || !fs_1.default.existsSync(filePath)) {
+            return null;
+        }
+        try {
+            const stat = fs_1.default.statSync(filePath);
+            if (stat.size > 3 * 1024 * 1024) {
+                throw new Error('Arquivo de áudio muito grande (máximo 3MB)');
+            }
+            const buffer = fs_1.default.readFileSync(filePath);
+            const ext = path_1.default.extname(filePath).toLowerCase();
+            let mime = 'audio/mp3';
+            if (ext === '.wav')
+                mime = 'audio/wav';
+            else if (ext === '.ogg')
+                mime = 'audio/ogg';
+            else if (ext === '.m4a' || ext === '.aac')
+                mime = 'audio/mp4';
+            else if (ext === '.webm')
+                mime = 'audio/webm';
+            return {
+                fileName: path_1.default.basename(filePath),
+                soundName: path_1.default.basename(filePath, ext),
+                mimeType: mime,
+                base64: buffer.toString('base64'),
+                dataUrl: `data:${mime};base64,${buffer.toString('base64')}`,
+                sizeBytes: stat.size,
+            };
+        }
+        catch (e) {
+            console.warn('Error reading sound file:', e);
+            return null;
+        }
+    });
     // Window Controls
     electron_1.ipcMain.handle('window-minimize', () => {
         mainWindow.minimize();

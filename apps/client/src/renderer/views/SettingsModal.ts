@@ -11,6 +11,7 @@ import { soundEffects } from '../core/SoundEffects';
 import { connectionStore } from '../stores/connectionStore';
 import { getAvatarUrl } from '../utils/avatar';
 import { updateService } from '../core/UpdateService';
+import { soundboardService } from '../core/SoundboardService';
 
 export class SettingsModal {
   private modalEl: HTMLElement | null = null;
@@ -121,8 +122,58 @@ export class SettingsModal {
           </select>
         </div>
 
+        <!-- Soundboard Section -->
+        <div style="border-top: 1px solid var(--border-color); padding-top: 14px; margin-top: 14px;">
+          <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 10px;">
+            <span style="font-size: 13px; font-weight: 700; color: var(--text-primary); text-transform: uppercase; letter-spacing: 0.5px; display: flex; align-items: center; gap: 6px;">
+              <span class="material-symbols-outlined md-16" style="color: var(--accent-primary);">music_note</span>
+              Soundboard (Sons de Áudio)
+            </span>
+          </div>
+
+          <div class="form-group" style="margin-bottom: 12px;">
+            <label>Pasta de Sons (MP3 / WAV / OGG)</label>
+            <div style="display: flex; gap: 8px; align-items: center;">
+              <input id="input-soundboard-path" type="text" readonly value="${settingsStore.soundboardFolderPath || ''}" placeholder="Nenhuma pasta selecionada..." style="flex: 1; font-size: 12px; cursor: pointer;">
+              <button type="button" id="btn-select-soundboard-folder" class="btn btn-secondary" style="font-size: 12px; padding: 6px 12px; white-space: nowrap;">
+                <span class="material-symbols-outlined md-14" style="margin-right: 4px;">folder_open</span>
+                Escolher Pasta
+              </button>
+            </div>
+            <div id="soundboard-folder-info" style="font-size: 11px; color: var(--text-muted); margin-top: 4px;">
+              ${settingsStore.soundboardFolderPath ? `${soundboardService.getSounds().length} sons encontrados nesta pasta.` : 'Selecione uma pasta do seu computador contendo arquivos de áudio.'}
+            </div>
+          </div>
+
+          <div class="form-group" style="margin-bottom: 12px;">
+            <label style="display: flex; align-items: center; justify-content: space-between;">
+              <span>Volume de Reprodução do Soundboard</span>
+              <span id="soundboard-vol-val" style="font-family: var(--font-mono); font-size: 12px;">${settingsStore.soundboardVolume}%</span>
+            </label>
+            <input id="slider-soundboard-vol" type="range" min="0" max="100" value="${settingsStore.soundboardVolume}" style="width: 100%;">
+            <div style="font-size: 11px; color: var(--text-muted); margin-top: 2px;">
+              Ajusta o volume dos sons de soundboard tocados por você e por outros usuários na sala.
+            </div>
+          </div>
+
+          <div class="form-group" style="padding: 10px 12px; background: var(--bg-card); border: 1px solid var(--border-color); border-radius: var(--radius-md);">
+            <div style="display: flex; align-items: center; justify-content: space-between; gap: 12px;">
+              <div>
+                <label style="display: flex; align-items: center; gap: 6px; margin-bottom: 2px; cursor: pointer; font-weight: 600;" for="checkbox-soundboard-mute">
+                  <span class="material-symbols-outlined md-16" style="color: var(--accent-primary);">volume_off</span>
+                  Mutar Sons do Soundboard (apenas para você)
+                </label>
+                <div style="font-size: 11px; color: var(--text-muted);">
+                  Silencia os sons tocados no soundboard sem afetar a voz dos outros participantes.
+                </div>
+              </div>
+              <input id="checkbox-soundboard-mute" type="checkbox" ${settingsStore.soundboardMuted ? 'checked' : ''} style="width: 18px; height: 18px; cursor: pointer; accent-color: var(--accent-primary);">
+            </div>
+          </div>
+        </div>
+
         <!-- Camera Inputs -->
-        <div class="form-group" id="group-camera">
+        <div class="form-group" id="group-camera" style="border-top: 1px solid var(--border-color); padding-top: 14px; margin-top: 14px;">
           <label style="display: flex; align-items: center; gap: 6px;">
             <span class="material-symbols-outlined md-16" style="color: var(--accent-primary);">videocam</span>
             Câmera de Vídeo
@@ -332,6 +383,37 @@ export class SettingsModal {
       settingsStore.noiseSuppressionEnabled = enabled;
       settingsStore.save();
       await audioProcessor.setNoiseSuppression(enabled);
+    });
+
+    const inputSoundboardPath = this.modalEl.querySelector('#input-soundboard-path') as HTMLInputElement | null;
+    const btnSelectSoundboardFolder = this.modalEl.querySelector('#btn-select-soundboard-folder');
+    const soundboardFolderInfo = this.modalEl.querySelector('#soundboard-folder-info');
+    const sliderSoundboardVol = this.modalEl.querySelector('#slider-soundboard-vol') as HTMLInputElement | null;
+    const soundboardVolVal = this.modalEl.querySelector('#soundboard-vol-val');
+    const checkboxSoundboardMute = this.modalEl.querySelector('#checkbox-soundboard-mute') as HTMLInputElement | null;
+
+    btnSelectSoundboardFolder?.addEventListener('click', async () => {
+      const folder = await soundboardService.selectFolder();
+      if (folder && inputSoundboardPath) {
+        inputSoundboardPath.value = folder;
+        const count = soundboardService.getSounds().length;
+        if (soundboardFolderInfo) {
+          soundboardFolderInfo.textContent = `${count} sons encontrados nesta pasta.`;
+        }
+      }
+    });
+
+    sliderSoundboardVol?.addEventListener('input', () => {
+      const val = parseInt(sliderSoundboardVol.value, 10);
+      if (soundboardVolVal) soundboardVolVal.textContent = `${val}%`;
+      settingsStore.soundboardVolume = val;
+      settingsStore.save();
+    });
+
+    checkboxSoundboardMute?.addEventListener('change', () => {
+      const muted = !!checkboxSoundboardMute.checked;
+      settingsStore.soundboardMuted = muted;
+      settingsStore.save();
     });
 
     selectPreset?.addEventListener('change', () => {

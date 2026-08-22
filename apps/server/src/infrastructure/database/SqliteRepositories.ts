@@ -15,14 +15,22 @@ export class SqliteServerRepository implements IServerRepository {
   constructor(private db: IDatabaseDriver) {}
 
   async getServer(): Promise<ServerRecord | null> {
-    const row = this.db.prepare('SELECT id, name, password_hash as passwordHash, created_at as createdAt, max_users as maxUsers FROM server_meta LIMIT 1').get() as ServerRecord | undefined;
-    return row || null;
+    const row = this.db.prepare('SELECT id, name, password_hash as passwordHash, created_at as createdAt, max_users as maxUsers, allow_soundboard as allowSoundboard FROM server_meta LIMIT 1').get() as any;
+    if (!row) return null;
+    return {
+      id: row.id,
+      name: row.name,
+      passwordHash: row.passwordHash,
+      createdAt: row.createdAt,
+      maxUsers: row.maxUsers,
+      allowSoundboard: row.allowSoundboard !== undefined ? Boolean(row.allowSoundboard) : true,
+    };
   }
 
   async createServer(server: ServerRecord): Promise<void> {
     this.db.prepare(
-      'INSERT INTO server_meta (id, name, password_hash, created_at, max_users) VALUES (?, ?, ?, ?, ?)'
-    ).run(server.id, server.name, server.passwordHash, server.createdAt, server.maxUsers);
+      'INSERT INTO server_meta (id, name, password_hash, created_at, max_users, allow_soundboard) VALUES (?, ?, ?, ?, ?, ?)'
+    ).run(server.id, server.name, server.passwordHash, server.createdAt, server.maxUsers, server.allowSoundboard !== false ? 1 : 0);
   }
 
   async updateServer(server: Partial<ServerRecord>): Promise<void> {
@@ -40,6 +48,10 @@ export class SqliteServerRepository implements IServerRepository {
     if (server.maxUsers !== undefined) {
       fields.push('max_users = ?');
       values.push(server.maxUsers);
+    }
+    if (server.allowSoundboard !== undefined) {
+      fields.push('allow_soundboard = ?');
+      values.push(server.allowSoundboard ? 1 : 0);
     }
 
     if (fields.length === 0) return;

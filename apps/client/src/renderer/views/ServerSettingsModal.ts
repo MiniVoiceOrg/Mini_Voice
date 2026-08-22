@@ -68,6 +68,25 @@ export class ServerSettingsModal {
             </div>
           </div>
 
+          <div style="margin-top: 18px; border-top: 1px solid var(--border-color); padding-top: 16px;">
+            <label style="font-weight: 700; font-size: 13px; color: var(--text-primary); display: block; margin-bottom: 8px;">
+              Recursos de Voz e Áudio
+            </label>
+
+            <div style="display: flex; align-items: center; justify-content: space-between; background: var(--bg-tertiary); padding: 10px 14px; border-radius: var(--radius-md); border: 1px solid var(--border-color);">
+              <div>
+                <label for="checkbox-allow-soundboard" style="font-size: 13px; font-weight: 600; color: var(--text-primary); display: flex; align-items: center; gap: 6px; cursor: pointer; margin-bottom: 2px;">
+                  <span class="material-symbols-outlined md-16" style="color: var(--accent-primary);">music_note</span>
+                  <span>Permitir Soundboard no Servidor</span>
+                </label>
+                <div style="font-size: 11px; color: var(--text-muted);">
+                  Permite que os membros toquem áudios da soundboard nos canais de voz deste servidor.
+                </div>
+              </div>
+              <input id="checkbox-allow-soundboard" type="checkbox" ${s.allowSoundboard !== false ? 'checked' : ''} style="width: 18px; height: 18px; cursor: pointer; accent-color: var(--accent-primary);">
+            </div>
+          </div>
+
           <div class="modal-footer" style="margin-top: 24px;">
             <button type="button" id="btn-cancel" class="btn btn-secondary">Cancelar</button>
             <button type="submit" id="btn-save" class="btn btn-primary">Salvar Alterações</button>
@@ -89,6 +108,7 @@ export class ServerSettingsModal {
     const form = this.modalEl.querySelector('#form-server-settings') as HTMLFormElement;
     const inputName = this.modalEl.querySelector('#input-server-name') as HTMLInputElement;
     const inputPass = this.modalEl.querySelector('#input-server-pass') as HTMLInputElement;
+    const checkboxAllowSoundboard = this.modalEl.querySelector('#checkbox-allow-soundboard') as HTMLInputElement | null;
     const passHelpText = this.modalEl.querySelector('#pass-help-text') as HTMLElement | null;
     const statusDesc = this.modalEl.querySelector('#password-status-desc') as HTMLElement | null;
 
@@ -114,11 +134,13 @@ export class ServerSettingsModal {
       e.preventDefault();
       const name = inputName?.value.trim();
       const passVal = inputPass?.value;
+      const allowSoundboard = checkboxAllowSoundboard ? checkboxAllowSoundboard.checked : true;
 
       if (!name) return;
 
       const payload: ServerUpdateSettingsPayload = {
         name,
+        allowSoundboard,
       };
 
       if (this.shouldRemovePassword) {

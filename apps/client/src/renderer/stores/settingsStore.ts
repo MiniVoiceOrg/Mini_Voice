@@ -11,6 +11,9 @@ export class SettingsStore {
   public maxDownloadKbps: number = 2000;
   public userVolumes: Record<string, number> = {};
   public noiseSuppressionEnabled: boolean = true;
+  public soundboardFolderPath: string = '';
+  public soundboardVolume: number = 80; // 0 - 100
+  public soundboardMuted: boolean = false;
 
   constructor() {
     this.load();
@@ -27,6 +30,15 @@ export class SettingsStore {
         }
         if (typeof this.noiseSuppressionEnabled !== 'boolean') {
           this.noiseSuppressionEnabled = true;
+        }
+        if (typeof this.soundboardFolderPath !== 'string') {
+          this.soundboardFolderPath = '';
+        }
+        if (typeof this.soundboardVolume !== 'number' || isNaN(this.soundboardVolume)) {
+          this.soundboardVolume = 80;
+        }
+        if (typeof this.soundboardMuted !== 'boolean') {
+          this.soundboardMuted = false;
         }
       }
     } catch (e) {}
@@ -58,6 +70,9 @@ export class SettingsStore {
         maxDownloadKbps: this.maxDownloadKbps,
         userVolumes: this.userVolumes,
         noiseSuppressionEnabled: this.noiseSuppressionEnabled,
+        soundboardFolderPath: this.soundboardFolderPath,
+        soundboardVolume: this.soundboardVolume,
+        soundboardMuted: this.soundboardMuted,
       }));
       appEvents.emit('settings.updated');
     } catch (e) {}

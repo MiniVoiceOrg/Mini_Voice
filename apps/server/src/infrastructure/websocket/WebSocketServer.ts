@@ -18,6 +18,8 @@ import {
   ServerErrorPayload,
   ServerSettingsUpdatedPayload,
   ServerUpdateSettingsPayload,
+  SoundboardPlayPayload,
+  SoundboardPlayedPayload,
   UserChangeNicknamePayload,
   UserJoinedPayload,
   UserLeftPayload,
@@ -38,6 +40,7 @@ import { ChannelService } from '../../application/services/ChannelService';
 import { ChatService } from '../../application/services/ChatService';
 import { SignalingService } from '../../application/services/SignalingService';
 import { UserService } from '../../application/services/UserService';
+import { IServerRepository } from '../../domain/repositories';
 import { Logger } from '../logger/Logger';
 
 interface ClientSession {
@@ -65,7 +68,8 @@ export class WebSocketServer {
     private userService: UserService,
     private channelService: ChannelService,
     private chatService: ChatService,
-    private signalingService: SignalingService
+    private signalingService: SignalingService,
+    private serverRepo: IServerRepository
   ) {
     this.wss = new WSServer({ server: this.server });
     this.setupWss();
@@ -185,6 +189,10 @@ export class WebSocketServer {
 
       case MessageType.RTC_SIGNAL:
         this.handleRtcSignal(session, payload as WebRtcSignalPayload, requestId);
+        break;
+
+      case MessageType.SOUNDBOARD_PLAY:
+        await this.handleSoundboardPlay(session, payload as SoundboardPlayPayload, requestId);
         break;
 
       case MessageType.USER_LOGOUT:
@@ -470,6 +478,7 @@ export class WebSocketServer {
     const broadcastPayload: ServerSettingsUpdatedPayload = {
       name: result.name!,
       hasPassword: result.hasPassword!,
+      allowSoundboard: result.allowSoundboard,
     };
 
     // Broadcast updated server settings to all clients
@@ -479,7 +488,77 @@ export class WebSocketServer {
       payload: broadcastPayload,
     });
 
-    Logger.info('INFO', `Configurações do servidor atualizadas (Nome: ${result.name}, Senha: ${result.hasPassword ? 'Ativa' : 'Sem Senha'})`);
+    Logger.info(
+      'INFO',
+      `Configurações do servidor atualizadas (Nome: ${result.name}, Senha: ${
+        result.hasPassword ? 'Ativa' : 'Sem Senha'
+      }, Soundboard: ${result.allowSoundboard ? 'Habilitado' : 'Desabilitado'})`
+    );
+  }
+
+  private async handleSoundboardPlay(
+    session: ClientSession,
+    payload: SoundboardPlayPayload,
+    requestId?: string
+  ): Promise<void> {
+    if (!session.user) return;
+
+    // Check if soundboard is allowed on the server
+    const server = await this.serverRepo.getServer();
+    if (server && server.allowSoundboard === false) {
+      this.sendError(
+        session.ws,
+        ProtocolErrorCode.BAD_REQUEST,
+        'A reprodução de soundboard está desabilitada neste servidor.',
+        requestId
+      );
+      return;
+    }
+
+    if (!payload || !payload.channelId || !payload.audioBase64 || !payload.soundName) {
+      this.sendError(session.ws, ProtocolErrorCode.BAD_REQUEST, 'Dados de som inválidos', requestId);
+      return;
+    }
+
+    // Limit audioBase64 to ~4MB to prevent flood abuse
+    if (payload.audioBase64.length > 4 * 1024 * 1024) {
+      this.sendError(session.ws, ProtocolErrorCode.BAD_REQUEST, 'Áudio muito grande (máximo 15 segundos / ~2MB)', requestId);
+      return;
+    }
+
+    const soundName = String(payload.soundName).slice(0, 100);
+
+    const broadcastPayload: SoundboardPlayedPayload = {
+      channelId: payload.channelId,
+      userId: session.user.id,
+      userName: session.user.nickname,
+      soundName,
+      audioBase64: payload.audioBase64,
+      mimeType: payload.mimeType || 'audio/mp3',
+    };
+
+    // Broadcast SOUNDBOARD_PLAYED to participants in this channel
+    const participants = this.signalingService.getParticipantsInChannel(payload.channelId);
+    if (participants.length > 0) {
+      for (const p of participants) {
+        const sock = this.userSockets.get(p.userId);
+        if (sock && sock.readyState === WebSocket.OPEN) {
+          this.send(sock, {
+            type: MessageType.SOUNDBOARD_PLAYED,
+            requestId,
+            payload: broadcastPayload,
+          });
+        }
+      }
+    } else {
+      this.broadcast({
+        type: MessageType.SOUNDBOARD_PLAYED,
+        requestId,
+        payload: broadcastPayload,
+      });
+    }
+
+    Logger.info('SOUNDBOARD', `User ${session.user.nickname} played sound "${soundName}" in channel ${payload.channelId}`);
   }
 
   private async handleVoiceJoin(
