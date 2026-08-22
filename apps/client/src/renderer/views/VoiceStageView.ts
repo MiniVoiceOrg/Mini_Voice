@@ -278,6 +278,16 @@ export class VoiceStageView {
       });
     });
 
+    // Fullscreen buttons on video tiles (#68)
+    const fsButtons = area.querySelectorAll('.stage-fullscreen-btn');
+    fsButtons.forEach((btn) => {
+      btn.addEventListener('click', (e: Event) => {
+        e.stopPropagation();
+        const targetId = btn.getAttribute('data-fullscreen-target');
+        if (targetId) this.toggleVideoFullscreen(targetId);
+      });
+    });
+
     // Attach media streams to video elements cleanly
     participants.forEach((p) => {
       const isLocal = p.user.id === serverStore.currentUser?.id;
@@ -322,6 +332,21 @@ export class VoiceStageView {
     videoEl.addEventListener('loadeddata', hide, { once: true });
   }
 
+  /** Toggles native fullscreen for a stage video tile (#68). */
+  private async toggleVideoFullscreen(videoId: string): Promise<void> {
+    const videoEl = document.getElementById(videoId) as HTMLVideoElement | null;
+    if (!videoEl) return;
+    try {
+      if (document.fullscreenElement === videoEl) {
+        await document.exitFullscreen();
+      } else {
+        await videoEl.requestFullscreen();
+      }
+    } catch (err) {
+      console.warn('[VoiceStageView] Fullscreen request failed:', err);
+    }
+  }
+
   private renderCardContent(p: ParticipantViewModel, isFocused: boolean = false, isMini: boolean = false): string {
     const isLocal = p.user.id === serverStore.currentUser?.id;
     const isCamOn = isLocal ? voiceStore.isCameraOn : (p.voiceState?.isCameraOn ?? false);
@@ -338,6 +363,9 @@ export class VoiceStageView {
           <div class="reconnect-spinner"></div>
           <span>${isScreenOn ? 'Carregando tela…' : 'Carregando câmera…'}</span>
         </div>
+        <button class="stage-fullscreen-btn" data-fullscreen-target="${videoId}" title="Tela cheia" aria-label="Tela cheia">
+          <span class="material-symbols-outlined md-18">fullscreen</span>
+        </button>
       ` : `
         <div class="stage-avatar-wrapper">
           <img class="stage-avatar-img" src="${avatarSrc}">
