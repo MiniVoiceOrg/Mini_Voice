@@ -697,6 +697,14 @@ export class WebRtcManager {
     }
   }
 
+  public getPeerConnection(peerUserId: string): RTCPeerConnection | null {
+    return this.peers.get(peerUserId)?.pc || null;
+  }
+
+  public getPeerConnections(): RTCPeerConnection[] {
+    return Array.from(this.peers.values()).map((session) => session.pc);
+  }
+
   public setPeerVolume(peerUserId: string, volume0to100: number): void {
     const audioEl = this.audioElements.get(peerUserId);
     if (audioEl) {

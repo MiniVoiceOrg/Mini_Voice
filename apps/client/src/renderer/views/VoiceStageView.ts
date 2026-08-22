@@ -4,6 +4,7 @@ import { appEvents } from '../core/EventBus';
 import { networkClient } from '../core/NetworkClient';
 import { participantManager, ParticipantViewModel } from '../core/ParticipantManager';
 import { serverStore } from '../stores/serverStore';
+import { settingsStore } from '../stores/settingsStore';
 import { voiceStore } from '../stores/voiceStore';
 import { audioProcessor } from '../core/AudioProcessor';
 import { videoService } from '../core/VideoService';
@@ -15,6 +16,26 @@ import { userContextMenu } from './UserContextMenu';
 import { setButtonLoading, isButtonLoading } from '../utils/buttonLoading';
 import { soundboardModal } from './SoundboardModal';
 
+interface ScreenTelemetrySnapshot {
+  kind: 'sender' | 'receiver';
+  fps: number | null;
+  width: number | null;
+  height: number | null;
+  bitrateKbps: number | null;
+  codec: string | null;
+  framesEncoded: number | null;
+  keyFramesEncoded: number | null;
+  packetLossPct: number | null;
+  jitterMs: number | null;
+  framesDecoded: number | null;
+  framesDropped: number | null;
+}
+
+interface TelemetryByteSample {
+  bytes: number;
+  timestamp: number;
+}
+
 export class VoiceStageView {
   private container: HTMLElement;
   private currentChannelId: string | null = null;
@@ -22,6 +43,10 @@ export class VoiceStageView {
   private focusedUserId: string | null = null;
   private gridExpanded = false;
   private pingInterval: any = null;
+  private telemetryInterval: number | null = null;
+  private telemetryRefreshInFlight = false;
+  private telemetrySnapshots: Map<string, ScreenTelemetrySnapshot> = new Map();
+  private telemetryByteSamples: Map<string, TelemetryByteSample> = new Map();
 
   constructor(container: HTMLElement) {
     this.container = container;
@@ -30,11 +55,15 @@ export class VoiceStageView {
   public setChannel(channelId: string | null): void {
     this.currentChannelId = channelId;
     this.focusedUserId = null;
+    if (!channelId) {
+      this.stopTelemetryMonitor();
+    }
     this.render();
   }
 
   public render(): void {
     this.stopPingMonitor();
+    this.stopTelemetryMonitor(false);
     this.unbindListeners();
 
     if (!this.currentChannelId || !serverStore.serverDetails) {
@@ -115,6 +144,7 @@ export class VoiceStageView {
     this.updateControlsUI();
     this.attachEvents();
     this.startPingMonitor();
+    this.syncTelemetryMonitor();
   }
 
   public updateControlsUI(): void {
@@ -321,6 +351,9 @@ export class VoiceStageView {
         }
       }
     });
+
+    this.applyTelemetryOverlayState();
+    this.syncTelemetryMonitor();
   }
 
   /** Removes the "loading video" overlay once the stream actually renders (#48). */
@@ -367,6 +400,12 @@ export class VoiceStageView {
           <div class="reconnect-spinner"></div>
           <span>${isScreenOn ? 'Carregando tela…' : 'Carregando câmera…'}</span>
         </div>
+        ${isScreenOn ? `
+          <div
+            class="telemetry-overlay position-${settingsStore.screenShareTelemetryPosition}${settingsStore.screenShareTelemetryEnabled ? '' : ' is-hidden'}"
+            data-telemetry-user-id="${p.user.id}"
+          >${this.getTelemetryText(p.user.id)}</div>
+        ` : ''}
         <button class="stage-fullscreen-btn" data-fullscreen-target="${videoId}" title="Tela cheia" aria-label="Tela cheia">
           <span class="material-symbols-outlined md-18">fullscreen</span>
         </button>
@@ -393,6 +432,323 @@ export class VoiceStageView {
         </div>
       ` : ''}
     `;
+  }
+
+  private getTelemetryText(userId: string): string {
+    const snapshot = this.telemetrySnapshots.get(userId);
+    if (!snapshot) {
+      return 'Coletando...';
+    }
+
+    const lines = [
+      `FPS: ${this.formatTelemetryNumber(snapshot.fps, 0)}`,
+      `Res: ${this.formatResolution(snapshot.width, snapshot.height)}`,
+      `Bitrate: ${this.formatTelemetryNumber(snapshot.bitrateKbps, 0, ' kbps')}`,
+    ];
+
+    if (settingsStore.screenShareTelemetryMode === 'complete') {
+      if (snapshot.kind === 'sender') {
+        lines.push(
+          `Codec: ${snapshot.codec || '--'}`,
+          `Frames enc: ${this.formatTelemetryNumber(snapshot.framesEncoded, 0)}`,
+          `Keyframes: ${this.formatTelemetryNumber(snapshot.keyFramesEncoded, 0)}`
+        );
+      } else {
+        lines.push(
+          `Codec: ${snapshot.codec || '--'}`,
+          `Loss: ${this.formatTelemetryNumber(snapshot.packetLossPct, 1, '%')}`,
+          `Jitter: ${this.formatTelemetryNumber(snapshot.jitterMs, 1, ' ms')}`,
+          `Frames dec: ${this.formatTelemetryNumber(snapshot.framesDecoded, 0)}`,
+          `Frames drop: ${this.formatTelemetryNumber(snapshot.framesDropped, 0)}`
+        );
+      }
+    }
+
+    return lines.join('\n');
+  }
+
+  private formatTelemetryNumber(value: number | null, decimals: number, suffix = ''): string {
+    if (value === null || !Number.isFinite(value)) return `--${suffix}`;
+    return `${value.toFixed(decimals)}${suffix}`;
+  }
+
+  private formatResolution(width: number | null, height: number | null): string {
+    if (!width || !height) return '--';
+    return `${width}x${height}`;
+  }
+
+  private applyTelemetryOverlayState(): void {
+    const overlays = this.container.querySelectorAll('.telemetry-overlay');
+    overlays.forEach((overlay) => {
+      overlay.classList.remove(
+        'position-top-left',
+        'position-top-right',
+        'position-bottom-left',
+        'position-bottom-right'
+      );
+      overlay.classList.add(`position-${settingsStore.screenShareTelemetryPosition}`);
+      overlay.classList.toggle('is-hidden', !settingsStore.screenShareTelemetryEnabled);
+      const userId = overlay.getAttribute('data-telemetry-user-id');
+      if (userId) {
+        overlay.textContent = this.getTelemetryText(userId);
+      }
+    });
+  }
+
+  private hasActiveScreenShares(): boolean {
+    if (!this.currentChannelId) return false;
+    return participantManager.getInVoiceChannel(this.currentChannelId).some((participant) => {
+      const isLocal = participant.user.id === serverStore.currentUser?.id;
+      return isLocal ? voiceStore.isScreenSharing : (participant.voiceState?.isScreenSharing ?? false);
+    });
+  }
+
+  private syncTelemetryMonitor(): void {
+    if (!this.currentChannelId || !settingsStore.screenShareTelemetryEnabled || !this.hasActiveScreenShares()) {
+      this.stopTelemetryMonitor(false);
+      this.applyTelemetryOverlayState();
+      return;
+    }
+
+    if (this.telemetryInterval !== null) {
+      this.applyTelemetryOverlayState();
+      return;
+    }
+
+    const tick = () => {
+      void this.refreshTelemetry();
+    };
+
+    tick();
+    this.telemetryInterval = window.setInterval(tick, 1500);
+  }
+
+  private async refreshTelemetry(): Promise<void> {
+    if (this.telemetryRefreshInFlight || !this.currentChannelId || !settingsStore.screenShareTelemetryEnabled) {
+      return;
+    }
+
+    this.telemetryRefreshInFlight = true;
+    try {
+      const participants = participantManager.getInVoiceChannel(this.currentChannelId);
+      const screenParticipants = participants.filter((participant) => {
+        const isLocal = participant.user.id === serverStore.currentUser?.id;
+        return isLocal ? voiceStore.isScreenSharing : (participant.voiceState?.isScreenSharing ?? false);
+      });
+
+      if (screenParticipants.length === 0) {
+        this.telemetrySnapshots.clear();
+        this.telemetryByteSamples.clear();
+        this.applyTelemetryOverlayState();
+        this.stopTelemetryMonitor(false);
+        return;
+      }
+
+      const nextSnapshots = new Map<string, ScreenTelemetrySnapshot>();
+      await Promise.all(screenParticipants.map(async (participant) => {
+        const snapshot = await this.collectTelemetrySnapshot(participant);
+        if (snapshot) {
+          nextSnapshots.set(participant.user.id, snapshot);
+        }
+      }));
+
+      this.telemetrySnapshots = nextSnapshots;
+      this.pruneTelemetryByteSamples(Array.from(screenParticipants, (participant) => participant.user.id));
+      this.applyTelemetryOverlayState();
+    } finally {
+      this.telemetryRefreshInFlight = false;
+    }
+  }
+
+  private async collectTelemetrySnapshot(participant: ParticipantViewModel): Promise<ScreenTelemetrySnapshot | null> {
+    const isLocal = participant.user.id === serverStore.currentUser?.id;
+    return isLocal
+      ? this.collectSenderTelemetry(participant.user.id)
+      : this.collectReceiverTelemetry(participant.user.id);
+  }
+
+  private async collectSenderTelemetry(userId: string): Promise<ScreenTelemetrySnapshot | null> {
+    const peerConnections = webRtcManager.getPeerConnections();
+    const localTrack = videoService.getScreenStream()?.getVideoTracks()[0] || null;
+    const fallback = this.getLocalScreenFallback();
+
+    if (peerConnections.length === 0) {
+      return fallback;
+    }
+
+    let fps: number | null = fallback?.fps ?? null;
+    let width: number | null = fallback?.width ?? null;
+    let height: number | null = fallback?.height ?? null;
+    let codec: string | null = null;
+    let framesEncoded = 0;
+    let keyFramesEncoded = 0;
+    let totalBitrateKbps = 0;
+    let reportCount = 0;
+
+    await Promise.all(peerConnections.map(async (pc, index) => {
+      try {
+        const stats = await pc.getStats();
+        stats.forEach((report: any) => {
+          const kind = report.kind || report.mediaType;
+          if (report.type !== 'outbound-rtp' || kind !== 'video' || typeof report.bytesSent !== 'number') {
+            return;
+          }
+
+          reportCount++;
+          fps = this.pickTelemetryNumber(fps, report.framesPerSecond);
+          width = this.pickTelemetryNumber(width, report.frameWidth);
+          height = this.pickTelemetryNumber(height, report.frameHeight);
+          if (!codec) {
+            codec = this.getCodecName(stats, report.codecId);
+          }
+          if (typeof report.framesEncoded === 'number') {
+            framesEncoded += report.framesEncoded;
+          }
+          if (typeof report.keyFramesEncoded === 'number') {
+            keyFramesEncoded += report.keyFramesEncoded;
+          }
+
+          const bitrate = this.computeBitrateKbps(`sender:${userId}:${index}:${report.id}`, report.bytesSent);
+          if (bitrate !== null) {
+            totalBitrateKbps += bitrate;
+          }
+        });
+      } catch (err) {
+        console.warn('[VoiceStageView] Error collecting sender telemetry:', err);
+      }
+    }));
+
+    if (reportCount === 0) {
+      if (localTrack) return fallback;
+      return null;
+    }
+
+    return {
+      kind: 'sender',
+      fps,
+      width,
+      height,
+      bitrateKbps: totalBitrateKbps > 0 ? totalBitrateKbps : 0,
+      codec,
+      framesEncoded,
+      keyFramesEncoded,
+      packetLossPct: null,
+      jitterMs: null,
+      framesDecoded: null,
+      framesDropped: null,
+    };
+  }
+
+  private async collectReceiverTelemetry(userId: string): Promise<ScreenTelemetrySnapshot | null> {
+    const pc = webRtcManager.getPeerConnection(userId);
+    if (!pc) return null;
+
+    try {
+      const stats = await pc.getStats();
+      let snapshot: ScreenTelemetrySnapshot | null = null;
+
+      stats.forEach((report: any) => {
+        const kind = report.kind || report.mediaType;
+        if (snapshot || report.type !== 'inbound-rtp' || kind !== 'video' || typeof report.bytesReceived !== 'number') {
+          return;
+        }
+
+        const packetsReceived = typeof report.packetsReceived === 'number' ? report.packetsReceived : 0;
+        const packetsLost = typeof report.packetsLost === 'number' ? report.packetsLost : 0;
+        const totalPackets = packetsReceived + packetsLost;
+        const packetLossPct = totalPackets > 0 ? (packetsLost / totalPackets) * 100 : 0;
+        const jitterMs = typeof report.jitter === 'number' ? report.jitter * 1000 : null;
+
+        snapshot = {
+          kind: 'receiver',
+          fps: this.pickTelemetryNumber(null, report.framesPerSecond),
+          width: this.pickTelemetryNumber(null, report.frameWidth),
+          height: this.pickTelemetryNumber(null, report.frameHeight),
+          bitrateKbps: this.computeBitrateKbps(`receiver:${userId}:${report.id}`, report.bytesReceived) ?? 0,
+          codec: this.getCodecName(stats, report.codecId),
+          framesEncoded: null,
+          keyFramesEncoded: null,
+          packetLossPct,
+          jitterMs,
+          framesDecoded: typeof report.framesDecoded === 'number' ? report.framesDecoded : null,
+          framesDropped: typeof report.framesDropped === 'number' ? report.framesDropped : null,
+        };
+      });
+
+      return snapshot;
+    } catch (err) {
+      console.warn('[VoiceStageView] Error collecting receiver telemetry:', err);
+      return null;
+    }
+  }
+
+  private getLocalScreenFallback(): ScreenTelemetrySnapshot | null {
+    const track = videoService.getScreenStream()?.getVideoTracks()[0];
+    if (!track) return null;
+
+    const settings = track.getSettings();
+    return {
+      kind: 'sender',
+      fps: typeof settings.frameRate === 'number' ? settings.frameRate : null,
+      width: typeof settings.width === 'number' ? settings.width : null,
+      height: typeof settings.height === 'number' ? settings.height : null,
+      bitrateKbps: 0,
+      codec: null,
+      framesEncoded: null,
+      keyFramesEncoded: null,
+      packetLossPct: null,
+      jitterMs: null,
+      framesDecoded: null,
+      framesDropped: null,
+    };
+  }
+
+  private pickTelemetryNumber(currentValue: number | null, nextValue: unknown): number | null {
+    return typeof nextValue === 'number' && Number.isFinite(nextValue) ? nextValue : currentValue;
+  }
+
+  private getCodecName(stats: RTCStatsReport, codecId?: string): string | null {
+    if (!codecId) return null;
+    const codecReport = stats.get(codecId) as any;
+    const mimeType = typeof codecReport?.mimeType === 'string' ? codecReport.mimeType : '';
+    if (!mimeType) return null;
+    const parts = mimeType.split('/');
+    return parts[parts.length - 1] || mimeType;
+  }
+
+  private computeBitrateKbps(key: string, bytes: number): number | null {
+    const now = Date.now();
+    const previous = this.telemetryByteSamples.get(key);
+    this.telemetryByteSamples.set(key, { bytes, timestamp: now });
+    if (!previous) return null;
+
+    const deltaBytes = bytes - previous.bytes;
+    const deltaMs = now - previous.timestamp;
+    if (deltaBytes < 0 || deltaMs <= 0) return null;
+
+    return (deltaBytes * 8) / (deltaMs / 1000) / 1000;
+  }
+
+  private pruneTelemetryByteSamples(activeUserIds: string[]): void {
+    const activePrefixes = new Set(activeUserIds.map((userId) => `:${userId}:`));
+    for (const key of this.telemetryByteSamples.keys()) {
+      const isActive = Array.from(activePrefixes).some((prefix) => key.includes(prefix));
+      if (!isActive) {
+        this.telemetryByteSamples.delete(key);
+      }
+    }
+  }
+
+  private stopTelemetryMonitor(clearSnapshots: boolean = true): void {
+    if (this.telemetryInterval !== null) {
+      clearInterval(this.telemetryInterval);
+      this.telemetryInterval = null;
+    }
+
+    if (clearSnapshots) {
+      this.telemetrySnapshots.clear();
+      this.telemetryByteSamples.clear();
+    }
   }
 
   private startPingMonitor(): void {
@@ -471,6 +827,7 @@ export class VoiceStageView {
   public leaveVoice(): void {
     if (!this.currentChannelId) return;
     this.stopPingMonitor();
+    this.stopTelemetryMonitor();
     soundEffects.play('leave_voice');
     networkClient.send(MessageType.VOICE_LEAVE, { channelId: this.currentChannelId });
     audioProcessor.stopMicrophone();
@@ -644,6 +1001,8 @@ export class VoiceStageView {
     const u2 = appEvents.on('voice.state_updated', () => {
       this.updateControlsUI();
       this.updateSpeakingClasses();
+      this.applyTelemetryOverlayState();
+      this.syncTelemetryMonitor();
     });
 
     const u3 = appEvents.on('participants.speaking_changed', (data: { userId: string; speaking: boolean }) => {
@@ -661,8 +1020,12 @@ export class VoiceStageView {
     const clearScreenLoading = () => setButtonLoading(btnScreen, false);
     const u5 = appEvents.on('modal.screenshare_picker_opened', clearScreenLoading);
     const u6 = appEvents.on('modal.screenshare_picker_closed', clearScreenLoading);
+    const u7 = appEvents.on('settings.updated', () => {
+      this.applyTelemetryOverlayState();
+      this.syncTelemetryMonitor();
+    });
 
-    this.unbindEvents.push(u1, u2, u3, u4, u5, u6);
+    this.unbindEvents.push(u1, u2, u3, u4, u5, u6, u7);
   }
 
   private unbindListeners(): void {
@@ -672,6 +1035,7 @@ export class VoiceStageView {
 
   public destroy(): void {
     this.stopPingMonitor();
+    this.stopTelemetryMonitor();
     this.unbindListeners();
   }
 }

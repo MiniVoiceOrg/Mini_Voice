@@ -190,6 +190,49 @@ export class SettingsModal {
           <video id="settings-cam-preview" class="settings-cam-preview" autoplay playsinline muted style="display: none;"></video>
         </div>
 
+        <!-- Screen Share -->
+        <div style="border-top: 1px solid var(--border-color); padding-top: 14px; margin-top: 14px;">
+          <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 10px;">
+            <span style="font-size: 13px; font-weight: 700; color: var(--text-primary); text-transform: uppercase; letter-spacing: 0.5px; display: flex; align-items: center; gap: 6px;">
+              <span class="material-symbols-outlined md-16" style="color: var(--accent-primary);">screen_share</span>
+              Compartilhamento de Tela
+            </span>
+          </div>
+
+          <div class="form-group" style="padding: 10px 12px; background: var(--bg-card); border: 1px solid var(--border-color); border-radius: var(--radius-md); margin-bottom: 12px;">
+            <div style="display: flex; align-items: center; justify-content: space-between; gap: 12px;">
+              <div>
+                <label style="display: flex; align-items: center; gap: 6px; margin-bottom: 2px; cursor: pointer; font-weight: 600;" for="checkbox-screen-telemetry">
+                  <span class="material-symbols-outlined md-16" style="color: var(--accent-primary);">monitoring</span>
+                  Exibir telemetria sobre a transmissão
+                </label>
+                <div style="font-size: 11px; color: var(--text-muted);">
+                  Mostra FPS, resolução, bitrate e métricas extras diretamente sobre os vídeos de compartilhamento.
+                </div>
+              </div>
+              <input id="checkbox-screen-telemetry" type="checkbox" ${settingsStore.screenShareTelemetryEnabled ? 'checked' : ''} style="width: 18px; height: 18px; cursor: pointer; accent-color: var(--accent-primary);">
+            </div>
+          </div>
+
+          <div class="form-group" style="margin-bottom: 12px;">
+            <label for="select-screen-telemetry-position">Posição da Overlay</label>
+            <select id="select-screen-telemetry-position">
+              <option value="top-right" ${settingsStore.screenShareTelemetryPosition === 'top-right' ? 'selected' : ''}>Superior direita</option>
+              <option value="top-left" ${settingsStore.screenShareTelemetryPosition === 'top-left' ? 'selected' : ''}>Superior esquerda</option>
+              <option value="bottom-right" ${settingsStore.screenShareTelemetryPosition === 'bottom-right' ? 'selected' : ''}>Inferior direita</option>
+              <option value="bottom-left" ${settingsStore.screenShareTelemetryPosition === 'bottom-left' ? 'selected' : ''}>Inferior esquerda</option>
+            </select>
+          </div>
+
+          <div class="form-group" style="margin-bottom: 0;">
+            <label for="select-screen-telemetry-mode">Modo da Telemetria</label>
+            <select id="select-screen-telemetry-mode">
+              <option value="simple" ${settingsStore.screenShareTelemetryMode === 'simple' ? 'selected' : ''}>Simples — FPS, resolução e bitrate</option>
+              <option value="complete" ${settingsStore.screenShareTelemetryMode === 'complete' ? 'selected' : ''}>Completo — inclui codec e métricas avançadas</option>
+            </select>
+          </div>
+        </div>
+
         <!-- Quality Preset -->
         <div class="form-group" style="border-top: 1px solid var(--border-color); padding-top: 14px; margin-top: 10px;">
           <label style="display: flex; align-items: center; gap: 6px;">
@@ -353,6 +396,9 @@ export class SettingsModal {
     const selectPreset = this.modalEl.querySelector('#select-preset') as HTMLSelectElement;
     const sliderVad = this.modalEl.querySelector('#slider-vad') as HTMLInputElement;
     const vadVal = this.modalEl.querySelector('#vad-val');
+    const checkboxScreenTelemetry = this.modalEl.querySelector('#checkbox-screen-telemetry') as HTMLInputElement | null;
+    const selectScreenTelemetryPosition = this.modalEl.querySelector('#select-screen-telemetry-position') as HTMLSelectElement | null;
+    const selectScreenTelemetryMode = this.modalEl.querySelector('#select-screen-telemetry-mode') as HTMLSelectElement | null;
 
     btnClose?.addEventListener('click', () => this.close());
     btnDone?.addEventListener('click', () => this.close());
@@ -415,6 +461,32 @@ export class SettingsModal {
       settingsStore.soundboardMuted = muted;
       settingsStore.save();
     });
+
+    const syncScreenTelemetryControls = () => {
+      const enabled = !!checkboxScreenTelemetry?.checked;
+      if (selectScreenTelemetryPosition) selectScreenTelemetryPosition.disabled = !enabled;
+      if (selectScreenTelemetryMode) selectScreenTelemetryMode.disabled = !enabled;
+    };
+
+    checkboxScreenTelemetry?.addEventListener('change', () => {
+      settingsStore.screenShareTelemetryEnabled = !!checkboxScreenTelemetry.checked;
+      settingsStore.save();
+      syncScreenTelemetryControls();
+    });
+
+    selectScreenTelemetryPosition?.addEventListener('change', () => {
+      const position = selectScreenTelemetryPosition.value as typeof settingsStore.screenShareTelemetryPosition;
+      settingsStore.screenShareTelemetryPosition = position;
+      settingsStore.save();
+    });
+
+    selectScreenTelemetryMode?.addEventListener('change', () => {
+      const mode = selectScreenTelemetryMode.value as typeof settingsStore.screenShareTelemetryMode;
+      settingsStore.screenShareTelemetryMode = mode;
+      settingsStore.save();
+    });
+
+    syncScreenTelemetryControls();
 
     selectPreset?.addEventListener('change', () => {
       const preset = selectPreset.value as QualityPresetType;
