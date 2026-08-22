@@ -1,0 +1,58 @@
+name: CI
+
+on:
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    name: Build check (${{ matrix.platform }})
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: windows-latest
+            platform: win
+          - os: macos-latest
+            platform: mac
+    runs-on: ${{ matrix.os }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build workspaces
+        run: npm run build
+
+      # Mirror the release pipeline: tsc does not copy the .sql migration files
+      # into the compiled server output, so we copy them next to the compiled
+      # DatabaseConnection.js before packaging.
+      - name: Copy database migrations into server dist
+        shell: bash
+        run: |
+          mkdir -p apps/server/dist/infrastructure/database/migrations
+          cp apps/server/src/infrastructure/database/migrations/*.sql \
+             apps/server/dist/infrastructure/database/migrations/
+
+      # Packaging check only (unpacked --dir, no publish). This compiles and
+      # rebuilds any native modules against the Electron ABI on real
+      # windows-latest / macos-latest runners, catching native build and
+      # packaging regressions on every PR without generating a release.
+      - name: Package ${{ matrix.platform }} (dir, no publish)
+        working-directory: apps/client
+        run: npx --no-install electron-builder --${{ matrix.platform }} --dir --publish never
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
