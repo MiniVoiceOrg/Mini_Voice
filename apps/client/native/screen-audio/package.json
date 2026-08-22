@@ -6,6 +6,9 @@
   "types": "index.d.ts",
   "gypfile": true,
   "private": true,
+  "scripts": {
+    "install": "echo Skipping local build - native module is rebuilt by electron-builder against Electron ABI"
+  },
   "dependencies": {
     "node-addon-api": "^8.0.0"
   }
