@@ -94,6 +94,22 @@ export class SettingsModal {
           <div style="font-size: 11px; color: var(--text-muted); margin-top: 2px;">Fale para ver o nível. Ajuste o slider (linha) logo acima de onde o nível fica em silêncio. Valores menores ativam com sussurros; maiores evitam ruídos de fundo.</div>
         </div>
 
+        <!-- RNNoise Noise Suppression -->
+        <div class="form-group" style="padding: 10px 12px; background: var(--bg-card); border: 1px solid var(--border-color); border-radius: var(--radius-md);">
+          <div style="display: flex; align-items: center; justify-content: space-between; gap: 12px;">
+            <div>
+              <label style="display: flex; align-items: center; gap: 6px; margin-bottom: 2px; cursor: pointer; font-weight: 600;" for="checkbox-rnnoise">
+                <span class="material-symbols-outlined md-16" style="color: var(--accent-primary);">graphic_eq</span>
+                Supressão de Ruído Inteligente (RNNoise)
+              </label>
+              <div style="font-size: 11px; color: var(--text-muted);">
+                Utiliza Inteligência Artificial (Rede Neural) para remover ruídos de fundo como teclado mecânico, cliques, batidas e respiração.
+              </div>
+            </div>
+            <input id="checkbox-rnnoise" type="checkbox" ${settingsStore.noiseSuppressionEnabled ? 'checked' : ''} style="width: 18px; height: 18px; cursor: pointer; accent-color: var(--accent-primary);">
+          </div>
+        </div>
+
         <!-- Audio Outputs -->
         <div class="form-group" id="group-speaker">
           <label style="display: flex; align-items: center; gap: 6px;">
@@ -308,6 +324,14 @@ export class SettingsModal {
       settingsStore.vadSensitivity = val;
       audioProcessor.setVadThreshold(val);
       settingsStore.save();
+    });
+
+    const checkboxRnnoise = this.modalEl.querySelector('#checkbox-rnnoise') as HTMLInputElement | null;
+    checkboxRnnoise?.addEventListener('change', async () => {
+      const enabled = !!checkboxRnnoise.checked;
+      settingsStore.noiseSuppressionEnabled = enabled;
+      settingsStore.save();
+      await audioProcessor.setNoiseSuppression(enabled);
     });
 
     selectPreset?.addEventListener('change', () => {
