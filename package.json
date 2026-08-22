@@ -44,5 +44,8 @@
   "dependencies": {
     "@types/sql.js": "^1.4.11",
     "sql.js": "^1.14.2"
+  },
+  "overrides": {
+    "node-gyp": "^10.0.0"
   }
 }
