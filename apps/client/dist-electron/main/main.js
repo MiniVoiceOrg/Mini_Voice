@@ -27,10 +27,10 @@ function createWindow() {
     const iconPath = iconCandidates.find((p) => fs_1.default.existsSync(p));
     const isMac = process.platform === 'darwin';
     mainWindow = new electron_1.BrowserWindow({
-        width: 1200,
-        height: 800,
-        minWidth: 900,
-        minHeight: 600,
+        width: 700,
+        height: 750,
+        minWidth: 600,
+        minHeight: 500,
         backgroundColor: '#0e1117',
         // Windows/Linux: fully frameless (custom title bar in the renderer).
         // macOS: keep the native traffic-light buttons but hide the title bar.
