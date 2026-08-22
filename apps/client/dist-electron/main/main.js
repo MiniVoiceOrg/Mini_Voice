@@ -26,14 +26,13 @@ function createWindow() {
     ];
     const iconPath = iconCandidates.find((p) => fs_1.default.existsSync(p));
     const isMac = process.platform === 'darwin';
-    const { width: screenW, height: screenH } = electron_1.screen.getPrimaryDisplay().workAreaSize;
+    const { width: screenW } = electron_1.screen.getPrimaryDisplay().workAreaSize;
     const winWidth = Math.min(700, Math.round(screenW * 0.85));
     mainWindow = new electron_1.BrowserWindow({
         width: winWidth,
-        height: 750,
+        height: 950,
         minWidth: 600,
         minHeight: 500,
-        useContentSize: true,
         backgroundColor: '#0e1117',
         // Windows/Linux: fully frameless (custom title bar in the renderer).
         // macOS: keep the native traffic-light buttons but hide the title bar.
@@ -59,24 +58,6 @@ function createWindow() {
     else {
         mainWindow.loadFile(path_1.default.join(__dirname, '../../dist/index.html'));
     }
-    // Auto-fit window height to content (avoids scroll on home)
-    mainWindow.webContents.on('did-finish-load', () => {
-        if (!mainWindow)
-            return;
-        // Wait for JS to render the content before measuring
-        setTimeout(() => {
-            if (!mainWindow)
-                return;
-            mainWindow.webContents.executeJavaScript(`document.documentElement.scrollHeight`).then((contentHeight) => {
-                if (!mainWindow || contentHeight < 500)
-                    return;
-                const { height: maxH } = electron_1.screen.getPrimaryDisplay().workAreaSize;
-                const finalHeight = Math.min(contentHeight + 50, maxH - 40);
-                const [w] = mainWindow.getContentSize();
-                mainWindow.setContentSize(w, finalHeight);
-            }).catch(() => { });
-        }, 500);
-    });
     mainWindow.on('closed', () => {
         mainWindow = null;
     });
