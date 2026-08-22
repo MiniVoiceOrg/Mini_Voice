@@ -20,6 +20,7 @@
   "dependencies": {
     "@mini-voice/server": "*",
     "@mini-voice/shared": "*",
+    "@sapphi-red/web-noise-suppressor": "^0.4.0",
     "electron-updater": "^6.8.9",
     "uuid": "^11.1.0"
   },

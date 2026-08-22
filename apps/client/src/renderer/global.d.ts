@@ -1,3 +1,5 @@
+/// <reference types="vite/client" />
+
 import { ElectronApi } from '../preload/preload';
 
 declare global {
@@ -12,3 +14,4 @@ declare module '*.mp3' {
 }
 
 export {};
+

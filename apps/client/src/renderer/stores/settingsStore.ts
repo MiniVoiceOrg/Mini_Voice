@@ -10,6 +10,7 @@ export class SettingsStore {
   public maxUploadKbps: number = 1000;
   public maxDownloadKbps: number = 2000;
   public userVolumes: Record<string, number> = {};
+  public noiseSuppressionEnabled: boolean = true;
 
   constructor() {
     this.load();
@@ -23,6 +24,9 @@ export class SettingsStore {
         Object.assign(this, parsed);
         if (!this.userVolumes || typeof this.userVolumes !== 'object') {
           this.userVolumes = {};
+        }
+        if (typeof this.noiseSuppressionEnabled !== 'boolean') {
+          this.noiseSuppressionEnabled = true;
         }
       }
     } catch (e) {}
@@ -53,6 +57,7 @@ export class SettingsStore {
         maxUploadKbps: this.maxUploadKbps,
         maxDownloadKbps: this.maxDownloadKbps,
         userVolumes: this.userVolumes,
+        noiseSuppressionEnabled: this.noiseSuppressionEnabled,
       }));
       appEvents.emit('settings.updated');
     } catch (e) {}
