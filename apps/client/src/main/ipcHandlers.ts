@@ -18,9 +18,13 @@ export function setupIpcHandlers(mainWindow: BrowserWindow, serverManager: Serve
   const lanDiscovery = new LanDiscovery(mainWindow);
 
   ipcMain.handle('window:maximize', () => {
-    if (mainWindow && !mainWindow.isDestroyed()) {
-      mainWindow.maximize();
-    }
+    if (!mainWindow || mainWindow.isDestroyed()) return;
+    const { width: screenW, height: screenH } = require('electron').screen.getPrimaryDisplay().workAreaSize;
+    const w = Math.round(screenW * 0.8);
+    const h = Math.round(screenH * 0.85);
+    mainWindow.setSize(w, h);
+    mainWindow.center();
+    mainWindow.maximize();
   });
 
   // Client ID persistence

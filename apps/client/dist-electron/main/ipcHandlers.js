@@ -21,9 +21,14 @@ catch {
 function setupIpcHandlers(mainWindow, serverManager) {
     const lanDiscovery = new lanDiscovery_1.LanDiscovery(mainWindow);
     electron_1.ipcMain.handle('window:maximize', () => {
-        if (mainWindow && !mainWindow.isDestroyed()) {
-            mainWindow.maximize();
-        }
+        if (!mainWindow || mainWindow.isDestroyed())
+            return;
+        const { width: screenW, height: screenH } = require('electron').screen.getPrimaryDisplay().workAreaSize;
+        const w = Math.round(screenW * 0.8);
+        const h = Math.round(screenH * 0.85);
+        mainWindow.setSize(w, h);
+        mainWindow.center();
+        mainWindow.maximize();
     });
     // Client ID persistence
     electron_1.ipcMain.handle('get-client-id', async () => {
