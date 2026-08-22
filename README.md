@@ -82,9 +82,10 @@ precisa saber programar** para participar.
 - 📋 **[Board do projeto](https://github.com/orgs/MiniVoiceOrg/projects/1)** — o que está em desenvolvimento, em QA e concluído
 - 🐛 **[Reportar um bug](https://github.com/MiniVoiceOrg/Mini_Voice/issues/new/choose)** — bugs vão direto para Issues, sem votação
 
-A cada ciclo, as ideias mais votadas viram issues no board e entram no fluxo de
-desenvolvimento. O status volta para a discussão original (`planejado`,
-`em-andamento`, `entregue` ou `fora-de-escopo`, sempre com o motivo).
+Na primeira semana de cada mês, as três ideias mais votadas (com no mínimo 5
+votos) viram issues no board e entram no fluxo de desenvolvimento. O status volta
+para a discussão original (`planejado`, `em-andamento`, `entregue` ou
+`fora-de-escopo`, sempre com o motivo).
 
 Os mesmos atalhos estão dentro do app, em **Configurações › Comunidade**.
 

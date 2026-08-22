@@ -46,9 +46,19 @@ Toda ideia carrega um label que diz em que pé ela está:
 | `entregue` | Está em uma release publicada |
 | `fora-de-escopo` | Não vamos fazer — sempre com o motivo explicado |
 
-**A cada ciclo**, as ideias mais votadas são revisadas e as selecionadas viram
-issues (com escopo e critérios de aceite) que entram no board em `Ready`. Dali
-seguem o fluxo normal: `In progress` → PR → release → `QA` → `Done`.
+**Na primeira semana de cada mês**, as ideias em votação são revisadas. As **três
+mais votadas** que tiverem **pelo menos 5 votos** são selecionadas: viram issues
+com escopo e critérios de aceite, entram no board em `Ready` e recebem o label
+`planejado`. Dali seguem o fluxo normal: `In progress` → PR → release → `QA` →
+`Done`.
+
+O piso de 5 votos existe para o ciclo não promover ruído em meses parados — se
+nenhuma ideia alcançar o piso, nenhuma é selecionada e todas continuam
+acumulando votos para o mês seguinte. Votos não zeram entre ciclos.
+
+Uma ideia não selecionada **não é recusada** — ela continua em votação. Só recebe
+`fora-de-escopo` quando há uma decisão explícita de não fazer, sempre com o
+motivo escrito na discussão.
 
 Duas coisas que assumimos como compromisso:
 
