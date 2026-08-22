@@ -33,13 +33,19 @@ exatamente estas etapas, nesta ordem:
    - **Como testar**: passo a passo claro para o QA validar (cenários,
      resultados esperados e casos de borda).
    - Objetivo: facilitar o trabalho do QA.
-6. **Após o merge**: mova o card para **QA**.
+6. **Após o merge, aguarde a release ser gerada.** O push na `main` dispara
+   automaticamente o workflow **Release** (GitHub Actions), que builda e publica
+   uma nova release (`v1.0.<run_number>`) com os artefatos Win/Mac.
+   **Só mova o card para `QA` depois que a release estiver publicada** (run do
+   workflow concluída com sucesso), pois o QA valida a partir do build publicado
+   — nunca apenas após o merge.
 7. **Não mova para Done automaticamente.** Após o QA ser concluído, o
    desenvolvedor pode pedir ao agente para mover para **Done** ou fazer isso
    manualmente.
 
 > Resumo: (esclarecer dúvidas se necessário) → `In progress` → (PR para `main`)
-> → (comentário PT-BR: como foi feito + como testar) → `QA` → (após QA) `Done`.
+> → (comentário PT-BR: como foi feito + como testar) → (release publicada
+> automaticamente) → `QA` → (após QA) `Done`.
 
 ### Comando para comentar na issue
 
