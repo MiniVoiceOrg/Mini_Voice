@@ -65,15 +65,19 @@ function createWindow(): void {
   // Auto-fit window height to content (avoids scroll on home)
   mainWindow.webContents.on('did-finish-load', () => {
     if (!mainWindow) return;
-    mainWindow.webContents.executeJavaScript(
-      `document.documentElement.scrollHeight`
-    ).then((contentHeight: number) => {
-      if (!mainWindow || contentHeight < 500) return;
-      const { height: maxH } = screen.getPrimaryDisplay().workAreaSize;
-      const finalHeight = Math.min(contentHeight + 40, maxH - 40);
-      const [w] = mainWindow.getContentSize();
-      mainWindow.setContentSize(w, finalHeight);
-    }).catch(() => {});
+    // Wait for JS to render the content before measuring
+    setTimeout(() => {
+      if (!mainWindow) return;
+      mainWindow.webContents.executeJavaScript(
+        `document.documentElement.scrollHeight`
+      ).then((contentHeight: number) => {
+        if (!mainWindow || contentHeight < 500) return;
+        const { height: maxH } = screen.getPrimaryDisplay().workAreaSize;
+        const finalHeight = Math.min(contentHeight + 50, maxH - 40);
+        const [w] = mainWindow.getContentSize();
+        mainWindow.setContentSize(w, finalHeight);
+      }).catch(() => {});
+    }, 500);
   });
 
   mainWindow.on('closed', () => {
