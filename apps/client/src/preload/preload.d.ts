@@ -1,4 +1,18 @@
 export interface ElectronApi {
+    startLanDiscovery: () => Promise<void>;
+    stopLanDiscovery: () => Promise<void>;
+    onLanDiscoveryFound: (cb: (server: {
+        host: string;
+        port: number;
+        serverName: string;
+        version: string;
+    }) => void) => void;
+    onLanDiscoveryLost: (cb: (server: {
+        host: string;
+        port: number;
+        serverName: string;
+        version: string;
+    }) => void) => void;
     getClientId: () => Promise<string>;
     hostServerStart: (options: {
         port: number;
@@ -74,6 +88,16 @@ export interface ElectronApi {
         reachable: boolean;
         reason: 'online' | 'refused' | 'timeout' | 'unreachable';
     }>;
+    screenAudioSupported: () => Promise<boolean>;
+    screenAudioStart: () => Promise<{
+        success: boolean;
+        error?: string;
+    }>;
+    screenAudioStop: () => Promise<{
+        success: boolean;
+    }>;
+    onScreenAudioFrame: (cb: (buffer: ArrayBuffer) => void) => void;
+    removeScreenAudioFrameListener: () => void;
     platform: string;
 }
 declare global {

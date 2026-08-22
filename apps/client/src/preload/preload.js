@@ -1,5 +1,9 @@
 import { contextBridge, ipcRenderer } from 'electron';
 const api = {
+    startLanDiscovery: () => ipcRenderer.invoke('lan-discovery-start'),
+    stopLanDiscovery: () => ipcRenderer.invoke('lan-discovery-stop'),
+    onLanDiscoveryFound: (cb) => ipcRenderer.on('lan-discovery:found', (_e, server) => cb(server)),
+    onLanDiscoveryLost: (cb) => ipcRenderer.on('lan-discovery:lost', (_e, server) => cb(server)),
     getClientId: () => ipcRenderer.invoke('get-client-id'),
     hostServerStart: (options) => ipcRenderer.invoke('host-server-start', options),
     hostServerStop: () => ipcRenderer.invoke('host-server-stop'),
@@ -21,6 +25,11 @@ const api = {
     onUpdateError: (cb) => ipcRenderer.on('update:error', (_e, message) => cb(message)),
     openExternal: (url) => ipcRenderer.invoke('open-external', url),
     probeServer: (host, port) => ipcRenderer.invoke('probe-server', host, port),
+    screenAudioSupported: () => ipcRenderer.invoke('screen-audio-supported'),
+    screenAudioStart: () => ipcRenderer.invoke('screen-audio-start'),
+    screenAudioStop: () => ipcRenderer.invoke('screen-audio-stop'),
+    onScreenAudioFrame: (cb) => ipcRenderer.on('screen-audio:frame', (_e, buffer) => cb(buffer)),
+    removeScreenAudioFrameListener: () => ipcRenderer.removeAllListeners('screen-audio:frame'),
     platform: process.platform,
 };
 contextBridge.exposeInMainWorld('api', api);

@@ -2,6 +2,10 @@
 Object.defineProperty(exports, "__esModule", { value: true });
 const electron_1 = require("electron");
 const api = {
+    startLanDiscovery: () => electron_1.ipcRenderer.invoke('lan-discovery-start'),
+    stopLanDiscovery: () => electron_1.ipcRenderer.invoke('lan-discovery-stop'),
+    onLanDiscoveryFound: (cb) => electron_1.ipcRenderer.on('lan-discovery:found', (_e, server) => cb(server)),
+    onLanDiscoveryLost: (cb) => electron_1.ipcRenderer.on('lan-discovery:lost', (_e, server) => cb(server)),
     getClientId: () => electron_1.ipcRenderer.invoke('get-client-id'),
     hostServerStart: (options) => electron_1.ipcRenderer.invoke('host-server-start', options),
     hostServerStop: () => electron_1.ipcRenderer.invoke('host-server-stop'),
@@ -23,6 +27,11 @@ const api = {
     onUpdateError: (cb) => electron_1.ipcRenderer.on('update:error', (_e, message) => cb(message)),
     openExternal: (url) => electron_1.ipcRenderer.invoke('open-external', url),
     probeServer: (host, port) => electron_1.ipcRenderer.invoke('probe-server', host, port),
+    screenAudioSupported: () => electron_1.ipcRenderer.invoke('screen-audio-supported'),
+    screenAudioStart: () => electron_1.ipcRenderer.invoke('screen-audio-start'),
+    screenAudioStop: () => electron_1.ipcRenderer.invoke('screen-audio-stop'),
+    onScreenAudioFrame: (cb) => electron_1.ipcRenderer.on('screen-audio:frame', (_e, buffer) => cb(buffer)),
+    removeScreenAudioFrameListener: () => electron_1.ipcRenderer.removeAllListeners('screen-audio:frame'),
     platform: process.platform,
 };
 electron_1.contextBridge.exposeInMainWorld('api', api);
