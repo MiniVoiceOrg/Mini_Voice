@@ -15,6 +15,9 @@ export class SettingsStore {
   public soundboardVolume: number = 80; // 0 - 100
   public soundboardMuted: boolean = false;
   public screenAudioVolumes: Record<string, number> = {}; // per-user screen audio volume (#75)
+  public screenShareTelemetryEnabled: boolean = false;
+  public screenShareTelemetryPosition: 'top-left' | 'top-right' | 'bottom-left' | 'bottom-right' = 'top-right';
+  public screenShareTelemetryMode: 'simple' | 'complete' = 'simple';
 
   constructor() {
     this.load();
@@ -43,6 +46,15 @@ export class SettingsStore {
         }
         if (!this.screenAudioVolumes || typeof this.screenAudioVolumes !== 'object') {
           this.screenAudioVolumes = {};
+        }
+        if (typeof this.screenShareTelemetryEnabled !== 'boolean') {
+          this.screenShareTelemetryEnabled = false;
+        }
+        if (!['top-left', 'top-right', 'bottom-left', 'bottom-right'].includes(this.screenShareTelemetryPosition)) {
+          this.screenShareTelemetryPosition = 'top-right';
+        }
+        if (!['simple', 'complete'].includes(this.screenShareTelemetryMode)) {
+          this.screenShareTelemetryMode = 'simple';
         }
       }
     } catch (e) {}
@@ -92,6 +104,9 @@ export class SettingsStore {
         soundboardVolume: this.soundboardVolume,
         soundboardMuted: this.soundboardMuted,
         screenAudioVolumes: this.screenAudioVolumes,
+        screenShareTelemetryEnabled: this.screenShareTelemetryEnabled,
+        screenShareTelemetryPosition: this.screenShareTelemetryPosition,
+        screenShareTelemetryMode: this.screenShareTelemetryMode,
       }));
       appEvents.emit('settings.updated');
     } catch (e) {}

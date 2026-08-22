@@ -1627,6 +1627,53 @@ input:focus, textarea:focus, select:focus {
   z-index: 2;
 }
 
+.telemetry-overlay {
+  position: absolute;
+  z-index: 4;
+  max-width: min(220px, calc(100% - 24px));
+  padding: 6px 8px;
+  border-radius: var(--radius-sm);
+  background-color: rgba(0, 0, 0, 0.62);
+  color: #f3f4f6;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  line-height: 1.35;
+  white-space: pre-line;
+  pointer-events: none;
+  backdrop-filter: blur(4px);
+  box-shadow: 0 4px 10px rgba(0, 0, 0, 0.25);
+}
+
+.telemetry-overlay.is-hidden {
+  display: none;
+}
+
+.telemetry-overlay.position-top-left {
+  top: 12px;
+  left: 12px;
+}
+
+.telemetry-overlay.position-top-right {
+  top: 12px;
+  right: 48px;
+  text-align: right;
+}
+
+.telemetry-overlay.position-bottom-left {
+  bottom: 48px;
+  left: 12px;
+}
+
+.telemetry-overlay.position-bottom-right {
+  right: 12px;
+  bottom: 48px;
+  text-align: right;
+}
+
+.stage-focused-main .telemetry-overlay.position-top-right {
+  top: 48px;
+}
+
 .stage-fullscreen-btn {
   position: absolute;
   top: 10px;
@@ -2437,4 +2484,3 @@ button[data-loading="1"]::after {
     box-shadow: 0 0 0 0 rgba(88, 101, 242, 0);
   }
 }
-
