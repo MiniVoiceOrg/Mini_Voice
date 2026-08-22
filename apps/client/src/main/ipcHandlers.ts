@@ -5,6 +5,14 @@ import path from 'path';
 import { v4 as uuidv4 } from 'uuid';
 import { HostServerOptions, ServerManager } from './serverManager';
 
+// Screen audio native module (compiled only on CI — graceful fallback)
+let screenAudio: { isSupported: () => boolean; start: (opts: any, cb: (buf: Buffer) => void) => { success: boolean; error?: string }; stop: () => { success: boolean } } | null = null;
+try {
+  screenAudio = require('../native/screen-audio');
+} catch {
+  screenAudio = null;
+}
+
 export function setupIpcHandlers(mainWindow: BrowserWindow, serverManager: ServerManager): void {
   // Client ID persistence
   ipcMain.handle('get-client-id', async () => {
@@ -230,5 +238,31 @@ export function setupIpcHandlers(mainWindow: BrowserWindow, serverManager: Serve
         }
       }
     );
+  });
+
+  // Screen Audio Capture (native module)
+  ipcMain.handle('screen-audio-supported', () => {
+    return screenAudio ? screenAudio.isSupported() : false;
+  });
+
+  ipcMain.handle('screen-audio-start', () => {
+    if (!screenAudio || !screenAudio.isSupported()) {
+      return { success: false, error: 'Not supported on this platform' };
+    }
+    const excludePid = process.pid;
+    const result = screenAudio.start(
+      { excludePid, sampleRate: 48000, channels: 2 },
+      (buffer: Buffer) => {
+        if (!mainWindow.isDestroyed()) {
+          mainWindow.webContents.send('screen-audio:frame', buffer);
+        }
+      }
+    );
+    return result;
+  });
+
+  ipcMain.handle('screen-audio-stop', () => {
+    if (!screenAudio) return { success: false };
+    return screenAudio.stop();
   });
 }

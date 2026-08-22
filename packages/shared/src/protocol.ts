@@ -128,6 +128,7 @@ export interface VoiceStateUpdatePayload {
   isSpeaking?: boolean;
   isCameraOn?: boolean;
   isScreenSharing?: boolean;
+  isSharingScreenAudio?: boolean;
 }
 
 // Server Responses & Broadcast Payloads

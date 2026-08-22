@@ -55,6 +55,7 @@ export class SignalingService {
       isSpeaking: false,
       isCameraOn: false,
       isScreenSharing: false,
+      isSharingScreenAudio: false,
     };
 
     this.voiceStates.set(userId, newState);
