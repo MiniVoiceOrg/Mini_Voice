@@ -36,6 +36,7 @@ export interface ElectronApi {
     }>
   >;
   selectImageDialog: () => Promise<{ fileName: string; mimeType: string; base64: string } | null>;
+  selectSoundFile: () => Promise<string | null>;
   selectSoundboardFolder: () => Promise<string | null>;
   listSoundboardSounds: (folderPath: string) => Promise<
     Array<{
@@ -89,6 +90,7 @@ const api: ElectronApi = {
   hostServerStatus: () => ipcRenderer.invoke('host-server-status'),
   getDesktopSources: () => ipcRenderer.invoke('get-desktop-sources'),
   selectImageDialog: () => ipcRenderer.invoke('dialog-select-image'),
+  selectSoundFile: () => ipcRenderer.invoke('dialog-select-sound-file'),
   selectSoundboardFolder: () => ipcRenderer.invoke('dialog-select-soundboard-folder'),
   listSoundboardSounds: (folderPath) => ipcRenderer.invoke('soundboard-list-sounds', folderPath),
   readSoundboardSound: (filePath) => ipcRenderer.invoke('soundboard-read-sound', filePath),

@@ -43,6 +43,7 @@ export interface ElectronApi {
         mimeType: string;
         base64: string;
     } | null>;
+    selectSoundFile: () => Promise<string | null>;
     selectSoundboardFolder: () => Promise<string | null>;
     listSoundboardSounds: (folderPath: string) => Promise<Array<{
         name: string;

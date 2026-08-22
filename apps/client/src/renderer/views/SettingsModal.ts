@@ -1,4 +1,4 @@
-import { MessageType, QUALITY_PRESETS, QualityPresetType } from '@mini-voice/shared';
+import { MessageType, QUALITY_PRESETS, QualityPresetType, DEFAULT_CUSTOM_PROFILE, QualityProfile } from '@mini-voice/shared';
 import { appEvents } from '../core/EventBus';
 import { networkClient } from '../core/NetworkClient';
 import { audioProcessor } from '../core/AudioProcessor';
@@ -7,7 +7,7 @@ import { settingsStore } from '../stores/settingsStore';
 import { voiceStore } from '../stores/voiceStore';
 import { webRtcManager } from '../core/WebRtcManager';
 import { videoService } from '../core/VideoService';
-import { soundEffects } from '../core/SoundEffects';
+import { soundEffects, SOUND_LABELS, SoundEffectType } from '../core/SoundEffects';
 import { connectionStore } from '../stores/connectionStore';
 import { getAvatarUrl } from '../utils/avatar';
 import { updateService } from '../core/UpdateService';
@@ -245,10 +245,29 @@ export class SettingsModal {
             <option value="NORMAL" ${settingsStore.qualityPreset === 'NORMAL' ? 'selected' : ''}>Normal (recomendado) — bom equilíbrio entre qualidade e banda</option>
             <option value="HIGH" ${settingsStore.qualityPreset === 'HIGH' ? 'selected' : ''}>Alta Qualidade — para internet rápida (mais nitidez, usa mais banda e CPU)</option>
             <option value="GAMING" ${settingsStore.qualityPreset === 'GAMING' ? 'selected' : ''}>Gaming — tela fluida em 60 FPS para jogos (reduz a câmera)</option>
+            <option value="CUSTOM" ${settingsStore.qualityPreset === 'CUSTOM' ? 'selected' : ''}>Personalizado — defina seus próprios valores</option>
           </select>
+          <div id="preset-details" style="margin-top: 8px; padding: 10px 12px; background: rgba(255,255,255,0.03); border: 1px solid var(--border-color); border-radius: var(--radius-md);">
+            ${this.getPresetDetailsHtml(settingsStore.qualityPreset)}
+          </div>
           <small style="display: block; margin-top: 6px; color: var(--text-muted); font-size: 11px;">
             Afeta apenas o que <strong>você transmite</strong>. A qualidade que você recebe depende de cada pessoa.
           </small>
+        </div>
+
+        <!-- Custom Sounds (#7) -->
+        <div class="form-group" style="border-top: 1px solid var(--border-color); padding-top: 14px; margin-top: 10px;">
+          <label style="display: flex; align-items: center; gap: 6px;">
+            <span class="material-symbols-outlined md-16" style="color: var(--accent-primary);">music_note</span>
+            Sons Personalizados
+          </label>
+          <div id="custom-sounds-list" style="display: flex; flex-direction: column; gap: 6px; margin-top: 6px;">
+            ${this.getCustomSoundsHtml()}
+          </div>
+          <button id="btn-reset-all-sounds" class="btn btn-secondary" style="margin-top: 8px; font-size: 11px; padding: 4px 10px;">
+            <span class="material-symbols-outlined md-14" style="margin-right: 4px;">restart_alt</span>
+            Restaurar todos ao padrão
+          </button>
         </div>
 
         <!-- Updates -->
@@ -282,6 +301,184 @@ export class SettingsModal {
     await this.refreshDevices();
     await this.loadAppVersion();
     this.startVadMeter();
+  }
+
+  private getPresetDetailsHtml(preset: QualityPresetType): string {
+    const p: QualityProfile = preset === 'CUSTOM' ? settingsStore.customProfile : QUALITY_PRESETS[preset];
+    const totalMbps = Math.round((p.audioBitrateKbps + p.cameraBitrateKbps + p.screenBitrateKbps) / 100) / 10;
+
+    if (preset === 'CUSTOM') {
+      const inp = (id: string, label: string, val: number, unit: string) =>
+        `<div style="display: flex; align-items: center; gap: 6px;">
+          <label style="color: var(--text-secondary); min-width: 55px; font-size: 11px;">${label}</label>
+          <input id="custom-${id}" type="number" value="${val}" style="width: 70px; padding: 3px 6px; background: var(--bg-secondary); border: 1px solid var(--border-color); border-radius: 4px; color: var(--text-primary); font-size: 12px;" />
+          <span style="font-size: 11px; color: var(--text-muted);">${unit}</span>
+        </div>`;
+
+      return `
+        <div style="font-size: 12px;">
+          <div style="margin-bottom: 8px; padding-bottom: 6px; border-bottom: 1px solid rgba(255,255,255,0.06);">
+            <div style="display: flex; align-items: center; gap: 6px; margin-bottom: 6px;">
+              <span class="material-symbols-outlined" style="font-size: 16px; color: var(--accent-primary);">mic</span>
+              <strong style="color: var(--text-secondary);">Áudio</strong>
+            </div>
+            ${inp('audioBitrate', 'Bitrate', p.audioBitrateKbps, 'kbps')}
+          </div>
+          <div style="margin-bottom: 8px; padding-bottom: 6px; border-bottom: 1px solid rgba(255,255,255,0.06);">
+            <div style="display: flex; align-items: center; gap: 6px; margin-bottom: 6px;">
+              <span class="material-symbols-outlined" style="font-size: 16px; color: var(--accent-primary);">videocam</span>
+              <strong style="color: var(--text-secondary);">Câmera</strong>
+            </div>
+            <div style="display: flex; flex-wrap: wrap; gap: 8px;">
+              ${inp('cameraWidth', 'Largura', p.cameraWidth, 'px')}
+              ${inp('cameraHeight', 'Altura', p.cameraHeight, 'px')}
+              ${inp('cameraFps', 'FPS', p.cameraFps, '')}
+              ${inp('cameraBitrate', 'Bitrate', p.cameraBitrateKbps, 'kbps')}
+            </div>
+          </div>
+          <div style="margin-bottom: 8px; padding-bottom: 6px; border-bottom: 1px solid rgba(255,255,255,0.06);">
+            <div style="display: flex; align-items: center; gap: 6px; margin-bottom: 6px;">
+              <span class="material-symbols-outlined" style="font-size: 16px; color: var(--accent-primary);">screen_share</span>
+              <strong style="color: var(--text-secondary);">Tela</strong>
+            </div>
+            <div style="display: flex; flex-wrap: wrap; gap: 8px;">
+              ${inp('screenWidth', 'Largura', p.screenWidth, 'px')}
+              ${inp('screenHeight', 'Altura', p.screenHeight, 'px')}
+              ${inp('screenFps', 'FPS', p.screenFps, '')}
+              ${inp('screenBitrate', 'Bitrate', p.screenBitrateKbps, 'kbps')}
+            </div>
+          </div>
+          <div style="display: flex; align-items: center; gap: 6px; color: var(--text-muted); font-size: 11px;">
+            <span class="material-symbols-outlined" style="font-size: 16px;">speed</span>
+            Banda máx: ~${totalMbps} Mbps
+          </div>
+        </div>
+        <p style="margin: 8px 0 0; font-size: 11px; color: var(--text-muted);">
+          ⚡ Valores são o teto — o WebRTC adapta automaticamente à sua banda real.
+        </p>
+      `;
+    }
+
+    const row = (icon: string, label: string, value: string) => `
+      <div style="display: flex; align-items: center; gap: 8px; padding: 5px 0; border-bottom: 1px solid rgba(255,255,255,0.04);">
+        <span class="material-symbols-outlined" style="font-size: 16px; color: var(--accent-primary); flex-shrink: 0;">${icon}</span>
+        <span style="color: var(--text-secondary); min-width: 70px;">${label}</span>
+        <span style="color: var(--text-primary); font-weight: 500;">${value}</span>
+      </div>`;
+
+    return `
+      <div style="font-size: 12px; line-height: 1.5;">
+        ${row('mic', 'Áudio', `${p.audioBitrateKbps} kbps`)}
+        ${row('videocam', 'Câmera', `${p.cameraWidth}×${p.cameraHeight} &nbsp;│&nbsp; ${p.cameraFps} fps &nbsp;│&nbsp; ${p.cameraBitrateKbps} kbps`)}
+        ${row('screen_share', 'Tela', `${p.screenWidth}×${p.screenHeight} &nbsp;│&nbsp; ${p.screenFps} fps &nbsp;│&nbsp; ${p.screenBitrateKbps} kbps`)}
+        ${row('speed', 'Banda máx', `~${totalMbps} Mbps`)}
+      </div>
+      <p style="margin: 8px 0 0; font-size: 11px; color: var(--text-muted);">
+        ⚡ Valores são o teto — o WebRTC adapta automaticamente à sua banda real.
+      </p>
+    `;
+  }
+
+  private getCustomSoundsHtml(): string {
+    const keys = Object.keys(SOUND_LABELS) as SoundEffectType[];
+    return keys.map((key) => {
+      const label = SOUND_LABELS[key];
+      const isCustom = !!settingsStore.customSounds[key];
+      return `
+        <div style="display: flex; align-items: center; gap: 8px; padding: 4px 0;">
+          <span style="flex: 1; font-size: 12px; color: var(--text-secondary);">${label}</span>
+          ${isCustom ? `<span style="font-size: 10px; color: var(--accent-primary);">Personalizado</span>` : ''}
+          <button class="btn-sound-preview btn btn-secondary" data-sound-key="${key}" style="font-size: 10px; padding: 2px 8px;" title="Ouvir">
+            <span class="material-symbols-outlined md-14">play_arrow</span>
+          </button>
+          <button class="btn-sound-change btn btn-secondary" data-sound-key="${key}" style="font-size: 10px; padding: 2px 8px;" title="Trocar">
+            <span class="material-symbols-outlined md-14">folder_open</span>
+          </button>
+          ${isCustom ? `<button class="btn-sound-reset btn btn-secondary" data-sound-key="${key}" style="font-size: 10px; padding: 2px 8px;" title="Restaurar padrão">
+            <span class="material-symbols-outlined md-14">restart_alt</span>
+          </button>` : ''}
+        </div>`;
+    }).join('');
+  }
+
+  private attachCustomSoundsListeners(): void {
+    if (!this.modalEl) return;
+
+    this.modalEl.querySelectorAll('.btn-sound-preview').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        const key = btn.getAttribute('data-sound-key') as SoundEffectType;
+        if (key) soundEffects.play(key);
+      });
+    });
+
+    this.modalEl.querySelectorAll('.btn-sound-change').forEach((btn) => {
+      btn.addEventListener('click', async () => {
+        const key = btn.getAttribute('data-sound-key') as SoundEffectType;
+        if (!key || !window.api?.selectSoundFile) return;
+        const dataUrl = await window.api.selectSoundFile();
+        if (dataUrl) {
+          settingsStore.customSounds[key] = dataUrl;
+          settingsStore.save();
+          soundEffects.reloadSound(key, dataUrl);
+          const list = this.modalEl?.querySelector('#custom-sounds-list');
+          if (list) {
+            list.innerHTML = this.getCustomSoundsHtml();
+            this.attachCustomSoundsListeners();
+          }
+        }
+      });
+    });
+
+    this.modalEl.querySelectorAll('.btn-sound-reset').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        const key = btn.getAttribute('data-sound-key') as SoundEffectType;
+        if (!key) return;
+        delete settingsStore.customSounds[key];
+        settingsStore.save();
+        soundEffects.reloadSound(key);
+        const list = this.modalEl?.querySelector('#custom-sounds-list');
+        if (list) {
+          list.innerHTML = this.getCustomSoundsHtml();
+          this.attachCustomSoundsListeners();
+        }
+      });
+    });
+
+    this.modalEl.querySelector('#btn-reset-all-sounds')?.addEventListener('click', () => {
+      settingsStore.customSounds = {};
+      settingsStore.save();
+      soundEffects.loadAll();
+      const list = this.modalEl?.querySelector('#custom-sounds-list');
+      if (list) {
+        list.innerHTML = this.getCustomSoundsHtml();
+        this.attachCustomSoundsListeners();
+      }
+    });
+  }
+
+  private attachCustomProfileListeners(): void {
+    if (!this.modalEl) return;
+    const map: Record<string, keyof QualityProfile> = {
+      'custom-audioBitrate': 'audioBitrateKbps',
+      'custom-cameraWidth': 'cameraWidth',
+      'custom-cameraHeight': 'cameraHeight',
+      'custom-cameraFps': 'cameraFps',
+      'custom-cameraBitrate': 'cameraBitrateKbps',
+      'custom-screenWidth': 'screenWidth',
+      'custom-screenHeight': 'screenHeight',
+      'custom-screenFps': 'screenFps',
+      'custom-screenBitrate': 'screenBitrateKbps',
+    };
+    for (const [id, key] of Object.entries(map)) {
+      const el = this.modalEl.querySelector(`#${id}`) as HTMLInputElement | null;
+      el?.addEventListener('change', () => {
+        const val = Math.max(1, parseInt(el.value, 10) || 1);
+        (settingsStore.customProfile as any)[key] = val;
+        settingsStore.save();
+        videoService.setQualityPreset('CUSTOM');
+        webRtcManager.setQualityPreset('CUSTOM');
+      });
+    }
   }
 
   private async loadAppVersion(): Promise<void> {
@@ -494,7 +691,18 @@ export class SettingsModal {
       settingsStore.save();
       videoService.setQualityPreset(preset);
       webRtcManager.setQualityPreset(preset);
+      const details = this.modalEl?.querySelector('#preset-details') as HTMLElement | null;
+      if (details) {
+        details.innerHTML = this.getPresetDetailsHtml(preset);
+        if (preset === 'CUSTOM') this.attachCustomProfileListeners();
+      }
     });
+
+    if (settingsStore.qualityPreset === 'CUSTOM') {
+      this.attachCustomProfileListeners();
+    }
+
+    this.attachCustomSoundsListeners();
 
     selectMic?.addEventListener('change', async () => {
       settingsStore.selectedMicrophoneId = selectMic.value;

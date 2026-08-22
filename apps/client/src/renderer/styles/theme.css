@@ -1674,10 +1674,46 @@ input:focus, textarea:focus, select:focus {
   top: 48px;
 }
 
-.stage-fullscreen-btn {
+.stage-controls-bar {
   position: absolute;
-  top: 10px;
+  bottom: 10px;
   right: 10px;
+  z-index: 3;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  opacity: 0.7;
+  transition: opacity 0.15s ease;
+}
+
+.stage-card:hover .stage-controls-bar,
+.stage-focused-main:hover .stage-controls-bar,
+.stage-mini-card:hover .stage-controls-bar {
+  opacity: 1;
+}
+
+.stage-volume-control {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 8px;
+  background-color: rgba(0, 0, 0, 0.55);
+  border-radius: var(--radius-sm);
+  backdrop-filter: blur(4px);
+  color: #fff;
+}
+
+.stage-screen-volume-slider {
+  width: 70px;
+  height: 4px;
+  cursor: pointer;
+  accent-color: var(--accent-primary);
+}
+
+.stage-fullscreen-btn {
+  position: relative;
+  bottom: auto;
+  right: auto;
   z-index: 3;
   display: flex;
   align-items: center;
@@ -1689,8 +1725,7 @@ input:focus, textarea:focus, select:focus {
   background-color: rgba(0, 0, 0, 0.55);
   color: #fff;
   cursor: pointer;
-  opacity: 0;
-  transition: opacity 0.15s ease, background-color 0.15s ease;
+  transition: background-color 0.15s ease;
   backdrop-filter: blur(4px);
 }
 

@@ -16,17 +16,45 @@ export type SoundEffectType =
   | 'screen_share_start'
   | 'screen_share_stop';
 
+const DEFAULT_URLS: Record<string, string> = {
+  mic_unmute: micUnmuteUrl,
+  mic_mute: micMuteUrl,
+  deafen: deafenUrl,
+  undeafen: undeafenUrl,
+  join_voice: joinVoiceUrl,
+  leave_voice: leaveVoiceUrl,
+};
+
+export const SOUND_LABELS: Record<string, string> = {
+  mic_mute: 'Mutar microfone',
+  mic_unmute: 'Desmutar microfone',
+  deafen: 'Mutar auto-falante',
+  undeafen: 'Desmutar auto-falante',
+  join_voice: 'Entrar no canal',
+  leave_voice: 'Sair do canal',
+  screen_share_start: 'Iniciar compartilhamento',
+  screen_share_stop: 'Parar compartilhamento',
+};
+
 export class SoundEffectManager {
   private audioMap: Partial<Record<SoundEffectType, HTMLAudioElement>> = {};
   private toneCtx: AudioContext | null = null;
 
   constructor() {
-    this.preload('mic_unmute', micUnmuteUrl);
-    this.preload('mic_mute', micMuteUrl);
-    this.preload('deafen', deafenUrl);
-    this.preload('undeafen', undeafenUrl);
-    this.preload('join_voice', joinVoiceUrl);
-    this.preload('leave_voice', leaveVoiceUrl);
+    this.loadAll();
+  }
+
+  public loadAll(): void {
+    const customSounds = settingsStore.customSounds || {};
+    for (const [key, defaultUrl] of Object.entries(DEFAULT_URLS)) {
+      const url = customSounds[key] || defaultUrl;
+      this.preload(key as SoundEffectType, url);
+    }
+  }
+
+  public reloadSound(key: SoundEffectType, url?: string): void {
+    const finalUrl = url || DEFAULT_URLS[key];
+    if (finalUrl) this.preload(key, finalUrl);
   }
 
   private preload(key: SoundEffectType, url: string): void {

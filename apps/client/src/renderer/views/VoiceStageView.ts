@@ -322,6 +322,19 @@ export class VoiceStageView {
       });
     });
 
+    // Screen audio volume sliders (#75)
+    const volSliders = area.querySelectorAll('.stage-screen-volume-slider') as NodeListOf<HTMLInputElement>;
+    volSliders.forEach((slider) => {
+      slider.addEventListener('input', () => {
+        const userId = slider.getAttribute('data-user-id');
+        if (!userId) return;
+        const vol = parseInt(slider.value, 10);
+        settingsStore.setScreenAudioVolume(userId, vol);
+        const audioEl = document.querySelector(`audio[data-screen-audio-user="${userId}"]`) as HTMLAudioElement | null;
+        if (audioEl) audioEl.volume = vol / 100;
+      });
+    });
+
     // Attach media streams to video elements cleanly
     participants.forEach((p) => {
       const isLocal = p.user.id === serverStore.currentUser?.id;
@@ -406,9 +419,17 @@ export class VoiceStageView {
             data-telemetry-user-id="${p.user.id}"
           >${this.getTelemetryText(p.user.id)}</div>
         ` : ''}
-        <button class="stage-fullscreen-btn" data-fullscreen-target="${videoId}" title="Tela cheia" aria-label="Tela cheia">
-          <span class="material-symbols-outlined md-18">fullscreen</span>
-        </button>
+        <div class="stage-controls-bar">
+          ${(isScreenOn && !isLocal) ? `
+            <div class="stage-volume-control" title="Volume do áudio da tela">
+              <span class="material-symbols-outlined md-16">volume_up</span>
+              <input type="range" class="stage-screen-volume-slider" data-user-id="${p.user.id}" min="0" max="100" value="${settingsStore.getScreenAudioVolume(p.user.id)}" />
+            </div>
+          ` : ''}
+          <button class="stage-fullscreen-btn" data-fullscreen-target="${videoId}" title="Tela cheia" aria-label="Tela cheia">
+            <span class="material-symbols-outlined md-18">fullscreen</span>
+          </button>
+        </div>
       ` : `
         <div class="stage-avatar-wrapper">
           <img class="stage-avatar-img" src="${avatarSrc}">
