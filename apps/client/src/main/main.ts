@@ -1,4 +1,4 @@
-import { app, BrowserWindow, Menu } from 'electron';
+import { app, BrowserWindow, Menu, screen } from 'electron';
 import path from 'path';
 import { setupIpcHandlers } from './ipcHandlers';
 import { setupUpdater } from './updater';
@@ -26,9 +26,13 @@ function createWindow(): void {
 
   const isMac = process.platform === 'darwin';
 
+  const { width: screenW, height: screenH } = screen.getPrimaryDisplay().workAreaSize;
+  const winWidth = Math.min(700, Math.round(screenW * 0.85));
+  const winHeight = Math.round(screenH * 0.9);
+
   mainWindow = new BrowserWindow({
-    width: 700,
-    height: 900,
+    width: winWidth,
+    height: winHeight,
     minWidth: 600,
     minHeight: 500,
     backgroundColor: '#0e1117',
