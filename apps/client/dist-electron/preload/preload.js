@@ -36,6 +36,7 @@ const api = {
     openExternal: (url) => electron_1.ipcRenderer.invoke('open-external', url),
     probeServer: (host, port) => electron_1.ipcRenderer.invoke('probe-server', host, port),
     screenAudioSupported: () => electron_1.ipcRenderer.invoke('screen-audio-supported'),
+    screenAudioDiagnose: () => electron_1.ipcRenderer.invoke('screen-audio-diagnose'),
     screenAudioStart: () => electron_1.ipcRenderer.invoke('screen-audio-start'),
     screenAudioStop: () => electron_1.ipcRenderer.invoke('screen-audio-stop'),
     onScreenAudioFrame: (cb) => electron_1.ipcRenderer.on('screen-audio:frame', (_e, buffer) => cb(buffer)),
