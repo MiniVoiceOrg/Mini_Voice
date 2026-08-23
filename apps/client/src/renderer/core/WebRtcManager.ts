@@ -39,6 +39,7 @@ export class WebRtcManager {
   private localCameraTrack: MediaStreamTrack | null = null;
   private localScreenTrack: MediaStreamTrack | null = null;
   private localScreenAudioTrack: MediaStreamTrack | null = null;
+  private screenAudioStream: MediaStream | null = null;
   private screenAudioStreamId: string | null = null;
   private currentPreset: QualityPresetType = 'NORMAL';
   private currentUserId: string = '';
@@ -116,7 +117,7 @@ export class WebRtcManager {
     }
 
     // Setup Screen Audio Track (if currently sharing)
-    if (this.localScreenAudioTrack && this.screenAudioStreamId) {
+    if (this.localScreenAudioTrack && this.screenAudioStream) {
       // Announce stream ID before adding track
       networkClient.send(MessageType.RTC_SIGNAL, {
         targetUserId: peerUserId,
@@ -124,8 +125,7 @@ export class WebRtcManager {
         signalType: 'screen-audio-meta',
         streamId: this.screenAudioStreamId,
       });
-      const screenAudioStream = new MediaStream([this.localScreenAudioTrack]);
-      session.screenAudioSender = pc.addTrack(this.localScreenAudioTrack, screenAudioStream);
+      session.screenAudioSender = pc.addTrack(this.localScreenAudioTrack, this.screenAudioStream);
     }
 
     // ICE Candidate handler
@@ -469,8 +469,10 @@ export class WebRtcManager {
     this.localScreenAudioTrack = track;
 
     if (track) {
-      // Wrap in a dedicated MediaStream so receivers can identify it
+      // Wrap in a dedicated MediaStream so receivers can identify it.
+      // Store the stream so late-joining peers reuse the same ID.
       const stream = new MediaStream([track]);
+      this.screenAudioStream = stream;
       this.screenAudioStreamId = stream.id;
 
       // Announce stream ID to all peers BEFORE adding the track
@@ -509,6 +511,7 @@ export class WebRtcManager {
           }
         }
       }
+      this.screenAudioStream = null;
       this.screenAudioStreamId = null;
     }
   }
