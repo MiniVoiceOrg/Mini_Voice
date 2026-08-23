@@ -20,6 +20,7 @@ export class SettingsStore {
   public screenShareTelemetryPosition: 'top-left' | 'top-right' | 'bottom-left' | 'bottom-right' = 'top-right';
   public screenShareTelemetryMode: 'simple' | 'complete' = 'simple';
   public customSounds: Partial<Record<string, string>> = {}; // key → file path
+  public soundboardShortcuts: Record<string, { accelerator: string; display: string }> = {};
 
   constructor() {
     this.load();
@@ -63,6 +64,9 @@ export class SettingsStore {
         }
         if (!this.customSounds || typeof this.customSounds !== 'object') {
           this.customSounds = {};
+        }
+        if (!this.soundboardShortcuts || typeof this.soundboardShortcuts !== 'object') {
+          this.soundboardShortcuts = {};
         }
       }
     } catch (e) {}

@@ -60,6 +60,11 @@ export interface ElectronApi {
         dataUrl: string;
         sizeBytes: number;
     } | null>;
+    registerSoundboardShortcuts: (shortcuts: Array<{
+        soundName: string;
+        accelerator: string;
+    }>) => Promise<boolean>;
+    onSoundboardShortcutTriggered: (cb: (soundName: string) => void) => () => void;
     minimize: () => Promise<void>;
     maximize: () => Promise<void>;
     close: () => Promise<void>;

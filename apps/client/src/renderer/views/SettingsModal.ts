@@ -150,7 +150,7 @@ export class SettingsModal {
               <span>Volume de Reprodução do Soundboard</span>
               <span id="soundboard-vol-val" style="font-family: var(--font-mono); font-size: 12px;">${settingsStore.soundboardVolume}%</span>
             </label>
-            <input id="slider-soundboard-vol" class="sb-slider" type="range" min="0" max="100" value="${settingsStore.soundboardVolume}" style="width: 100%;">
+            <input id="slider-soundboard-vol" class="sb-slider" type="range" min="0" max="100" value="${settingsStore.soundboardVolume}" style="--slider-progress: ${settingsStore.soundboardVolume}%; width: 100%;">
             <div style="font-size: 11px; color: var(--text-muted); margin-top: 2px;">
               Ajusta o volume dos sons de soundboard tocados por você e por outros usuários na sala.
             </div>
@@ -649,6 +649,7 @@ export class SettingsModal {
     sliderSoundboardVol?.addEventListener('input', () => {
       const val = parseInt(sliderSoundboardVol.value, 10);
       if (soundboardVolVal) soundboardVolVal.textContent = `${val}%`;
+      sliderSoundboardVol.style.setProperty('--slider-progress', `${val}%`);
       settingsStore.soundboardVolume = val;
       settingsStore.save();
     });
