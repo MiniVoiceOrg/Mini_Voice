@@ -50,6 +50,7 @@ export interface ServerDetails {
   maxUsers: number;
   hasPassword?: boolean;
   allowSoundboard?: boolean;
+  iconUrl?: string | null;
   channels: ChannelSummary[];
   members: UserSummary[];
   voiceStates: Record<string, VoiceParticipantState>; // key = userId

@@ -52,11 +52,41 @@ export class ServerStore {
     appEvents.emit('user.updated', user);
   }
 
-  public updateServerMeta(name: string, hasPassword: boolean): void {
+  public addMember(user: UserSummary): void {
+    if (this.serverDetails) {
+      const idx = this.serverDetails.members.findIndex((m) => m.id === user.id);
+      if (idx >= 0) {
+        this.serverDetails.members[idx] = user;
+      } else {
+        this.serverDetails.members.push(user);
+      }
+      appEvents.emit('server.members_updated', this.serverDetails.members);
+    }
+  }
+
+  public removeMember(userId: string): void {
+    if (this.serverDetails) {
+      this.serverDetails.members = this.serverDetails.members.filter((m) => m.id !== userId);
+      appEvents.emit('server.members_updated', this.serverDetails.members);
+    }
+  }
+
+  public updateMember(user: UserSummary): void {
+    this.addMember(user);
+  }
+
+  public updateServerMeta(name: string, hasPassword: boolean, allowSoundboard?: boolean, iconUrl?: string | null): void {
     if (this.serverDetails) {
       this.serverDetails.name = name;
       this.serverDetails.hasPassword = hasPassword;
+      if (allowSoundboard !== undefined) {
+        this.serverDetails.allowSoundboard = allowSoundboard;
+      }
+      if (iconUrl !== undefined) {
+        this.serverDetails.iconUrl = iconUrl;
+      }
       appEvents.emit('server.updated');
+      appEvents.emit('server.meta_updated', this.serverDetails);
     }
   }
 

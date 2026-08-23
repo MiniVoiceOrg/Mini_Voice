@@ -97,14 +97,15 @@ export interface UserChangeNicknamePayload {
 }
 
 export interface UserUpdateAvatarPayload {
-  avatarBase64: string; // Data URL or pure base64
-  mimeType: string;
+  avatarBase64: string | null; // Data URL, pure base64, or null to remove
+  mimeType?: string;
 }
 
 export interface ServerUpdateSettingsPayload {
   name?: string;
   password?: string | null; // null or empty string removes the password
   allowSoundboard?: boolean;
+  iconBase64?: string | null; // Data URL, pure base64, or null to remove
 }
 
 export interface SoundboardPlayPayload {
@@ -147,6 +148,7 @@ export interface ServerSettingsUpdatedPayload {
   name: string;
   hasPassword: boolean;
   allowSoundboard?: boolean;
+  iconUrl?: string | null;
 }
 
 export interface SoundboardPlayedPayload {

@@ -1,15 +1,19 @@
 import { MessageType, ServerUpdateSettingsPayload } from '@mini-voice/shared';
+import logoUrl from '../assets/Logo.png';
 import { escapeHtml } from '../utils/html';
+import { getAvatarUrl } from '../utils/avatar';
 import { networkClient } from '../core/NetworkClient';
 import { serverStore } from '../stores/serverStore';
 
 export class ServerSettingsModal {
   private modalEl: HTMLElement | null = null;
   private shouldRemovePassword = false;
+  private pendingIconBase64: string | null | undefined = undefined;
 
   public open(): void {
     this.close();
     this.shouldRemovePassword = false;
+    this.pendingIconBase64 = undefined;
 
     const s = serverStore.serverDetails;
     if (!s) return;
@@ -19,7 +23,7 @@ export class ServerSettingsModal {
     this.modalEl = document.createElement('div');
     this.modalEl.className = 'modal-backdrop';
     this.modalEl.innerHTML = `
-      <div class="modal-card" style="max-width: 460px;">
+      <div class="modal-card" style="max-width: 480px;">
         <div class="modal-header">
           <div class="modal-title" style="display: flex; align-items: center; gap: 8px;">
             <span class="material-symbols-outlined" style="color: var(--accent-primary);">settings</span>
@@ -31,9 +35,19 @@ export class ServerSettingsModal {
         <div id="server-settings-banner" class="error-banner"></div>
 
         <form id="form-server-settings">
-          <div class="form-group">
-            <label>Nome do Servidor</label>
-            <input id="input-server-name" type="text" value="${escapeHtml(s.name)}" required minlength="2" maxlength="50">
+          <div style="display: flex; gap: 16px; align-items: center; padding: 12px; background: var(--bg-tertiary); border-radius: var(--radius-md); margin-bottom: 16px; border: 1px solid var(--border-color);">
+            <div id="server-icon-wrapper" class="settings-avatar-wrapper" style="border-radius: 12px; width: 56px; height: 56px; flex-shrink: 0;" title="Clique para alterar ou remover a foto do servidor">
+              <img id="server-icon-preview" class="settings-avatar-img" style="border-radius: 10px; width: 56px; height: 56px; object-fit: cover;" src="${s.iconUrl ? getAvatarUrl(s.iconUrl) : logoUrl}" alt="Ícone do Servidor">
+              <div class="settings-avatar-overlay" style="border-radius: 10px;">
+                <span class="material-symbols-outlined md-20">photo_camera</span>
+              </div>
+            </div>
+            <div style="flex: 1; min-width: 0;">
+              <div class="form-group" style="margin-bottom: 0;">
+                <label style="margin-bottom: 4px;">Nome do Servidor</label>
+                <input id="input-server-name" type="text" value="${escapeHtml(s.name)}" required minlength="2" maxlength="50">
+              </div>
+            </div>
           </div>
 
           <div style="margin-top: 18px; border-top: 1px solid var(--border-color); padding-top: 16px;">
@@ -105,6 +119,7 @@ export class ServerSettingsModal {
     const btnClose = this.modalEl.querySelector('#modal-close');
     const btnCancel = this.modalEl.querySelector('#btn-cancel');
     const btnRemovePass = this.modalEl.querySelector('#btn-remove-pass') as HTMLButtonElement;
+    const serverIconWrapper = this.modalEl.querySelector('#server-icon-wrapper');
     const form = this.modalEl.querySelector('#form-server-settings') as HTMLFormElement;
     const inputName = this.modalEl.querySelector('#input-server-name') as HTMLInputElement;
     const inputPass = this.modalEl.querySelector('#input-server-pass') as HTMLInputElement;
@@ -114,6 +129,28 @@ export class ServerSettingsModal {
 
     btnClose?.addEventListener('click', () => this.close());
     btnCancel?.addEventListener('click', () => this.close());
+
+    serverIconWrapper?.addEventListener('click', async () => {
+      const s = serverStore.serverDetails;
+      const currentIcon = this.pendingIconBase64 !== undefined
+        ? this.pendingIconBase64
+        : (s?.iconUrl || null);
+      const hasCustomIcon = !!currentIcon;
+
+      const action = await this.showIconActionModal(hasCustomIcon);
+      if (action === 'change') {
+        const file = await window.api.selectImageDialog();
+        if (file && file.base64) {
+          this.pendingIconBase64 = file.base64;
+          const preview = this.modalEl?.querySelector('#server-icon-preview') as HTMLImageElement | null;
+          if (preview) preview.src = file.base64;
+        }
+      } else if (action === 'remove') {
+        this.pendingIconBase64 = null;
+        const preview = this.modalEl?.querySelector('#server-icon-preview') as HTMLImageElement | null;
+        if (preview) preview.src = logoUrl;
+      }
+    });
 
     btnRemovePass?.addEventListener('click', () => {
       this.shouldRemovePassword = true;
@@ -149,6 +186,10 @@ export class ServerSettingsModal {
         payload.password = passVal;
       }
 
+      if (this.pendingIconBase64 !== undefined) {
+        payload.iconBase64 = this.pendingIconBase64;
+      }
+
       const btnSave = this.modalEl?.querySelector('#btn-save') as HTMLButtonElement;
       if (btnSave) {
         btnSave.disabled = true;
@@ -172,11 +213,78 @@ export class ServerSettingsModal {
     });
   }
 
+  private showIconActionModal(hasCustomIcon: boolean): Promise<'change' | 'remove' | null> {
+    return new Promise((resolve) => {
+      const backdrop = document.createElement('div');
+      backdrop.className = 'modal-backdrop';
+      backdrop.style.zIndex = '10001';
+      backdrop.innerHTML = `
+        <div class="modal-card dialog-card" role="dialog" aria-modal="true" style="max-width: 380px;">
+          <div class="modal-header">
+            <div class="modal-title" style="display: flex; align-items: center; gap: 8px;">
+              <span class="material-symbols-outlined" style="color: var(--accent-primary);">photo_camera</span>
+              <span>Foto do Servidor</span>
+            </div>
+            <button class="modal-close-btn" data-action="cancel">&times;</button>
+          </div>
+          <div class="dialog-message" style="margin-bottom: 20px; white-space: normal;">Escolha uma opção para a foto do servidor:</div>
+          <div style="display: flex; flex-direction: column; gap: 8px;">
+            <button type="button" class="btn btn-primary" data-action="change" style="justify-content: center; gap: 8px; height: 38px;">
+              <span class="material-symbols-outlined md-18">upload</span>
+              <span>Alterar foto</span>
+            </button>
+            ${
+              hasCustomIcon
+                ? `
+            <button type="button" class="btn btn-danger" data-action="remove" style="justify-content: center; gap: 8px; height: 38px;">
+              <span class="material-symbols-outlined md-18">delete</span>
+              <span>Remover foto</span>
+            </button>
+            `
+                : ''
+            }
+            <button type="button" class="btn btn-secondary" data-action="cancel" style="justify-content: center; height: 38px;">Cancelar</button>
+          </div>
+        </div>
+      `;
+
+      const settle = (result: 'change' | 'remove' | null) => {
+        document.removeEventListener('keydown', onKeyDown, true);
+        backdrop.remove();
+        resolve(result);
+      };
+
+      const onKeyDown = (e: KeyboardEvent) => {
+        if (e.key === 'Escape') {
+          e.stopPropagation();
+          settle(null);
+        }
+      };
+
+      backdrop.querySelectorAll('[data-action="change"]').forEach((el) => {
+        el.addEventListener('click', () => settle('change'));
+      });
+      backdrop.querySelectorAll('[data-action="remove"]').forEach((el) => {
+        el.addEventListener('click', () => settle('remove'));
+      });
+      backdrop.querySelectorAll('[data-action="cancel"]').forEach((el) => {
+        el.addEventListener('click', () => settle(null));
+      });
+      backdrop.addEventListener('mousedown', (e) => {
+        if (e.target === backdrop) settle(null);
+      });
+      document.addEventListener('keydown', onKeyDown, true);
+
+      document.body.appendChild(backdrop);
+    });
+  }
+
   public close(): void {
     if (this.modalEl) {
       this.modalEl.remove();
       this.modalEl = null;
       this.shouldRemovePassword = false;
+      this.pendingIconBase64 = undefined;
     }
   }
 }

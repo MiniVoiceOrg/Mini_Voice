@@ -41,7 +41,12 @@ export class SettingsModal {
 
         <!-- Nickname & Profile -->
         <div style="display: flex; gap: 16px; align-items: center; padding: 12px; background: var(--bg-card); border-radius: var(--radius-md); margin-bottom: 16px; border: 1px solid var(--border-color);">
-          <img id="settings-avatar-preview" style="width: 52px; height: 52px; border-radius: 50%; object-fit: cover;" src="${serverStore.currentUser?.avatarUrl ? getAvatarUrl(serverStore.currentUser.avatarUrl) : (connectionStore.savedAvatarBase64 || getAvatarUrl(null))}">
+          <div id="settings-avatar-wrapper" class="settings-avatar-wrapper" title="Clique para alterar ou remover sua foto de perfil">
+            <img id="settings-avatar-preview" class="settings-avatar-img" src="${serverStore.currentUser?.avatarUrl ? getAvatarUrl(serverStore.currentUser.avatarUrl) : (connectionStore.savedAvatarBase64 || getAvatarUrl(null))}" alt="Avatar">
+            <div class="settings-avatar-overlay">
+              <span class="material-symbols-outlined md-20">photo_camera</span>
+            </div>
+          </div>
           <div style="flex: 1;">
             <div class="form-group" style="margin-bottom: 0;">
               <label>Seu Nickname</label>
@@ -51,10 +56,6 @@ export class SettingsModal {
               </div>
             </div>
           </div>
-          <button id="btn-change-avatar" class="btn btn-secondary" style="font-size: 12px; padding: 6px 12px;">
-            <span class="material-symbols-outlined md-16" style="margin-right: 4px;">photo_camera</span>
-            Foto
-          </button>
         </div>
 
         <!-- Device Header with Refresh Button -->
@@ -585,7 +586,6 @@ export class SettingsModal {
     const btnDone = this.modalEl.querySelector('#btn-settings-close');
     const btnRefresh = this.modalEl.querySelector('#btn-refresh-devices');
     const btnSaveNick = this.modalEl.querySelector('#btn-save-nickname');
-    const btnChangeAvatar = this.modalEl.querySelector('#btn-change-avatar');
     const inputNick = this.modalEl.querySelector('#settings-nickname-input') as HTMLInputElement;
     const selectMic = this.modalEl.querySelector('#select-mic') as HTMLSelectElement;
     const selectSpeaker = this.modalEl.querySelector('#select-speaker') as HTMLSelectElement;
@@ -786,31 +786,124 @@ export class SettingsModal {
       }
     });
 
-    btnChangeAvatar?.addEventListener('click', async () => {
-      if (window.api?.selectImageDialog) {
-        const file = await window.api.selectImageDialog();
-        if (file) {
-          // Offline: store the avatar locally only.
-          if (!serverStore.currentUser) {
-            const preview = document.getElementById('settings-avatar-preview') as HTMLImageElement;
-            if (preview) preview.src = file.base64;
-            connectionStore.saveUserProfile(connectionStore.savedNickname, file.base64);
-            return;
-          }
-          try {
-            await networkClient.sendRequest(MessageType.USER_UPDATE_AVATAR, {
-              avatarBase64: file.base64,
-              mimeType: 'image/png',
-            });
-            const preview = document.getElementById('settings-avatar-preview') as HTMLImageElement;
-            if (preview) preview.src = file.base64;
-            const currentNick = serverStore.currentUser?.nickname || connectionStore.savedNickname;
-            connectionStore.saveUserProfile(currentNick, file.base64);
-          } catch (err: any) {
-            this.showError(err.message || 'Erro ao atualizar foto de perfil');
+    const avatarWrapper = this.modalEl.querySelector('#settings-avatar-wrapper');
+    avatarWrapper?.addEventListener('click', async () => {
+      const hasCustomAvatar = !!(serverStore.currentUser?.avatarUrl || connectionStore.savedAvatarBase64);
+      const action = await this.showAvatarActionModal(hasCustomAvatar);
+      if (!action) return;
+
+      if (action === 'change') {
+        if (window.api?.selectImageDialog) {
+          const file = await window.api.selectImageDialog();
+          if (file) {
+            // Offline: store the avatar locally only.
+            if (!serverStore.currentUser) {
+              const preview = document.getElementById('settings-avatar-preview') as HTMLImageElement;
+              if (preview) preview.src = file.base64;
+              connectionStore.saveUserProfile(connectionStore.savedNickname, file.base64);
+              return;
+            }
+            try {
+              await networkClient.sendRequest(MessageType.USER_UPDATE_AVATAR, {
+                avatarBase64: file.base64,
+                mimeType: 'image/png',
+              });
+              const preview = document.getElementById('settings-avatar-preview') as HTMLImageElement;
+              if (preview) preview.src = file.base64;
+              const currentNick = serverStore.currentUser?.nickname || connectionStore.savedNickname;
+              connectionStore.saveUserProfile(currentNick, file.base64);
+            } catch (err: any) {
+              this.showError(err.message || 'Erro ao atualizar foto de perfil');
+            }
           }
         }
+      } else if (action === 'remove') {
+        // Offline: clear avatar locally
+        if (!serverStore.currentUser) {
+          const preview = document.getElementById('settings-avatar-preview') as HTMLImageElement;
+          if (preview) preview.src = getAvatarUrl(null);
+          connectionStore.saveUserProfile(connectionStore.savedNickname, null);
+          return;
+        }
+        try {
+          await networkClient.sendRequest(MessageType.USER_UPDATE_AVATAR, {
+            avatarBase64: null,
+          });
+          const preview = document.getElementById('settings-avatar-preview') as HTMLImageElement;
+          if (preview) preview.src = getAvatarUrl(null);
+          if (serverStore.currentUser) serverStore.currentUser.avatarUrl = null;
+          const currentNick = serverStore.currentUser?.nickname || connectionStore.savedNickname;
+          connectionStore.saveUserProfile(currentNick, null);
+        } catch (err: any) {
+          this.showError(err.message || 'Erro ao remover foto de perfil');
+        }
       }
+    });
+  }
+
+  private showAvatarActionModal(hasCustomAvatar: boolean): Promise<'change' | 'remove' | null> {
+    return new Promise((resolve) => {
+      const backdrop = document.createElement('div');
+      backdrop.className = 'modal-backdrop';
+      backdrop.style.zIndex = '10001';
+      backdrop.innerHTML = `
+        <div class="modal-card dialog-card" role="dialog" aria-modal="true" style="max-width: 380px;">
+          <div class="modal-header">
+            <div class="modal-title" style="display: flex; align-items: center; gap: 8px;">
+              <span class="material-symbols-outlined" style="color: var(--accent-primary);">photo_camera</span>
+              <span>Foto de Perfil</span>
+            </div>
+            <button class="modal-close-btn" data-action="cancel">&times;</button>
+          </div>
+          <div class="dialog-message" style="margin-bottom: 20px; white-space: normal;">Escolha uma opção para sua foto de perfil:</div>
+          <div style="display: flex; flex-direction: column; gap: 8px;">
+            <button type="button" class="btn btn-primary" data-action="change" style="justify-content: center; gap: 8px; height: 38px;">
+              <span class="material-symbols-outlined md-18">upload</span>
+              <span>Alterar foto</span>
+            </button>
+            ${
+              hasCustomAvatar
+                ? `
+            <button type="button" class="btn btn-danger" data-action="remove" style="justify-content: center; gap: 8px; height: 38px;">
+              <span class="material-symbols-outlined md-18">delete</span>
+              <span>Remover foto</span>
+            </button>`
+                : ''
+            }
+            <button type="button" class="btn btn-secondary" data-action="cancel" style="justify-content: center; height: 38px;">
+              <span>Cancelar</span>
+            </button>
+          </div>
+        </div>
+      `;
+
+      let settled = false;
+      const settle = (action: 'change' | 'remove' | null) => {
+        if (settled) return;
+        settled = true;
+        document.removeEventListener('keydown', onKeyDown, true);
+        backdrop.remove();
+        resolve(action);
+      };
+
+      const onKeyDown = (e: KeyboardEvent) => {
+        if (e.key === 'Escape') {
+          e.preventDefault();
+          settle(null);
+        }
+      };
+
+      backdrop.querySelector('[data-action="change"]')?.addEventListener('click', () => settle('change'));
+      backdrop.querySelector('[data-action="remove"]')?.addEventListener('click', () => settle('remove'));
+      backdrop.querySelectorAll('[data-action="cancel"]').forEach((el) => {
+        el.addEventListener('click', () => settle(null));
+      });
+      backdrop.addEventListener('mousedown', (e) => {
+        if (e.target === backdrop) settle(null);
+      });
+      document.addEventListener('keydown', onKeyDown, true);
+
+      document.body.appendChild(backdrop);
     });
   }
 
