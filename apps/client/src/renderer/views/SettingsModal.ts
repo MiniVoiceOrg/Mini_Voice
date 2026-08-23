@@ -86,8 +86,7 @@ export class SettingsModal {
             Sensibilidade de Voz (VAD)
           </label>
           <div style="display: flex; align-items: center; gap: 12px;">
-            <input id="slider-vad" type="range" min="5" max="80" value="${settingsStore.vadSensitivity}" style="flex: 1;">
-            <span id="vad-val" style="font-family: var(--font-mono); font-size: 12px; min-width: 30px;">${settingsStore.vadSensitivity}</span>
+            <input id="slider-vad" class="sb-slider" type="range" min="0" max="160" value="${settingsStore.vadSensitivity}" style="--slider-progress: ${(Math.min(160, Math.max(0, settingsStore.vadSensitivity)) / 160) * 100}%; flex: 1;">
           </div>
           <div id="vad-meter" class="vad-meter" title="Nível do seu microfone">
             <div id="vad-meter-fill" class="vad-meter-fill"></div>
@@ -615,6 +614,7 @@ export class SettingsModal {
     sliderVad?.addEventListener('input', () => {
       const val = parseInt(sliderVad.value, 10);
       if (vadVal) vadVal.textContent = val.toString();
+      sliderVad.style.setProperty('--slider-progress', `${(val / 160) * 100}%`);
       settingsStore.vadSensitivity = val;
       audioProcessor.setVadThreshold(val);
       settingsStore.save();
@@ -974,8 +974,10 @@ export class SettingsModal {
     const marker = document.getElementById('vad-meter-threshold') as HTMLElement | null;
     if (!fill) return;
 
+    const MAX_VAD_SCALE = 160;
+
     const positionMarker = () => {
-      if (marker) marker.style.left = `${(settingsStore.vadSensitivity / 80) * 100}%`;
+      if (marker) marker.style.left = `${Math.min(100, (settingsStore.vadSensitivity / MAX_VAD_SCALE) * 100)}%`;
     };
     positionMarker();
 
@@ -990,7 +992,7 @@ export class SettingsModal {
         for (let i = 0; i < bins; i++) sum += buf[i];
         level = sum / bins;
       }
-      const pct = Math.max(0, Math.min(100, (Math.max(0, level) / 80) * 100));
+      const pct = Math.max(0, Math.min(100, (Math.max(0, level) / MAX_VAD_SCALE) * 100));
       fill.style.width = `${pct}%`;
       // Green while below threshold, accent when it would trigger voice.
       fill.style.background =

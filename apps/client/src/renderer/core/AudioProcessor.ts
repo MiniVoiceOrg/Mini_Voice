@@ -265,7 +265,7 @@ export class AudioProcessor {
   }
 
   public setVadThreshold(threshold: number): void {
-    this.vadThreshold = Math.max(0, Math.min(100, threshold));
+    this.vadThreshold = Math.max(0, Math.min(160, threshold));
   }
 
   public getLocalAudioStream(): MediaStream | null {
