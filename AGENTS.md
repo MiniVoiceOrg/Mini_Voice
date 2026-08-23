@@ -34,8 +34,12 @@ exatamente estas etapas, nesta ordem:
      resultados esperados e casos de borda).
    - Objetivo: facilitar o trabalho do QA.
 6. **Após o merge, aguarde a release ser gerada.** O push na `main` dispara
-   automaticamente o workflow **Release** (GitHub Actions), que builda e publica
-   uma nova release (`v1.0.<run_number>`) com os artefatos Win/Mac.
+   automaticamente o workflow **Release** (GitHub Actions), que calcula a versão
+   SemVer (`v<MAJOR>.<MINOR>.<PATCH>`) baseada nas convenções de commit, builda e publica
+   uma nova release com os artefatos Win/Mac:
+   - **Patch** (ex: `1.0.X`): correções de bugs (`fix:`, `fix(...)`, `bugfix:`, etc.).
+   - **Minor** (ex: `1.X.0`): novas funcionalidades (`feat:`, `feat(...)`, `feature:`).
+   - **Major** (ex: `X.0.0`): mudanças com breaking changes / refatoração arquitetural (`BREAKING CHANGE:`, `feat!:`, `major:`).
    **Só mova o card para `QA` depois que a release estiver publicada** (run do
    workflow concluída com sucesso), pois o QA valida a partir do build publicado
    — nunca apenas após o merge.

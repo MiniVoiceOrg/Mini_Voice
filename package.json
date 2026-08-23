@@ -24,7 +24,7 @@
     "dev:server": "npm run dev --workspace=apps/server",
     "dev:client": "npm run dev --workspace=apps/client",
     "build": "npm run build --workspace=packages/shared && npm run build --workspace=apps/server && npm run build --workspace=apps/client",
-    "test": "npm run test --workspaces"
+    "test": "node scripts/test-versioning.js && npm run test --workspaces"
   },
   "keywords": [
     "webrtc",
