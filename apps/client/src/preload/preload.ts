@@ -55,6 +55,8 @@ export interface ElectronApi {
     dataUrl: string;
     sizeBytes: number;
   } | null>;
+  registerSoundboardShortcuts: (shortcuts: Array<{ soundName: string; accelerator: string }>) => Promise<boolean>;
+  onSoundboardShortcutTriggered: (cb: (soundName: string) => void) => () => void;
   minimize: () => Promise<void>;
   maximize: () => Promise<void>;
   close: () => Promise<void>;
@@ -94,6 +96,12 @@ const api: ElectronApi = {
   selectSoundboardFolder: () => ipcRenderer.invoke('dialog-select-soundboard-folder'),
   listSoundboardSounds: (folderPath) => ipcRenderer.invoke('soundboard-list-sounds', folderPath),
   readSoundboardSound: (filePath) => ipcRenderer.invoke('soundboard-read-sound', filePath),
+  registerSoundboardShortcuts: (shortcuts) => ipcRenderer.invoke('soundboard-register-shortcuts', shortcuts),
+  onSoundboardShortcutTriggered: (cb) => {
+    const listener = (_e: any, soundName: string) => cb(soundName);
+    ipcRenderer.on('soundboard-shortcut-triggered', listener);
+    return () => ipcRenderer.removeListener('soundboard-shortcut-triggered', listener);
+  },
   minimize: () => ipcRenderer.invoke('window-minimize'),
   maximize: () => ipcRenderer.invoke('window-maximize'),
   close: () => ipcRenderer.invoke('window-close'),

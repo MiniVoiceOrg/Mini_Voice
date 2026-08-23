@@ -108,6 +108,24 @@ function setupIpcHandlers(mainWindow, serverManager) {
             base64: `data:${mime};base64,${base64}`,
         };
     });
+    // Custom sound file selection (#7)
+    electron_1.ipcMain.handle('dialog-select-sound-file', async () => {
+        const result = await electron_1.dialog.showOpenDialog(mainWindow, {
+            title: 'Selecionar Arquivo de Som',
+            filters: [
+                { name: 'Áudio (WAV, MP3, OGG)', extensions: ['wav', 'mp3', 'ogg', 'webm'] },
+            ],
+            properties: ['openFile'],
+        });
+        if (result.canceled || result.filePaths.length === 0)
+            return null;
+        const filePath = result.filePaths[0];
+        const buffer = fs_1.default.readFileSync(filePath);
+        const ext = path_1.default.extname(filePath).toLowerCase().replace('.', '');
+        const mime = ext === 'mp3' ? 'audio/mpeg' : ext === 'ogg' ? 'audio/ogg' : ext === 'webm' ? 'audio/webm' : 'audio/wav';
+        const base64 = buffer.toString('base64');
+        return `data:${mime};base64,${base64}`;
+    });
     // Soundboard Folder Selection
     electron_1.ipcMain.handle('dialog-select-soundboard-folder', async () => {
         const result = await electron_1.dialog.showOpenDialog(mainWindow, {
@@ -186,6 +204,33 @@ function setupIpcHandlers(mainWindow, serverManager) {
         catch (e) {
             console.warn('Error reading sound file:', e);
             return null;
+        }
+    });
+    // Soundboard Global Shortcuts Registration
+    electron_1.ipcMain.handle('soundboard-register-shortcuts', (_, shortcuts) => {
+        try {
+            electron_1.globalShortcut.unregisterAll();
+            if (!Array.isArray(shortcuts))
+                return true;
+            for (const item of shortcuts) {
+                if (!item.accelerator || !item.soundName)
+                    continue;
+                try {
+                    electron_1.globalShortcut.register(item.accelerator, () => {
+                        if (mainWindow && !mainWindow.isDestroyed()) {
+                            mainWindow.webContents.send('soundboard-shortcut-triggered', item.soundName);
+                        }
+                    });
+                }
+                catch (err) {
+                    console.warn(`[main] Failed to register global shortcut "${item.accelerator}" for "${item.soundName}":`, err);
+                }
+            }
+            return true;
+        }
+        catch (e) {
+            console.warn('[main] Error in soundboard-register-shortcuts:', e);
+            return false;
         }
     });
     // Window Controls

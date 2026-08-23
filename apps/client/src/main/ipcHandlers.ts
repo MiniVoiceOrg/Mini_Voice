@@ -1,4 +1,4 @@
-import { app, BrowserWindow, desktopCapturer, dialog, ipcMain, shell } from 'electron';
+import { app, BrowserWindow, desktopCapturer, dialog, globalShortcut, ipcMain, shell } from 'electron';
 import fs from 'fs';
 import net from 'net';
 import path from 'path';
@@ -210,6 +210,31 @@ export function setupIpcHandlers(mainWindow: BrowserWindow, serverManager: Serve
     } catch (e: any) {
       console.warn('Error reading sound file:', e);
       return null;
+    }
+  });
+
+  // Soundboard Global Shortcuts Registration
+  ipcMain.handle('soundboard-register-shortcuts', (_, shortcuts: Array<{ soundName: string; accelerator: string }>) => {
+    try {
+      globalShortcut.unregisterAll();
+      if (!Array.isArray(shortcuts)) return true;
+
+      for (const item of shortcuts) {
+        if (!item.accelerator || !item.soundName) continue;
+        try {
+          globalShortcut.register(item.accelerator, () => {
+            if (mainWindow && !mainWindow.isDestroyed()) {
+              mainWindow.webContents.send('soundboard-shortcut-triggered', item.soundName);
+            }
+          });
+        } catch (err) {
+          console.warn(`[main] Failed to register global shortcut "${item.accelerator}" for "${item.soundName}":`, err);
+        }
+      }
+      return true;
+    } catch (e) {
+      console.warn('[main] Error in soundboard-register-shortcuts:', e);
+      return false;
     }
   });
 

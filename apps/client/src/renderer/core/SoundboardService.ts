@@ -20,8 +20,11 @@ export class SoundboardService {
   private currentAudio: HTMLAudioElement | null = null;
   private currentSoundName: string | null = null;
 
+  private isCapturingKey: boolean = false;
+
   constructor() {
     this.setupListeners();
+    this.loadSounds();
   }
 
   private setupListeners(): void {
@@ -36,6 +39,46 @@ export class SoundboardService {
         this.setSinkId(settingsStore.selectedSpeakerId);
       }
     });
+
+    // Listen to global shortcuts triggered via Electron
+    if (window.api?.onSoundboardShortcutTriggered) {
+      window.api.onSoundboardShortcutTriggered((soundName: string) => {
+        if (this.isCapturingKey) return;
+        const sound = this.sounds.find((s) => s.name === soundName);
+        if (sound) {
+          this.playSound(sound.filePath);
+        }
+      });
+    }
+  }
+
+  public setCapturingKey(active: boolean): void {
+    this.isCapturingKey = active;
+  }
+
+  public async pauseShortcuts(): Promise<void> {
+    if (!window.api?.registerSoundboardShortcuts) return;
+    try {
+      await window.api.registerSoundboardShortcuts([]);
+    } catch (err) {
+      console.warn('[SoundboardService] Failed to pause shortcuts:', err);
+    }
+  }
+
+  public async syncShortcuts(): Promise<void> {
+    if (!window.api?.registerSoundboardShortcuts) return;
+    try {
+      const shortcuts = settingsStore.soundboardShortcuts;
+      const list = Object.entries(shortcuts)
+        .filter(([_, data]) => data && data.accelerator)
+        .map(([soundName, data]) => ({
+          soundName,
+          accelerator: data.accelerator,
+        }));
+      await window.api.registerSoundboardShortcuts(list);
+    } catch (err) {
+      console.warn('[SoundboardService] Failed to sync shortcuts:', err);
+    }
   }
 
   public setSinkId(sinkId: string): void {
@@ -53,6 +96,7 @@ export class SoundboardService {
     try {
       this.sounds = await window.api.listSoundboardSounds(folder);
       appEvents.emit('soundboard.sounds_loaded', this.sounds);
+      this.syncShortcuts();
       return this.sounds;
     } catch (err) {
       console.warn('[SoundboardService] Error loading sounds from folder:', err);

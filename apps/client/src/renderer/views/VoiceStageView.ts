@@ -419,7 +419,7 @@ export class VoiceStageView {
             data-telemetry-user-id="${p.user.id}"
           >${this.getTelemetryText(p.user.id)}</div>
         ` : ''}
-        <div class="stage-controls-bar">
+        <div class="stage-card-controls">
           ${(isScreenOn && !isLocal) ? `
             <div class="stage-volume-control" title="Volume do áudio da tela">
               <span class="material-symbols-outlined md-16">volume_up</span>

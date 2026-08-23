@@ -13,9 +13,16 @@ const api = {
     hostServerStatus: () => electron_1.ipcRenderer.invoke('host-server-status'),
     getDesktopSources: () => electron_1.ipcRenderer.invoke('get-desktop-sources'),
     selectImageDialog: () => electron_1.ipcRenderer.invoke('dialog-select-image'),
+    selectSoundFile: () => electron_1.ipcRenderer.invoke('dialog-select-sound-file'),
     selectSoundboardFolder: () => electron_1.ipcRenderer.invoke('dialog-select-soundboard-folder'),
     listSoundboardSounds: (folderPath) => electron_1.ipcRenderer.invoke('soundboard-list-sounds', folderPath),
     readSoundboardSound: (filePath) => electron_1.ipcRenderer.invoke('soundboard-read-sound', filePath),
+    registerSoundboardShortcuts: (shortcuts) => electron_1.ipcRenderer.invoke('soundboard-register-shortcuts', shortcuts),
+    onSoundboardShortcutTriggered: (cb) => {
+        const listener = (_e, soundName) => cb(soundName);
+        electron_1.ipcRenderer.on('soundboard-shortcut-triggered', listener);
+        return () => electron_1.ipcRenderer.removeListener('soundboard-shortcut-triggered', listener);
+    },
     minimize: () => electron_1.ipcRenderer.invoke('window-minimize'),
     maximize: () => electron_1.ipcRenderer.invoke('window-maximize'),
     close: () => electron_1.ipcRenderer.invoke('window-close'),
