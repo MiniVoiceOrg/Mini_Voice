@@ -70,7 +70,7 @@ export class UserService {
 
   public async updateAvatar(
     userId: string,
-    avatarBase64OrDataUrl: string
+    avatarBase64OrDataUrl: string | null | undefined
   ): Promise<{ success: boolean; errorCode?: ProtocolErrorCode; errorMessage?: string; updatedUser?: UserSummary }> {
     const user = await this.userRepo.findById(userId);
     if (!user) {
@@ -78,6 +78,29 @@ export class UserService {
         success: false,
         errorCode: ProtocolErrorCode.UNAUTHORIZED,
         errorMessage: 'Usuário não encontrado',
+      };
+    }
+
+    // Handle avatar removal
+    if (!avatarBase64OrDataUrl || avatarBase64OrDataUrl.trim() === '') {
+      if (user.avatarPath) {
+        this.avatarStorage.deleteAvatar(user.avatarPath);
+      }
+      await this.userRepo.update(userId, { avatarPath: null });
+      user.avatarPath = null;
+
+      const updatedUser: UserSummary = {
+        id: user.id,
+        clientId: user.clientId,
+        nickname: user.nickname,
+        avatarUrl: null,
+        status: 'ONLINE',
+        joinedAt: user.lastSeenAt,
+      };
+
+      return {
+        success: true,
+        updatedUser,
       };
     }
 

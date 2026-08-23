@@ -5,6 +5,7 @@ import { networkClient } from '../core/NetworkClient';
 import { participantManager } from '../core/ParticipantManager';
 import { serverStore } from '../stores/serverStore';
 import { voiceStore } from '../stores/voiceStore';
+import { settingsStore } from '../stores/settingsStore';
 import { connectionStore, SavedServer } from '../stores/connectionStore';
 import { audioProcessor } from '../core/AudioProcessor';
 import { webRtcManager } from '../core/WebRtcManager';
@@ -53,7 +54,7 @@ export class MainView {
           <div class="channels-resizer" id="channels-resizer" title="Arraste para redimensionar"></div>
           <div class="server-header">
             <button id="server-dropdown-toggle" class="server-dropdown-toggle" title="Opções do servidor">
-              <img src="${logoUrl}" alt="Mini Voice" style="width: 22px; height: 22px; object-fit: contain; border-radius: 4px; flex-shrink: 0;">
+              <img id="server-header-icon" src="${s.iconUrl ? getAvatarUrl(s.iconUrl) : logoUrl}" alt="Ícone do Servidor" style="width: 22px; height: 22px; object-fit: cover; border-radius: 4px; flex-shrink: 0;">
               <span id="server-name-title" style="white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-weight: 700;">${escapeHtml(s.name)}</span>
               <span class="material-symbols-outlined md-18 server-dropdown-caret">expand_more</span>
             </button>
@@ -191,11 +192,29 @@ export class MainView {
           </div>
           <span class="voice-conn-ping" id="sidebar-voice-ping" title="Latência média">-- ms</span>
         </div>
-        <button id="sidebar-btn-leave-voice" class="btn btn-icon voice-conn-leave" title="Sair da chamada">
-          <span class="material-symbols-outlined md-18">call_end</span>
-        </button>
+        <div class="voice-conn-actions">
+          <button id="sidebar-btn-rnnoise" class="btn btn-icon voice-conn-rnnoise ${settingsStore.noiseSuppressionEnabled ? 'rnnoise-active' : ''}" title="${settingsStore.noiseSuppressionEnabled ? 'Supressão de Ruído (RNNoise): Ativada (Clique para desativar)' : 'Supressão de Ruído (RNNoise): Desativada (Clique para ativar)'}">
+            <span class="material-symbols-outlined md-18">graphic_eq</span>
+          </button>
+          <button id="sidebar-btn-leave-voice" class="btn btn-icon voice-conn-leave" title="Sair da chamada">
+            <span class="material-symbols-outlined md-18">call_end</span>
+          </button>
+        </div>
       </div>
     `;
+
+    const btnRnnoise = document.getElementById('sidebar-btn-rnnoise');
+    btnRnnoise?.addEventListener('click', async () => {
+      const enabled = !settingsStore.noiseSuppressionEnabled;
+      settingsStore.noiseSuppressionEnabled = enabled;
+      settingsStore.save();
+      await audioProcessor.setNoiseSuppression(enabled);
+
+      if (btnRnnoise) {
+        btnRnnoise.className = `btn btn-icon voice-conn-rnnoise ${enabled ? 'rnnoise-active' : ''}`;
+        btnRnnoise.setAttribute('title', enabled ? 'Supressão de Ruído (RNNoise): Ativada (Clique para desativar)' : 'Supressão de Ruído (RNNoise): Desativada (Clique para ativar)');
+      }
+    });
 
     document.getElementById('sidebar-btn-leave-voice')?.addEventListener('click', () => {
       this.voiceStageView?.leaveVoice();
@@ -258,9 +277,10 @@ export class MainView {
       const url = `ws://${srv.host.trim().replace(/^wss?:\/\//, '')}:${srv.port}`;
       const isCurrent = url === currentUrl;
       const initial = (srv.name || srv.host || '?').trim().charAt(0).toUpperCase();
+      const iconUrl = isCurrent && serverStore.serverDetails?.iconUrl ? serverStore.serverDetails.iconUrl : (srv as any).iconUrl;
       return `
-        <button class="server-rail-avatar ${isCurrent ? 'active' : ''}" data-host="${escapeHtml(srv.host)}" data-port="${srv.port}" title="${escapeHtml(srv.name || `${srv.host}:${srv.port}`)}">
-          <span>${escapeHtml(initial)}</span>
+        <button class="server-rail-avatar ${isCurrent ? 'active' : ''}" data-host="${escapeHtml(srv.host)}" data-port="${srv.port}" title="${escapeHtml(srv.name || `${srv.host}:${srv.port}`)}" style="overflow: hidden; padding: 0;">
+          ${iconUrl ? `<img src="${getAvatarUrl(iconUrl)}" style="width: 100%; height: 100%; object-fit: cover; border-radius: inherit;">` : `<span>${escapeHtml(initial)}</span>`}
           <span class="server-rail-status-dot" data-status="${isCurrent ? 'online' : 'checking'}"></span>
         </button>
       `;
@@ -890,9 +910,12 @@ export class MainView {
     });
 
     const u7 = appEvents.on(`message.${MessageType.SERVER_SETTINGS_UPDATED}`, (payload: any) => {
-      serverStore.updateServerMeta(payload.name, payload.hasPassword);
+      serverStore.updateServerMeta(payload.name, payload.hasPassword, payload.allowSoundboard, payload.iconUrl);
       const titleEl = document.getElementById('server-name-title');
       if (titleEl) titleEl.innerText = payload.name;
+      const iconEl = document.getElementById('server-header-icon') as HTMLImageElement;
+      if (iconEl) iconEl.src = payload.iconUrl ? getAvatarUrl(payload.iconUrl) : logoUrl;
+      this.renderServerRail();
     });
 
     const u8 = appEvents.on(`message.${MessageType.CHANNEL_DELETED}`, () => {
@@ -917,7 +940,20 @@ export class MainView {
       this.renderChannels();
     });
 
-    this.unbindEvents.push(u1, u2, u3, u4, u5, u6, u7, u8, u9);
+    const u10 = appEvents.on('settings.updated', () => {
+      const btnRnnoise = document.getElementById('sidebar-btn-rnnoise');
+      if (btnRnnoise) {
+        const enabled = settingsStore.noiseSuppressionEnabled;
+        btnRnnoise.className = `btn btn-icon voice-conn-rnnoise ${enabled ? 'rnnoise-active' : ''}`;
+        btnRnnoise.setAttribute('title', enabled ? 'Supressão de Ruído (RNNoise): Ativada (Clique para desativar)' : 'Supressão de Ruído (RNNoise): Desativada (Clique para ativar)');
+      }
+    });
+
+    const u11 = appEvents.on('server.members_updated', () => {
+      this.renderMembers();
+    });
+
+    this.unbindEvents.push(u1, u2, u3, u4, u5, u6, u7, u8, u9, u10, u11);
   }
 
   public destroy(): void {

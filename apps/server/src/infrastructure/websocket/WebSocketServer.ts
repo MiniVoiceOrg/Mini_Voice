@@ -479,6 +479,7 @@ export class WebSocketServer {
       name: result.name!,
       hasPassword: result.hasPassword!,
       allowSoundboard: result.allowSoundboard,
+      iconUrl: result.iconUrl,
     };
 
     // Broadcast updated server settings to all clients

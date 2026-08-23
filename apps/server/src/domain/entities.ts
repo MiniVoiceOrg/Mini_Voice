@@ -7,6 +7,7 @@ export interface ServerRecord {
   createdAt: number;
   maxUsers: number;
   allowSoundboard?: boolean;
+  iconPath?: string | null;
 }
 
 export interface UserRecord {

@@ -139,6 +139,7 @@ export class AuthService {
       maxUsers: server.maxUsers,
       hasPassword: !!(server.passwordHash && server.passwordHash.length > 0),
       allowSoundboard: server.allowSoundboard !== false,
+      iconUrl: this.avatarStorage.getPublicUrl(server.iconPath),
       channels: channels.map((c) => ({
         id: c.id,
         serverId: c.serverId,
@@ -163,11 +164,13 @@ export class AuthService {
     name?: string;
     password?: string | null;
     allowSoundboard?: boolean;
+    iconBase64?: string | null;
   }): Promise<{
     success: boolean;
     name?: string;
     hasPassword?: boolean;
     allowSoundboard?: boolean;
+    iconUrl?: string | null;
     errorMessage?: string;
   }> {
     const server = await this.serverRepo.getServer();
@@ -193,6 +196,35 @@ export class AuthService {
       updates.allowSoundboard = Boolean(payload.allowSoundboard);
     }
 
+    if (payload.iconBase64 !== undefined) {
+      if (!payload.iconBase64 || payload.iconBase64.trim() === '') {
+        // Remove server icon
+        if (server.iconPath) {
+          this.avatarStorage.deleteAvatar(server.iconPath);
+        }
+        updates.iconPath = null;
+      } else {
+        // Save new server icon
+        let rawBase64 = payload.iconBase64;
+        if (payload.iconBase64.includes(',')) {
+          rawBase64 = payload.iconBase64.split(',')[1];
+        }
+        const buffer = Buffer.from(rawBase64, 'base64');
+        const validation = this.avatarStorage.validateAvatarBuffer(buffer);
+        if (!validation.isValid || !validation.extension) {
+          return {
+            success: false,
+            errorMessage: validation.error || 'Formato de imagem inválido para o ícone do servidor.',
+          };
+        }
+        if (server.iconPath) {
+          this.avatarStorage.deleteAvatar(server.iconPath);
+        }
+        const newFilename = await this.avatarStorage.saveAvatar(buffer, validation.extension);
+        updates.iconPath = newFilename;
+      }
+    }
+
     await this.serverRepo.updateServer(updates);
     const updatedServer = await this.serverRepo.getServer();
 
@@ -201,6 +233,7 @@ export class AuthService {
       name: updatedServer?.name || server.name,
       hasPassword: !!(updatedServer?.passwordHash && updatedServer.passwordHash.length > 0),
       allowSoundboard: updatedServer?.allowSoundboard !== false,
+      iconUrl: this.avatarStorage.getPublicUrl(updatedServer?.iconPath),
     };
   }
 }

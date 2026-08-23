@@ -971,9 +971,52 @@ input:focus, textarea:focus, select:focus {
   margin-left: auto;
 }
 
+.voice-conn-actions {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  flex-shrink: 0;
+  margin-left: 6px;
+}
+
+.voice-conn-rnnoise {
+  color: var(--text-muted);
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.15s ease;
+}
+
+.voice-conn-rnnoise:hover {
+  color: var(--text-primary);
+  background-color: var(--bg-card-hover);
+}
+
+.voice-conn-rnnoise.rnnoise-active {
+  color: var(--accent-primary);
+  background-color: rgba(88, 101, 242, 0.15);
+  border-color: rgba(88, 101, 242, 0.45);
+}
+
+.voice-conn-rnnoise.rnnoise-active:hover {
+  color: var(--accent-hover);
+  background-color: rgba(88, 101, 242, 0.25);
+  border-color: var(--accent-primary);
+}
+
 .voice-conn-leave {
   color: var(--danger);
   flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.15s ease;
+}
+
+.voice-conn-leave:hover {
+  background-color: rgba(237, 66, 69, 0.15);
+  border-color: rgba(237, 66, 69, 0.45);
 }
 
 .user-control-main {
@@ -2796,4 +2839,51 @@ button[data-loading="1"]::after {
 
 .sb-btn-remove-shortcut:hover {
   color: var(--danger) !important;
+}
+
+/* Settings Profile Avatar with Hover Overlay (#71) */
+.settings-avatar-wrapper {
+  position: relative;
+  width: 54px;
+  height: 54px;
+  border-radius: 50%;
+  overflow: hidden;
+  cursor: pointer;
+  flex-shrink: 0;
+  border: 2px solid var(--border-color);
+  transition: border-color 0.2s ease, transform 0.15s ease, box-shadow 0.2s ease;
+}
+
+.settings-avatar-wrapper:hover {
+  border-color: var(--accent-primary);
+  transform: scale(1.04);
+  box-shadow: 0 0 10px rgba(88, 101, 242, 0.35);
+}
+
+.settings-avatar-img {
+  width: 100%;
+  height: 100%;
+  border-radius: 50%;
+  object-fit: cover;
+  display: block;
+}
+
+.settings-avatar-overlay {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background: rgba(0, 0, 0, 0.55);
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #ffffff;
+  opacity: 0;
+  transition: opacity 0.2s ease;
+}
+
+.settings-avatar-wrapper:hover .settings-avatar-overlay {
+  opacity: 1;
 }

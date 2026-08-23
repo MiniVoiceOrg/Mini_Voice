@@ -149,10 +149,12 @@ class App {
 
     // Protocol Server -> Client Broadcast Handlers
     appEvents.on(`message.${MessageType.USER_JOINED}`, (payload: UserJoinedPayload) => {
+      serverStore.addMember(payload.user);
       participantManager.addUser(payload.user);
     });
 
     appEvents.on(`message.${MessageType.USER_LEFT}`, (payload: UserLeftPayload) => {
+      serverStore.removeMember(payload.userId);
       participantManager.removeUser(payload.userId);
       webRtcManager.removePeer(payload.userId);
     });
@@ -163,6 +165,7 @@ class App {
     });
 
     appEvents.on(`message.${MessageType.USER_UPDATED}`, (payload: UserUpdatedPayload) => {
+      serverStore.updateMember(payload.user);
       participantManager.updateUser(payload.user);
       if (payload.user.id === serverStore.currentUser?.id) {
         serverStore.updateCurrentUser(payload.user);
