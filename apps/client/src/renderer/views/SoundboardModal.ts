@@ -5,6 +5,13 @@ import { serverStore } from '../stores/serverStore';
 import { voiceStore } from '../stores/voiceStore';
 import { appEvents } from '../core/EventBus';
 
+function formatTime(seconds: number): string {
+  if (isNaN(seconds) || seconds < 0) return '0:00';
+  const mins = Math.floor(seconds / 60);
+  const secs = Math.floor(seconds % 60);
+  return `${mins}:${secs.toString().padStart(2, '0')}`;
+}
+
 export class SoundboardModal {
   private modalEl: HTMLElement | null = null;
   private unbindEvents: Array<() => void> = [];
@@ -16,6 +23,7 @@ export class SoundboardModal {
     await soundboardService.loadSounds();
     const sounds = soundboardService.getSounds();
     const serverAllows = serverStore.serverDetails?.allowSoundboard !== false;
+    const currentPlayback = soundboardService.getCurrentPlayback();
 
     this.modalEl = document.createElement('div');
     this.modalEl.className = 'modal-backdrop';
@@ -30,6 +38,9 @@ export class SoundboardModal {
             <span id="sb-sound-count" style="font-size: 11px; background: var(--bg-tertiary); padding: 2px 8px; border-radius: 12px; color: var(--text-muted); font-weight: 500;">
               ${sounds.length} ${sounds.length === 1 ? 'som' : 'sons'}
             </span>
+            <div class="sb-help-badge" title="Formatos suportados: MP3, WAV, OGG, M4A, AAC, WEBM (máx. 3MB por som)" style="margin-left: 2px;">
+              <span class="material-symbols-outlined md-16">help</span>
+            </div>
           </div>
           <button id="modal-close" class="modal-close-btn">&times;</button>
         </div>
@@ -53,10 +64,35 @@ export class SoundboardModal {
               <span class="material-symbols-outlined md-16">${settingsStore.soundboardMuted ? 'volume_off' : 'volume_up'}</span>
             </button>
             
-            <div style="display: flex; align-items: center; gap: 6px;">
-              <input id="sb-slider-volume" type="range" min="0" max="100" value="${settingsStore.soundboardVolume}" style="width: 80px; height: 4px;">
-              <span id="sb-volume-label" style="font-family: var(--font-mono); font-size: 11px; color: var(--text-secondary); min-width: 28px;">${settingsStore.soundboardVolume}%</span>
+            <div style="display: flex; align-items: center; gap: 8px;">
+              <input id="sb-slider-volume" class="sb-slider" type="range" min="0" max="100" value="${settingsStore.soundboardVolume}" style="width: 80px;">
+              <span id="sb-volume-label" style="font-family: var(--font-mono); font-size: 11px; color: var(--text-secondary); min-width: 32px; text-align: right;">${settingsStore.soundboardVolume}%</span>
             </div>
+          </div>
+        </div>
+
+        <!-- Active Sound Playback Mini Player -->
+        <div id="sb-player-container" style="display: ${currentPlayback.isPlaying ? 'block' : 'none'};">
+          <div class="sb-player-bar">
+            <div class="sb-player-info">
+              <span class="material-symbols-outlined sb-player-icon">graphic_eq</span>
+              <span id="sb-player-sound-name" class="sb-player-name" title="${escapeHtml(currentPlayback.soundName || '')}">
+                ${escapeHtml(currentPlayback.soundName || '')}
+              </span>
+            </div>
+            <div class="sb-player-progress-container">
+              <div class="sb-player-progress-track">
+                <div id="sb-player-progress-fill" class="sb-player-progress-fill" style="width: ${currentPlayback.duration > 0 ? (currentPlayback.currentTime / currentPlayback.duration) * 100 : 0}%;"></div>
+              </div>
+              <div class="sb-player-time">
+                <span id="sb-player-current-time">${formatTime(currentPlayback.currentTime)}</span>
+                <span id="sb-player-total-time">${formatTime(currentPlayback.duration)}</span>
+              </div>
+            </div>
+            <button type="button" id="sb-player-btn-stop" class="sb-player-stop-btn" title="Parar reprodução de áudio">
+              <span class="material-symbols-outlined md-14">stop</span>
+              <span>Parar</span>
+            </button>
           </div>
         </div>
 
@@ -78,7 +114,7 @@ export class SoundboardModal {
 
         <!-- Sounds Grid Area -->
         <div id="sb-sounds-container" style="flex: 1; overflow-y: auto; padding: 16px 20px; min-height: 220px;">
-          ${this.renderSoundsGrid(sounds)}
+          ${this.renderSoundsGrid(sounds, currentPlayback.soundName)}
         </div>
 
         <!-- Footer -->
@@ -93,22 +129,17 @@ export class SoundboardModal {
 
     document.body.appendChild(this.modalEl);
     this.attachEvents();
-
-    const onSoundPlayed = (payload: any) => {
-      this.highlightPlayedSound(payload.soundName);
-    };
-    appEvents.on('soundboard.played', onSoundPlayed);
-    this.unbindEvents.push(() => appEvents.off('soundboard.played', onSoundPlayed));
+    this.setupPlaybackListeners();
   }
 
-  private renderSoundsGrid(sounds: SoundItem[]): string {
+  private renderSoundsGrid(sounds: SoundItem[], activeSoundName: string | null = null): string {
     if (!settingsStore.soundboardFolderPath) {
       return `
         <div style="display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100%; min-height: 180px; text-align: center; color: var(--text-muted); gap: 12px;">
           <span class="material-symbols-outlined" style="font-size: 48px; color: var(--text-dim);">folder_special</span>
           <div>
             <div style="font-size: 14px; font-weight: 600; color: var(--text-primary); margin-bottom: 4px;">Nenhuma pasta de sons selecionada</div>
-            <div style="font-size: 12px; max-width: 320px;">Escolha uma pasta no seu computador com arquivos MP3, WAV ou OGG para criar seu soundboard!</div>
+            <div style="font-size: 12px; max-width: 340px;">Escolha uma pasta no seu computador com arquivos MP3, WAV, OGG, M4A, AAC ou WEBM para usar no seu soundboard!</div>
           </div>
           <button type="button" id="sb-btn-select-folder-empty" class="btn btn-primary" style="font-size: 12px; padding: 8px 18px; margin-top: 6px;">
             <span class="material-symbols-outlined md-16" style="margin-right: 6px;">folder_open</span>
@@ -124,7 +155,7 @@ export class SoundboardModal {
           <span class="material-symbols-outlined" style="font-size: 48px; color: var(--text-dim);">audio_file</span>
           <div>
             <div style="font-size: 14px; font-weight: 600; color: var(--text-primary); margin-bottom: 4px;">Nenhum arquivo de áudio encontrado</div>
-            <div style="font-size: 12px; max-width: 320px;">A pasta selecionada não contém arquivos .mp3, .wav, .ogg ou .m4a.</div>
+            <div style="font-size: 12px; max-width: 340px;">A pasta selecionada não contém arquivos de áudio compatíveis (.mp3, .wav, .ogg, .m4a, .aac, .webm de até 3MB).</div>
           </div>
           <button type="button" id="sb-btn-select-folder-empty" class="btn btn-secondary" style="font-size: 12px; padding: 6px 14px;">
             <span class="material-symbols-outlined md-16" style="margin-right: 6px;">folder_open</span>
@@ -138,14 +169,17 @@ export class SoundboardModal {
       <div style="display: grid; grid-template-columns: repeat(auto-fill, minmax(130px, 1fr)); gap: 10px;">
         ${sounds
           .map(
-            (s) => `
-          <button type="button" class="sb-sound-btn" data-filepath="${escapeHtml(s.filePath)}" data-soundname="${escapeHtml(s.name)}" title="${escapeHtml(s.name)} (${(s.sizeBytes / 1024).toFixed(0)} KB)" style="display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 8px; padding: 14px 8px; background: var(--bg-card); border: 1px solid var(--border-color); border-radius: var(--radius-md); color: var(--text-primary); cursor: pointer; transition: all 0.15s ease; text-align: center; outline: none;">
-            <span class="material-symbols-outlined" style="color: var(--accent-primary); font-size: 26px;">play_circle</span>
+            (s) => {
+              const isPlaying = activeSoundName === s.name;
+              return `
+          <button type="button" class="sb-sound-btn ${isPlaying ? 'is-playing' : ''}" data-filepath="${escapeHtml(s.filePath)}" data-soundname="${escapeHtml(s.name)}" title="${escapeHtml(s.name)} (${(s.sizeBytes / 1024).toFixed(0)} KB)" style="display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 8px; padding: 14px 8px; background: var(--bg-card); border: 1px solid var(--border-color); border-radius: var(--radius-md); color: var(--text-primary); cursor: pointer; text-align: center; outline: none;">
+            <span class="material-symbols-outlined sb-sound-icon" style="color: var(--accent-primary); font-size: 26px;">${isPlaying ? 'volume_up' : 'play_circle'}</span>
             <span style="font-size: 12px; font-weight: 600; line-height: 1.2; overflow: hidden; text-overflow: ellipsis; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; width: 100%; word-break: break-word;">
               ${escapeHtml(s.name)}
             </span>
           </button>
-        `
+        `;
+            }
           )
           .join('')}
       </div>
@@ -163,6 +197,7 @@ export class SoundboardModal {
     const sliderVol = this.modalEl.querySelector('#sb-slider-volume') as HTMLInputElement | null;
     const volLabel = this.modalEl.querySelector('#sb-volume-label');
     const container = this.modalEl.querySelector('#sb-sounds-container');
+    const btnStop = this.modalEl.querySelector('#sb-player-btn-stop');
 
     const handleClose = () => this.close();
     btnClose?.addEventListener('click', handleClose);
@@ -204,6 +239,10 @@ export class SoundboardModal {
       settingsStore.save();
     });
 
+    btnStop?.addEventListener('click', () => {
+      soundboardService.stopSound();
+    });
+
     this.attachSoundClickEvents();
   }
 
@@ -215,15 +254,100 @@ export class SoundboardModal {
         const filePath = btn.getAttribute('data-filepath');
         if (!filePath) return;
 
-        // Visual click feedback
-        btn.classList.add('playing');
-        btn.setAttribute('style', `${btn.getAttribute('style') || ''} transform: scale(0.95); border-color: var(--accent-primary); background: rgba(88, 101, 242, 0.15);`);
-        setTimeout(() => {
-          btn.setAttribute('style', (btn.getAttribute('style') || '').replace('transform: scale(0.95);', ''));
-        }, 150);
-
         await soundboardService.playSound(filePath);
       });
+    });
+  }
+
+  private setupPlaybackListeners(): void {
+    // 1. Playback started
+    const onPlaybackStarted = (payload: { soundName: string; duration: number }) => {
+      if (!this.modalEl) return;
+
+      const playerContainer = this.modalEl.querySelector('#sb-player-container') as HTMLElement | null;
+      const soundNameEl = this.modalEl.querySelector('#sb-player-sound-name');
+      const progressFill = this.modalEl.querySelector('#sb-player-progress-fill') as HTMLElement | null;
+      const currentTimeEl = this.modalEl.querySelector('#sb-player-current-time');
+      const totalTimeEl = this.modalEl.querySelector('#sb-player-total-time');
+
+      if (playerContainer) playerContainer.style.display = 'block';
+      if (soundNameEl) {
+        soundNameEl.textContent = payload.soundName;
+        soundNameEl.setAttribute('title', payload.soundName);
+      }
+      if (progressFill) progressFill.style.width = '0%';
+      if (currentTimeEl) currentTimeEl.textContent = '0:00';
+      if (totalTimeEl) totalTimeEl.textContent = formatTime(payload.duration);
+
+      // Highlight active sound button
+      this.updateActiveButton(payload.soundName);
+    };
+
+    // 2. Playback progress
+    const onPlaybackProgress = (payload: { soundName: string; currentTime: number; duration: number; percent: number }) => {
+      if (!this.modalEl) return;
+
+      const progressFill = this.modalEl.querySelector('#sb-player-progress-fill') as HTMLElement | null;
+      const currentTimeEl = this.modalEl.querySelector('#sb-player-current-time');
+      const totalTimeEl = this.modalEl.querySelector('#sb-player-total-time');
+
+      if (progressFill) progressFill.style.width = `${payload.percent}%`;
+      if (currentTimeEl) currentTimeEl.textContent = formatTime(payload.currentTime);
+      if (totalTimeEl) totalTimeEl.textContent = formatTime(payload.duration);
+    };
+
+    // 3. Playback ended / stopped
+    const onPlaybackEnded = () => {
+      if (!this.modalEl) return;
+
+      const playerContainer = this.modalEl.querySelector('#sb-player-container') as HTMLElement | null;
+      if (playerContainer) playerContainer.style.display = 'none';
+
+      // Clear button active states
+      this.clearActiveButtons();
+    };
+
+    // 4. Highlight incoming sound trigger
+    const onSoundPlayed = (payload: any) => {
+      this.highlightPlayedSound(payload.soundName);
+    };
+
+    appEvents.on('soundboard.playback_started', onPlaybackStarted);
+    appEvents.on('soundboard.playback_progress', onPlaybackProgress);
+    appEvents.on('soundboard.playback_ended', onPlaybackEnded);
+    appEvents.on('soundboard.played', onSoundPlayed);
+
+    this.unbindEvents.push(() => {
+      appEvents.off('soundboard.playback_started', onPlaybackStarted);
+      appEvents.off('soundboard.playback_progress', onPlaybackProgress);
+      appEvents.off('soundboard.playback_ended', onPlaybackEnded);
+      appEvents.off('soundboard.played', onSoundPlayed);
+    });
+  }
+
+  private updateActiveButton(activeSoundName: string): void {
+    if (!this.modalEl) return;
+    const buttons = this.modalEl.querySelectorAll('.sb-sound-btn');
+    buttons.forEach((btn) => {
+      const soundName = btn.getAttribute('data-soundname');
+      const icon = btn.querySelector('.sb-sound-icon');
+      if (soundName === activeSoundName) {
+        btn.classList.add('is-playing');
+        if (icon) icon.textContent = 'volume_up';
+      } else {
+        btn.classList.remove('is-playing');
+        if (icon) icon.textContent = 'play_circle';
+      }
+    });
+  }
+
+  private clearActiveButtons(): void {
+    if (!this.modalEl) return;
+    const buttons = this.modalEl.querySelectorAll('.sb-sound-btn');
+    buttons.forEach((btn) => {
+      btn.classList.remove('is-playing');
+      const icon = btn.querySelector('.sb-sound-icon');
+      if (icon) icon.textContent = 'play_circle';
     });
   }
 
