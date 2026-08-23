@@ -141,7 +141,7 @@ export class SettingsModal {
               </button>
             </div>
             <div id="soundboard-folder-info" style="font-size: 11px; color: var(--text-muted); margin-top: 4px;">
-              ${settingsStore.soundboardFolderPath ? `${soundboardService.getSounds().length} sons encontrados nesta pasta.` : 'Selecione uma pasta do seu computador contendo arquivos de áudio.'}
+              ${settingsStore.soundboardFolderPath ? `${soundboardService.getSounds().length} sons encontrados nesta pasta.` : 'Formatos suportados: MP3, WAV, OGG, M4A, AAC, WEBM (máx. 3MB por arquivo).'}
             </div>
           </div>
 
@@ -150,7 +150,7 @@ export class SettingsModal {
               <span>Volume de Reprodução do Soundboard</span>
               <span id="soundboard-vol-val" style="font-family: var(--font-mono); font-size: 12px;">${settingsStore.soundboardVolume}%</span>
             </label>
-            <input id="slider-soundboard-vol" type="range" min="0" max="100" value="${settingsStore.soundboardVolume}" style="width: 100%;">
+            <input id="slider-soundboard-vol" class="sb-slider" type="range" min="0" max="100" value="${settingsStore.soundboardVolume}" style="width: 100%;">
             <div style="font-size: 11px; color: var(--text-muted); margin-top: 2px;">
               Ajusta o volume dos sons de soundboard tocados por você e por outros usuários na sala.
             </div>

@@ -17,6 +17,8 @@ export class SoundboardService {
   private sounds: SoundItem[] = [];
   private audioContext: AudioContext | null = null;
   private sinkId: string = '';
+  private currentAudio: HTMLAudioElement | null = null;
+  private currentSoundName: string | null = null;
 
   constructor() {
     this.setupListeners();
@@ -62,6 +64,30 @@ export class SoundboardService {
 
   public getSounds(): SoundItem[] {
     return this.sounds;
+  }
+
+  public getCurrentPlayback(): { soundName: string | null; isPlaying: boolean; currentTime: number; duration: number } {
+    return {
+      soundName: this.currentSoundName,
+      isPlaying: !!this.currentAudio && !this.currentAudio.paused,
+      currentTime: this.currentAudio?.currentTime || 0,
+      duration: this.currentAudio?.duration || 0,
+    };
+  }
+
+  public stopSound(): void {
+    if (this.currentAudio) {
+      try {
+        this.currentAudio.pause();
+        this.currentAudio.currentTime = 0;
+      } catch (err) {
+        console.warn('[SoundboardService] Error stopping audio:', err);
+      }
+      const soundName = this.currentSoundName || '';
+      this.currentAudio = null;
+      this.currentSoundName = null;
+      appEvents.emit('soundboard.playback_ended', { soundName });
+    }
   }
 
   public async selectFolder(): Promise<string | null> {
@@ -115,6 +141,53 @@ export class SoundboardService {
     }
   }
 
+  private playAudioInstance(audio: HTMLAudioElement, soundName: string): void {
+    // Stop any previously playing sound
+    this.stopSound();
+
+    this.currentAudio = audio;
+    this.currentSoundName = soundName;
+
+    const cleanup = () => {
+      if (this.currentAudio === audio) {
+        this.currentAudio = null;
+        this.currentSoundName = null;
+        appEvents.emit('soundboard.playback_ended', { soundName });
+      }
+    };
+
+    audio.addEventListener('play', () => {
+      appEvents.emit('soundboard.playback_started', {
+        soundName,
+        duration: audio.duration || 0,
+      });
+    });
+
+    audio.addEventListener('timeupdate', () => {
+      const duration = audio.duration || 0;
+      const currentTime = audio.currentTime || 0;
+      const percent = duration > 0 ? (currentTime / duration) * 100 : 0;
+      appEvents.emit('soundboard.playback_progress', {
+        soundName,
+        currentTime,
+        duration,
+        percent: Math.min(100, Math.max(0, percent)),
+      });
+    });
+
+    audio.addEventListener('ended', cleanup);
+    audio.addEventListener('pause', cleanup);
+    audio.addEventListener('error', (e) => {
+      console.warn('[SoundboardService] Audio error:', e);
+      cleanup();
+    });
+
+    audio.play().catch((err) => {
+      console.warn('[SoundboardService] Audio play error:', err);
+      cleanup();
+    });
+  }
+
   private async playLocalPreview(filePath: string): Promise<void> {
     try {
       const soundData = await window.api.readSoundboardSound(filePath);
@@ -131,7 +204,7 @@ export class SoundboardService {
         (audio as any).setSinkId(this.sinkId).catch(() => {});
       }
 
-      await audio.play();
+      this.playAudioInstance(audio, soundData.soundName);
     } catch (err) {
       console.warn('[SoundboardService] Local preview failed:', err);
     }
@@ -158,8 +231,7 @@ export class SoundboardService {
         (audio as any).setSinkId(targetSink).catch(() => {});
       }
 
-      // Simultaneous polyphonic mixing
-      await audio.play();
+      this.playAudioInstance(audio, payload.soundName);
     } catch (err) {
       console.warn('[SoundboardService] Failed to play incoming soundboard audio:', err);
     }
