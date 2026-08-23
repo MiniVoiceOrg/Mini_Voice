@@ -7,10 +7,17 @@ import { LanDiscovery } from './lanDiscovery';
 import { HostServerOptions, ServerManager } from './serverManager';
 
 // Screen audio native module (compiled only on CI — graceful fallback)
-let screenAudio: { isSupported: () => boolean; start: (opts: any, cb: (buf: Buffer) => void) => { success: boolean; error?: string }; stop: () => { success: boolean } } | null = null;
+let screenAudio: {
+  isSupported: () => boolean;
+  start: (opts: any, cb: (buf: Buffer) => void) => { success: boolean; error?: string };
+  stop: () => { success: boolean };
+  getLastError: () => string;
+  getStatus: () => number;
+} | null = null;
 try {
   screenAudio = require('@mini-voice/screen-audio');
-} catch {
+} catch (e) {
+  console.warn('[ScreenAudio:Main] Native module not available:', (e as Error).message);
   screenAudio = null;
 }
 
@@ -311,12 +318,14 @@ export function setupIpcHandlers(mainWindow: BrowserWindow, serverManager: Serve
 
   ipcMain.handle('screen-audio-diagnose', () => {
     const os = require('os');
-    const release = os.release(); // e.g. "10.0.22631"
+    const release = os.release();
     return {
       nativeModuleLoaded: screenAudio !== null,
       platformSupported: screenAudio ? screenAudio.isSupported() : false,
       osVersion: `${os.platform()} ${release}`,
       pid: process.pid,
+      captureStatus: screenAudio ? screenAudio.getStatus() : -1,
+      lastError: screenAudio ? screenAudio.getLastError() : 'Module not loaded',
     };
   });
 
