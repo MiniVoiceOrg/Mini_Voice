@@ -121,6 +121,7 @@ export class SettingsStore {
         screenShareTelemetryMode: this.screenShareTelemetryMode,
         customProfile: this.customProfile,
         customSounds: this.customSounds,
+        soundboardShortcuts: this.soundboardShortcuts,
       }));
       appEvents.emit('settings.updated');
     } catch (e) {}
