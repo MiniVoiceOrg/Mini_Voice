@@ -430,9 +430,13 @@ export class VoiceStageView {
         ` : ''}
         <div class="stage-card-controls">
           ${(isScreenOn && !isLocal) ? `
-            <div class="stage-volume-control" title="Volume do áudio da tela">
-              <span class="material-symbols-outlined md-16">volume_up</span>
-              <input type="range" class="stage-screen-volume-slider" data-user-id="${p.user.id}" min="0" max="100" value="${settingsStore.getScreenAudioVolume(p.user.id)}" />
+            <div class="stage-volume-wrapper">
+              <div class="stage-volume-popup">
+                <input type="range" class="stage-screen-volume-slider" data-user-id="${p.user.id}" min="0" max="100" value="${settingsStore.getScreenAudioVolume(p.user.id)}" />
+              </div>
+              <button class="stage-volume-btn" title="Volume do áudio da tela" aria-label="Volume">
+                <span class="material-symbols-outlined md-18">volume_up</span>
+              </button>
             </div>
           ` : ''}
           <button class="stage-fullscreen-btn" data-fullscreen-target="${videoId}" title="Tela cheia" aria-label="Tela cheia">

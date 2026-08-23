@@ -73,6 +73,7 @@ export interface ElectronApi {
     port: number
   ) => Promise<{ reachable: boolean; reason: 'online' | 'refused' | 'timeout' | 'unreachable' }>;
   screenAudioSupported: () => Promise<boolean>;
+  screenAudioDiagnose: () => Promise<{ nativeModuleLoaded: boolean; platformSupported: boolean; osVersion: string; pid: number }>;
   screenAudioStart: () => Promise<{ success: boolean; error?: string }>;
   screenAudioStop: () => Promise<{ success: boolean }>;
   onScreenAudioFrame: (cb: (buffer: ArrayBuffer) => void) => void;
@@ -115,6 +116,7 @@ const api: ElectronApi = {
   openExternal: (url) => ipcRenderer.invoke('open-external', url),
   probeServer: (host, port) => ipcRenderer.invoke('probe-server', host, port),
   screenAudioSupported: () => ipcRenderer.invoke('screen-audio-supported'),
+  screenAudioDiagnose: () => ipcRenderer.invoke('screen-audio-diagnose'),
   screenAudioStart: () => ipcRenderer.invoke('screen-audio-start'),
   screenAudioStop: () => ipcRenderer.invoke('screen-audio-stop'),
   onScreenAudioFrame: (cb) => ipcRenderer.on('screen-audio:frame', (_e, buffer) => cb(buffer)),

@@ -309,11 +309,23 @@ export function setupIpcHandlers(mainWindow: BrowserWindow, serverManager: Serve
     return screenAudio ? screenAudio.isSupported() : false;
   });
 
+  ipcMain.handle('screen-audio-diagnose', () => {
+    const os = require('os');
+    const release = os.release(); // e.g. "10.0.22631"
+    return {
+      nativeModuleLoaded: screenAudio !== null,
+      platformSupported: screenAudio ? screenAudio.isSupported() : false,
+      osVersion: `${os.platform()} ${release}`,
+      pid: process.pid,
+    };
+  });
+
   ipcMain.handle('screen-audio-start', () => {
     if (!screenAudio || !screenAudio.isSupported()) {
       return { success: false, error: 'Not supported on this platform' };
     }
     const excludePid = process.pid;
+    console.log(`[ScreenAudio:Main] Starting capture (excludePid=${excludePid})`);
     const result = screenAudio.start(
       { excludePid, sampleRate: 48000, channels: 2 },
       (buffer: Buffer) => {
@@ -322,6 +334,7 @@ export function setupIpcHandlers(mainWindow: BrowserWindow, serverManager: Serve
         }
       }
     );
+    console.log(`[ScreenAudio:Main] start() result:`, result);
     return result;
   });
 

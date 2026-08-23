@@ -96,6 +96,12 @@ export interface ElectronApi {
         reason: 'online' | 'refused' | 'timeout' | 'unreachable';
     }>;
     screenAudioSupported: () => Promise<boolean>;
+    screenAudioDiagnose: () => Promise<{
+        nativeModuleLoaded: boolean;
+        platformSupported: boolean;
+        osVersion: string;
+        pid: number;
+    }>;
     screenAudioStart: () => Promise<{
         success: boolean;
         error?: string;

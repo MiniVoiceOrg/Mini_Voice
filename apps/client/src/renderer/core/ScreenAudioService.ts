@@ -6,6 +6,9 @@
  * AudioWorklet ring buffer, and outputs a MediaStreamTrack that can be added
  * to peer connections.
  *
+ * Includes a test-tone mode (440 Hz sine wave) that bypasses the native module
+ * entirely, useful for validating the WebRTC pipeline end-to-end.
+ *
  * Part of #55 (screen audio) and #75 (per-user volume).
  */
 
@@ -21,7 +24,6 @@ const WORKLET_CODE = `
 class ScreenAudioProcessor extends AudioWorkletProcessor {
   constructor() {
     super();
-    // Pre-allocated ring buffer (Float32Array) for zero-GC operation
     this.ring = new Float32Array(${RING_BUFFER_SIZE});
     this.writePos = 0;
     this.readPos = 0;
@@ -68,33 +70,45 @@ class ScreenAudioProcessor extends AudioWorkletProcessor {
 registerProcessor('screen-audio-processor', ScreenAudioProcessor);
 `;
 
+// Seconds to wait for the first native frame before warning the user
+const FRAME_WATCHDOG_TIMEOUT = 5;
+
 class ScreenAudioService {
   private audioContext: AudioContext | null = null;
   private workletNode: AudioWorkletNode | null = null;
   private destinationNode: MediaStreamAudioDestinationNode | null = null;
   private outputTrack: MediaStreamTrack | null = null;
   private isCapturing: boolean = false;
+  private isTestTone: boolean = false;
   private frameCount: number = 0;
+  private testToneInterval: ReturnType<typeof setInterval> | null = null;
+  private frameWatchdog: ReturnType<typeof setTimeout> | null = null;
 
-  /**
-   * Check if the native screen audio capture is supported.
-   */
   public async isSupported(): Promise<boolean> {
     return window.api.screenAudioSupported();
   }
 
   /**
-   * Start screen audio capture. Returns the MediaStreamTrack to be sent via WebRTC.
+   * Return diagnostic information about the screen audio subsystem.
    */
-  public async start(): Promise<MediaStreamTrack | null> {
-    if (this.isCapturing) return this.outputTrack;
-
+  public async diagnose(): Promise<Record<string, unknown>> {
     const supported = await this.isSupported();
-    if (!supported) {
-      console.warn('[ScreenAudio] Not supported on this platform');
-      return null;
-    }
+    const diag = await window.api.screenAudioDiagnose();
+    return {
+      nativeModuleLoaded: diag.nativeModuleLoaded,
+      platformSupported: supported,
+      osVersion: diag.osVersion,
+      isCapturing: this.isCapturing,
+      isTestTone: this.isTestTone,
+      framesReceived: this.frameCount,
+    };
+  }
 
+  // ────────────────────────────────────────────
+  //  Shared pipeline setup (used by both modes)
+  // ────────────────────────────────────────────
+
+  private async setupPipeline(): Promise<void> {
     this.audioContext = new AudioContext({ sampleRate: 48000 });
 
     const blob = new Blob([WORKLET_CODE], { type: 'application/javascript' });
@@ -109,16 +123,33 @@ class ScreenAudioService {
 
     this.destinationNode = this.audioContext.createMediaStreamDestination();
     this.workletNode.connect(this.destinationNode);
-
     this.outputTrack = this.destinationNode.stream.getAudioTracks()[0];
-
     this.frameCount = 0;
+  }
+
+  private feedSamples(float32: Float32Array): void {
+    if (!this.workletNode) return;
+    const copy = new Float32Array(float32);
+    this.workletNode.port.postMessage({ type: 'pcm-data', samples: copy }, [copy.buffer]);
+  }
+
+  // ────────────────────────────────────────────
+  //  Native capture mode
+  // ────────────────────────────────────────────
+
+  public async start(): Promise<MediaStreamTrack | null> {
+    if (this.isCapturing) return this.outputTrack;
+
+    const supported = await this.isSupported();
+    if (!supported) {
+      console.warn('[ScreenAudio] Not supported on this platform');
+      appEvents.emit('screen_audio.error', 'Captura de áudio de tela não é suportada nesta versão do Windows (necessário build 19041+).');
+      return null;
+    }
+
+    await this.setupPipeline();
 
     // Listen for PCM frames from the native module via preload.
-    // The buffer arrives as Uint8Array (Electron IPC serialises Node Buffers
-    // this way via structured clone). We must reinterpret the underlying
-    // ArrayBuffer as Float32Array, NOT pass the Uint8Array to the constructor
-    // (which would treat each byte as a separate float value).
     window.api.onScreenAudioFrame((buffer: ArrayBuffer | Uint8Array) => {
       if (!this.workletNode) return;
 
@@ -126,66 +157,112 @@ class ScreenAudioService {
       if (buffer instanceof ArrayBuffer) {
         float32 = new Float32Array(buffer);
       } else {
-        // Uint8Array (Buffer from Electron IPC) — reinterpret as float32
         float32 = new Float32Array(
           buffer.buffer.slice(buffer.byteOffset, buffer.byteOffset + buffer.byteLength),
         );
       }
 
       if (this.frameCount === 0) {
-        console.log(`[ScreenAudio] First frame received: ${float32.length} samples`);
+        console.log(`[ScreenAudio] First native frame: ${float32.length} samples`);
+        this.clearFrameWatchdog();
       }
       this.frameCount++;
-
-      // Transfer the underlying ArrayBuffer to the worklet (zero-copy)
-      const copy = new Float32Array(float32);
-      this.workletNode.port.postMessage(
-        { type: 'pcm-data', samples: copy },
-        [copy.buffer],
-      );
+      this.feedSamples(float32);
     });
 
-    // Start native capture
     const result = await window.api.screenAudioStart();
     if (!result.success) {
       console.error('[ScreenAudio] Failed to start native capture:', result.error);
+      appEvents.emit('screen_audio.error', `Falha ao iniciar captura: ${result.error}`);
       this.cleanup();
       return null;
     }
 
     this.isCapturing = true;
-    console.log('[ScreenAudio] Native capture started successfully');
+    this.isTestTone = false;
+    console.log('[ScreenAudio] Native capture started');
 
-    // Add the track to WebRTC
+    // Watchdog: warn if no frames arrive within timeout
+    this.frameWatchdog = setTimeout(() => {
+      if (this.frameCount === 0 && this.isCapturing && !this.isTestTone) {
+        console.warn('[ScreenAudio] No frames received within timeout — native capture may have failed silently');
+        appEvents.emit('screen_audio.warning', 'Nenhum frame de áudio foi recebido. A captura nativa pode ter falhado. Tente usar o "Teste de Som" para validar o pipeline.');
+      }
+    }, FRAME_WATCHDOG_TIMEOUT * 1000);
+
     await webRtcManager.setLocalScreenAudioTrack(this.outputTrack);
-
-    // Update voice state
     networkClient.send(MessageType.VOICE_STATE_UPDATE, { isSharingScreenAudio: true });
-
     appEvents.emit('local.screen_audio_started');
     return this.outputTrack;
   }
 
-  /**
-   * Stop screen audio capture and remove the track from peers.
-   */
+  // ────────────────────────────────────────────
+  //  Test tone mode (440 Hz, no native module)
+  // ────────────────────────────────────────────
+
+  public async startTestTone(): Promise<MediaStreamTrack | null> {
+    if (this.isCapturing) return this.outputTrack;
+
+    await this.setupPipeline();
+
+    // Generate a 440 Hz stereo sine wave in chunks matching 48 kHz / 100 = 480 frames (10 ms)
+    const sampleRate = 48000;
+    const channels = 2;
+    const chunkSize = 480 * channels;
+    const frequency = 440;
+    const amplitude = 0.3;
+    let phase = 0;
+
+    this.testToneInterval = setInterval(() => {
+      const samples = new Float32Array(chunkSize);
+      for (let i = 0; i < 480; i++) {
+        const v = amplitude * Math.sin(2 * Math.PI * frequency * phase / sampleRate);
+        samples[i * channels] = v;       // left
+        samples[i * channels + 1] = v;   // right
+        phase++;
+      }
+      this.feedSamples(samples);
+      this.frameCount++;
+    }, 10);
+
+    this.isCapturing = true;
+    this.isTestTone = true;
+    console.log('[ScreenAudio] Test tone started (440 Hz)');
+
+    await webRtcManager.setLocalScreenAudioTrack(this.outputTrack);
+    networkClient.send(MessageType.VOICE_STATE_UPDATE, { isSharingScreenAudio: true });
+    appEvents.emit('local.screen_audio_started');
+    return this.outputTrack;
+  }
+
+  // ────────────────────────────────────────────
+  //  Stop (both modes)
+  // ────────────────────────────────────────────
+
   public async stop(): Promise<void> {
     if (!this.isCapturing) return;
 
-    // Stop native capture
-    await window.api.screenAudioStop();
-    window.api.removeScreenAudioFrameListener();
+    this.clearFrameWatchdog();
 
-    // Remove from WebRTC
+    if (this.isTestTone) {
+      if (this.testToneInterval) {
+        clearInterval(this.testToneInterval);
+        this.testToneInterval = null;
+      }
+    } else {
+      await window.api.screenAudioStop();
+      window.api.removeScreenAudioFrameListener();
+    }
+
     await webRtcManager.setLocalScreenAudioTrack(null);
-
-    // Update voice state
     networkClient.send(MessageType.VOICE_STATE_UPDATE, { isSharingScreenAudio: false });
+
+    const mode = this.isTestTone ? 'test-tone' : 'native';
+    console.log(`[ScreenAudio] Stopped (${mode}). Frames: ${this.frameCount}`);
 
     this.cleanup();
     this.isCapturing = false;
-
-    console.log(`[ScreenAudio] Stopped. Total frames processed: ${this.frameCount}`);
+    this.isTestTone = false;
     appEvents.emit('local.screen_audio_stopped');
   }
 
@@ -193,8 +270,23 @@ class ScreenAudioService {
     return this.isCapturing;
   }
 
+  public getIsTestTone(): boolean {
+    return this.isTestTone;
+  }
+
   public getOutputTrack(): MediaStreamTrack | null {
     return this.outputTrack;
+  }
+
+  public getFrameCount(): number {
+    return this.frameCount;
+  }
+
+  private clearFrameWatchdog(): void {
+    if (this.frameWatchdog) {
+      clearTimeout(this.frameWatchdog);
+      this.frameWatchdog = null;
+    }
   }
 
   private cleanup(): void {

@@ -1754,24 +1754,59 @@ input:focus, textarea:focus, select:focus {
   opacity: 1;
 }
 
-.stage-volume-control {
+/* Vertical volume popup — appears on hover over the volume button */
+.stage-volume-wrapper {
+  position: relative;
   display: flex;
   align-items: center;
-  gap: 4px;
-  padding: 4px 8px;
-  background-color: rgba(0, 0, 0, 0.55);
+}
+
+.stage-volume-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  border: none;
   border-radius: var(--radius-sm);
-  backdrop-filter: blur(4px);
+  background-color: rgba(0, 0, 0, 0.55);
   color: #fff;
+  cursor: pointer;
+  transition: background-color 0.15s ease;
+  backdrop-filter: blur(4px);
+}
+
+.stage-volume-btn:hover {
+  background-color: rgba(0, 0, 0, 0.85);
+}
+
+.stage-volume-popup {
+  display: none;
+  position: absolute;
+  bottom: calc(100% + 6px);
+  left: 50%;
+  transform: translateX(-50%);
+  padding: 10px 6px;
+  background-color: rgba(0, 0, 0, 0.75);
+  border-radius: var(--radius-md);
+  backdrop-filter: blur(8px);
+  z-index: 10;
+}
+
+.stage-volume-wrapper:hover .stage-volume-popup {
+  display: flex;
+  align-items: center;
+  justify-content: center;
 }
 
 .stage-screen-volume-slider {
-  width: 70px;
-  height: 4px;
+  writing-mode: vertical-lr;
+  direction: rtl;
+  appearance: slider-vertical;
+  width: 4px;
+  height: 80px;
   cursor: pointer;
   accent-color: var(--accent-primary);
-  background: rgba(255, 255, 255, 0.3);
-  border-radius: 2px;
 }
 
 .stage-fullscreen-btn {

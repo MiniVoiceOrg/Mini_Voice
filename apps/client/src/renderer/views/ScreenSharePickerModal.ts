@@ -77,10 +77,14 @@ export class ScreenSharePickerModal {
             </button>
           ` : ''}
           <label id="share-audio-label" style="display: flex; align-items: center; gap: 6px; margin-right: auto; cursor: pointer; font-size: 0.85rem; color: var(--text-secondary);">
-            <input type="checkbox" id="chk-share-audio" style="cursor: pointer;" ${screenAudioService.getIsCapturing() ? 'checked' : ''} />
+            <input type="checkbox" id="chk-share-audio" style="cursor: pointer;" ${screenAudioService.getIsCapturing() && !screenAudioService.getIsTestTone() ? 'checked' : ''} />
             <span class="material-symbols-outlined md-16">volume_up</span>
             Compartilhar áudio do PC
           </label>
+          <button type="button" id="btn-test-tone" class="btn btn-secondary" style="font-size: 0.75rem; padding: 4px 10px; height: 28px;" title="Envia um tom de 440Hz para os peers — testa o pipeline WebRTC sem depender do módulo nativo">
+            <span class="material-symbols-outlined md-14" style="margin-right: 2px;">music_note</span>
+            ${screenAudioService.getIsTestTone() ? 'Parar Teste' : 'Teste de Som'}
+          </button>
           <button type="button" id="btn-cancel" class="btn btn-secondary">Cancelar</button>
           <button type="button" id="btn-share" class="btn btn-primary" disabled>
             <span class="material-symbols-outlined md-16" style="margin-right: 4px;">present_to_all</span>
@@ -159,6 +163,7 @@ export class ScreenSharePickerModal {
     const btnCancel = this.modalEl.querySelector('#btn-cancel');
     const btnShare = this.modalEl.querySelector('#btn-share') as HTMLButtonElement;
     const btnStop = this.modalEl.querySelector('#btn-stop-share');
+    const btnTestTone = this.modalEl.querySelector('#btn-test-tone');
     const tabScreen = this.modalEl.querySelector('#share-tab-screen');
     const tabWindow = this.modalEl.querySelector('#share-tab-window');
 
@@ -166,6 +171,7 @@ export class ScreenSharePickerModal {
     btnCancel?.addEventListener('click', () => this.close());
     btnShare?.addEventListener('click', () => this.startSharing());
     btnStop?.addEventListener('click', () => this.stopSharing());
+    btnTestTone?.addEventListener('click', () => this.toggleTestTone());
 
     const switchTab = (tab: 'screen' | 'window') => {
       this.activeTab = tab;
@@ -220,12 +226,29 @@ export class ScreenSharePickerModal {
     voiceStore.setScreenSharing(false);
     networkClient.send(MessageType.VOICE_STATE_UPDATE, { isScreenSharing: false });
 
-    // Stop screen audio if it was active
     if (screenAudioService.getIsCapturing()) {
       await screenAudioService.stop();
     }
 
     this.close();
+  }
+
+  private async toggleTestTone(): Promise<void> {
+    const btn = this.modalEl?.querySelector('#btn-test-tone') as HTMLButtonElement | null;
+    if (screenAudioService.getIsTestTone()) {
+      await screenAudioService.stop();
+      if (btn) btn.innerHTML = '<span class="material-symbols-outlined md-14" style="margin-right: 2px;">music_note</span> Teste de Som';
+    } else {
+      if (screenAudioService.getIsCapturing()) {
+        await screenAudioService.stop();
+      }
+      const track = await screenAudioService.startTestTone();
+      if (track) {
+        if (btn) btn.innerHTML = '<span class="material-symbols-outlined md-14" style="margin-right: 2px;">stop</span> Parar Teste';
+      } else {
+        await showAlert({ title: 'Erro', message: 'Não foi possível iniciar o teste de som.', variant: 'danger' });
+      }
+    }
   }
 
   public close(): void {
