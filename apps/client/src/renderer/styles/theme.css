@@ -295,6 +295,7 @@ input:focus, textarea:focus, select:focus {
 }
 
 .btn-icon {
+  position: relative;
   width: 38px;
   height: 38px;
   padding: 0;
@@ -1824,8 +1825,7 @@ input:focus, textarea:focus, select:focus {
 }
 
 /* Voice Call Bottom Control Bar (inside Stage) */
-.voice-stage-container > .stage-controls-bar,
-.stage-controls-bar:not(.stage-card-controls):not(.stage-card *):not(.stage-focused-main *):not(.stage-mini-card *) {
+.stage-call-controls {
   position: relative;
   bottom: auto;
   right: auto;

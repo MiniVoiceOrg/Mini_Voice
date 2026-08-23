@@ -3,6 +3,7 @@ import { escapeHtml } from '../utils/html';
 import { appEvents } from '../core/EventBus';
 import { networkClient } from '../core/NetworkClient';
 import { participantManager, ParticipantViewModel } from '../core/ParticipantManager';
+import { screenAudioService } from '../core/ScreenAudioService';
 import { serverStore } from '../stores/serverStore';
 import { settingsStore } from '../stores/settingsStore';
 import { voiceStore } from '../stores/voiceStore';
@@ -116,7 +117,7 @@ export class VoiceStageView {
         <div id="stage-content-area" style="flex: 1; min-height: 0; display: flex; flex-direction: column;"></div>
 
         <!-- Stage Bottom Controls Bar -->
-        <div class="stage-controls-bar">
+        <div class="stage-call-controls">
           <button id="stage-btn-mic" class="btn btn-icon ${voiceStore.isMuted ? 'danger-active' : ''}" title="${voiceStore.isMuted ? 'Desmutar Microfone' : 'Mutar Microfone'}">
             <span class="material-symbols-outlined">${voiceStore.isMuted ? 'mic_off' : 'mic'}</span>
           </button>
@@ -171,9 +172,15 @@ export class VoiceStageView {
 
     const btnScreen = document.getElementById('stage-btn-screen');
     if (btnScreen) {
+      const hasScreenAudio = screenAudioService.getIsCapturing();
       btnScreen.className = `btn btn-icon ${voiceStore.isScreenSharing ? 'broadcasting-pulse active' : ''}`;
-      btnScreen.title = voiceStore.isScreenSharing ? 'Parar Compartilhamento de Tela' : 'Compartilhar Tela';
-      btnScreen.innerHTML = `<span class="material-symbols-outlined">${voiceStore.isScreenSharing ? 'stop_screen_share' : 'screen_share'}</span>`;
+      btnScreen.title = voiceStore.isScreenSharing
+        ? `Parar Compartilhamento de Tela${hasScreenAudio ? ' (com áudio)' : ''}`
+        : 'Compartilhar Tela';
+      btnScreen.innerHTML = `
+        <span class="material-symbols-outlined">${voiceStore.isScreenSharing ? 'stop_screen_share' : 'screen_share'}</span>
+        ${hasScreenAudio ? '<span class="material-symbols-outlined screen-audio-badge" style="font-size: 12px; position: absolute; bottom: 2px; right: 2px; color: var(--success);">volume_up</span>' : ''}
+      `;
     }
 
     // Top broadcast banner
@@ -187,7 +194,9 @@ export class VoiceStageView {
             <div style="display: flex; align-items: center; gap: 10px;">
               <span class="live-pulse-dot"></span>
               <span style="font-weight: 600; font-size: 12px; color: #ffffff;">
-                ${voiceStore.isScreenSharing ? 'Transmissão de Tela Ativa • Visível para todos na chamada' : 'Câmera ao Vivo • Transmitindo vídeo'}
+                ${voiceStore.isScreenSharing
+                  ? `Transmissão de Tela Ativa${screenAudioService.getIsCapturing() ? ' 🔊 com Áudio' : ''} • Visível para todos na chamada`
+                  : 'Câmera ao Vivo • Transmitindo vídeo'}
               </span>
             </div>
             <button id="btn-stage-quick-stop" class="btn btn-secondary" style="font-size: 11px; padding: 4px 12px; height: 26px; border-color: rgba(242, 63, 67, 0.5); color: #ff7b72;">
@@ -1046,7 +1055,10 @@ export class VoiceStageView {
       this.syncTelemetryMonitor();
     });
 
-    this.unbindEvents.push(u1, u2, u3, u4, u5, u6, u7);
+    const u8 = appEvents.on('local.screen_audio_started', () => this.updateControlsUI());
+    const u9 = appEvents.on('local.screen_audio_stopped', () => this.updateControlsUI());
+
+    this.unbindEvents.push(u1, u2, u3, u4, u5, u6, u7, u8, u9);
   }
 
   private unbindListeners(): void {

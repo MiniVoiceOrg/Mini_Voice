@@ -77,7 +77,7 @@ export class ScreenSharePickerModal {
             </button>
           ` : ''}
           <label id="share-audio-label" style="display: flex; align-items: center; gap: 6px; margin-right: auto; cursor: pointer; font-size: 0.85rem; color: var(--text-secondary);">
-            <input type="checkbox" id="chk-share-audio" style="cursor: pointer;" />
+            <input type="checkbox" id="chk-share-audio" style="cursor: pointer;" ${screenAudioService.getIsCapturing() ? 'checked' : ''} />
             <span class="material-symbols-outlined md-16">volume_up</span>
             Compartilhar áudio do PC
           </label>
@@ -193,10 +193,15 @@ export class ScreenSharePickerModal {
       voiceStore.setScreenSharing(true);
       networkClient.send(MessageType.VOICE_STATE_UPDATE, { isScreenSharing: true, isCameraOn: false });
 
-      // Start screen audio capture if checkbox is checked
+      // Start or stop screen audio capture based on checkbox
       const chk = this.modalEl?.querySelector('#chk-share-audio') as HTMLInputElement | null;
-      if (chk?.checked) {
-        await screenAudioService.start();
+      if (chk?.checked && !screenAudioService.getIsCapturing()) {
+        const audioTrack = await screenAudioService.start();
+        if (!audioTrack) {
+          console.warn('[ScreenShare] Screen audio capture not available or failed to start');
+        }
+      } else if (!chk?.checked && screenAudioService.getIsCapturing()) {
+        await screenAudioService.stop();
       }
 
       this.close();
