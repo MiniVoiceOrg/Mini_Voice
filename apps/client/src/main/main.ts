@@ -3,17 +3,25 @@ import path from 'path';
 import { setupIpcHandlers } from './ipcHandlers';
 import { setupUpdater } from './updater';
 import { ServerManager } from './serverManager';
+import { TrayManager } from './trayManager';
 
 import fs from 'fs';
 
 let mainWindow: BrowserWindow | null = null;
+let trayManager: TrayManager | null = null;
 const serverManager = new ServerManager();
 let isShuttingDown = false;
+let isQuitting = false;
 
 function shutdownServer(): void {
   if (isShuttingDown) return;
   isShuttingDown = true;
   serverManager.stopServer();
+}
+
+function quitApplication(): void {
+  isQuitting = true;
+  app.quit();
 }
 
 function createWindow(): void {
@@ -48,10 +56,15 @@ function createWindow(): void {
       nodeIntegration: false,
       sandbox: false, // needed for custom desktopCapturer / preload access
       webSecurity: true,
+      backgroundThrottling: false, // Keep audio and WebRTC processing smoothly when minimized/hidden
     },
   });
 
-  setupIpcHandlers(mainWindow, serverManager);
+  if (!trayManager) {
+    trayManager = new TrayManager(mainWindow, quitApplication);
+  }
+
+  setupIpcHandlers(mainWindow, serverManager, trayManager);
   setupUpdater(mainWindow);
 
   // In dev, load Vite dev server if running, otherwise load dist/index.html
@@ -60,6 +73,14 @@ function createWindow(): void {
   } else {
     mainWindow.loadFile(path.join(__dirname, '../../dist/index.html'));
   }
+
+  // Minimize to tray on close instead of quitting the application (#149)
+  mainWindow.on('close', (event) => {
+    if (!isQuitting) {
+      event.preventDefault();
+      mainWindow?.hide();
+    }
+  });
 
   mainWindow.on('closed', () => {
     mainWindow = null;
@@ -76,8 +97,8 @@ if (!gotTheLock) {
 } else {
   app.on('second-instance', () => {
     if (mainWindow) {
-      if (mainWindow.isMinimized()) mainWindow.restore();
       if (!mainWindow.isVisible()) mainWindow.show();
+      if (mainWindow.isMinimized()) mainWindow.restore();
       mainWindow.focus();
     }
   });
@@ -91,6 +112,10 @@ if (!gotTheLock) {
     app.on('activate', () => {
       if (BrowserWindow.getAllWindows().length === 0) {
         createWindow();
+      } else if (mainWindow) {
+        if (!mainWindow.isVisible()) mainWindow.show();
+        if (mainWindow.isMinimized()) mainWindow.restore();
+        mainWindow.focus();
       }
     });
   });
@@ -104,5 +129,8 @@ app.on('window-all-closed', () => {
 });
 
 app.on('before-quit', () => {
+  isQuitting = true;
   shutdownServer();
+  trayManager?.destroy();
 });
+

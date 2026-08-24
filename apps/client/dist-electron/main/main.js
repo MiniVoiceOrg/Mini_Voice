@@ -8,15 +8,22 @@ const path_1 = __importDefault(require("path"));
 const ipcHandlers_1 = require("./ipcHandlers");
 const updater_1 = require("./updater");
 const serverManager_1 = require("./serverManager");
+const trayManager_1 = require("./trayManager");
 const fs_1 = __importDefault(require("fs"));
 let mainWindow = null;
+let trayManager = null;
 const serverManager = new serverManager_1.ServerManager();
 let isShuttingDown = false;
+let isQuitting = false;
 function shutdownServer() {
     if (isShuttingDown)
         return;
     isShuttingDown = true;
     serverManager.stopServer();
+}
+function quitApplication() {
+    isQuitting = true;
+    electron_1.app.quit();
 }
 function createWindow() {
     const iconCandidates = [
@@ -47,9 +54,13 @@ function createWindow() {
             nodeIntegration: false,
             sandbox: false, // needed for custom desktopCapturer / preload access
             webSecurity: true,
+            backgroundThrottling: false, // Keep audio and WebRTC processing smoothly when minimized/hidden
         },
     });
-    (0, ipcHandlers_1.setupIpcHandlers)(mainWindow, serverManager);
+    if (!trayManager) {
+        trayManager = new trayManager_1.TrayManager(mainWindow, quitApplication);
+    }
+    (0, ipcHandlers_1.setupIpcHandlers)(mainWindow, serverManager, trayManager);
     (0, updater_1.setupUpdater)(mainWindow);
     // In dev, load Vite dev server if running, otherwise load dist/index.html
     if (process.env.VITE_DEV_SERVER_URL) {
@@ -58,6 +69,13 @@ function createWindow() {
     else {
         mainWindow.loadFile(path_1.default.join(__dirname, '../../dist/index.html'));
     }
+    // Minimize to tray on close instead of quitting the application (#149)
+    mainWindow.on('close', (event) => {
+        if (!isQuitting) {
+            event.preventDefault();
+            mainWindow?.hide();
+        }
+    });
     mainWindow.on('closed', () => {
         mainWindow = null;
     });
@@ -72,10 +90,10 @@ if (!gotTheLock) {
 else {
     electron_1.app.on('second-instance', () => {
         if (mainWindow) {
-            if (mainWindow.isMinimized())
-                mainWindow.restore();
             if (!mainWindow.isVisible())
                 mainWindow.show();
+            if (mainWindow.isMinimized())
+                mainWindow.restore();
             mainWindow.focus();
         }
     });
@@ -87,6 +105,13 @@ else {
             if (electron_1.BrowserWindow.getAllWindows().length === 0) {
                 createWindow();
             }
+            else if (mainWindow) {
+                if (!mainWindow.isVisible())
+                    mainWindow.show();
+                if (mainWindow.isMinimized())
+                    mainWindow.restore();
+                mainWindow.focus();
+            }
         });
     });
 }
@@ -97,6 +122,8 @@ electron_1.app.on('window-all-closed', () => {
     }
 });
 electron_1.app.on('before-quit', () => {
+    isQuitting = true;
     shutdownServer();
+    trayManager?.destroy();
 });
 //# sourceMappingURL=main.js.map
