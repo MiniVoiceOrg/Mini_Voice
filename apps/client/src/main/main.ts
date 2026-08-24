@@ -66,18 +66,35 @@ function createWindow(): void {
   });
 }
 
-app.whenReady().then(() => {
-  // Remove the default application menu (File / Edit / View ...).
-  Menu.setApplicationMenu(null);
+// Only allow a single running instance. If a second instance is launched,
+// focus the window of the instance that is already running instead of
+// opening a new one (option 1 from #154).
+const gotTheLock = app.requestSingleInstanceLock();
 
-  createWindow();
-
-  app.on('activate', () => {
-    if (BrowserWindow.getAllWindows().length === 0) {
-      createWindow();
+if (!gotTheLock) {
+  app.quit();
+} else {
+  app.on('second-instance', () => {
+    if (mainWindow) {
+      if (mainWindow.isMinimized()) mainWindow.restore();
+      if (!mainWindow.isVisible()) mainWindow.show();
+      mainWindow.focus();
     }
   });
-});
+
+  app.whenReady().then(() => {
+    // Remove the default application menu (File / Edit / View ...).
+    Menu.setApplicationMenu(null);
+
+    createWindow();
+
+    app.on('activate', () => {
+      if (BrowserWindow.getAllWindows().length === 0) {
+        createWindow();
+      }
+    });
+  });
+}
 
 app.on('window-all-closed', () => {
   shutdownServer();

@@ -1,6 +1,7 @@
 import { MessageType } from '@mini-voice/shared';
 import { escapeHtml } from '../utils/html';
 import { appEvents } from '../core/EventBus';
+import { enableBackdropClose } from '../utils/modal';
 import { networkClient } from '../core/NetworkClient';
 import { screenAudioService } from '../core/ScreenAudioService';
 import { videoService } from '../core/VideoService';
@@ -163,6 +164,7 @@ export class ScreenSharePickerModal {
     const tabWindow = this.modalEl.querySelector('#share-tab-window');
 
     btnClose?.addEventListener('click', () => this.close());
+    enableBackdropClose(this.modalEl, () => this.close());
     btnCancel?.addEventListener('click', () => this.close());
     btnShare?.addEventListener('click', () => this.startSharing());
     btnStop?.addEventListener('click', () => this.stopSharing());

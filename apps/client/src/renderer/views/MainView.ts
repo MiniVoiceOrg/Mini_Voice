@@ -5,6 +5,7 @@ import { networkClient } from '../core/NetworkClient';
 import { participantManager } from '../core/ParticipantManager';
 import { serverStore } from '../stores/serverStore';
 import { voiceStore } from '../stores/voiceStore';
+import { chatStore } from '../stores/chatStore';
 import { settingsStore } from '../stores/settingsStore';
 import { connectionStore, SavedServer } from '../stores/connectionStore';
 import { audioProcessor } from '../core/AudioProcessor';
@@ -15,6 +16,7 @@ import { createChannelModal } from './CreateChannelModal';
 import { settingsModal } from './SettingsModal';
 import { serverSettingsModal } from './ServerSettingsModal';
 import { inviteModal } from './InviteModal';
+import { contextMenu } from './ContextMenu';
 import { showConfirm, showAlert } from './Dialog';
 import { setButtonLoading, withButtonLoading } from '../utils/buttonLoading';
 import { checkServerOnline } from '../utils/serverStatus';
@@ -452,8 +454,9 @@ export class MainView {
         <div class="channel-item ${c.id === serverStore.activeTextChannelId && this.activeContentView === 'chat' ? 'active' : ''}" data-channel-id="${c.id}" data-channel-type="TEXT">
           <span class="material-symbols-outlined md-16 channel-icon" style="color: var(--text-muted);">tag</span>
           <span class="channel-name">${escapeHtml(c.name)}</span>
-          <button class="channel-delete-btn" data-del-channel="${c.id}" title="Apagar canal">
-            <span class="material-symbols-outlined md-14">delete</span>
+          ${chatStore.hasMention(c.id) ? '<span class="channel-mention-badge" title="Você foi mencionado">@</span>' : ''}
+          <button class="channel-menu-btn" data-menu-channel="${c.id}" title="Mais opções">
+            <span class="material-symbols-outlined md-16">more_vert</span>
           </button>
         </div>
       `).join('');
@@ -470,8 +473,8 @@ export class MainView {
               <span class="material-symbols-outlined md-16 channel-icon" style="color: ${isActive ? 'var(--success)' : 'var(--text-muted)'};">volume_up</span>
               <span class="channel-name">${escapeHtml(c.name)}</span>
               ${isActive ? '<span style="font-size: 11px; color: var(--success); font-weight: 600; margin-left: auto;">(Você)</span>' : ''}
-              <button class="channel-delete-btn" data-del-channel="${c.id}" title="Apagar canal">
-                <span class="material-symbols-outlined md-14">delete</span>
+              <button class="channel-menu-btn" data-menu-channel="${c.id}" title="Mais opções">
+                <span class="material-symbols-outlined md-16">more_vert</span>
               </button>
             </div>
 
@@ -519,13 +522,14 @@ export class MainView {
     // Attach click listeners to channel items
     this.container.querySelectorAll('.channel-item').forEach((item) => {
       item.addEventListener('click', async (e) => {
-        if ((e.target as HTMLElement).closest('.channel-delete-btn')) return;
+        if ((e.target as HTMLElement).closest('.channel-menu-btn')) return;
         const channelId = item.getAttribute('data-channel-id')!;
         const type = item.getAttribute('data-channel-type')!;
 
         if (type === 'TEXT') {
           serverStore.setActiveTextChannel(channelId);
           this.activeContentView = 'chat';
+          chatStore.clearMention(channelId);
           this.chatView?.setChannel(channelId);
           this.renderChannels();
         } else if (type === 'VOICE') {
@@ -547,13 +551,24 @@ export class MainView {
       });
     });
 
-    // Attach delete listeners
-    this.container.querySelectorAll('.channel-delete-btn').forEach((btn) => {
-      btn.addEventListener('click', async (e) => {
+    // Attach "more options" menu listeners (#151). Delete now lives inside a
+    // dropdown so more per-channel actions can be added later.
+    this.container.querySelectorAll('.channel-menu-btn').forEach((btn) => {
+      btn.addEventListener('click', (e) => {
         e.stopPropagation();
-        const channelId = btn.getAttribute('data-del-channel');
+        const channelId = btn.getAttribute('data-menu-channel');
         if (!channelId) return;
-        await this.handleDeleteChannel(channelId);
+        const rect = (btn as HTMLElement).getBoundingClientRect();
+        contextMenu.open(rect.left, rect.bottom + 4, [
+          {
+            label: 'Apagar canal',
+            icon: 'delete',
+            danger: true,
+            onClick: () => {
+              void this.handleDeleteChannel(channelId);
+            },
+          },
+        ]);
       });
     });
   }
@@ -953,7 +968,21 @@ export class MainView {
       this.renderMembers();
     });
 
-    this.unbindEvents.push(u1, u2, u3, u4, u5, u6, u7, u8, u9, u10, u11);
+    // Re-render the channel list when an @-mention arrives or is cleared so the
+    // red indicator on the text channel appears/disappears immediately (#14).
+    const u12 = appEvents.on('chat.mentions_updated', () => {
+      this.renderChannels();
+    });
+
+    this.unbindEvents.push(u1, u2, u3, u4, u5, u6, u7, u8, u9, u10, u11, u12);
+  }
+
+  /** True when the given text channel is the one currently visible on screen (#14). */
+  public isViewingTextChannel(channelId: string): boolean {
+    return (
+      this.activeContentView === 'chat' &&
+      serverStore.activeTextChannelId === channelId
+    );
   }
 
   public destroy(): void {

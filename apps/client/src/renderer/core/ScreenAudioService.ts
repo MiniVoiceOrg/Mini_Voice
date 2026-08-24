@@ -191,7 +191,7 @@ class ScreenAudioService {
     this.frameWatchdog = setTimeout(() => {
       if (this.frameCount === 0 && this.isCapturing && !this.isTestTone) {
         console.warn('[ScreenAudio] No frames received within timeout — native capture may have failed silently');
-        appEvents.emit('screen_audio.warning', 'Nenhum frame de áudio foi recebido. A captura nativa pode ter falhado. Tente usar o "Teste de Som" para validar o pipeline.');
+        appEvents.emit('screen_audio.warning', 'Nenhum frame de áudio foi recebido. A captura nativa pode ter falhado. Verifique se o aplicativo/tela selecionado está realmente reproduzindo som.');
       }
     }, FRAME_WATCHDOG_TIMEOUT * 1000);
 

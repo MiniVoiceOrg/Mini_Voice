@@ -62,16 +62,34 @@ function createWindow() {
         mainWindow = null;
     });
 }
-electron_1.app.whenReady().then(() => {
-    // Remove the default application menu (File / Edit / View ...).
-    electron_1.Menu.setApplicationMenu(null);
-    createWindow();
-    electron_1.app.on('activate', () => {
-        if (electron_1.BrowserWindow.getAllWindows().length === 0) {
-            createWindow();
+// Only allow a single running instance. If a second instance is launched,
+// focus the window of the instance that is already running instead of
+// opening a new one (option 1 from #154).
+const gotTheLock = electron_1.app.requestSingleInstanceLock();
+if (!gotTheLock) {
+    electron_1.app.quit();
+}
+else {
+    electron_1.app.on('second-instance', () => {
+        if (mainWindow) {
+            if (mainWindow.isMinimized())
+                mainWindow.restore();
+            if (!mainWindow.isVisible())
+                mainWindow.show();
+            mainWindow.focus();
         }
     });
-});
+    electron_1.app.whenReady().then(() => {
+        // Remove the default application menu (File / Edit / View ...).
+        electron_1.Menu.setApplicationMenu(null);
+        createWindow();
+        electron_1.app.on('activate', () => {
+            if (electron_1.BrowserWindow.getAllWindows().length === 0) {
+                createWindow();
+            }
+        });
+    });
+}
 electron_1.app.on('window-all-closed', () => {
     shutdownServer();
     if (process.platform !== 'darwin') {

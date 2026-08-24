@@ -1,5 +1,6 @@
 import { MessageType } from '@mini-voice/shared';
 import { networkClient } from '../core/NetworkClient';
+import { enableBackdropClose } from '../utils/modal';
 
 export class CreateChannelModal {
   private modalEl: HTMLElement | null = null;
@@ -62,6 +63,7 @@ export class CreateChannelModal {
 
     btnClose?.addEventListener('click', () => this.close());
     btnCancel?.addEventListener('click', () => this.close());
+    enableBackdropClose(this.modalEl, () => this.close());
 
     form?.addEventListener('submit', async (e) => {
       e.preventDefault();

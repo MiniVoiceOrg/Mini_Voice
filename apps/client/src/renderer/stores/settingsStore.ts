@@ -21,6 +21,8 @@ export class SettingsStore {
   public screenShareTelemetryMode: 'simple' | 'complete' = 'simple';
   public customSounds: Partial<Record<string, string>> = {}; // key → file path
   public soundboardShortcuts: Record<string, { accelerator: string; display: string }> = {};
+  public chatMessageSoundEnabled: boolean = true; // play a cue when a chat message arrives (#152)
+  public chatMessageSoundMentionsOnly: boolean = false; // only play the cue when you are mentioned (#153)
 
   constructor() {
     this.load();
@@ -67,6 +69,12 @@ export class SettingsStore {
         }
         if (!this.soundboardShortcuts || typeof this.soundboardShortcuts !== 'object') {
           this.soundboardShortcuts = {};
+        }
+        if (typeof this.chatMessageSoundEnabled !== 'boolean') {
+          this.chatMessageSoundEnabled = true;
+        }
+        if (typeof this.chatMessageSoundMentionsOnly !== 'boolean') {
+          this.chatMessageSoundMentionsOnly = false;
         }
       }
     } catch (e) {}
@@ -122,6 +130,8 @@ export class SettingsStore {
         customProfile: this.customProfile,
         customSounds: this.customSounds,
         soundboardShortcuts: this.soundboardShortcuts,
+        chatMessageSoundEnabled: this.chatMessageSoundEnabled,
+        chatMessageSoundMentionsOnly: this.chatMessageSoundMentionsOnly,
       }));
       appEvents.emit('settings.updated');
     } catch (e) {}

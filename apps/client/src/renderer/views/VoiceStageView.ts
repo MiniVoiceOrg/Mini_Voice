@@ -49,6 +49,10 @@ export class VoiceStageView {
   private telemetryRefreshInFlight = false;
   private telemetrySnapshots: Map<string, ScreenTelemetrySnapshot> = new Map();
   private telemetryByteSamples: Map<string, TelemetryByteSample> = new Map();
+  // Caches the current live-banner content so updateControlsUI() only rebuilds
+  // it when the broadcast state actually changes, preventing the pulse dot from
+  // flickering on frequent voice.state_updated events (#70).
+  private broadcastBannerSignature: string | null = null;
 
   constructor(container: HTMLElement) {
     this.container = container;
@@ -82,6 +86,9 @@ export class VoiceStageView {
     const channel = serverStore.serverDetails.channels.find((c) => c.id === this.currentChannelId);
     const channelName = channel ? channel.name : 'Geral';
 
+    // Fresh DOM below means the (empty) banner wrapper must be repopulated by
+    // updateControlsUI(), so drop the cached signature (#70).
+    this.broadcastBannerSignature = null;
     this.container.innerHTML = `
       <div class="voice-stage-container">
         <div class="content-header">
@@ -188,29 +195,38 @@ export class VoiceStageView {
     const bannerWrapper = document.getElementById('stage-broadcast-banner-wrapper');
     if (bannerWrapper) {
       const isBroadcasting = voiceStore.isCameraOn || voiceStore.isScreenSharing;
-      if (isBroadcasting) {
-        bannerWrapper.style.display = 'block';
-        bannerWrapper.innerHTML = `
-          <div class="stage-broadcast-banner">
-            <div style="display: flex; align-items: center; gap: 10px;">
-              <span class="live-pulse-dot"></span>
-              <span style="font-weight: 600; font-size: 12px; color: #ffffff;">
-                ${voiceStore.isScreenSharing
-                  ? `Transmissão de Tela Ativa${screenAudioService.getIsCapturing() ? ' 🔊 com Áudio' : ''} • Visível para todos na chamada`
-                  : 'Câmera ao Vivo • Transmitindo vídeo'}
-              </span>
+      const hasScreenAudio = screenAudioService.getIsCapturing();
+      // Only touch the DOM when the banner's content would actually change, so
+      // the live-pulse animation isn't restarted on every state update (#70).
+      const signature = isBroadcasting
+        ? `${voiceStore.isScreenSharing ? 'screen' : 'cam'}:${hasScreenAudio ? 'audio' : 'noaudio'}`
+        : 'off';
+      if (signature !== this.broadcastBannerSignature) {
+        this.broadcastBannerSignature = signature;
+        if (isBroadcasting) {
+          bannerWrapper.style.display = 'block';
+          bannerWrapper.innerHTML = `
+            <div class="stage-broadcast-banner">
+              <div style="display: flex; align-items: center; gap: 10px;">
+                <span class="live-pulse-dot"></span>
+                <span style="font-weight: 600; font-size: 12px; color: #ffffff;">
+                  ${voiceStore.isScreenSharing
+                    ? `Transmissão de Tela Ativa${hasScreenAudio ? ' 🔊 com Áudio' : ''} • Visível para todos na chamada`
+                    : 'Câmera ao Vivo • Transmitindo vídeo'}
+                </span>
+              </div>
+              <button id="btn-stage-quick-stop" class="btn btn-secondary" style="font-size: 11px; padding: 4px 12px; height: 26px; border-color: rgba(242, 63, 67, 0.5); color: #ff7b72;">
+                <span class="material-symbols-outlined md-14" style="margin-right: 4px;">stop_circle</span>
+                ${voiceStore.isScreenSharing ? 'Parar Tela' : 'Desligar Câmera'}
+              </button>
             </div>
-            <button id="btn-stage-quick-stop" class="btn btn-secondary" style="font-size: 11px; padding: 4px 12px; height: 26px; border-color: rgba(242, 63, 67, 0.5); color: #ff7b72;">
-              <span class="material-symbols-outlined md-14" style="margin-right: 4px;">stop_circle</span>
-              ${voiceStore.isScreenSharing ? 'Parar Tela' : 'Desligar Câmera'}
-            </button>
-          </div>
-        `;
-        const btnQuickStop = document.getElementById('btn-stage-quick-stop');
-        btnQuickStop?.addEventListener('click', () => this.handleStopStreaming());
-      } else {
-        bannerWrapper.style.display = 'none';
-        bannerWrapper.innerHTML = '';
+          `;
+          const btnQuickStop = document.getElementById('btn-stage-quick-stop');
+          btnQuickStop?.addEventListener('click', () => this.handleStopStreaming());
+        } else {
+          bannerWrapper.style.display = 'none';
+          bannerWrapper.innerHTML = '';
+        }
       }
     }
   }
@@ -353,6 +369,22 @@ export class VoiceStageView {
     // Volume button click → toggle mute screen audio
     const volButtons = area.querySelectorAll('.stage-volume-btn') as NodeListOf<HTMLButtonElement>;
     volButtons.forEach((btn) => {
+      // Sync the button icon + popup visibility with the current (possibly
+      // persisted) mute state of the underlying <audio> element on each
+      // render, so a muted share doesn't come back showing "volume_up" (#159).
+      const initWrapper = btn.closest('.stage-volume-wrapper');
+      const initSlider = initWrapper?.querySelector('.stage-screen-volume-slider') as HTMLInputElement | null;
+      const initUserId = initSlider?.getAttribute('data-user-id');
+      if (initUserId) {
+        const initAudio = document.querySelector(`audio[data-screen-audio-user="${initUserId}"]`) as HTMLAudioElement | null;
+        if (initAudio?.muted) {
+          const initIcon = btn.querySelector('.material-symbols-outlined');
+          if (initIcon) initIcon.textContent = 'volume_off';
+          btn.title = 'Áudio da tela mutado (clique para desmutar)';
+          initWrapper?.classList.add('screen-audio-muted');
+        }
+      }
+
       btn.addEventListener('click', (e: Event) => {
         e.stopPropagation();
         const wrapper = btn.closest('.stage-volume-wrapper');
@@ -368,10 +400,12 @@ export class VoiceStageView {
           audioEl.muted = false;
           if (icon) icon.textContent = 'volume_up';
           btn.title = 'Volume do áudio da tela';
+          wrapper?.classList.remove('screen-audio-muted');
         } else {
           audioEl.muted = true;
           if (icon) icon.textContent = 'volume_off';
           btn.title = 'Áudio da tela mutado (clique para desmutar)';
+          wrapper?.classList.add('screen-audio-muted');
         }
       });
     });

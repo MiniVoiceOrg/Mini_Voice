@@ -53,6 +53,10 @@ export interface ServerDetails {
   iconUrl?: string | null;
   channels: ChannelSummary[];
   members: UserSummary[];
+  // All users who have ever connected (online + offline), used to allow
+  // mentioning users that are not currently in the server (#14). Offline users
+  // carry status 'DISCONNECTED'. Optional for backward compatibility.
+  knownMembers?: UserSummary[];
   voiceStates: Record<string, VoiceParticipantState>; // key = userId
 }
 

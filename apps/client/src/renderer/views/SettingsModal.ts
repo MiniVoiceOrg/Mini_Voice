@@ -1,6 +1,7 @@
 import { MessageType, QUALITY_PRESETS, QualityPresetType, DEFAULT_CUSTOM_PROFILE, QualityProfile } from '@mini-voice/shared';
 import { appEvents } from '../core/EventBus';
 import { networkClient } from '../core/NetworkClient';
+import { enableBackdropClose } from '../utils/modal';
 import { audioProcessor } from '../core/AudioProcessor';
 import { serverStore } from '../stores/serverStore';
 import { settingsStore } from '../stores/settingsStore';
@@ -234,6 +235,42 @@ export class SettingsModal {
               <option value="simple" ${settingsStore.screenShareTelemetryMode === 'simple' ? 'selected' : ''}>Simples — FPS, resolução e bitrate</option>
               <option value="complete" ${settingsStore.screenShareTelemetryMode === 'complete' ? 'selected' : ''}>Completo — inclui codec e métricas avançadas</option>
             </select>
+          </div>
+        </div>
+
+        <!-- Chat Notifications (#152/#153) -->
+        <div class="form-group" style="border-top: 1px solid var(--border-color); padding-top: 14px; margin-top: 10px;">
+          <label style="display: flex; align-items: center; gap: 6px;">
+            <span class="material-symbols-outlined md-16" style="color: var(--accent-primary);">chat</span>
+            Notificações de Chat
+          </label>
+          <div class="form-group" style="padding: 10px 12px; background: var(--bg-card); border: 1px solid var(--border-color); border-radius: var(--radius-md); margin-top: 8px; margin-bottom: 10px;">
+            <div style="display: flex; align-items: center; justify-content: space-between; gap: 12px;">
+              <div>
+                <label style="display: flex; align-items: center; gap: 6px; margin-bottom: 2px; cursor: pointer; font-weight: 600;" for="checkbox-chat-sound">
+                  <span class="material-symbols-outlined md-16" style="color: var(--accent-primary);">notifications_active</span>
+                  Tocar som ao receber mensagens
+                </label>
+                <div style="font-size: 11px; color: var(--text-muted);">
+                  Reproduz um breve som quando uma nova mensagem de outra pessoa chega em qualquer canal de texto.
+                </div>
+              </div>
+              <input id="checkbox-chat-sound" type="checkbox" ${settingsStore.chatMessageSoundEnabled ? 'checked' : ''} style="width: 18px; height: 18px; cursor: pointer; accent-color: var(--accent-primary);">
+            </div>
+          </div>
+          <div class="form-group" style="padding: 10px 12px; background: var(--bg-card); border: 1px solid var(--border-color); border-radius: var(--radius-md); margin-bottom: 0;">
+            <div style="display: flex; align-items: center; justify-content: space-between; gap: 12px;">
+              <div>
+                <label style="display: flex; align-items: center; gap: 6px; margin-bottom: 2px; cursor: pointer; font-weight: 600;" for="checkbox-chat-sound-mentions">
+                  <span class="material-symbols-outlined md-16" style="color: var(--accent-primary);">alternate_email</span>
+                  Apenas quando eu for mencionado
+                </label>
+                <div style="font-size: 11px; color: var(--text-muted);">
+                  Toca o som somente quando seu apelido for citado na mensagem (ex.: @seu_apelido).
+                </div>
+              </div>
+              <input id="checkbox-chat-sound-mentions" type="checkbox" ${settingsStore.chatMessageSoundMentionsOnly ? 'checked' : ''} style="width: 18px; height: 18px; cursor: pointer; accent-color: var(--accent-primary);">
+            </div>
           </div>
         </div>
 
@@ -626,6 +663,7 @@ export class SettingsModal {
     const selectScreenTelemetryMode = this.modalEl.querySelector('#select-screen-telemetry-mode') as HTMLSelectElement | null;
 
     btnClose?.addEventListener('click', () => this.close());
+    enableBackdropClose(this.modalEl, () => this.close());
     btnDone?.addEventListener('click', () => this.close());
 
     const btnCheckUpdates = this.modalEl.querySelector('#btn-check-updates');
@@ -722,6 +760,26 @@ export class SettingsModal {
     });
 
     syncScreenTelemetryControls();
+
+    const checkboxChatSound = this.modalEl.querySelector('#checkbox-chat-sound') as HTMLInputElement | null;
+    const checkboxChatSoundMentions = this.modalEl.querySelector('#checkbox-chat-sound-mentions') as HTMLInputElement | null;
+
+    const syncChatSoundControls = () => {
+      if (checkboxChatSoundMentions) checkboxChatSoundMentions.disabled = !checkboxChatSound?.checked;
+    };
+
+    checkboxChatSound?.addEventListener('change', () => {
+      settingsStore.chatMessageSoundEnabled = !!checkboxChatSound.checked;
+      settingsStore.save();
+      syncChatSoundControls();
+    });
+
+    checkboxChatSoundMentions?.addEventListener('change', () => {
+      settingsStore.chatMessageSoundMentionsOnly = !!checkboxChatSoundMentions.checked;
+      settingsStore.save();
+    });
+
+    syncChatSoundControls();
 
     selectPreset?.addEventListener('change', () => {
       const preset = selectPreset.value as QualityPresetType;
