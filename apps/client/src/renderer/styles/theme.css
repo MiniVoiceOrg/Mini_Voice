@@ -826,6 +826,24 @@ input:focus, textarea:focus, select:focus {
   text-overflow: ellipsis;
 }
 
+/* Red @ shown on a text channel when the user was mentioned and hasn't opened it yet (#14). */
+.channel-mention-badge {
+  flex-shrink: 0;
+  margin-left: auto;
+  min-width: 18px;
+  height: 18px;
+  padding: 0 5px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 9px;
+  background-color: var(--danger, #ed4245);
+  color: #fff;
+  font-size: 12px;
+  font-weight: 700;
+  line-height: 1;
+}
+
 .channel-delete-btn {
   display: none;
   align-items: center;
@@ -848,6 +866,54 @@ input:focus, textarea:focus, select:focus {
 .channel-delete-btn:hover {
   color: var(--danger);
   background: rgba(242, 63, 67, 0.12);
+}
+
+.channel-menu-btn {
+  display: none;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  width: 20px;
+  height: 20px;
+  padding: 0;
+  border: none;
+  background: transparent;
+  color: var(--text-muted);
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+}
+
+.channel-item:hover .channel-menu-btn {
+  display: inline-flex;
+}
+
+.channel-menu-btn:hover {
+  color: var(--text-normal);
+  background: rgba(255, 255, 255, 0.08);
+}
+
+/* Floating menu anchored at a click position (channel options, #151). */
+.floating-context-menu {
+  position: fixed;
+  min-width: 190px;
+  background-color: var(--bg-panel);
+  border: 1px solid var(--border-color);
+  border-radius: 8px;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5);
+  z-index: 10000;
+  display: flex;
+  flex-direction: column;
+  padding: 6px;
+  gap: 2px;
+}
+
+.floating-context-menu .server-dropdown-item.danger {
+  color: var(--danger);
+}
+
+.floating-context-menu .server-dropdown-item.danger:hover {
+  background-color: var(--danger);
+  color: #fff;
 }
 
 /* Voice Channel Connected Participants nested under channel */
@@ -1317,6 +1383,75 @@ input:focus, textarea:focus, select:focus {
   padding: 16px 20px;
   background-color: var(--bg-panel);
   border-top: 1px solid var(--border-color);
+  position: relative;
+}
+
+/* @-mention autocomplete dropup (#14) */
+.mention-dropup {
+  position: absolute;
+  left: 20px;
+  right: 20px;
+  bottom: 100%;
+  margin-bottom: 6px;
+  max-height: 240px;
+  overflow-y: auto;
+  background-color: var(--bg-panel);
+  border: 1px solid var(--border-color);
+  border-radius: 8px;
+  box-shadow: 0 -8px 26px rgba(0, 0, 0, 0.45);
+  z-index: 60;
+  padding: 6px;
+}
+
+.mention-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 7px 10px;
+  border-radius: 6px;
+  cursor: pointer;
+}
+
+.mention-item.active,
+.mention-item:hover {
+  background-color: var(--primary, #5865f2);
+}
+
+.mention-avatar {
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  object-fit: cover;
+  flex-shrink: 0;
+}
+
+.mention-nick {
+  flex: 1;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--text-normal);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.mention-item.active .mention-nick {
+  color: #fff;
+}
+
+.mention-status-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.mention-status-dot.online {
+  background-color: var(--success);
+}
+
+.mention-status-dot.offline {
+  background-color: var(--text-muted);
 }
 
 .chat-input-wrapper {
@@ -1810,6 +1945,12 @@ input:focus, textarea:focus, select:focus {
   display: flex;
   align-items: center;
   justify-content: center;
+}
+
+/* When the screen audio is muted, keep the slider popup hidden (even on hover)
+   so it doesn't linger on top of the video. It returns on unmute (#159). */
+.stage-volume-wrapper.screen-audio-muted:hover .stage-volume-popup {
+  display: none;
 }
 
 .stage-screen-volume-slider {
@@ -2337,10 +2478,11 @@ button[data-loading="1"]::after {
 /* Screen Sharing Source Selector */
 .screen-sources-grid {
   display: grid;
-  grid-template-columns: repeat(2, 1fr);
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 12px;
   max-height: 320px;
   overflow-y: auto;
+  overflow-x: hidden;
   padding: 4px;
 }
 
@@ -2353,6 +2495,7 @@ button[data-loading="1"]::after {
   border: 2px solid var(--border-color);
   background-color: var(--bg-card);
   cursor: pointer;
+  min-width: 0;
 }
 
 .source-item:hover {

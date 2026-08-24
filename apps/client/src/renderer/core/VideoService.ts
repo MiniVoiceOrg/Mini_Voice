@@ -101,6 +101,11 @@ export class VideoService {
     screenTrack.contentHint = this.currentPreset === 'GAMING' ? 'motion' : 'detail';
 
     screenTrack.onended = () => {
+      // Fires only when the track ends on its own — e.g. the shared window/app
+      // was closed or the user pressed the OS "stop sharing" button — never
+      // when we call stopScreenShare() ourselves. Let listeners fully tear the
+      // share down (peers, WebRTC sender, UI) before we stop locally (#159).
+      appEvents.emit('local.screen_ended_externally');
       this.stopScreenShare();
     };
 

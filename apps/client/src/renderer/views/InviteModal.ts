@@ -1,4 +1,5 @@
 import { serverStore } from '../stores/serverStore';
+import { enableBackdropClose } from '../utils/modal';
 
 export class InviteModal {
   private modalEl: HTMLElement | null = null;
@@ -89,6 +90,7 @@ export class InviteModal {
     const copyMsg = this.modalEl.querySelector('#copy-success-msg') as HTMLElement;
 
     btnClose?.addEventListener('click', () => this.close());
+    enableBackdropClose(this.modalEl, () => this.close());
 
     btnCopy?.addEventListener('click', async () => {
       const textToCopy = `Convite para o Mini Voice!

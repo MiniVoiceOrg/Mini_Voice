@@ -132,6 +132,26 @@ export class AuthService {
       members.push(userSummary);
     }
 
+    // Build the full known-members list (everyone who ever connected) so offline
+    // users can still be mentioned (#14). Online users keep their live summary;
+    // offline users are marked DISCONNECTED.
+    const allUsers = await this.userRepo.listAll();
+    const knownMembers: UserSummary[] = allUsers.map((u) => {
+      const online = onlineMap.get(u.id);
+      if (online) return online.user;
+      return {
+        id: u.id,
+        clientId: u.clientId,
+        nickname: u.nickname,
+        avatarUrl: this.avatarStorage.getPublicUrl(u.avatarPath),
+        status: 'DISCONNECTED',
+        joinedAt: u.lastSeenAt,
+      };
+    });
+    if (!knownMembers.some((m) => m.id === userSummary.id)) {
+      knownMembers.push(userSummary);
+    }
+
     const serverDetails: ServerDetails = {
       id: server.id,
       name: server.name,
@@ -150,6 +170,7 @@ export class AuthService {
         maxParticipants: c.maxParticipants,
       })),
       members,
+      knownMembers,
       voiceStates: {},
     };
 

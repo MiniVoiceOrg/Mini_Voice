@@ -23,6 +23,7 @@ import { webRtcManager } from './core/WebRtcManager';
 import { chatStore } from './stores/chatStore';
 import { connectionStore } from './stores/connectionStore';
 import { serverStore } from './stores/serverStore';
+import { settingsStore } from './stores/settingsStore';
 import { voiceStore } from './stores/voiceStore';
 import { ConnectionView } from './views/ConnectionView';
 import { MainView } from './views/MainView';
@@ -186,6 +187,26 @@ class App {
 
     appEvents.on(`message.${MessageType.CHAT_MESSAGE}`, (message: ChatMessage) => {
       chatStore.addMessage(message);
+      // Incoming chat cue (#152), honoring the mute / mentions-only settings
+      // (#153). Own and system messages are ignored. A mention is "@<nickname>"
+      // appearing in the message body (#14).
+      if (!message.isSystem) {
+        const me = serverStore.currentUser;
+        if (me && message.userId !== me.id) {
+          const nick = (me.nickname || '').trim().toLowerCase();
+          const isMention = !!nick && message.content.toLowerCase().includes(`@${nick}`);
+
+          if (settingsStore.chatMessageSoundEnabled) {
+            const shouldPlay = settingsStore.chatMessageSoundMentionsOnly ? isMention : true;
+            if (shouldPlay) soundEffects.play('chat_message');
+          }
+
+          // Mark the text channel in the sidebar until the user opens it (#14).
+          if (isMention && !this.mainView.isViewingTextChannel(message.channelId)) {
+            chatStore.markMention(message.channelId);
+          }
+        }
+      }
     });
 
     appEvents.on(`message.${MessageType.CHAT_HISTORY}`, (payload: ChatHistoryPayload) => {
@@ -265,6 +286,16 @@ class App {
       if (screenAudioService.getIsCapturing()) {
         screenAudioService.stop();
       }
+    });
+
+    // The shared window/app was closed (or the OS "stop sharing" button was
+    // used): finish tearing down the screen share so peers stop seeing a
+    // frozen frame and the local controls return to the idle state (#159).
+    appEvents.on('local.screen_ended_externally', async () => {
+      if (!voiceStore.isScreenSharing) return;
+      await webRtcManager.setLocalScreenTrack(null);
+      voiceStore.setScreenSharing(false);
+      networkClient.send(MessageType.VOICE_STATE_UPDATE, { isScreenSharing: false });
     });
 
     // Host closed the server: show a friendly notice (the network layer already

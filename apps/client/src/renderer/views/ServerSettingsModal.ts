@@ -1,6 +1,7 @@
 import { MessageType, ServerUpdateSettingsPayload } from '@mini-voice/shared';
 import logoUrl from '../assets/Logo.png';
 import { escapeHtml } from '../utils/html';
+import { enableBackdropClose } from '../utils/modal';
 import { getAvatarUrl } from '../utils/avatar';
 import { networkClient } from '../core/NetworkClient';
 import { serverStore } from '../stores/serverStore';
@@ -128,6 +129,7 @@ export class ServerSettingsModal {
     const statusDesc = this.modalEl.querySelector('#password-status-desc') as HTMLElement | null;
 
     btnClose?.addEventListener('click', () => this.close());
+    enableBackdropClose(this.modalEl, () => this.close());
     btnCancel?.addEventListener('click', () => this.close());
 
     serverIconWrapper?.addEventListener('click', async () => {
