@@ -8,7 +8,7 @@ import {
   authConnectSchema,
 } from '@mini-voice/shared';
 import { ServerRecord } from '../../domain/entities';
-import { IChannelRepository, IServerRepository, IUserRepository } from '../../domain/repositories';
+import { IChannelRepository, IMentionRepository, IServerRepository, IUserRepository } from '../../domain/repositories';
 import { AvatarStorageService } from '../../infrastructure/security/AvatarStorageService';
 import { PasswordService } from '../../infrastructure/security/PasswordService';
 import { Logger } from '../../infrastructure/logger/Logger';
@@ -26,6 +26,7 @@ export class AuthService {
     private serverRepo: IServerRepository,
     private userRepo: IUserRepository,
     private channelRepo: IChannelRepository,
+    private mentionRepo: IMentionRepository,
     private avatarStorage: AvatarStorageService,
     private getActiveOnlineUsers: () => Map<string, { user: UserSummary }>
   ) {}
@@ -152,6 +153,10 @@ export class AuthService {
       knownMembers.push(userSummary);
     }
 
+    // Channels where this user has unread @-mentions, so the red @ badge shows
+    // even for mentions received while they were offline (#14).
+    const mentionedChannelIds = await this.mentionRepo.listChannelIdsForUser(userRecord.id);
+
     const serverDetails: ServerDetails = {
       id: server.id,
       name: server.name,
@@ -171,6 +176,7 @@ export class AuthService {
       })),
       members,
       knownMembers,
+      mentionedChannelIds,
       voiceStates: {},
     };
 

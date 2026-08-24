@@ -111,6 +111,9 @@ class App {
       const previousVoiceChannelId = voiceStore.currentVoiceChannelId;
 
       serverStore.setServerDetails(payload.server, payload.currentUser);
+      // Seed unread @-mention badges, including mentions received while this
+      // user was offline (#14).
+      chatStore.setMentions(payload.server.mentionedChannelIds ?? []);
       participantManager.clear();
       participantManager.setUsers(payload.server.members);
 
@@ -196,14 +199,24 @@ class App {
           const nick = (me.nickname || '').trim().toLowerCase();
           const isMention = !!nick && message.content.toLowerCase().includes(`@${nick}`);
 
-          if (settingsStore.chatMessageSoundEnabled) {
-            const shouldPlay = settingsStore.chatMessageSoundMentionsOnly ? isMention : true;
-            if (shouldPlay) soundEffects.play('chat_message');
-          }
+          // Resolve the chat-sound mode with the 3-level precedence
+          // channel → server → global (#153).
+          const soundMode = settingsStore.getEffectiveChatSoundMode(
+            serverStore.serverDetails?.id,
+            message.channelId
+          );
+          const shouldPlay = soundMode === 'all' || (soundMode === 'mentions' && isMention);
+          if (shouldPlay) soundEffects.play('chat_message');
 
           // Mark the text channel in the sidebar until the user opens it (#14).
-          if (isMention && !this.mainView.isViewingTextChannel(message.channelId)) {
-            chatStore.markMention(message.channelId);
+          if (isMention) {
+            if (this.mainView.isViewingTextChannel(message.channelId)) {
+              // Seen live: clear the server-side unread row so it isn't
+              // re-delivered as unread on the next reconnect (#14).
+              networkClient.send(MessageType.CHAT_MENTIONS_READ, { channelId: message.channelId });
+            } else {
+              chatStore.markMention(message.channelId);
+            }
           }
         }
       }

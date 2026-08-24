@@ -57,6 +57,9 @@ export interface ServerDetails {
   // mentioning users that are not currently in the server (#14). Offline users
   // carry status 'DISCONNECTED'. Optional for backward compatibility.
   knownMembers?: UserSummary[];
+  // Channel ids in which the current user has unread @-mentions, so that a user
+  // mentioned while offline sees the red @ badge when they reconnect (#14).
+  mentionedChannelIds?: string[];
   voiceStates: Record<string, VoiceParticipantState>; // key = userId
 }
 

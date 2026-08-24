@@ -6,6 +6,7 @@ import { voiceStore } from '../stores/voiceStore';
 import { appEvents } from '../core/EventBus';
 import { formatKeyCombo } from '../utils/keybind';
 import { showConfirm } from './Dialog';
+import { enableBackdropClose } from '../utils/modal';
 
 function formatTime(seconds: number): string {
   if (isNaN(seconds) || seconds < 0) return '0:00';
@@ -355,6 +356,7 @@ export class SoundboardModal {
     const handleClose = () => this.close();
     btnClose?.addEventListener('click', handleClose);
     btnFooterClose?.addEventListener('click', handleClose);
+    enableBackdropClose(this.modalEl, handleClose);
 
     const handleChangeFolder = async () => {
       const folder = await soundboardService.selectFolder();

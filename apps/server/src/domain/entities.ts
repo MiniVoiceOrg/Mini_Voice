@@ -37,3 +37,11 @@ export interface MessageRecord {
   createdAt: number;
   isSystem?: boolean;
 }
+
+export interface MentionRecord {
+  id: string;
+  userId: string;
+  channelId: string;
+  messageId: string;
+  createdAt: number;
+}
