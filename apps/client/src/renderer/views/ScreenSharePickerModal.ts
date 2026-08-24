@@ -188,16 +188,12 @@ export class ScreenSharePickerModal {
 
   private async startSharing(): Promise<void> {
     try {
-      if (voiceStore.isCameraOn) {
-        videoService.stopCamera();
-        await webRtcManager.setLocalCameraTrack(null);
-        voiceStore.setCameraOn(false);
-      }
       const stream = await videoService.startScreenShare(this.selectedSourceId || undefined);
       const track = stream.getVideoTracks()[0];
       await webRtcManager.setLocalScreenTrack(track);
       voiceStore.setScreenSharing(true);
-      networkClient.send(MessageType.VOICE_STATE_UPDATE, { isScreenSharing: true, isCameraOn: false });
+      // Camera and screen are independent (#26) — do not disturb camera state.
+      networkClient.send(MessageType.VOICE_STATE_UPDATE, { isScreenSharing: true });
 
       // Start or stop screen audio capture based on checkbox. When sharing a
       // single window, pass its source id so only that app's audio is captured.

@@ -37,11 +37,24 @@ interface TelemetryByteSample {
   timestamp: number;
 }
 
+/**
+ * A single renderable tile on the stage. A participant contributes one tile per
+ * active media source, so someone sharing camera + screen at once shows up as
+ * two independent tiles (#26). Participants with no video get a single 'voice'
+ * (avatar) tile.
+ */
+type StageTileKind = 'voice' | 'camera' | 'screen';
+interface StageTile {
+  p: ParticipantViewModel;
+  kind: StageTileKind;
+  key: string; // `${userId}:${kind}` — stable identity for focus/DOM keys
+}
+
 export class VoiceStageView {
   private container: HTMLElement;
   private currentChannelId: string | null = null;
   private unbindEvents: Array<() => void> = [];
-  private focusedUserId: string | null = null;
+  private focusedTileKey: string | null = null;
   private gridExpanded = false;
   private suppressCardClickUntil = 0;
   // #150: remote screen shares are gated behind an explicit "Assistir
@@ -64,7 +77,7 @@ export class VoiceStageView {
 
   public setChannel(channelId: string | null): void {
     this.currentChannelId = channelId;
-    this.focusedUserId = null;
+    this.focusedTileKey = null;
     if (!channelId) {
       this.stopTelemetryMonitor();
     }
@@ -246,14 +259,41 @@ export class VoiceStageView {
   }
 
   private setCardSpeaking(userId: string, isSpeaking: boolean): void {
-    const card = document.getElementById(`card-${userId}`);
-    if (card) {
+    // Update every non-screen tile for the user (a user may show a voice or
+    // camera tile; the screen tile never pulses on speech — #26).
+    const cards = document.querySelectorAll(`[data-user-id="${userId}"][data-kind]:not([data-kind="screen"])`);
+    cards.forEach((card) => {
       if (isSpeaking) {
         card.classList.add('speaking');
       } else {
         card.classList.remove('speaking');
       }
+    });
+  }
+
+  /**
+   * Expands the flat participant list into renderable tiles. Camera + screen
+   * are independent, so a participant broadcasting both yields two tiles (#26);
+   * participants with no video yield a single avatar ('voice') tile.
+   */
+  private buildStageTiles(participants: ParticipantViewModel[], currentUserId?: string): StageTile[] {
+    const tiles: StageTile[] = [];
+    for (const p of participants) {
+      const isLocal = p.user.id === currentUserId;
+      const isCamOn = isLocal ? voiceStore.isCameraOn : (p.voiceState?.isCameraOn ?? false);
+      const isScreenOn = isLocal ? voiceStore.isScreenSharing : (p.voiceState?.isScreenSharing ?? false);
+      if (isCamOn) tiles.push({ p, kind: 'camera', key: `${p.user.id}:camera` });
+      if (isScreenOn) tiles.push({ p, kind: 'screen', key: `${p.user.id}:screen` });
+      if (!isCamOn && !isScreenOn) tiles.push({ p, kind: 'voice', key: `${p.user.id}:voice` });
     }
+    return tiles;
+  }
+
+  private isTileSpeaking(tile: StageTile): boolean {
+    // The speaking glow reflects the microphone; a pure screen tile shouldn't
+    // pulse when the user talks (their camera/voice tile already does).
+    if (tile.kind === 'screen') return false;
+    return (tile.p.user.id === serverStore.currentUser?.id) ? voiceStore.isSpeaking : tile.p.isSpeaking;
   }
 
   public renderParticipants(): void {
@@ -284,32 +324,35 @@ export class VoiceStageView {
       }
     }
 
-    if (this.focusedUserId && !participants.some((p) => p.user.id === this.focusedUserId)) {
-      this.focusedUserId = null;
+    // A participant sharing camera + screen contributes two independent tiles
+    // (#26); focus, speaking and DOM keys are keyed per tile.
+    const tiles = this.buildStageTiles(participants, currentUserId);
+
+    if (this.focusedTileKey && !tiles.some((t) => t.key === this.focusedTileKey)) {
+      this.focusedTileKey = null;
     }
 
-    if (this.focusedUserId) {
-      const focusedParticipant = participants.find((p) => p.user.id === this.focusedUserId)!;
-      const otherParticipants = participants.filter((p) => p.user.id !== this.focusedUserId);
-      const isFocusedSpeaking = (focusedParticipant.user.id === serverStore.currentUser?.id) ? voiceStore.isSpeaking : focusedParticipant.isSpeaking;
+    if (this.focusedTileKey) {
+      const focusedTile = tiles.find((t) => t.key === this.focusedTileKey)!;
+      const otherTiles = tiles.filter((t) => t.key !== this.focusedTileKey);
+      const isFocusedSpeaking = this.isTileSpeaking(focusedTile);
 
       area.innerHTML = `
         <div class="stage-focused-layout">
-          <div class="stage-focused-main ${isFocusedSpeaking ? 'speaking' : ''}" id="card-${focusedParticipant.user.id}" data-user-id="${focusedParticipant.user.id}">
+          <div class="stage-focused-main ${isFocusedSpeaking ? 'speaking' : ''}" id="card-${focusedTile.p.user.id}-${focusedTile.kind}" data-user-id="${focusedTile.p.user.id}" data-kind="${focusedTile.kind}" data-tile-key="${focusedTile.key}">
             <div class="stage-focus-hint-badge">
               <span class="material-symbols-outlined md-14">zoom_in</span>
               <span>Modo Foco • Clique para restaurar grade</span>
             </div>
-            ${this.renderCardContent(focusedParticipant, true)}
+            ${this.renderCardContent(focusedTile, true)}
           </div>
 
-          ${otherParticipants.length > 0 ? `
+          ${otherTiles.length > 0 ? `
             <div class="stage-focused-strip">
-              ${otherParticipants.map((p) => {
-                const isOtherSpeaking = (p.user.id === serverStore.currentUser?.id) ? voiceStore.isSpeaking : p.isSpeaking;
+              ${otherTiles.map((t) => {
                 return `
-                  <div class="stage-mini-card ${isOtherSpeaking ? 'speaking' : ''}" id="card-${p.user.id}" data-user-id="${p.user.id}" title="Clique para focar em ${escapeHtml(p.user.nickname)}">
-                    ${this.renderCardContent(p, false, true)}
+                  <div class="stage-mini-card ${this.isTileSpeaking(t) ? 'speaking' : ''}" id="card-${t.p.user.id}-${t.kind}" data-user-id="${t.p.user.id}" data-kind="${t.kind}" data-tile-key="${t.key}" title="Clique para focar em ${escapeHtml(t.p.user.nickname)}">
+                    ${this.renderCardContent(t, false, true)}
                   </div>
                 `;
               }).join('')}
@@ -320,11 +363,10 @@ export class VoiceStageView {
     } else {
       area.innerHTML = `
         <div class="stage-grid ${this.gridExpanded ? 'stage-grid--expanded' : ''}" id="stage-grid">
-          ${participants.map((p) => {
-            const isSpeaking = (p.user.id === serverStore.currentUser?.id) ? voiceStore.isSpeaking : p.isSpeaking;
+          ${tiles.map((t) => {
             return `
-              <div class="stage-card ${isSpeaking ? 'speaking' : ''}" id="card-${p.user.id}" data-user-id="${p.user.id}" title="Clique para focar/destacar">
-                ${this.renderCardContent(p, false, false)}
+              <div class="stage-card ${this.isTileSpeaking(t) ? 'speaking' : ''}" id="card-${t.p.user.id}-${t.kind}" data-user-id="${t.p.user.id}" data-kind="${t.kind}" data-tile-key="${t.key}" title="Clique para focar/destacar">
+                ${this.renderCardContent(t, false, false)}
               </div>
             `;
           }).join('')}
@@ -352,9 +394,9 @@ export class VoiceStageView {
         // pointer-up may land outside the controls (#75).
         if (Date.now() < this.suppressCardClickUntil) return;
         if ((e.target as HTMLElement).closest('.stage-card-controls')) return;
-        const userId = card.getAttribute('data-user-id');
-        if (userId) {
-          this.focusedUserId = (this.focusedUserId === userId ? null : userId);
+        const tileKey = card.getAttribute('data-tile-key');
+        if (tileKey) {
+          this.focusedTileKey = (this.focusedTileKey === tileKey ? null : tileKey);
           this.renderParticipants();
         }
       });
@@ -392,7 +434,7 @@ export class VoiceStageView {
         if (!userId) return;
         this.watchingUserIds.add(userId);
         this.mutedScreenUserIds.delete(userId);
-        this.focusedUserId = userId;
+        this.focusedTileKey = `${userId}:screen`;
         this.renderParticipants();
       });
     });
@@ -406,7 +448,7 @@ export class VoiceStageView {
         const userId = btn.getAttribute('data-stopwatch-user');
         if (!userId) return;
         this.watchingUserIds.delete(userId);
-        if (this.focusedUserId === userId) this.focusedUserId = null;
+        if (this.focusedTileKey === `${userId}:screen`) this.focusedTileKey = null;
         this.renderParticipants();
       });
     });
@@ -494,34 +536,26 @@ export class VoiceStageView {
       slider.addEventListener('lostpointercapture', endDrag);
     });
 
-    // Attach media streams to video elements cleanly
-    participants.forEach((p) => {
-      const isLocal = p.user.id === serverStore.currentUser?.id;
-      const isCamOn = isLocal ? voiceStore.isCameraOn : (p.voiceState?.isCameraOn ?? false);
-      const isScreenOn = isLocal ? voiceStore.isScreenSharing : (p.voiceState?.isScreenSharing ?? false);
-
-      if (isCamOn || isScreenOn) {
-        const stream = isLocal
-          ? (isScreenOn ? videoService.getScreenStream() : videoService.getCameraStream())
-          : p.remoteStream;
-
-        if (stream) {
-          const videoEl = document.getElementById(`video-${p.user.id}`) as HTMLVideoElement;
-          if (videoEl && videoEl.srcObject !== stream) {
-            videoEl.muted = true;
-            videoEl.srcObject = stream;
-            this.hideVideoLoadingWhenReady(videoEl, `video-${p.user.id}`);
-            videoEl.play().catch(() => {});
-          }
-          const miniVideoEl = document.getElementById(`video-mini-${p.user.id}`) as HTMLVideoElement;
-          if (miniVideoEl && miniVideoEl.srcObject !== stream) {
-            miniVideoEl.muted = true;
-            miniVideoEl.srcObject = stream;
-            this.hideVideoLoadingWhenReady(miniVideoEl, `video-mini-${p.user.id}`);
-            miniVideoEl.play().catch(() => {});
-          }
+    // Attach media streams to the per-tile video elements cleanly. Camera rides
+    // remoteStream / cameraStream; screen rides remoteScreenStream / screenStream
+    // so both tiles show independent video (#26).
+    tiles.forEach((t) => {
+      if (t.kind === 'voice') return;
+      const isLocal = t.p.user.id === currentUserId;
+      const stream = isLocal
+        ? (t.kind === 'screen' ? videoService.getScreenStream() : videoService.getCameraStream())
+        : (t.kind === 'screen' ? t.p.remoteScreenStream : t.p.remoteStream);
+      if (!stream) return;
+      const ids = [`video-${t.p.user.id}-${t.kind}`, `video-mini-${t.p.user.id}-${t.kind}`];
+      ids.forEach((id) => {
+        const el = document.getElementById(id) as HTMLVideoElement | null;
+        if (el && el.srcObject !== stream) {
+          el.muted = true;
+          el.srcObject = stream;
+          this.hideVideoLoadingWhenReady(el, id);
+          el.play().catch(() => {});
         }
-      }
+      });
     });
 
     this.applyTelemetryOverlayState();
@@ -561,30 +595,38 @@ export class VoiceStageView {
     }
   }
 
-  private renderCardContent(p: ParticipantViewModel, isFocused: boolean = false, isMini: boolean = false): string {
+  private renderCardContent(tile: StageTile, isFocused: boolean = false, isMini: boolean = false): string {
+    const p = tile.p;
     const isLocal = p.user.id === serverStore.currentUser?.id;
     const isCamOn = isLocal ? voiceStore.isCameraOn : (p.voiceState?.isCameraOn ?? false);
     const isScreenOn = isLocal ? voiceStore.isScreenSharing : (p.voiceState?.isScreenSharing ?? false);
     const isMuted = isLocal ? voiceStore.isMuted : (p.voiceState?.isMuted ?? false);
     const isDeafened = isLocal ? voiceStore.isDeafened : (p.voiceState?.isDeafened ?? false);
     const avatarSrc = getAvatarUrl(p.user.avatarUrl);
-    const videoId = isMini ? `video-mini-${p.user.id}` : `video-${p.user.id}`;
-    const isRemoteScreen = isScreenOn && !isLocal;
+
+    const isVideoTile = tile.kind === 'camera' || tile.kind === 'screen';
+    const isScreenTile = tile.kind === 'screen';
+    const videoId = isMini ? `video-mini-${p.user.id}-${tile.kind}` : `video-${p.user.id}-${tile.kind}`;
+    const isRemoteScreen = isScreenTile && !isLocal;
     const isWatching = this.watchingUserIds.has(p.user.id);
-    // #150: a remote screen share the local user has not opted into watching:
-    // render the video blurred + silent behind an "Assistir transmissão" CTA.
+    // #150: a remote screen the local user has not opted into watching is
+    // rendered blurred + silent behind an "Assistir transmissão" CTA. Applies
+    // to screen tiles only — the camera tile always plays normally (#26).
     const isLocked = isRemoteScreen && !isWatching;
+    // Distinguish the two tiles of a camera + screen sharer with a "· Tela"
+    // suffix on the screen tile label (#26).
+    const label = isScreenTile ? `${escapeHtml(p.user.nickname)} · Tela` : escapeHtml(p.user.nickname);
 
     return `
-      ${(isCamOn || isScreenOn) ? `
-        <video id="${videoId}" class="stage-video-element ${isScreenOn ? 'screen-share' : ''}${isLocked ? ' screen-locked' : ''}" autoplay playsinline muted></video>
+      ${isVideoTile ? `
+        <video id="${videoId}" class="stage-video-element ${isScreenTile ? 'screen-share' : ''}${isLocked ? ' screen-locked' : ''}" autoplay playsinline muted></video>
         ${!isLocked ? `
           <div class="stage-loading-overlay" id="loading-${videoId}">
             <div class="reconnect-spinner"></div>
-            <span>${isScreenOn ? 'Carregando tela…' : 'Carregando câmera…'}</span>
+            <span>${isScreenTile ? 'Carregando tela…' : 'Carregando câmera…'}</span>
           </div>
         ` : ''}
-        ${(isScreenOn && !isLocked) ? `
+        ${(isScreenTile && !isLocked) ? `
           <div
             class="telemetry-overlay position-${settingsStore.screenShareTelemetryPosition}${settingsStore.screenShareTelemetryEnabled ? '' : ' is-hidden'}"
             data-telemetry-user-id="${p.user.id}"
@@ -628,7 +670,7 @@ export class VoiceStageView {
       `}
 
       <div class="stage-badges-overlay">
-        <span>${escapeHtml(p.user.nickname)}</span>
+        <span>${label}</span>
         ${isMuted ? '<span class="material-symbols-outlined md-14" style="color: var(--danger);">mic_off</span>' : ''}
         ${isDeafened ? '<span class="material-symbols-outlined md-14" style="color: var(--danger);">headset_off</span>' : ''}
         ${isCamOn ? '<span class="material-symbols-outlined md-14" style="color: var(--accent-primary);">videocam</span>' : ''}
@@ -1072,9 +1114,10 @@ export class VoiceStageView {
 
   /**
    * Toggles the local camera. Extracted so it can be triggered both from the
-   * stage controls and from the sidebar media bar (#29). Handles switching from
-   * an active screen share and cleanly reverts state if the camera fails to
-   * start (e.g. no camera plugged in).
+   * stage controls and from the sidebar media bar (#29). Camera and screen
+   * share are independent (#26): toggling the camera never stops an active
+   * screen share. Cleanly reverts state if the camera fails to start (e.g. no
+   * camera plugged in).
    */
   public async toggleCamera(): Promise<void> {
     if (voiceStore.isCameraOn) {
@@ -1083,35 +1126,18 @@ export class VoiceStageView {
       voiceStore.setCameraOn(false);
       networkClient.send(MessageType.VOICE_STATE_UPDATE, { isCameraOn: false });
     } else {
-      const wasScreenSharing = voiceStore.isScreenSharing;
-      if (wasScreenSharing) {
-        const confirmed = await showConfirm({
-          title: 'Ligar câmera',
-          message: 'O compartilhamento de tela será pausado para ligar a câmera. Deseja continuar?',
-          confirmLabel: 'Continuar',
-          variant: 'warning',
-        });
-        if (!confirmed) return;
-        videoService.stopScreenShare();
-        await webRtcManager.setLocalScreenTrack(null);
-        voiceStore.setScreenSharing(false);
-        // Broadcast the stop immediately so others don't keep seeing a stale
-        // screen-share icon / black frame if the camera fails to start below.
-        networkClient.send(MessageType.VOICE_STATE_UPDATE, { isScreenSharing: false });
-      }
       try {
         const stream = await videoService.startCamera();
         const track = stream.getVideoTracks()[0];
         await webRtcManager.setLocalCameraTrack(track);
         voiceStore.setCameraOn(true);
-        networkClient.send(MessageType.VOICE_STATE_UPDATE, { isCameraOn: true, isScreenSharing: false });
+        networkClient.send(MessageType.VOICE_STATE_UPDATE, { isCameraOn: true });
       } catch (err: any) {
-        // Fully revert local state and make sure the server/other clients
-        // reflect that nothing is being broadcast (no camera, no screen).
+        // Fully revert local camera state (screen share, if any, is untouched).
         videoService.stopCamera();
         await webRtcManager.setLocalCameraTrack(null);
         voiceStore.setCameraOn(false);
-        networkClient.send(MessageType.VOICE_STATE_UPDATE, { isCameraOn: false, isScreenSharing: false });
+        networkClient.send(MessageType.VOICE_STATE_UPDATE, { isCameraOn: false });
         await showAlert({
           title: 'Erro na câmera',
           message: `Não foi possível acessar a câmera. Verifique se há uma câmera conectada e disponível.\n\nDetalhe: ${err?.message || err}`,
@@ -1189,7 +1215,7 @@ export class VoiceStageView {
     btnViewMode?.addEventListener('click', () => {
       this.gridExpanded = !this.gridExpanded;
       // The expanded grid is a full equal-split view, so leave focus mode.
-      if (this.gridExpanded) this.focusedUserId = null;
+      if (this.gridExpanded) this.focusedTileKey = null;
       const icon = btnViewMode.querySelector('.material-symbols-outlined');
       if (icon) icon.textContent = this.gridExpanded ? 'view_agenda' : 'grid_view';
       this.renderParticipants();
