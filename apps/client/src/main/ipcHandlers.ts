@@ -5,6 +5,7 @@ import path from 'path';
 import { v4 as uuidv4 } from 'uuid';
 import { LanDiscovery } from './lanDiscovery';
 import { HostServerOptions, ServerManager } from './serverManager';
+import { TrayManager, VoiceStatus } from './trayManager';
 
 // Screen audio native module (compiled only on CI — graceful fallback)
 let screenAudio: {
@@ -21,8 +22,16 @@ try {
   screenAudio = null;
 }
 
-export function setupIpcHandlers(mainWindow: BrowserWindow, serverManager: ServerManager): void {
+export function setupIpcHandlers(
+  mainWindow: BrowserWindow,
+  serverManager: ServerManager,
+  trayManager?: TrayManager
+): void {
   const lanDiscovery = new LanDiscovery(mainWindow);
+
+  ipcMain.handle('tray:update-voice-status', (_, status: VoiceStatus) => {
+    trayManager?.updateVoiceStatus(status);
+  });
 
   ipcMain.handle('window:maximize', () => {
     if (!mainWindow || mainWindow.isDestroyed()) return;
