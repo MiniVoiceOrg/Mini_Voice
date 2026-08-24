@@ -1,4 +1,4 @@
-import { ChannelSummary, ChatMessage, ServerDetails, UserSummary, VoiceParticipantState, WebRtcSignalPayload } from './models.js';
+import { AttachmentStorageInfo, ChannelSummary, ChatMessage, ServerDetails, UserSummary, VoiceParticipantState, WebRtcSignalPayload } from './models.js';
 
 export enum ProtocolErrorCode {
   AUTH_INVALID_PASSWORD = 'AUTH_INVALID_PASSWORD',
@@ -10,6 +10,9 @@ export enum ProtocolErrorCode {
   RATE_LIMITED = 'RATE_LIMITED',
   AVATAR_TOO_LARGE = 'AVATAR_TOO_LARGE',
   AVATAR_INVALID_TYPE = 'AVATAR_INVALID_TYPE',
+  ATTACHMENT_TOO_LARGE = 'ATTACHMENT_TOO_LARGE',
+  ATTACHMENT_INVALID_TYPE = 'ATTACHMENT_INVALID_TYPE',
+  STORAGE_FULL = 'STORAGE_FULL',
   SERVER_FULL = 'SERVER_FULL',
   PROTOCOL_VERSION_UNSUPPORTED = 'PROTOCOL_VERSION_UNSUPPORTED',
   INTERNAL_ERROR = 'INTERNAL_ERROR',
@@ -23,6 +26,7 @@ export enum MessageType {
   CHAT_SEND = 'CHAT_SEND',
   CHAT_LOAD_HISTORY = 'CHAT_LOAD_HISTORY',
   CHAT_MENTIONS_READ = 'CHAT_MENTIONS_READ',
+  CHAT_REQUEST_UPLOAD_TOKEN = 'CHAT_REQUEST_UPLOAD_TOKEN',
   CHANNEL_CREATE = 'CHANNEL_CREATE',
   CHANNEL_DELETE = 'CHANNEL_DELETE',
   USER_CHANGE_NICKNAME = 'USER_CHANGE_NICKNAME',
@@ -50,6 +54,7 @@ export enum MessageType {
   CHANNEL_DELETED = 'CHANNEL_DELETED',
   CHAT_MESSAGE = 'CHAT_MESSAGE',
   CHAT_HISTORY = 'CHAT_HISTORY',
+  CHAT_UPLOAD_TOKEN = 'CHAT_UPLOAD_TOKEN',
   VOICE_USER_JOINED = 'VOICE_USER_JOINED',
   VOICE_USER_LEFT = 'VOICE_USER_LEFT',
   VOICE_STATE_CHANGED = 'VOICE_STATE_CHANGED',
@@ -75,6 +80,20 @@ export interface AuthConnectPayload {
 export interface ChatSendPayload {
   channelId: string;
   content: string;
+  // Ids of files already uploaded via POST /attachments to be linked to this
+  // message (#11). `content` may be empty when the message is only attachments.
+  attachmentIds?: string[];
+}
+
+// Client asks the server for a short-lived token authorizing an HTTP upload (#11).
+export interface ChatRequestUploadTokenPayload {
+  channelId: string;
+}
+
+// Server reply carrying the short-lived upload token and its expiry (#11).
+export interface ChatUploadTokenPayload {
+  token: string;
+  expiresAt: number;
 }
 
 export interface ChatLoadHistoryPayload {
@@ -113,6 +132,9 @@ export interface ServerUpdateSettingsPayload {
   password?: string | null; // null or empty string removes the password
   allowSoundboard?: boolean;
   iconBase64?: string | null; // Data URL, pure base64, or null to remove
+  // Attachment storage limits in bytes (#11).
+  maxAttachmentFileBytes?: number;
+  maxAttachmentStorageBytes?: number;
 }
 
 export interface SoundboardPlayPayload {
@@ -156,6 +178,8 @@ export interface ServerSettingsUpdatedPayload {
   hasPassword: boolean;
   allowSoundboard?: boolean;
   iconUrl?: string | null;
+  // Current attachment-storage limits + usage, so the settings UI stays in sync (#11).
+  attachmentStorage?: AttachmentStorageInfo;
 }
 
 export interface SoundboardPlayedPayload {

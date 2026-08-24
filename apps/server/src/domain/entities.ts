@@ -8,6 +8,9 @@ export interface ServerRecord {
   maxUsers: number;
   allowSoundboard?: boolean;
   iconPath?: string | null;
+  // Attachment storage limits in bytes (#11); null → shared defaults.
+  maxAttachmentFileBytes?: number | null;
+  maxAttachmentStorageBytes?: number | null;
 }
 
 export interface UserRecord {
@@ -43,5 +46,25 @@ export interface MentionRecord {
   userId: string;
   channelId: string;
   messageId: string;
+  createdAt: number;
+}
+
+// A file attached to a chat message (#11). `messageId` is null while the upload
+// is pending (before the message is sent). `filename` is the on-disk name, empty
+// once the row has been evicted by the FIFO storage cleanup.
+export interface AttachmentRecord {
+  id: string;
+  messageId: string | null;
+  channelId: string;
+  userId: string;
+  kind: 'image' | 'video' | 'file';
+  filename: string;
+  originalName: string;
+  mimeType: string;
+  sizeBytes: number;
+  width?: number | null;
+  height?: number | null;
+  durationMs?: number | null;
+  evicted?: boolean;
   createdAt: number;
 }

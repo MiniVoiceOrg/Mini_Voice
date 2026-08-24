@@ -21,6 +21,37 @@ export interface ChannelSummary {
   maxParticipants?: number;
 }
 
+export type AttachmentKind = 'image' | 'video' | 'file';
+
+// A single file attached to a chat message (#11). The binary itself lives on the
+// host's disk (server-data/attachments) and is served over HTTP; only this small
+// metadata record travels over the WebSocket / is stored in the DB.
+export interface AttachmentMeta {
+  id: string;
+  messageId: string;
+  kind: AttachmentKind;
+  // HTTP path served by the host (e.g. /attachments/<file>). Null when the file
+  // has been evicted by the FIFO storage cleanup — the UI shows a placeholder.
+  url: string | null;
+  originalName: string;
+  mimeType: string;
+  sizeBytes: number;
+  width?: number | null;
+  height?: number | null;
+  durationMs?: number | null;
+  // True when the file was pruned to reclaim disk space; the message row stays.
+  evicted?: boolean;
+  createdAt: number;
+}
+
+// Server attachment-storage limits and current usage, surfaced in the server
+// settings UI so the host can see and adjust how much disk chat files may use.
+export interface AttachmentStorageInfo {
+  usedBytes: number;
+  maxTotalBytes: number;
+  maxFileBytes: number;
+}
+
 export interface ChatMessage {
   id: string;
   channelId: string;
@@ -30,6 +61,8 @@ export interface ChatMessage {
   content: string;
   createdAt: number;
   isSystem?: boolean;
+  // Files attached to this message (#11). Omitted/empty for plain text messages.
+  attachments?: AttachmentMeta[];
 }
 
 export interface VoiceParticipantState {
@@ -61,6 +94,8 @@ export interface ServerDetails {
   // mentioned while offline sees the red @ badge when they reconnect (#14).
   mentionedChannelIds?: string[];
   voiceStates: Record<string, VoiceParticipantState>; // key = userId
+  // Attachment-storage limits + current usage for the settings UI (#11).
+  attachmentStorage?: AttachmentStorageInfo;
 }
 
 export interface WebRtcSignalPayload {

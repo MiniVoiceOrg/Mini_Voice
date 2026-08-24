@@ -1,5 +1,5 @@
 import { ChatMessage, LIMITS, MessageType } from '@mini-voice/shared';
-import type { UserSummary } from '@mini-voice/shared';
+import type { AttachmentMeta, UserSummary } from '@mini-voice/shared';
 import { escapeHtml } from '../utils/html';
 import { appEvents } from '../core/EventBus';
 import { networkClient } from '../core/NetworkClient';
@@ -9,6 +9,22 @@ import { participantManager } from '../core/ParticipantManager';
 import { userContextMenu } from './UserContextMenu';
 import { getAvatarUrl } from '../utils/avatar';
 import { renderMarkdown } from '../utils/markdown';
+import { uploadAttachment, UploadHandle } from '../core/AttachmentUploader';
+import { getAttachmentUrl, formatBytes, fileIconName } from '../utils/attachment';
+
+/** A file picked for upload, tracked until its message is sent (#11). */
+interface PendingAttachment {
+  localId: string;
+  name: string;
+  size: number;
+  isImage: boolean;
+  previewUrl: string | null;
+  status: 'uploading' | 'done' | 'error';
+  progress: number;
+  meta?: AttachmentMeta;
+  error?: string;
+  handle?: UploadHandle;
+}
 
 export class ChatView {
   private container: HTMLElement;
@@ -19,6 +35,9 @@ export class ChatView {
   private mentionMatches: UserSummary[] = [];
   private mentionActiveIndex = 0;
   private mentionAtIndex = -1;
+  // Files picked for the next message, keyed by a local id (#11).
+  private pending: PendingAttachment[] = [];
+  private uploadSeq = 0;
 
   constructor(container: HTMLElement) {
     this.container = container;
@@ -26,6 +45,8 @@ export class ChatView {
 
   public setChannel(channelId: string): void {
     this.currentChannelId = channelId;
+    // Switching channels discards any files staged for the previous channel (#11).
+    this.clearPending();
     // Opening a channel reads its mentions: clear the local badge and tell the
     // server so offline-delivered mentions aren't re-shown next connect (#14).
     chatStore.clearMention(channelId);
@@ -49,6 +70,13 @@ export class ChatView {
 
     this.container.innerHTML = `
       <div class="chat-container">
+        <div id="chat-drop-overlay" class="chat-drop-overlay">
+          <div class="drop-inner">
+            <span class="material-symbols-outlined" style="font-size: 48px;">upload_file</span>
+            <div class="drop-title">Solte para anexar</div>
+            <div class="drop-sub">Imagens, vídeos ou arquivos</div>
+          </div>
+        </div>
         <div class="content-header">
           <div class="channel-title-container">
             <span class="material-symbols-outlined md-18" style="color: var(--text-muted);">tag</span>
@@ -61,7 +89,12 @@ export class ChatView {
 
         <div class="chat-input-container">
           <div id="mention-dropup" class="mention-dropup" style="display: none;"></div>
+          <div id="chat-attachment-tray" class="chat-attachment-tray" style="display: none;"></div>
           <div class="chat-input-wrapper">
+            <button id="btn-attach" type="button" class="chat-attach-btn" title="Anexar arquivo">
+              <span class="material-symbols-outlined md-22">add_circle</span>
+            </button>
+            <input id="chat-file-input" type="file" multiple style="display: none;">
             <textarea id="chat-message-input" class="chat-input-field" rows="1" placeholder="Conversar em #${escapeHtml(channelName)}... (Shift+Enter para quebrar linha)" maxlength="${LIMITS.MAX_MESSAGE_LENGTH}"></textarea>
             <span id="chat-char-counter" class="chat-char-count">0/${LIMITS.MAX_MESSAGE_LENGTH}</span>
             <button id="btn-send-message" class="btn btn-primary" style="padding: 6px 14px; font-size: 13px;">
@@ -102,7 +135,7 @@ export class ChatView {
       return;
     }
 
-    feed.innerHTML = messages.map((m) => this.renderMessageRow(m)).join('');
+    feed.innerHTML = this.renderMessagesWithDividers(messages);
 
     // Open markdown links in the external browser instead of navigating the app.
     feed.querySelectorAll('a.md-link').forEach((link) => {
@@ -139,11 +172,62 @@ export class ChatView {
       });
     });
 
+    // Image attachments open in a lightbox; file chips download externally (#11).
+    feed.querySelectorAll('.chat-attachment-image').forEach((img) => {
+      img.addEventListener('click', () => {
+        const url = img.getAttribute('data-full-url');
+        if (url) this.openLightbox(url);
+      });
+    });
+    feed.querySelectorAll('.chat-attachment-file').forEach((chip) => {
+      chip.addEventListener('click', () => {
+        const url = chip.getAttribute('data-download-url');
+        if (url && window.api?.openExternal) window.api.openExternal(url);
+      });
+    });
+
     this.scrollToBottom();
   }
 
+  /** Interleaves messages with a per-day divider line (#11). */
+  private renderMessagesWithDividers(messages: ChatMessage[]): string {
+    const parts: string[] = [];
+    let lastKey = '';
+    for (const m of messages) {
+      const key = this.dateKey(m.createdAt);
+      if (key !== lastKey) {
+        parts.push(this.renderDateDivider(m.createdAt));
+        lastKey = key;
+      }
+      parts.push(this.renderMessageRow(m));
+    }
+    return parts.join('');
+  }
+
+  private dateKey(ts: number): string {
+    const d = new Date(ts);
+    return `${d.getFullYear()}-${d.getMonth()}-${d.getDate()}`;
+  }
+
+  private renderDateDivider(ts: number): string {
+    const label = new Date(ts).toLocaleDateString('pt-BR', {
+      day: 'numeric',
+      month: 'long',
+      year: 'numeric',
+    });
+    return `<div class="chat-date-divider"><span class="chat-date-divider-label">${escapeHtml(label)}</span></div>`;
+  }
+
+  /** Full date + time shown on each message, e.g. "24/08/2026 19:15" (#11). */
+  private formatDateTime(ts: number): string {
+    const d = new Date(ts);
+    const date = d.toLocaleDateString('pt-BR');
+    const time = d.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
+    return `${date} ${time}`;
+  }
+
   private renderMessageRow(m: ChatMessage): string {
-    const time = new Date(m.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    const time = this.formatDateTime(m.createdAt);
 
     if (m.isSystem) {
       return `
@@ -156,6 +240,11 @@ export class ChatView {
     }
 
     const avatarSrc = getAvatarUrl(m.userAvatarUrl);
+    const textHtml =
+      m.content && m.content.trim().length > 0
+        ? `<div class="chat-message-text">${renderMarkdown(m.content)}</div>`
+        : '';
+    const attachmentsHtml = this.renderAttachments(m.attachments);
 
     return `
       <div class="chat-message-row" data-user-id="${m.userId}">
@@ -165,9 +254,51 @@ export class ChatView {
             <span class="chat-author-name">${escapeHtml(m.userNickname)}</span>
             <span class="chat-timestamp">${time}</span>
           </div>
-          <div class="chat-message-text">${renderMarkdown(m.content)}</div>
+          ${textHtml}
+          ${attachmentsHtml}
         </div>
       </div>
+    `;
+  }
+
+  /** Renders the attachment grid below a message body (#11). */
+  private renderAttachments(attachments?: AttachmentMeta[]): string {
+    if (!attachments || attachments.length === 0) return '';
+    const items = attachments.map((a) => this.renderAttachment(a)).join('');
+    return `<div class="chat-attachments">${items}</div>`;
+  }
+
+  private renderAttachment(a: AttachmentMeta): string {
+    // FIFO eviction removed the binary: show a placeholder instead of a broken link.
+    if (!a.url) {
+      return `
+        <div class="attachment-evicted" title="${escapeHtml(a.originalName)}">
+          <span class="material-symbols-outlined md-18">hide_source</span>
+          <span>Anexo expirado (removido para liberar espaço)</span>
+        </div>
+      `;
+    }
+
+    const src = getAttachmentUrl(a.url);
+    const name = escapeHtml(a.originalName);
+
+    if (a.kind === 'image') {
+      return `<img class="chat-attachment-image" src="${src}" alt="${name}" title="${name}" data-full-url="${src}" loading="lazy">`;
+    }
+
+    if (a.kind === 'video') {
+      return `<video class="chat-attachment-video" controls preload="metadata" src="${src}"></video>`;
+    }
+
+    return `
+      <button type="button" class="chat-attachment-file" data-download-url="${src}" title="Baixar ${name}">
+        <span class="material-symbols-outlined md-24 af-icon">${fileIconName(a.kind, a.mimeType, a.originalName)}</span>
+        <span class="af-meta">
+          <span class="af-name">${name}</span>
+          <span class="af-size">${formatBytes(a.sizeBytes)}</span>
+        </span>
+        <span class="material-symbols-outlined md-20 af-dl">download</span>
+      </button>
     `;
   }
 
@@ -197,13 +328,23 @@ export class ChatView {
     const handleSend = () => {
       if (!input || !this.currentChannelId) return;
       const text = input.value.trim();
-      if (!text) return;
+
+      // Block sending until every staged upload has finished (#11).
+      if (this.pending.some((p) => p.status === 'uploading')) return;
+
+      const attachmentIds = this.pending
+        .filter((p) => p.status === 'done' && p.meta)
+        .map((p) => p.meta!.id);
+
+      if (!text && attachmentIds.length === 0) return;
 
       networkClient.send(MessageType.CHAT_SEND, {
         channelId: this.currentChannelId,
         content: text,
+        attachmentIds: attachmentIds.length > 0 ? attachmentIds : undefined,
       });
 
+      this.clearPending();
       input.value = '';
       input.style.height = 'auto';
       if (charCounter) {
@@ -211,6 +352,64 @@ export class ChatView {
       }
       this.closeMentionDropup();
     };
+
+    // --- Attachment upload wiring (#11) ---
+    const btnAttach = document.getElementById('btn-attach');
+    const fileInput = document.getElementById('chat-file-input') as HTMLInputElement | null;
+
+    btnAttach?.addEventListener('click', () => fileInput?.click());
+    fileInput?.addEventListener('change', () => {
+      if (fileInput.files && fileInput.files.length > 0) {
+        this.addFiles(fileInput.files);
+      }
+      fileInput.value = '';
+    });
+
+    // Paste files/images directly into the message box.
+    input?.addEventListener('paste', (e: ClipboardEvent) => {
+      const files = e.clipboardData?.files;
+      if (files && files.length > 0) {
+        e.preventDefault();
+        this.addFiles(files);
+      }
+    });
+
+    // Drag & drop onto the chat pane. Listeners live on the persistent container,
+    // so they must be unbound on re-render to avoid stacking.
+    const onDragOver = (e: Event) => {
+      const de = e as DragEvent;
+      if (!de.dataTransfer || !Array.from(de.dataTransfer.types).includes('Files')) return;
+      e.preventDefault();
+      de.dataTransfer.dropEffect = 'copy';
+      this.container.querySelector('.chat-container')?.classList.add('chat-drag-over');
+    };
+    const onDragLeave = (e: Event) => {
+      const related = (e as DragEvent).relatedTarget as Node | null;
+      // Only clear when the pointer actually leaves the chat pane, not when it
+      // crosses between child elements (which would otherwise flicker).
+      if (!related || !this.container.contains(related)) {
+        this.container.querySelector('.chat-container')?.classList.remove('chat-drag-over');
+      }
+    };
+    const onDrop = (e: Event) => {
+      const de = e as DragEvent;
+      this.container.querySelector('.chat-container')?.classList.remove('chat-drag-over');
+      if (de.dataTransfer?.files && de.dataTransfer.files.length > 0) {
+        e.preventDefault();
+        this.addFiles(de.dataTransfer.files);
+      }
+    };
+    this.container.addEventListener('dragover', onDragOver);
+    this.container.addEventListener('dragleave', onDragLeave);
+    this.container.addEventListener('drop', onDrop);
+    this.unbindEvents.push(() => {
+      this.container.removeEventListener('dragover', onDragOver);
+      this.container.removeEventListener('dragleave', onDragLeave);
+      this.container.removeEventListener('drop', onDrop);
+    });
+
+    // Re-render the tray for any files staged before this (re)render.
+    this.renderTray();
 
     input?.addEventListener('keydown', (e) => {
       // While the mention dropup is open, arrows/enter/tab/esc drive it (#14).
@@ -379,7 +578,199 @@ export class ChatView {
     }
   }
 
+  private addFiles(fileList: FileList): void {
+    if (!this.currentChannelId) return;
+    const channelId = this.currentChannelId;
+    const maxFile =
+      serverStore.serverDetails?.attachmentStorage?.maxFileBytes ??
+      LIMITS.MAX_ATTACHMENT_FILE_SIZE_DEFAULT;
+    let overflow = false;
+
+    for (const file of Array.from(fileList)) {
+      if (this.pending.length >= LIMITS.MAX_ATTACHMENTS_PER_MESSAGE) {
+        overflow = true;
+        break;
+      }
+
+      const isImage = file.type.startsWith('image/');
+      const item: PendingAttachment = {
+        localId: `up-${++this.uploadSeq}`,
+        name: file.name,
+        size: file.size,
+        isImage,
+        previewUrl: isImage ? URL.createObjectURL(file) : null,
+        status: 'uploading',
+        progress: 0,
+      };
+
+      if (file.size > maxFile) {
+        item.status = 'error';
+        item.error = `Maior que o limite (${formatBytes(maxFile)})`;
+        this.pending.push(item);
+        continue;
+      }
+
+      this.pending.push(item);
+      const handle = uploadAttachment(channelId, file, (frac) => {
+        item.progress = frac;
+        this.updatePendingProgress(item.localId);
+      });
+      item.handle = handle;
+      handle.promise
+        .then((meta) => {
+          item.status = 'done';
+          item.meta = meta;
+          item.handle = undefined;
+          this.renderTray();
+          this.updateSendButtonState();
+        })
+        .catch((err) => {
+          // A cancelled upload was already removed from the list; ignore it.
+          if (!this.pending.includes(item)) return;
+          item.status = 'error';
+          item.error = err?.message || 'Falha no upload';
+          item.handle = undefined;
+          this.renderTray();
+          this.updateSendButtonState();
+        });
+    }
+
+    this.renderTray();
+    this.updateSendButtonState();
+    if (overflow) {
+      this.showTrayNotice(`Máximo de ${LIMITS.MAX_ATTACHMENTS_PER_MESSAGE} arquivos por mensagem.`);
+    }
+  }
+
+  private renderTray(): void {
+    const tray = document.getElementById('chat-attachment-tray');
+    if (!tray) return;
+    if (this.pending.length === 0) {
+      tray.style.display = 'none';
+      tray.innerHTML = '';
+      return;
+    }
+    tray.style.display = 'flex';
+    tray.innerHTML = this.pending.map((p) => this.renderTrayItem(p)).join('');
+    tray.querySelectorAll('[data-remove-id]').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        const id = btn.getAttribute('data-remove-id');
+        if (id) this.removePending(id);
+      });
+    });
+  }
+
+  private renderTrayItem(p: PendingAttachment): string {
+    const thumb =
+      p.isImage && p.previewUrl
+        ? `<img class="tray-thumb" src="${p.previewUrl}" alt="">`
+        : `<span class="material-symbols-outlined md-22 tray-thumb-icon">draft</span>`;
+
+    let statusHtml: string;
+    if (p.status === 'uploading') {
+      const pct = Math.round(p.progress * 100);
+      statusHtml = `
+        <div class="tray-progress"><div class="tray-progress-bar" data-progress-id="${p.localId}" style="width: ${pct}%;"></div></div>
+        <span class="tray-status" data-progress-label="${p.localId}">${pct}%</span>
+      `;
+    } else if (p.status === 'error') {
+      statusHtml = `<span class="tray-status tray-error">${escapeHtml(p.error || 'Erro')}</span>`;
+    } else {
+      statusHtml = `<span class="tray-status tray-done">Pronto</span>`;
+    }
+
+    return `
+      <div class="tray-item ${p.status === 'error' ? 'is-error' : ''}" data-local-id="${p.localId}" title="${escapeHtml(p.name)}">
+        ${thumb}
+        <div class="tray-info">
+          <span class="tray-name">${escapeHtml(p.name)}</span>
+          <div class="tray-sub">
+            <span class="tray-size">${formatBytes(p.size)}</span>
+            ${statusHtml}
+          </div>
+        </div>
+        <button type="button" class="tray-remove" data-remove-id="${p.localId}" title="Remover">
+          <span class="material-symbols-outlined md-18">close</span>
+        </button>
+      </div>
+    `;
+  }
+
+  private updatePendingProgress(localId: string): void {
+    const item = this.pending.find((p) => p.localId === localId);
+    if (!item) return;
+    const pct = Math.round(item.progress * 100);
+    const bar = document.querySelector(`[data-progress-id="${localId}"]`) as HTMLElement | null;
+    if (bar) bar.style.width = `${pct}%`;
+    const label = document.querySelector(`[data-progress-label="${localId}"]`) as HTMLElement | null;
+    if (label) label.innerText = `${pct}%`;
+  }
+
+  private updateSendButtonState(): void {
+    const btnSend = document.getElementById('btn-send-message') as HTMLButtonElement | null;
+    if (!btnSend) return;
+    const uploading = this.pending.some((p) => p.status === 'uploading');
+    btnSend.disabled = uploading;
+    btnSend.style.opacity = uploading ? '0.6' : '';
+    btnSend.style.cursor = uploading ? 'not-allowed' : '';
+  }
+
+  private removePending(localId: string): void {
+    const idx = this.pending.findIndex((p) => p.localId === localId);
+    if (idx < 0) return;
+    const [item] = this.pending.splice(idx, 1);
+    item.handle?.cancel();
+    if (item.previewUrl) URL.revokeObjectURL(item.previewUrl);
+    this.renderTray();
+    this.updateSendButtonState();
+  }
+
+  private clearPending(): void {
+    for (const p of this.pending) {
+      p.handle?.cancel();
+      if (p.previewUrl) URL.revokeObjectURL(p.previewUrl);
+    }
+    this.pending = [];
+    this.renderTray();
+    this.updateSendButtonState();
+  }
+
+  private showTrayNotice(message: string): void {
+    const tray = document.getElementById('chat-attachment-tray');
+    if (!tray) return;
+    const notice = document.createElement('div');
+    notice.className = 'tray-notice';
+    notice.innerText = message;
+    tray.appendChild(notice);
+    setTimeout(() => notice.remove(), 3000);
+  }
+
+  private openLightbox(url: string): void {
+    const overlay = document.createElement('div');
+    overlay.className = 'attachment-lightbox';
+    overlay.innerHTML = `
+      <img src="${url}" alt="">
+      <button type="button" class="lightbox-close" title="Fechar">
+        <span class="material-symbols-outlined">close</span>
+      </button>
+    `;
+    const close = () => {
+      document.removeEventListener('keydown', onKey, true);
+      overlay.remove();
+    };
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        e.stopPropagation();
+        close();
+      }
+    };
+    overlay.addEventListener('click', close);
+    document.addEventListener('keydown', onKey, true);
+    document.body.appendChild(overlay);
+  }
+
   public destroy(): void {
+    this.clearPending();
     this.unbindEvents.forEach((u) => u());
     this.unbindEvents = [];
   }
