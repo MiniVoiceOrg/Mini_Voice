@@ -1,8 +1,9 @@
-import { MessageType, ServerUpdateSettingsPayload } from '@mini-voice/shared';
+import { LIMITS, MessageType, ServerUpdateSettingsPayload } from '@mini-voice/shared';
 import logoUrl from '../assets/Logo.png';
 import { escapeHtml } from '../utils/html';
 import { enableBackdropClose } from '../utils/modal';
 import { getAvatarUrl } from '../utils/avatar';
+import { formatBytes } from '../utils/attachment';
 import { networkClient } from '../core/NetworkClient';
 import { serverStore } from '../stores/serverStore';
 import { settingsStore, ChatSoundMode } from '../stores/settingsStore';
@@ -21,6 +22,16 @@ export class ServerSettingsModal {
     if (!s) return;
 
     const hasPass = !!s.hasPassword;
+
+    // Attachment storage usage + configurable limits (#11).
+    const storage = s.attachmentStorage;
+    const usedBytes = storage?.usedBytes ?? 0;
+    const maxTotalBytes = storage?.maxTotalBytes ?? LIMITS.MAX_ATTACHMENT_STORAGE_TOTAL_DEFAULT;
+    const maxFileBytes = storage?.maxFileBytes ?? LIMITS.MAX_ATTACHMENT_FILE_SIZE_DEFAULT;
+    const usedPct = maxTotalBytes > 0 ? Math.min(100, Math.round((usedBytes / maxTotalBytes) * 100)) : 0;
+    const totalMb = Math.round(maxTotalBytes / (1024 * 1024));
+    const fileMb = Math.round(maxFileBytes / (1024 * 1024));
+    const barColor = usedPct >= 90 ? 'var(--danger)' : usedPct >= 70 ? '#f0b232' : 'var(--accent-primary)';
 
     this.modalEl = document.createElement('div');
     this.modalEl.className = 'modal-backdrop';
@@ -100,6 +111,36 @@ export class ServerSettingsModal {
                 </div>
               </div>
               <input id="checkbox-allow-soundboard" type="checkbox" ${s.allowSoundboard !== false ? 'checked' : ''} style="width: 18px; height: 18px; cursor: pointer; accent-color: var(--accent-primary);">
+            </div>
+          </div>
+
+          <div style="margin-top: 18px; border-top: 1px solid var(--border-color); padding-top: 16px;">
+            <label style="font-weight: 700; font-size: 13px; color: var(--text-primary); display: block; margin-bottom: 8px;">
+              Armazenamento de Anexos
+            </label>
+
+            <div style="background: var(--bg-tertiary); padding: 12px 14px; border-radius: var(--radius-md); border: 1px solid var(--border-color);">
+              <div style="display: flex; justify-content: space-between; font-size: 12px; color: var(--text-secondary); margin-bottom: 6px;">
+                <span>${formatBytes(usedBytes)} de ${formatBytes(maxTotalBytes)} usados</span>
+                <span style="font-weight: 600; color: ${barColor};">${usedPct}%</span>
+              </div>
+              <div style="height: 8px; background: var(--bg-input); border-radius: 999px; overflow: hidden; margin-bottom: 4px;">
+                <div style="height: 100%; width: ${usedPct}%; background: ${barColor}; border-radius: 999px; transition: width 0.3s;"></div>
+              </div>
+              <div style="font-size: 11px; color: var(--text-muted); margin-bottom: 12px;">
+                Quando o limite é atingido, os anexos mais antigos são removidos automaticamente para liberar espaço.
+              </div>
+
+              <div style="display: flex; gap: 12px;">
+                <div class="form-group" style="margin-bottom: 0; flex: 1;">
+                  <label style="margin-bottom: 4px; font-size: 12px;">Limite por arquivo (MB)</label>
+                  <input id="input-attach-file-mb" type="number" min="1" step="1" value="${fileMb}">
+                </div>
+                <div class="form-group" style="margin-bottom: 0; flex: 1;">
+                  <label style="margin-bottom: 4px; font-size: 12px;">Limite total (MB)</label>
+                  <input id="input-attach-total-mb" type="number" min="1" step="1" value="${totalMb}">
+                </div>
+              </div>
             </div>
           </div>
 
@@ -224,6 +265,30 @@ export class ServerSettingsModal {
 
       if (this.pendingIconBase64 !== undefined) {
         payload.iconBase64 = this.pendingIconBase64;
+      }
+
+      // Attachment storage limits, MB in the UI -> bytes on the wire (#11).
+      const inputFileMb = this.modalEl?.querySelector('#input-attach-file-mb') as HTMLInputElement | null;
+      const inputTotalMb = this.modalEl?.querySelector('#input-attach-total-mb') as HTMLInputElement | null;
+      const fileMbVal = parseFloat(inputFileMb?.value ?? '');
+      const totalMbVal = parseFloat(inputTotalMb?.value ?? '');
+      if (Number.isFinite(fileMbVal) && fileMbVal > 0) {
+        payload.maxAttachmentFileBytes = Math.round(fileMbVal * 1024 * 1024);
+      }
+      if (Number.isFinite(totalMbVal) && totalMbVal > 0) {
+        payload.maxAttachmentStorageBytes = Math.round(totalMbVal * 1024 * 1024);
+      }
+      if (
+        payload.maxAttachmentFileBytes &&
+        payload.maxAttachmentStorageBytes &&
+        payload.maxAttachmentFileBytes > payload.maxAttachmentStorageBytes
+      ) {
+        const banner = document.getElementById('server-settings-banner');
+        if (banner) {
+          banner.innerText = 'O limite por arquivo não pode ser maior que o limite total.';
+          banner.classList.add('show');
+        }
+        return;
       }
 
       const btnSave = this.modalEl?.querySelector('#btn-save') as HTMLButtonElement;

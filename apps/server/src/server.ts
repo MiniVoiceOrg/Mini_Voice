@@ -2,14 +2,16 @@ import http from 'http';
 import fs from 'fs';
 import path from 'path';
 import { v4 as uuidv4 } from 'uuid';
-import { LIMITS } from '@mini-voice/shared';
+import { LIMITS, ProtocolErrorCode } from '@mini-voice/shared';
 import { AuthService } from './application/services/AuthService';
+import { AttachmentService } from './application/services/AttachmentService';
 import { ChannelService } from './application/services/ChannelService';
 import { ChatService } from './application/services/ChatService';
 import { SignalingService } from './application/services/SignalingService';
 import { UserService } from './application/services/UserService';
 import { DatabaseConnection } from './infrastructure/database/DatabaseConnection';
 import {
+  SqliteAttachmentRepository,
   SqliteChannelRepository,
   SqliteMentionRepository,
   SqliteMessageRepository,
@@ -18,6 +20,7 @@ import {
 } from './infrastructure/database/SqliteRepositories';
 import { Logger } from './infrastructure/logger/Logger';
 import { LanBroadcaster } from './infrastructure/discovery/LanBroadcaster';
+import { AttachmentStorageService } from './infrastructure/security/AttachmentStorageService';
 import { AvatarStorageService } from './infrastructure/security/AvatarStorageService';
 import { PasswordService } from './infrastructure/security/PasswordService';
 import { RateLimiter } from './infrastructure/security/RateLimiter';
@@ -41,6 +44,7 @@ export class MiniVoiceServer {
   private avatarStorage: AvatarStorageService;
   private rateLimiter: RateLimiter;
   private lanBroadcaster: LanBroadcaster;
+  private attachmentService: AttachmentService;
 
   private constructor(
     private config: ServerConfig,
@@ -49,7 +53,8 @@ export class MiniVoiceServer {
     wsServer: WebSocketServer,
     avatarStorage: AvatarStorageService,
     rateLimiter: RateLimiter,
-    lanBroadcaster: LanBroadcaster
+    lanBroadcaster: LanBroadcaster,
+    attachmentService: AttachmentService
   ) {
     this.dbConn = dbConn;
     this.httpServer = httpServer;
@@ -57,6 +62,7 @@ export class MiniVoiceServer {
     this.avatarStorage = avatarStorage;
     this.rateLimiter = rateLimiter;
     this.lanBroadcaster = lanBroadcaster;
+    this.attachmentService = attachmentService;
   }
 
   public static async create(config: ServerConfig): Promise<MiniVoiceServer> {
@@ -64,6 +70,7 @@ export class MiniVoiceServer {
     const dbConn = await DatabaseConnection.create(dbPath);
 
     const avatarStorage = new AvatarStorageService(config.dataDir);
+    const attachmentStorage = new AttachmentStorageService(config.dataDir);
     const rateLimiter = new RateLimiter();
 
     const db = dbConn.getDb();
@@ -72,10 +79,21 @@ export class MiniVoiceServer {
     const channelRepo = new SqliteChannelRepository(db);
     const messageRepo = new SqliteMessageRepository(db);
     const mentionRepo = new SqliteMentionRepository(db);
+    const attachmentRepo = new SqliteAttachmentRepository(db);
+
+    const attachmentService = new AttachmentService(attachmentRepo, serverRepo, attachmentStorage, rateLimiter);
 
     const signalingService = new SignalingService(channelRepo);
     const channelService = new ChannelService(channelRepo, serverRepo);
-    const chatService = new ChatService(messageRepo, channelRepo, userRepo, mentionRepo, avatarStorage, rateLimiter);
+    const chatService = new ChatService(
+      messageRepo,
+      channelRepo,
+      userRepo,
+      mentionRepo,
+      avatarStorage,
+      rateLimiter,
+      attachmentService
+    );
 
     let getOnlineUsers: () => any = () => new Map();
 
@@ -85,7 +103,8 @@ export class MiniVoiceServer {
       channelRepo,
       mentionRepo,
       avatarStorage,
-      () => getOnlineUsers()
+      () => getOnlineUsers(),
+      attachmentService
     );
 
     const userService = new UserService(
@@ -98,6 +117,16 @@ export class MiniVoiceServer {
     await MiniVoiceServer.seedServer(config, serverRepo, channelRepo);
 
     const httpServer = http.createServer((req, res) => {
+      if (req.method === 'OPTIONS') {
+        res.writeHead(204, {
+          'Access-Control-Allow-Origin': '*',
+          'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
+          'Access-Control-Allow-Headers': 'Content-Type, X-File-Name',
+          'Access-Control-Max-Age': '86400',
+        });
+        res.end();
+        return;
+      }
       if (req.url === '/health') {
         res.writeHead(200, { 'Content-Type': 'application/json' });
         res.end(JSON.stringify({ status: 'ok', time: Date.now() }));
@@ -150,6 +179,14 @@ export class MiniVoiceServer {
         fs.createReadStream(avatar.filePath).pipe(res);
         return;
       }
+      if (req.url && req.url.split('?')[0] === '/attachments' && req.method === 'POST') {
+        void MiniVoiceServer.handleAttachmentUpload(req, res, attachmentService, attachmentStorage);
+        return;
+      }
+      if (req.url && req.url.startsWith('/attachments/') && (req.method === 'GET' || req.method === 'HEAD')) {
+        MiniVoiceServer.handleAttachmentDownload(req, res, attachmentStorage);
+        return;
+      }
       res.writeHead(404);
       res.end();
     });
@@ -161,7 +198,8 @@ export class MiniVoiceServer {
       channelService,
       chatService,
       signalingService,
-      serverRepo
+      serverRepo,
+      attachmentService
     );
 
     getOnlineUsers = () => wsServer.getOnlineUsersMap();
@@ -172,7 +210,153 @@ export class MiniVoiceServer {
       discoveryPort: config.discoveryPort,
     });
 
-    return new MiniVoiceServer(config, dbConn, httpServer, wsServer, avatarStorage, rateLimiter, lanBroadcaster);
+    return new MiniVoiceServer(config, dbConn, httpServer, wsServer, avatarStorage, rateLimiter, lanBroadcaster, attachmentService);
+  }
+
+  private static async handleAttachmentUpload(
+    req: http.IncomingMessage,
+    res: http.ServerResponse,
+    attachmentService: AttachmentService,
+    attachmentStorage: AttachmentStorageService
+  ): Promise<void> {
+    const send = (status: number, obj: unknown) => {
+      if (res.headersSent) return;
+      res.writeHead(status, { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' });
+      res.end(JSON.stringify(obj));
+    };
+
+    try {
+      const url = new URL(req.url || '', 'http://localhost');
+      const token = url.searchParams.get('token');
+      const binding = attachmentService.consumeUploadToken(token);
+      if (!binding) {
+        send(401, { error: 'unauthorized' });
+        return;
+      }
+
+      const originalName = (url.searchParams.get('name') || 'arquivo').slice(0, 255);
+      const maxFileBytes = await attachmentService.getMaxFileBytes();
+
+      const declaredLen = Number(req.headers['content-length'] || 0);
+      if (declaredLen && declaredLen > maxFileBytes) {
+        send(413, { error: ProtocolErrorCode.ATTACHMENT_TOO_LARGE });
+        return;
+      }
+
+      const tempPath = attachmentStorage.createTempPath();
+      const out = fs.createWriteStream(tempPath);
+      let received = 0;
+      let aborted = false;
+
+      const abort = (status: number, obj: unknown) => {
+        if (aborted) return;
+        aborted = true;
+        out.destroy();
+        attachmentStorage.discardTemp(tempPath);
+        send(status, obj);
+        try {
+          req.destroy();
+        } catch {
+          /* ignore */
+        }
+      };
+
+      req.on('data', (chunk: Buffer) => {
+        if (aborted) return;
+        received += chunk.length;
+        if (received > maxFileBytes) {
+          abort(413, { error: ProtocolErrorCode.ATTACHMENT_TOO_LARGE });
+          return;
+        }
+        if (!out.write(chunk)) {
+          req.pause();
+          out.once('drain', () => req.resume());
+        }
+      });
+
+      req.on('error', () => abort(400, { error: ProtocolErrorCode.BAD_REQUEST }));
+
+      req.on('end', () => {
+        if (aborted) return;
+        out.end(() => {
+          void attachmentService
+            .finalizeUpload({ tempPath, sizeBytes: received, userId: binding.userId, channelId: binding.channelId, originalName })
+            .then((result) => {
+              if (!result.success || !result.meta) {
+                const status =
+                  result.errorCode === ProtocolErrorCode.ATTACHMENT_TOO_LARGE
+                    ? 413
+                    : result.errorCode === ProtocolErrorCode.STORAGE_FULL
+                      ? 507
+                      : 400;
+                send(status, { error: result.errorCode, message: result.errorMessage });
+                return;
+              }
+              send(200, result.meta);
+            })
+            .catch(() => send(500, { error: ProtocolErrorCode.INTERNAL_ERROR }));
+        });
+      });
+    } catch {
+      send(500, { error: ProtocolErrorCode.INTERNAL_ERROR });
+    }
+  }
+
+  private static handleAttachmentDownload(
+    req: http.IncomingMessage,
+    res: http.ServerResponse,
+    attachmentStorage: AttachmentStorageService
+  ): void {
+    const requested = decodeURIComponent((req.url || '').slice('/attachments/'.length).split('?')[0]);
+    const file = attachmentStorage.getFile(requested);
+    if (!file) {
+      res.writeHead(404);
+      res.end();
+      return;
+    }
+
+    const { filePath, size, mimeType } = file;
+    const previewable = mimeType.startsWith('image/') || mimeType.startsWith('video/');
+    const headers: Record<string, string> = {
+      'Content-Type': mimeType,
+      'Cache-Control': 'public, max-age=86400',
+      'Access-Control-Allow-Origin': '*',
+      'Accept-Ranges': 'bytes',
+      'X-Content-Type-Options': 'nosniff',
+    };
+    // Force download for anything that is not a validated image/video so the host
+    // never serves runnable HTML/SVG/JS inline (#11).
+    if (!previewable) headers['Content-Disposition'] = 'attachment';
+
+    const rangeHeader = req.headers['range'];
+    if (rangeHeader) {
+      const match = /^bytes=(\d*)-(\d*)$/.exec(rangeHeader);
+      if (match) {
+        let start = match[1] ? parseInt(match[1], 10) : 0;
+        let end = match[2] ? parseInt(match[2], 10) : size - 1;
+        if (Number.isNaN(start)) start = 0;
+        if (Number.isNaN(end) || end >= size) end = size - 1;
+        if (start > end || start >= size) {
+          res.writeHead(416, { 'Content-Range': `bytes */${size}`, 'Access-Control-Allow-Origin': '*' });
+          res.end();
+          return;
+        }
+        res.writeHead(206, { ...headers, 'Content-Range': `bytes ${start}-${end}/${size}`, 'Content-Length': String(end - start + 1) });
+        if (req.method === 'HEAD') {
+          res.end();
+          return;
+        }
+        fs.createReadStream(filePath, { start, end }).pipe(res);
+        return;
+      }
+    }
+
+    res.writeHead(200, { ...headers, 'Content-Length': String(size) });
+    if (req.method === 'HEAD') {
+      res.end();
+      return;
+    }
+    fs.createReadStream(filePath).pipe(res);
   }
 
   private static async seedServer(
@@ -226,6 +410,7 @@ export class MiniVoiceServer {
       this.httpServer.listen(this.config.port, '0.0.0.0', () => {
         Logger.info('INFO', `Mini Voice Server running on 0.0.0.0:${this.config.port}`);
         Logger.info('INFO', `Data directory: ${this.config.dataDir}`);
+        void this.attachmentService.reconcile();
         this.lanBroadcaster
           .start()
           .catch((error) => Logger.warn('NETWORK', 'LAN discovery broadcast unavailable; continuing without it.', error))

@@ -1,4 +1,4 @@
-import { ChannelRecord, MentionRecord, MessageRecord, ServerRecord, UserRecord } from './entities';
+import { ChannelRecord, MentionRecord, MessageRecord, ServerRecord, UserRecord, AttachmentRecord } from './entities';
 
 export interface IServerRepository {
   getServer(): Promise<ServerRecord | null>;
@@ -36,4 +36,24 @@ export interface IMentionRepository {
   listChannelIdsForUser(userId: string): Promise<string[]>;
   /** Clears all unread mentions for a user in a specific channel (channel opened). */
   clearForUserChannel(userId: string, channelId: string): Promise<void>;
+}
+
+export interface IAttachmentRepository {
+  create(att: AttachmentRecord): Promise<void>;
+  findByIds(ids: string[]): Promise<AttachmentRecord[]>;
+  listByMessageIds(messageIds: string[]): Promise<AttachmentRecord[]>;
+  /** Links pending uploads to a message once it is sent (#11). */
+  linkToMessage(ids: string[], messageId: string): Promise<void>;
+  /** Sum of size_bytes across non-evicted rows — the current storage usage. */
+  sumActiveBytes(): Promise<number>;
+  /** Oldest non-evicted attachments first, for FIFO eviction. */
+  listOldestActive(limit: number): Promise<AttachmentRecord[]>;
+  /** Marks a row evicted: clears filename and sets evicted=1 (keeps the row). */
+  markEvicted(id: string): Promise<void>;
+  /** Pending uploads (never linked to a message) older than a cutoff. */
+  listPendingBefore(timestamp: number): Promise<AttachmentRecord[]>;
+  /** Hard-deletes a row (used for pending uploads that were never linked). */
+  deleteById(id: string): Promise<void>;
+  /** All on-disk filenames still referenced by non-evicted rows (reconciliation). */
+  listActiveFilenames(): Promise<string[]>;
 }

@@ -84,6 +84,46 @@ export function getLatestSemverTag() {
 }
 
 /**
+ * Given a base stable version (e.g. "1.8.0"), returns the next beta iteration
+ * number by inspecting existing `vX.Y.Z-beta.N` git tags for that base.
+ * Returns 1 when no beta exists yet for the base. A `tagList` may be injected
+ * (used by tests) to avoid shelling out to git.
+ */
+export function getNextBetaNumber(baseVersion, tagList = null) {
+  const clean = String(baseVersion || '').replace(/^v/, '').trim();
+  if (!clean) return 1;
+  let tags = tagList;
+  if (!tags) {
+    try {
+      tags = execSync('git tag', { encoding: 'utf8' }).split('\n');
+    } catch {
+      return 1;
+    }
+  }
+  const re = new RegExp(`^v?${clean.replace(/\./g, '\\.')}-beta\\.(\\d+)$`);
+  let maxN = 0;
+  for (const raw of tags) {
+    const m = re.exec(String(raw).trim());
+    if (m) {
+      const n = parseInt(m[1], 10);
+      if (!isNaN(n) && n > maxN) maxN = n;
+    }
+  }
+  return maxN + 1;
+}
+
+/**
+ * Strips the `v` prefix and `-beta.N` suffix from a beta tag, yielding the clean
+ * stable version to publish when promoting (e.g. "v1.8.0-beta.3" -> "1.8.0").
+ */
+export function promoteBetaTag(betaTag) {
+  return String(betaTag || '')
+    .replace(/^v/, '')
+    .replace(/-beta\.\d+$/i, '')
+    .trim();
+}
+
+/**
  * Gets commit messages between a tag and HEAD.
  */
 export function getGitCommitsSinceTag(tag) {
@@ -111,16 +151,37 @@ export function getGitCommitsSinceTag(tag) {
  * Main function to calculate next version.
  */
 export function calculateNextVersion(options = {}) {
+  const channel = options.channel === 'beta' ? 'beta' : 'stable';
   const prevTag = options.prevTag || getLatestSemverTag() || 'v1.0.55';
   const commits = options.commits || getGitCommitsSinceTag(prevTag);
   const bumpType = options.bumpType || determineBumpType(commits);
-  const nextVersion = bumpVersion(prevTag, bumpType);
+  const baseVersion = bumpVersion(prevTag, bumpType);
+
+  if (channel === 'beta') {
+    const betaNumber =
+      options.betaNumber != null ? options.betaNumber : getNextBetaNumber(baseVersion);
+    const nextVersion = `${baseVersion}-beta.${betaNumber}`;
+    return {
+      prevTag,
+      bumpType,
+      channel,
+      prerelease: true,
+      baseVersion,
+      betaNumber,
+      nextVersion,
+      nextTag: `v${nextVersion}`,
+      commitsCount: commits.length,
+    };
+  }
 
   return {
     prevTag,
     bumpType,
-    nextVersion,
-    nextTag: `v${nextVersion}`,
+    channel,
+    prerelease: false,
+    baseVersion,
+    nextVersion: baseVersion,
+    nextTag: `v${baseVersion}`,
     commitsCount: commits.length,
   };
 }
@@ -132,13 +193,46 @@ const isDirectRun = process.argv[1] && (
 );
 
 if (isDirectRun) {
-  const result = calculateNextVersion();
-  console.log(`[Version] Previous tag: ${result.prevTag} | Bump: ${result.bumpType} | Next version: ${result.nextVersion}`);
+  const args = process.argv.slice(2);
+  const getFlag = (name) => {
+    const idx = args.indexOf(name);
+    return idx >= 0 && idx + 1 < args.length ? args[idx + 1] : null;
+  };
+
+  const promoteTag = getFlag('--promote') || process.env.PROMOTE_TAG || '';
+  const channelArg = (getFlag('--channel') || process.env.RELEASE_CHANNEL || 'stable').toLowerCase();
+
+  let version, prevTag, bumpType, channel, prerelease;
+
+  if (promoteTag) {
+    // Promotion: republish a validated beta as a clean stable release.
+    version = promoteBetaTag(promoteTag);
+    prevTag = getLatestSemverTag() || '';
+    bumpType = 'promote';
+    channel = 'stable';
+    prerelease = false;
+    console.log(`[Version] Promote ${promoteTag} -> stable v${version} | Prev: ${prevTag || '<none>'}`);
+  } else {
+    const result = calculateNextVersion({ channel: channelArg === 'beta' ? 'beta' : 'stable' });
+    version = result.nextVersion;
+    prevTag = result.prevTag;
+    bumpType = result.bumpType;
+    channel = result.channel;
+    prerelease = result.prerelease;
+    console.log(
+      `[Version] Previous tag: ${result.prevTag} | Bump: ${result.bumpType} | Channel: ${channel} | Next version: ${version}`
+    );
+  }
 
   // Write to GitHub Actions GITHUB_OUTPUT if available
   const githubOutput = process.env.GITHUB_OUTPUT;
   if (githubOutput) {
-    fs.appendFileSync(githubOutput, `version=${result.nextVersion}\nprev_tag=${result.prevTag}\nbump_type=${result.bumpType}\n`);
-    console.log(`[Version] Written to $GITHUB_OUTPUT: version=${result.nextVersion}`);
+    fs.appendFileSync(
+      githubOutput,
+      `version=${version}\nprev_tag=${prevTag}\nbump_type=${bumpType}\nchannel=${channel}\nprerelease=${prerelease}\n`
+    );
+    console.log(
+      `[Version] Written to $GITHUB_OUTPUT: version=${version} channel=${channel} prerelease=${prerelease}`
+    );
   }
 }

@@ -332,6 +332,18 @@ export class SettingsModal {
               Verificar atualizações
             </button>
           </div>
+          <div style="display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-top: 12px; padding-top: 12px; border-top: 1px dashed var(--border-color);">
+            <div>
+              <label style="display: flex; align-items: center; gap: 6px; margin-bottom: 2px; cursor: pointer; font-weight: 600;" for="checkbox-update-beta">
+                <span class="material-symbols-outlined md-16" style="color: var(--accent-primary);">science</span>
+                Receber versões beta
+              </label>
+              <div style="font-size: 11px; color: var(--text-muted);">
+                Recebe versões de teste (pré-lançamento) antes de virarem estáveis. Pode conter instabilidades.
+              </div>
+            </div>
+            <input id="checkbox-update-beta" type="checkbox" ${settingsStore.updateBetaChannel ? 'checked' : ''} style="width: 18px; height: 18px; cursor: pointer; accent-color: var(--accent-primary);">
+          </div>
         </div>
 
         <!-- Community -->
@@ -671,6 +683,19 @@ export class SettingsModal {
 
     const btnCheckUpdates = this.modalEl.querySelector('#btn-check-updates');
     btnCheckUpdates?.addEventListener('click', () => this.checkUpdates());
+
+    const checkboxUpdateBeta = this.modalEl.querySelector('#checkbox-update-beta') as HTMLInputElement | null;
+    checkboxUpdateBeta?.addEventListener('change', async () => {
+      settingsStore.updateBetaChannel = checkboxUpdateBeta.checked;
+      settingsStore.save();
+      try {
+        await window.api?.setUpdateChannel?.(settingsStore.updateBetaChannel);
+      } catch {
+        // Non-fatal: the channel is re-applied on next app start.
+      }
+      // Re-check immediately so the user sees the outcome for the new channel.
+      this.checkUpdates();
+    });
 
     const btnSuggestIdea = this.modalEl.querySelector('#btn-suggest-idea');
     const btnVoteIdeas = this.modalEl.querySelector('#btn-vote-ideas');

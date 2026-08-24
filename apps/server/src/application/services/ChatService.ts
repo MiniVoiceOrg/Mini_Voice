@@ -1,8 +1,10 @@
 import { v4 as uuidv4 } from 'uuid';
 import {
+  AttachmentMeta,
   ChatMessage,
   LIMITS,
   ProtocolErrorCode,
+  attachmentCaptionSchema,
   messageContentSchema,
 } from '@mini-voice/shared';
 import { MentionRecord, MessageRecord } from '../../domain/entities';
@@ -14,6 +16,7 @@ import {
 } from '../../domain/repositories';
 import { AvatarStorageService } from '../../infrastructure/security/AvatarStorageService';
 import { RateLimiter } from '../../infrastructure/security/RateLimiter';
+import { AttachmentService } from './AttachmentService';
 
 export class ChatService {
   constructor(
@@ -22,13 +25,15 @@ export class ChatService {
     private userRepo: IUserRepository,
     private mentionRepo: IMentionRepository,
     private avatarStorage: AvatarStorageService,
-    private rateLimiter: RateLimiter
+    private rateLimiter: RateLimiter,
+    private attachmentService: AttachmentService
   ) {}
 
   public async sendMessage(
     userId: string,
     channelId: string,
-    content: string
+    content: string,
+    attachmentIds?: string[]
   ): Promise<{
     success: boolean;
     errorCode?: ProtocolErrorCode;
@@ -45,8 +50,11 @@ export class ChatService {
       };
     }
 
-    // Validate content
-    const parseResult = messageContentSchema.safeParse(content);
+    // Validate content. Attachment messages may carry an empty caption; plain
+    // text messages must be non-empty (#11).
+    const hasAttachments = !!(attachmentIds && attachmentIds.length > 0);
+    const schema = hasAttachments ? attachmentCaptionSchema : messageContentSchema;
+    const parseResult = schema.safeParse(content ?? '');
     if (!parseResult.success) {
       return {
         success: false,
@@ -88,6 +96,10 @@ export class ChatService {
 
     const mentionedUserIds = await this.persistMentions(user.id, channelId, messageRecord);
 
+    const attachments = hasAttachments
+      ? await this.attachmentService.linkToMessage(attachmentIds!, messageRecord.id, user.id, channelId)
+      : [];
+
     const chatMessage: ChatMessage = {
       id: messageRecord.id,
       channelId: messageRecord.channelId,
@@ -97,6 +109,7 @@ export class ChatService {
       content: messageRecord.content,
       createdAt: messageRecord.createdAt,
       isSystem: false,
+      attachments: attachments.length > 0 ? attachments : undefined,
     };
 
     return {
@@ -159,8 +172,11 @@ export class ChatService {
     const users = await this.userRepo.findByIds(uniqueUserIds);
     const userMap = new Map(users.map((u) => [u.id, u]));
 
+    const attachmentsByMessage = await this.attachmentService.getForMessages(rawMessages.map((m) => m.id));
+
     return rawMessages.map((m) => {
       const user = userMap.get(m.userId);
+      const attachments = attachmentsByMessage.get(m.id);
       return {
         id: m.id,
         channelId: m.channelId,
@@ -170,6 +186,7 @@ export class ChatService {
         content: m.content,
         createdAt: m.createdAt,
         isSystem: m.isSystem,
+        attachments: attachments && attachments.length > 0 ? attachments : undefined,
       };
     });
   }

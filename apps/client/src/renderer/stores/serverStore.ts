@@ -1,4 +1,4 @@
-import { ChannelSummary, ServerDetails, UserSummary } from '@mini-voice/shared';
+import { AttachmentStorageInfo, ChannelSummary, ServerDetails, UserSummary } from '@mini-voice/shared';
 import { appEvents } from '../core/EventBus';
 
 export class ServerStore {
@@ -112,7 +112,13 @@ export class ServerStore {
     this.addMember(user);
   }
 
-  public updateServerMeta(name: string, hasPassword: boolean, allowSoundboard?: boolean, iconUrl?: string | null): void {
+  public updateServerMeta(
+    name: string,
+    hasPassword: boolean,
+    allowSoundboard?: boolean,
+    iconUrl?: string | null,
+    attachmentStorage?: AttachmentStorageInfo
+  ): void {
     if (this.serverDetails) {
       this.serverDetails.name = name;
       this.serverDetails.hasPassword = hasPassword;
@@ -121,6 +127,9 @@ export class ServerStore {
       }
       if (iconUrl !== undefined) {
         this.serverDetails.iconUrl = iconUrl;
+      }
+      if (attachmentStorage !== undefined) {
+        this.serverDetails.attachmentStorage = attachmentStorage;
       }
       appEvents.emit('server.updated');
       appEvents.emit('server.meta_updated', this.serverDetails);

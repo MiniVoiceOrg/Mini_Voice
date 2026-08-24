@@ -1,6 +1,6 @@
 import { IDatabaseDriver } from './SqliteWrapper';
-import { ChannelRecord, MentionRecord, MessageRecord, ServerRecord, UserRecord } from '../../domain/entities';
-import { IChannelRepository, IMentionRepository, IMessageRepository, IServerRepository, IUserRepository } from '../../domain/repositories';
+import { ChannelRecord, MentionRecord, MessageRecord, ServerRecord, UserRecord, AttachmentRecord } from '../../domain/entities';
+import { IAttachmentRepository, IChannelRepository, IMentionRepository, IMessageRepository, IServerRepository, IUserRepository } from '../../domain/repositories';
 
 /**
  * Note: all repository methods are declared `async` even though the underlying
@@ -15,7 +15,7 @@ export class SqliteServerRepository implements IServerRepository {
   constructor(private db: IDatabaseDriver) {}
 
   async getServer(): Promise<ServerRecord | null> {
-    const row = this.db.prepare('SELECT id, name, password_hash as passwordHash, created_at as createdAt, max_users as maxUsers, allow_soundboard as allowSoundboard, icon_path as iconPath FROM server_meta LIMIT 1').get() as any;
+    const row = this.db.prepare('SELECT id, name, password_hash as passwordHash, created_at as createdAt, max_users as maxUsers, allow_soundboard as allowSoundboard, icon_path as iconPath, max_attachment_file_bytes as maxAttachmentFileBytes, max_attachment_storage_bytes as maxAttachmentStorageBytes FROM server_meta LIMIT 1').get() as any;
     if (!row) return null;
     return {
       id: row.id,
@@ -25,6 +25,8 @@ export class SqliteServerRepository implements IServerRepository {
       maxUsers: row.maxUsers,
       allowSoundboard: row.allowSoundboard !== undefined ? Boolean(row.allowSoundboard) : true,
       iconPath: row.iconPath || null,
+      maxAttachmentFileBytes: row.maxAttachmentFileBytes ?? null,
+      maxAttachmentStorageBytes: row.maxAttachmentStorageBytes ?? null,
     };
   }
 
@@ -57,6 +59,14 @@ export class SqliteServerRepository implements IServerRepository {
     if (server.iconPath !== undefined) {
       fields.push('icon_path = ?');
       values.push(server.iconPath);
+    }
+    if (server.maxAttachmentFileBytes !== undefined) {
+      fields.push('max_attachment_file_bytes = ?');
+      values.push(server.maxAttachmentFileBytes);
+    }
+    if (server.maxAttachmentStorageBytes !== undefined) {
+      fields.push('max_attachment_storage_bytes = ?');
+      values.push(server.maxAttachmentStorageBytes);
     }
 
     if (fields.length === 0) return;
@@ -242,5 +252,131 @@ export class SqliteMentionRepository implements IMentionRepository {
 
   async clearForUserChannel(userId: string, channelId: string): Promise<void> {
     this.db.prepare('DELETE FROM mentions WHERE user_id = ? AND channel_id = ?').run(userId, channelId);
+  }
+}
+
+interface SqliteAttachmentRow {
+  id: string;
+  messageId: string | null;
+  channelId: string;
+  userId: string;
+  kind: string;
+  filename: string;
+  originalName: string;
+  mimeType: string;
+  sizeBytes: number;
+  width: number | null;
+  height: number | null;
+  durationMs: number | null;
+  evicted: number;
+  createdAt: number;
+}
+
+export class SqliteAttachmentRepository implements IAttachmentRepository {
+  constructor(private db: IDatabaseDriver) {}
+
+  private static readonly SELECT =
+    'SELECT id, message_id as messageId, channel_id as channelId, user_id as userId, kind, filename, original_name as originalName, mime_type as mimeType, size_bytes as sizeBytes, width, height, duration_ms as durationMs, evicted, created_at as createdAt FROM message_attachments';
+
+  private map(r: SqliteAttachmentRow): AttachmentRecord {
+    return {
+      id: r.id,
+      messageId: r.messageId,
+      channelId: r.channelId,
+      userId: r.userId,
+      kind: r.kind as AttachmentRecord['kind'],
+      filename: r.filename,
+      originalName: r.originalName,
+      mimeType: r.mimeType,
+      sizeBytes: r.sizeBytes,
+      width: r.width,
+      height: r.height,
+      durationMs: r.durationMs,
+      evicted: Boolean(r.evicted),
+      createdAt: r.createdAt,
+    };
+  }
+
+  async create(att: AttachmentRecord): Promise<void> {
+    this.db.prepare(
+      'INSERT INTO message_attachments (id, message_id, channel_id, user_id, kind, filename, original_name, mime_type, size_bytes, width, height, duration_ms, evicted, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)'
+    ).run(
+      att.id,
+      att.messageId,
+      att.channelId,
+      att.userId,
+      att.kind,
+      att.filename,
+      att.originalName,
+      att.mimeType,
+      att.sizeBytes,
+      att.width ?? null,
+      att.height ?? null,
+      att.durationMs ?? null,
+      att.evicted ? 1 : 0,
+      att.createdAt
+    );
+  }
+
+  async findByIds(ids: string[]): Promise<AttachmentRecord[]> {
+    if (ids.length === 0) return [];
+    const placeholders = ids.map(() => '?').join(', ');
+    const rows = this.db
+      .prepare(`${SqliteAttachmentRepository.SELECT} WHERE id IN (${placeholders})`)
+      .all(...ids) as SqliteAttachmentRow[];
+    return rows.map((r) => this.map(r));
+  }
+
+  async listByMessageIds(messageIds: string[]): Promise<AttachmentRecord[]> {
+    if (messageIds.length === 0) return [];
+    const placeholders = messageIds.map(() => '?').join(', ');
+    const rows = this.db
+      .prepare(`${SqliteAttachmentRepository.SELECT} WHERE message_id IN (${placeholders}) ORDER BY created_at ASC`)
+      .all(...messageIds) as SqliteAttachmentRow[];
+    return rows.map((r) => this.map(r));
+  }
+
+  async linkToMessage(ids: string[], messageId: string): Promise<void> {
+    if (ids.length === 0) return;
+    const placeholders = ids.map(() => '?').join(', ');
+    this.db
+      .prepare(`UPDATE message_attachments SET message_id = ? WHERE id IN (${placeholders})`)
+      .run(messageId, ...ids);
+  }
+
+  async sumActiveBytes(): Promise<number> {
+    const row = this.db
+      .prepare('SELECT COALESCE(SUM(size_bytes), 0) as total FROM message_attachments WHERE evicted = 0')
+      .get() as { total: number };
+    return row?.total ?? 0;
+  }
+
+  async listOldestActive(limit: number): Promise<AttachmentRecord[]> {
+    const rows = this.db
+      .prepare(`${SqliteAttachmentRepository.SELECT} WHERE evicted = 0 ORDER BY created_at ASC LIMIT ?`)
+      .all(limit) as SqliteAttachmentRow[];
+    return rows.map((r) => this.map(r));
+  }
+
+  async markEvicted(id: string): Promise<void> {
+    this.db.prepare("UPDATE message_attachments SET evicted = 1, filename = '' WHERE id = ?").run(id);
+  }
+
+  async listPendingBefore(timestamp: number): Promise<AttachmentRecord[]> {
+    const rows = this.db
+      .prepare(`${SqliteAttachmentRepository.SELECT} WHERE message_id IS NULL AND created_at < ?`)
+      .all(timestamp) as SqliteAttachmentRow[];
+    return rows.map((r) => this.map(r));
+  }
+
+  async deleteById(id: string): Promise<void> {
+    this.db.prepare('DELETE FROM message_attachments WHERE id = ?').run(id);
+  }
+
+  async listActiveFilenames(): Promise<string[]> {
+    const rows = this.db
+      .prepare("SELECT filename FROM message_attachments WHERE evicted = 0 AND filename != ''")
+      .all() as { filename: string }[];
+    return rows.map((r) => r.filename);
   }
 }

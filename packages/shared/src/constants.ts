@@ -18,6 +18,16 @@ export const LIMITS = {
   HEARTBEAT_INTERVAL_MS: 5000,
   HEARTBEAT_TIMEOUT_MS: 35000,
   RECONNECT_GRACE_MS: 20000,
+  // Chat attachments (#11). Both size limits are server-configurable; these are
+  // only the initial defaults applied when a server is first created.
+  MAX_ATTACHMENT_FILE_SIZE_DEFAULT: 50 * 1024 * 1024, // 50 MB per file
+  MAX_ATTACHMENT_STORAGE_TOTAL_DEFAULT: 2 * 1024 * 1024 * 1024, // 2 GB total server budget
+  MAX_ATTACHMENTS_PER_MESSAGE: 10,
+  // FIFO eviction low-watermark: when the total budget is exceeded, prune oldest
+  // attachments until usage drops to this fraction of the max (avoids per-upload churn).
+  ATTACHMENT_EVICTION_LOW_WATERMARK: 0.9,
+  // Short-lived token that authorizes an HTTP POST /attachments upload.
+  UPLOAD_TOKEN_TTL_MS: 60000,
 } as const;
 
 export const RECONNECT_DELAYS_MS = [1000, 2000, 3000, 5000] as const;

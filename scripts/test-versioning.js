@@ -1,4 +1,4 @@
-import { bumpVersion, determineBumpType, calculateNextVersion } from './calculate-version.js';
+import { bumpVersion, determineBumpType, calculateNextVersion, getNextBetaNumber, promoteBetaTag } from './calculate-version.js';
 
 console.log('=== Início dos Testes de Versionamento SemVer (#122) ===');
 
@@ -49,4 +49,49 @@ const resMajor = calculateNextVersion({
 console.assert(resMajor.nextVersion === '2.0.0', 'calculateNextVersion com breaking change deve resultar em 2.0.0');
 
 console.log('✔ calculateNextVersion validado com sucesso!');
+
+// 4. Test beta channel (#release-beta)
+const betaFirst = calculateNextVersion({
+  prevTag: 'v1.7.0',
+  commits: ['feat: nova feature de chat'],
+  channel: 'beta',
+  betaNumber: 1,
+});
+console.assert(betaFirst.nextVersion === '1.8.0-beta.1', 'beta channel deve gerar 1.8.0-beta.1');
+console.assert(betaFirst.nextTag === 'v1.8.0-beta.1', 'nextTag beta deve ser v1.8.0-beta.1');
+console.assert(betaFirst.prerelease === true, 'beta deve marcar prerelease=true');
+console.assert(betaFirst.baseVersion === '1.8.0', 'baseVersion deve ser 1.8.0');
+
+const betaPatch = calculateNextVersion({
+  prevTag: 'v1.7.0',
+  commits: ['fix: corrige bug'],
+  channel: 'beta',
+  betaNumber: 3,
+});
+console.assert(betaPatch.nextVersion === '1.7.1-beta.3', 'beta patch deve gerar 1.7.1-beta.3');
+
+// Stable channel (default) permanece inalterado
+const stableStill = calculateNextVersion({ prevTag: 'v1.7.0', commits: ['fix: x'] });
+console.assert(stableStill.nextVersion === '1.7.1', 'stable default deve gerar 1.7.1');
+console.assert(stableStill.prerelease === false, 'stable deve marcar prerelease=false');
+
+// getNextBetaNumber com lista de tags injetada
+console.assert(
+  getNextBetaNumber('1.8.0', ['v1.7.0', 'v1.8.0-beta.1', 'v1.8.0-beta.2']) === 3,
+  'getNextBetaNumber deve retornar 3 após beta.1 e beta.2'
+);
+console.assert(
+  getNextBetaNumber('1.8.0', ['v1.7.0', 'v1.9.0-beta.1']) === 1,
+  'getNextBetaNumber deve retornar 1 quando não há beta para a base'
+);
+console.assert(
+  getNextBetaNumber('1.8.0', ['v1.8.0-beta.9', 'v1.8.0-beta.10']) === 11,
+  'getNextBetaNumber deve tratar números corretamente (10 -> 11)'
+);
+
+// promoteBetaTag
+console.assert(promoteBetaTag('v1.8.0-beta.3') === '1.8.0', 'promoteBetaTag deve extrair 1.8.0');
+console.assert(promoteBetaTag('1.8.0-beta.12') === '1.8.0', 'promoteBetaTag sem prefixo v');
+console.log('✔ Canal beta e promoção validados com sucesso!');
+
 console.log('=== Todos os testes de versionamento passaram com sucesso! ===');

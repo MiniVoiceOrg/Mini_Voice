@@ -1,5 +1,6 @@
 import { v4 as uuidv4 } from 'uuid';
 import {
+  AttachmentStorageInfo,
   AuthConnectPayload,
   LIMITS,
   ProtocolErrorCode,
@@ -12,6 +13,7 @@ import { IChannelRepository, IMentionRepository, IServerRepository, IUserReposit
 import { AvatarStorageService } from '../../infrastructure/security/AvatarStorageService';
 import { PasswordService } from '../../infrastructure/security/PasswordService';
 import { Logger } from '../../infrastructure/logger/Logger';
+import { AttachmentService } from './AttachmentService';
 
 export interface AuthResult {
   success: boolean;
@@ -28,7 +30,8 @@ export class AuthService {
     private channelRepo: IChannelRepository,
     private mentionRepo: IMentionRepository,
     private avatarStorage: AvatarStorageService,
-    private getActiveOnlineUsers: () => Map<string, { user: UserSummary }>
+    private getActiveOnlineUsers: () => Map<string, { user: UserSummary }>,
+    private attachmentService: AttachmentService
   ) {}
 
   public async authenticate(payload: AuthConnectPayload): Promise<AuthResult> {
@@ -178,6 +181,7 @@ export class AuthService {
       knownMembers,
       mentionedChannelIds,
       voiceStates: {},
+      attachmentStorage: await this.attachmentService.getStorageInfo(),
     };
 
     return {
@@ -192,12 +196,15 @@ export class AuthService {
     password?: string | null;
     allowSoundboard?: boolean;
     iconBase64?: string | null;
+    maxAttachmentFileBytes?: number;
+    maxAttachmentStorageBytes?: number;
   }): Promise<{
     success: boolean;
     name?: string;
     hasPassword?: boolean;
     allowSoundboard?: boolean;
     iconUrl?: string | null;
+    attachmentStorage?: AttachmentStorageInfo;
     errorMessage?: string;
   }> {
     const server = await this.serverRepo.getServer();
@@ -209,6 +216,22 @@ export class AuthService {
 
     if (payload.name && payload.name.trim().length >= 2) {
       updates.name = payload.name.trim();
+    }
+
+    // Attachment storage limits (#11): validate positive and file <= total.
+    if (payload.maxAttachmentFileBytes !== undefined || payload.maxAttachmentStorageBytes !== undefined) {
+      const currentFile = server.maxAttachmentFileBytes ?? LIMITS.MAX_ATTACHMENT_FILE_SIZE_DEFAULT;
+      const currentTotal = server.maxAttachmentStorageBytes ?? LIMITS.MAX_ATTACHMENT_STORAGE_TOTAL_DEFAULT;
+      const nextFile = payload.maxAttachmentFileBytes ?? currentFile;
+      const nextTotal = payload.maxAttachmentStorageBytes ?? currentTotal;
+      if (!Number.isFinite(nextFile) || !Number.isFinite(nextTotal) || nextFile < 1 || nextTotal < 1) {
+        return { success: false, errorMessage: 'Os limites de armazenamento devem ser positivos.' };
+      }
+      if (nextFile > nextTotal) {
+        return { success: false, errorMessage: 'O limite por arquivo não pode exceder o total do servidor.' };
+      }
+      if (payload.maxAttachmentFileBytes !== undefined) updates.maxAttachmentFileBytes = Math.floor(nextFile);
+      if (payload.maxAttachmentStorageBytes !== undefined) updates.maxAttachmentStorageBytes = Math.floor(nextTotal);
     }
 
     if (payload.password !== undefined) {
@@ -261,6 +284,7 @@ export class AuthService {
       hasPassword: !!(updatedServer?.passwordHash && updatedServer.passwordHash.length > 0),
       allowSoundboard: updatedServer?.allowSoundboard !== false,
       iconUrl: this.avatarStorage.getPublicUrl(updatedServer?.iconPath),
+      attachmentStorage: await this.attachmentService.getStorageInfo(),
     };
   }
 }

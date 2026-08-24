@@ -1203,6 +1203,7 @@ input:focus, textarea:focus, select:focus {
   min-height: 0;
   user-select: text;
   -webkit-user-select: text;
+  position: relative;
 }
 
 .chat-messages-feed {
@@ -1501,6 +1502,350 @@ input:focus, textarea:focus, select:focus {
   margin-right: 8px;
   align-self: flex-end;
   margin-bottom: 10px;
+}
+
+/* Per-day divider line in the chat feed (#11) */
+.chat-date-divider {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin: 18px 10px 10px;
+}
+
+.chat-date-divider::before,
+.chat-date-divider::after {
+  content: '';
+  flex: 1;
+  height: 1px;
+  background: var(--border-color);
+}
+
+.chat-date-divider-label {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-muted);
+  white-space: nowrap;
+  letter-spacing: 0.3px;
+}
+
+/* --- Chat attachments (#11) --- */
+.chat-attach-btn {
+  background: transparent;
+  border: none;
+  color: var(--text-muted);
+  cursor: pointer;
+  padding: 4px;
+  align-self: flex-end;
+  margin-bottom: 4px;
+  display: flex;
+  align-items: center;
+  border-radius: 6px;
+  transition: color 0.15s, background 0.15s;
+}
+
+.chat-attach-btn:hover {
+  color: var(--accent-primary);
+  background: var(--bg-tertiary);
+}
+
+/* Staged-uploads tray above the input box */
+.chat-attachment-tray {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 10px;
+}
+
+.tray-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border-color);
+  border-radius: 8px;
+  padding: 6px 8px;
+  width: 220px;
+  max-width: 100%;
+}
+
+.tray-item.is-error {
+  border-color: rgba(237, 66, 69, 0.5);
+}
+
+.tray-thumb {
+  width: 34px;
+  height: 34px;
+  border-radius: 6px;
+  object-fit: cover;
+  flex-shrink: 0;
+}
+
+.tray-thumb-icon {
+  width: 34px;
+  height: 34px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--text-secondary);
+  flex-shrink: 0;
+}
+
+.tray-info {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.tray-name {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-primary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.tray-sub {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.tray-size {
+  font-size: 10px;
+  color: var(--text-muted);
+  flex-shrink: 0;
+}
+
+.tray-progress {
+  flex: 1;
+  height: 4px;
+  background: var(--bg-input);
+  border-radius: 999px;
+  overflow: hidden;
+}
+
+.tray-progress-bar {
+  height: 100%;
+  background: var(--accent-primary);
+  border-radius: 999px;
+  transition: width 0.15s;
+}
+
+.tray-status {
+  font-size: 10px;
+  color: var(--text-muted);
+  flex-shrink: 0;
+}
+
+.tray-status.tray-done {
+  color: var(--success);
+}
+
+.tray-status.tray-error {
+  color: var(--danger);
+}
+
+.tray-remove {
+  background: transparent;
+  border: none;
+  color: var(--text-muted);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  padding: 2px;
+  border-radius: 4px;
+  flex-shrink: 0;
+}
+
+.tray-remove:hover {
+  color: var(--danger);
+  background: var(--bg-input);
+}
+
+.tray-notice {
+  width: 100%;
+  font-size: 11px;
+  color: var(--danger);
+  padding: 2px 2px 0;
+}
+
+/* Drag & drop affordance */
+.chat-container.chat-drag-over {
+  outline: 2px dashed var(--accent-primary);
+  outline-offset: -6px;
+  background: rgba(88, 101, 242, 0.05);
+}
+
+/* Friendly full-panel overlay shown while dragging files over the chat (#11). */
+.chat-drop-overlay {
+  position: absolute;
+  inset: 0;
+  z-index: 40;
+  display: none;
+  align-items: center;
+  justify-content: center;
+  background: rgba(88, 101, 242, 0.12);
+  pointer-events: none;
+  border-radius: 8px;
+}
+
+.chat-container.chat-drag-over .chat-drop-overlay {
+  display: flex;
+}
+
+.chat-drop-overlay .drop-inner {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  color: var(--accent-primary);
+  border: 2px dashed var(--accent-primary);
+  border-radius: 14px;
+  padding: 28px 46px;
+  background: var(--bg-panel);
+  box-shadow: 0 10px 40px rgba(0, 0, 0, 0.35);
+}
+
+.chat-drop-overlay .drop-title {
+  font-size: 17px;
+  font-weight: 700;
+  color: var(--text-primary);
+}
+
+.chat-drop-overlay .drop-sub {
+  font-size: 12px;
+  color: var(--text-muted);
+}
+
+/* Rendered attachments inside a message */
+.chat-attachments {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 6px;
+}
+
+.chat-attachment-image {
+  max-width: 320px;
+  max-height: 260px;
+  border-radius: 8px;
+  cursor: zoom-in;
+  object-fit: cover;
+  border: 1px solid var(--border-color);
+}
+
+.chat-attachment-video {
+  max-width: 400px;
+  max-height: 300px;
+  border-radius: 8px;
+  background: #000;
+  border: 1px solid var(--border-color);
+}
+
+.chat-attachment-file {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border-color);
+  border-radius: 8px;
+  padding: 8px 12px;
+  cursor: pointer;
+  width: 280px;
+  max-width: 100%;
+  text-align: left;
+  transition: background 0.15s, border-color 0.15s;
+}
+
+.chat-attachment-file:hover {
+  background: var(--bg-input);
+  border-color: var(--border-focus);
+}
+
+.chat-attachment-file .af-icon {
+  color: var(--accent-primary);
+  flex-shrink: 0;
+}
+
+.chat-attachment-file .af-meta {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.chat-attachment-file .af-name {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-primary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.chat-attachment-file .af-size {
+  font-size: 11px;
+  color: var(--text-muted);
+}
+
+.chat-attachment-file .af-dl {
+  color: var(--text-muted);
+  flex-shrink: 0;
+}
+
+.attachment-evicted {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+  color: var(--text-muted);
+  background: var(--bg-tertiary);
+  border: 1px dashed var(--border-color);
+  border-radius: 8px;
+  padding: 8px 12px;
+  font-style: italic;
+}
+
+/* Full-size image lightbox */
+.attachment-lightbox {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.85);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 10050;
+  cursor: zoom-out;
+}
+
+.attachment-lightbox img {
+  max-width: 92vw;
+  max-height: 92vh;
+  border-radius: 6px;
+  box-shadow: 0 10px 40px rgba(0, 0, 0, 0.6);
+}
+
+.attachment-lightbox .lightbox-close {
+  position: absolute;
+  top: 20px;
+  right: 24px;
+  background: rgba(0, 0, 0, 0.5);
+  border: none;
+  color: #fff;
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.attachment-lightbox .lightbox-close:hover {
+  background: rgba(0, 0, 0, 0.8);
 }
 
 /* Voice & Video Stage Layout */

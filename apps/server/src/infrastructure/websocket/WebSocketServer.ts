@@ -11,7 +11,9 @@ import {
   ChatLoadHistoryPayload,
   ChatMentionsReadPayload,
   ChatMessage,
+  ChatRequestUploadTokenPayload,
   ChatSendPayload,
+  ChatUploadTokenPayload,
   LIMITS,
   MessageType,
   ProtocolErrorCode,
@@ -37,6 +39,7 @@ import {
   WebRtcSignalPayload,
 } from '@mini-voice/shared';
 import { AuthService } from '../../application/services/AuthService';
+import { AttachmentService } from '../../application/services/AttachmentService';
 import { ChannelService } from '../../application/services/ChannelService';
 import { ChatService } from '../../application/services/ChatService';
 import { SignalingService } from '../../application/services/SignalingService';
@@ -70,7 +73,8 @@ export class WebSocketServer {
     private channelService: ChannelService,
     private chatService: ChatService,
     private signalingService: SignalingService,
-    private serverRepo: IServerRepository
+    private serverRepo: IServerRepository,
+    private attachmentService: AttachmentService
   ) {
     this.wss = new WSServer({ server: this.server });
     this.setupWss();
@@ -158,6 +162,10 @@ export class WebSocketServer {
 
       case MessageType.CHAT_MENTIONS_READ:
         await this.handleChatMentionsRead(session, payload as ChatMentionsReadPayload);
+        break;
+
+      case MessageType.CHAT_REQUEST_UPLOAD_TOKEN:
+        this.handleRequestUploadToken(session, payload as ChatRequestUploadTokenPayload, requestId);
         break;
 
       case MessageType.CHANNEL_CREATE:
@@ -301,7 +309,12 @@ export class WebSocketServer {
   ): Promise<void> {
     if (!session.user) return;
 
-    const result = await this.chatService.sendMessage(session.user.id, payload.channelId, payload.content);
+    const result = await this.chatService.sendMessage(
+      session.user.id,
+      payload.channelId,
+      payload.content,
+      payload.attachmentIds
+    );
     if (!result.success || !result.message) {
       this.sendError(
         session.ws,
@@ -349,6 +362,30 @@ export class WebSocketServer {
   ): Promise<void> {
     if (!session.user) return;
     await this.chatService.markMentionsRead(session.user.id, payload.channelId);
+  }
+
+  private handleRequestUploadToken(
+    session: ClientSession,
+    payload: ChatRequestUploadTokenPayload,
+    requestId?: string
+  ): void {
+    if (!session.user) return;
+    const issued = this.attachmentService.issueUploadToken(session.user.id, payload.channelId);
+    if (!issued) {
+      this.sendError(
+        session.ws,
+        ProtocolErrorCode.RATE_LIMITED,
+        'Muitos envios em pouco tempo. Aguarde alguns segundos.',
+        requestId
+      );
+      return;
+    }
+    const tokenPayload: ChatUploadTokenPayload = { token: issued.token, expiresAt: issued.expiresAt };
+    this.send(session.ws, {
+      type: MessageType.CHAT_UPLOAD_TOKEN,
+      requestId,
+      payload: tokenPayload,
+    });
   }
 
   private async handleChannelCreate(
@@ -493,6 +530,7 @@ export class WebSocketServer {
       hasPassword: result.hasPassword!,
       allowSoundboard: result.allowSoundboard,
       iconUrl: result.iconUrl,
+      attachmentStorage: result.attachmentStorage,
     };
 
     // Broadcast updated server settings to all clients
