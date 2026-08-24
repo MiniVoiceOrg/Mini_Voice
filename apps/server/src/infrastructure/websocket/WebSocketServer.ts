@@ -9,6 +9,7 @@ import {
   ChannelDeletedPayload,
   ChatHistoryPayload,
   ChatLoadHistoryPayload,
+  ChatMentionsReadPayload,
   ChatMessage,
   ChatSendPayload,
   LIMITS,
@@ -153,6 +154,10 @@ export class WebSocketServer {
 
       case MessageType.CHAT_LOAD_HISTORY:
         await this.handleChatLoadHistory(session, payload as ChatLoadHistoryPayload, requestId);
+        break;
+
+      case MessageType.CHAT_MENTIONS_READ:
+        await this.handleChatMentionsRead(session, payload as ChatMentionsReadPayload);
         break;
 
       case MessageType.CHANNEL_CREATE:
@@ -336,6 +341,14 @@ export class WebSocketServer {
       requestId,
       payload: historyPayload,
     });
+  }
+
+  private async handleChatMentionsRead(
+    session: ClientSession,
+    payload: ChatMentionsReadPayload
+  ): Promise<void> {
+    if (!session.user) return;
+    await this.chatService.markMentionsRead(session.user.id, payload.channelId);
   }
 
   private async handleChannelCreate(

@@ -244,6 +244,9 @@ export class SettingsModal {
             <span class="material-symbols-outlined md-16" style="color: var(--accent-primary);">chat</span>
             Notificações de Chat
           </label>
+          <div style="font-size: 11px; color: var(--text-muted); margin-top: 4px;">
+            Configuração geral (padrão). Cada servidor ou canal pode sobrescrever isto pelas Configurações do Servidor ou pelo menu do canal.
+          </div>
           <div class="form-group" style="padding: 10px 12px; background: var(--bg-card); border: 1px solid var(--border-color); border-radius: var(--radius-md); margin-top: 8px; margin-bottom: 10px;">
             <div style="display: flex; align-items: center; justify-content: space-between; gap: 12px;">
               <div>

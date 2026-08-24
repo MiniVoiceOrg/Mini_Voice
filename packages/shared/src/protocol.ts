@@ -22,6 +22,7 @@ export enum MessageType {
   AUTH_CONNECT = 'AUTH_CONNECT',
   CHAT_SEND = 'CHAT_SEND',
   CHAT_LOAD_HISTORY = 'CHAT_LOAD_HISTORY',
+  CHAT_MENTIONS_READ = 'CHAT_MENTIONS_READ',
   CHANNEL_CREATE = 'CHANNEL_CREATE',
   CHANNEL_DELETE = 'CHANNEL_DELETE',
   USER_CHANGE_NICKNAME = 'USER_CHANGE_NICKNAME',
@@ -80,6 +81,12 @@ export interface ChatLoadHistoryPayload {
   channelId: string;
   beforeTimestamp?: number;
   limit?: number;
+}
+
+// Sent when the user opens a text channel, clearing any unread @-mentions for
+// that user in that channel on the server so they are not re-delivered (#14).
+export interface ChatMentionsReadPayload {
+  channelId: string;
 }
 
 export interface ChannelCreatePayload {

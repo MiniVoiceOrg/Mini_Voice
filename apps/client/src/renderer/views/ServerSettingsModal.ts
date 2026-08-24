@@ -5,6 +5,7 @@ import { enableBackdropClose } from '../utils/modal';
 import { getAvatarUrl } from '../utils/avatar';
 import { networkClient } from '../core/NetworkClient';
 import { serverStore } from '../stores/serverStore';
+import { settingsStore, ChatSoundMode } from '../stores/settingsStore';
 
 export class ServerSettingsModal {
   private modalEl: HTMLElement | null = null;
@@ -102,6 +103,28 @@ export class ServerSettingsModal {
             </div>
           </div>
 
+          <div style="margin-top: 18px; border-top: 1px solid var(--border-color); padding-top: 16px;">
+            <label style="font-weight: 700; font-size: 13px; color: var(--text-primary); display: block; margin-bottom: 8px;">
+              Notificações de Mensagem
+            </label>
+
+            <div style="background: var(--bg-tertiary); padding: 10px 14px; border-radius: var(--radius-md); border: 1px solid var(--border-color);">
+              <label for="select-server-chat-sound" style="font-size: 13px; font-weight: 600; color: var(--text-primary); display: flex; align-items: center; gap: 6px; margin-bottom: 6px; cursor: pointer;">
+                <span class="material-symbols-outlined md-16" style="color: var(--accent-primary);">notifications</span>
+                <span>Som de mensagens neste servidor</span>
+              </label>
+              <select id="select-server-chat-sound" style="width: 100%;">
+                <option value="inherit">Padrão (usar configuração geral)</option>
+                <option value="all">Todas as mensagens</option>
+                <option value="mentions">Apenas menções</option>
+                <option value="none">Silenciar</option>
+              </select>
+              <div style="font-size: 11px; color: var(--text-muted); margin-top: 6px;">
+                Preferência salva apenas no seu dispositivo. Cada canal pode sobrescrever isto pelo menu do canal.
+              </div>
+            </div>
+          </div>
+
           <div class="modal-footer" style="margin-top: 24px;">
             <button type="button" id="btn-cancel" class="btn btn-secondary">Cancelar</button>
             <button type="submit" id="btn-save" class="btn btn-primary">Salvar Alterações</button>
@@ -131,6 +154,17 @@ export class ServerSettingsModal {
     btnClose?.addEventListener('click', () => this.close());
     enableBackdropClose(this.modalEl, () => this.close());
     btnCancel?.addEventListener('click', () => this.close());
+
+    // Per-server chat-sound preference (#153). Local-only, so it persists on
+    // change rather than waiting for the server-side "Salvar Alterações".
+    const selectServerChatSound = this.modalEl.querySelector('#select-server-chat-sound') as HTMLSelectElement | null;
+    const serverId = serverStore.serverDetails?.id;
+    if (selectServerChatSound && serverId) {
+      selectServerChatSound.value = settingsStore.getServerChatSoundOverride(serverId);
+      selectServerChatSound.addEventListener('change', () => {
+        settingsStore.setServerChatSoundOverride(serverId, selectServerChatSound.value as ChatSoundMode);
+      });
+    }
 
     serverIconWrapper?.addEventListener('click', async () => {
       const s = serverStore.serverDetails;

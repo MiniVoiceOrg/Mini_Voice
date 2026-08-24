@@ -11,6 +11,7 @@ import { UserService } from './application/services/UserService';
 import { DatabaseConnection } from './infrastructure/database/DatabaseConnection';
 import {
   SqliteChannelRepository,
+  SqliteMentionRepository,
   SqliteMessageRepository,
   SqliteServerRepository,
   SqliteUserRepository,
@@ -70,10 +71,11 @@ export class MiniVoiceServer {
     const userRepo = new SqliteUserRepository(db);
     const channelRepo = new SqliteChannelRepository(db);
     const messageRepo = new SqliteMessageRepository(db);
+    const mentionRepo = new SqliteMentionRepository(db);
 
     const signalingService = new SignalingService(channelRepo);
     const channelService = new ChannelService(channelRepo, serverRepo);
-    const chatService = new ChatService(messageRepo, channelRepo, userRepo, avatarStorage, rateLimiter);
+    const chatService = new ChatService(messageRepo, channelRepo, userRepo, mentionRepo, avatarStorage, rateLimiter);
 
     let getOnlineUsers: () => any = () => new Map();
 
@@ -81,6 +83,7 @@ export class MiniVoiceServer {
       serverRepo,
       userRepo,
       channelRepo,
+      mentionRepo,
       avatarStorage,
       () => getOnlineUsers()
     );

@@ -6,7 +6,7 @@ import { participantManager } from '../core/ParticipantManager';
 import { serverStore } from '../stores/serverStore';
 import { voiceStore } from '../stores/voiceStore';
 import { chatStore } from '../stores/chatStore';
-import { settingsStore } from '../stores/settingsStore';
+import { settingsStore, ChatSoundMode } from '../stores/settingsStore';
 import { connectionStore, SavedServer } from '../stores/connectionStore';
 import { audioProcessor } from '../core/AudioProcessor';
 import { webRtcManager } from '../core/WebRtcManager';
@@ -16,7 +16,7 @@ import { createChannelModal } from './CreateChannelModal';
 import { settingsModal } from './SettingsModal';
 import { serverSettingsModal } from './ServerSettingsModal';
 import { inviteModal } from './InviteModal';
-import { contextMenu } from './ContextMenu';
+import { contextMenu, ContextMenuItem } from './ContextMenu';
 import { showConfirm, showAlert } from './Dialog';
 import { setButtonLoading, withButtonLoading } from '../utils/buttonLoading';
 import { checkServerOnline } from '../utils/serverStatus';
@@ -529,7 +529,6 @@ export class MainView {
         if (type === 'TEXT') {
           serverStore.setActiveTextChannel(channelId);
           this.activeContentView = 'chat';
-          chatStore.clearMention(channelId);
           this.chatView?.setChannel(channelId);
           this.renderChannels();
         } else if (type === 'VOICE') {
@@ -551,26 +550,71 @@ export class MainView {
       });
     });
 
+    // Right-clicking a channel opens the same options menu as the ⋮ button (#151).
+    this.container.querySelectorAll('.channel-item').forEach((item) => {
+      item.addEventListener('contextmenu', (e) => {
+        const mouseEvent = e as MouseEvent;
+        mouseEvent.preventDefault();
+        const channelId = item.getAttribute('data-channel-id');
+        if (!channelId) return;
+        this.openChannelMenu(channelId, mouseEvent.clientX, mouseEvent.clientY);
+      });
+    });
+
     // Attach "more options" menu listeners (#151). Delete now lives inside a
-    // dropdown so more per-channel actions can be added later.
+    // dropdown so more per-channel actions can be added later, and the same menu
+    // is also reachable by right-clicking the channel above.
     this.container.querySelectorAll('.channel-menu-btn').forEach((btn) => {
       btn.addEventListener('click', (e) => {
         e.stopPropagation();
         const channelId = btn.getAttribute('data-menu-channel');
         if (!channelId) return;
         const rect = (btn as HTMLElement).getBoundingClientRect();
-        contextMenu.open(rect.left, rect.bottom + 4, [
-          {
-            label: 'Apagar canal',
-            icon: 'delete',
-            danger: true,
-            onClick: () => {
-              void this.handleDeleteChannel(channelId);
-            },
-          },
-        ]);
+        this.openChannelMenu(channelId, rect.left, rect.bottom + 4);
       });
     });
+  }
+
+  /** Opens the per-channel options menu at the given screen coordinates (#151). */
+  private openChannelMenu(channelId: string, x: number, y: number): void {
+    const channel = serverStore.serverDetails?.channels.find((c) => c.id === channelId);
+    const items: ContextMenuItem[] = [];
+
+    // Chat-sound notifications only apply to text channels (#153).
+    if (channel?.type === 'TEXT') {
+      items.push({
+        label: 'Notificações de mensagem',
+        icon: 'notifications',
+        onClick: () => this.openChannelNotificationMenu(channelId, x, y),
+      });
+    }
+
+    items.push({
+      label: 'Apagar canal',
+      icon: 'delete',
+      danger: true,
+      onClick: () => {
+        void this.handleDeleteChannel(channelId);
+      },
+    });
+
+    contextMenu.open(x, y, items);
+  }
+
+  /** Submenu to pick the per-channel chat-sound mode, overriding server/global (#153). */
+  private openChannelNotificationMenu(channelId: string, x: number, y: number): void {
+    const current = settingsStore.getChannelChatSoundOverride(channelId);
+    const item = (mode: ChatSoundMode, label: string) => ({
+      label,
+      icon: current === mode ? 'check' : undefined,
+      onClick: () => settingsStore.setChannelChatSoundOverride(channelId, mode),
+    });
+    contextMenu.open(x, y, [
+      item('inherit', 'Padrão (seguir servidor/geral)'),
+      item('all', 'Todas as mensagens'),
+      item('mentions', 'Apenas menções'),
+      item('none', 'Silenciar'),
+    ]);
   }
 
   private async handleJoinVoiceChannel(channelId: string, silent: boolean = false): Promise<void> {

@@ -43,6 +43,16 @@ export class ChatStore {
     appEvents.emit('chat.mentions_updated');
   }
 
+  /**
+   * Replace the whole set of channels with unread @-mentions, e.g. when seeding
+   * from ServerDetails on (re)connect so mentions received while offline show up
+   * (#14).
+   */
+  public setMentions(channelIds: string[]): void {
+    this.mentionChannels = new Set(channelIds);
+    appEvents.emit('chat.mentions_updated');
+  }
+
   /** Clear the unread @-mention flag for a channel (e.g. when opened). */
   public clearMention(channelId: string): void {
     if (!this.mentionChannels.delete(channelId)) return;

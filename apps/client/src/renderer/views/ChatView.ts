@@ -26,6 +26,10 @@ export class ChatView {
 
   public setChannel(channelId: string): void {
     this.currentChannelId = channelId;
+    // Opening a channel reads its mentions: clear the local badge and tell the
+    // server so offline-delivered mentions aren't re-shown next connect (#14).
+    chatStore.clearMention(channelId);
+    networkClient.send(MessageType.CHAT_MENTIONS_READ, { channelId });
     this.render();
     this.loadHistory();
   }

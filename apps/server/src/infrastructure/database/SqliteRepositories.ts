@@ -1,6 +1,6 @@
 import { IDatabaseDriver } from './SqliteWrapper';
-import { ChannelRecord, MessageRecord, ServerRecord, UserRecord } from '../../domain/entities';
-import { IChannelRepository, IMessageRepository, IServerRepository, IUserRepository } from '../../domain/repositories';
+import { ChannelRecord, MentionRecord, MessageRecord, ServerRecord, UserRecord } from '../../domain/entities';
+import { IChannelRepository, IMentionRepository, IMessageRepository, IServerRepository, IUserRepository } from '../../domain/repositories';
 
 /**
  * Note: all repository methods are declared `async` even though the underlying
@@ -216,5 +216,31 @@ export class SqliteMessageRepository implements IMessageRepository {
 
   async deleteByChannel(channelId: string): Promise<void> {
     this.db.prepare('DELETE FROM messages WHERE channel_id = ?').run(channelId);
+  }
+}
+
+interface SqliteMentionChannelRow {
+  channelId: string;
+}
+
+export class SqliteMentionRepository implements IMentionRepository {
+  constructor(private db: IDatabaseDriver) {}
+
+  async add(mention: MentionRecord): Promise<void> {
+    this.db.prepare(
+      'INSERT INTO mentions (id, user_id, channel_id, message_id, created_at) VALUES (?, ?, ?, ?, ?)'
+    ).run(mention.id, mention.userId, mention.channelId, mention.messageId, mention.createdAt);
+  }
+
+  async listChannelIdsForUser(userId: string): Promise<string[]> {
+    const rows = this.db.prepare(
+      'SELECT DISTINCT channel_id as channelId FROM mentions WHERE user_id = ?'
+    ).all(userId) as SqliteMentionChannelRow[];
+
+    return rows.map((r) => r.channelId);
+  }
+
+  async clearForUserChannel(userId: string, channelId: string): Promise<void> {
+    this.db.prepare('DELETE FROM mentions WHERE user_id = ? AND channel_id = ?').run(userId, channelId);
   }
 }
