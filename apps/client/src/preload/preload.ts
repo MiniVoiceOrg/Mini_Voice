@@ -64,6 +64,7 @@ export interface ElectronApi {
   checkForUpdates: () => Promise<{ ok: boolean; available?: boolean; version?: string; error?: string }>;
   downloadUpdate: () => Promise<{ ok: boolean; error?: string }>;
   installUpdate: () => Promise<{ ok: boolean; error?: string }>;
+  setUpdateChannel: (allowBeta: boolean) => Promise<{ ok: boolean; error?: string }>;
   onUpdateProgress: (cb: (percent: number) => void) => void;
   onUpdateDownloaded: (cb: (info: { manual: boolean }) => void) => void;
   onUpdateError: (cb: (message: string) => void) => void;
@@ -110,6 +111,7 @@ const api: ElectronApi = {
   checkForUpdates: () => ipcRenderer.invoke('update-check'),
   downloadUpdate: () => ipcRenderer.invoke('update-download'),
   installUpdate: () => ipcRenderer.invoke('update-install'),
+  setUpdateChannel: (allowBeta) => ipcRenderer.invoke('update-set-channel', allowBeta),
   onUpdateProgress: (cb) => ipcRenderer.on('update:progress', (_e, percent) => cb(percent)),
   onUpdateDownloaded: (cb) => ipcRenderer.on('update:downloaded', (_e, info) => cb(info)),
   onUpdateError: (cb) => ipcRenderer.on('update:error', (_e, message) => cb(message)),

@@ -41,6 +41,7 @@
     "directories": {
       "output": "../../release"
     },
+    "detectUpdateChannel": false,
     "publish": [
       {
         "provider": "github",

@@ -83,6 +83,10 @@ export interface ElectronApi {
         ok: boolean;
         error?: string;
     }>;
+    setUpdateChannel: (allowBeta: boolean) => Promise<{
+        ok: boolean;
+        error?: string;
+    }>;
     onUpdateProgress: (cb: (percent: number) => void) => void;
     onUpdateDownloaded: (cb: (info: {
         manual: boolean;

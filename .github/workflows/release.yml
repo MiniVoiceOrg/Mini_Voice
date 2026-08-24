@@ -4,9 +4,14 @@ on:
   push:
     branches: [main]
   workflow_dispatch:
+    inputs:
+      promote_tag:
+        description: 'Beta tag to promote to a stable release (e.g. v1.8.0-beta.3). Leave empty to build a beta from the current ref.'
+        required: false
+        default: ''
 
 concurrency:
-  group: release-${{ github.ref }}
+  group: release-${{ github.event.inputs.promote_tag || github.ref }}
   cancel-in-progress: false
 
 permissions:
@@ -20,6 +25,9 @@ jobs:
       version: ${{ steps.bump.outputs.version }}
       prev_tag: ${{ steps.bump.outputs.prev_tag }}
       bump_type: ${{ steps.bump.outputs.bump_type }}
+      channel: ${{ steps.bump.outputs.channel }}
+      prerelease: ${{ steps.bump.outputs.prerelease }}
+      checkout_ref: ${{ steps.ref.outputs.checkout_ref }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -31,9 +39,24 @@ jobs:
         with:
           node-version: 22
 
+      # push to main / manual dispatch (no tag) -> beta prerelease.
+      # manual dispatch with a beta tag -> promote that beta to a clean stable.
       - name: Calculate Semantic Version
         id: bump
+        env:
+          PROMOTE_TAG: ${{ github.event.inputs.promote_tag }}
+          RELEASE_CHANNEL: beta
         run: node scripts/calculate-version.js
+
+      - name: Resolve checkout ref
+        id: ref
+        shell: bash
+        run: |
+          if [ -n "${{ github.event.inputs.promote_tag }}" ]; then
+            echo "checkout_ref=${{ github.event.inputs.promote_tag }}" >> "$GITHUB_OUTPUT"
+          else
+            echo "checkout_ref=${{ github.sha }}" >> "$GITHUB_OUTPUT"
+          fi
 
   build:
     name: Build (${{ matrix.platform }})
@@ -50,6 +73,8 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.version.outputs.checkout_ref }}
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
@@ -127,6 +152,7 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
         with:
+          ref: ${{ needs.version.outputs.checkout_ref }}
           fetch-depth: 0
 
       - name: Generate changelog
@@ -174,9 +200,11 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           tag_name: v${{ needs.version.outputs.version }}
-          name: Mini Voice v${{ needs.version.outputs.version }}
+          name: ${{ needs.version.outputs.channel == 'beta' && format('Mini Voice v{0} (Beta)', needs.version.outputs.version) || format('Mini Voice v{0}', needs.version.outputs.version) }}
           body: |
-            Release automática gerada a partir do commit ${{ github.sha }} na branch `main`.
+            ${{ needs.version.outputs.channel == 'beta' && '> ⚠️ **Versão beta** — em validação. Só recebe automaticamente quem ativou "Receber versões beta" nas Configurações. Após validada, é promovida a estável.' || 'Release estável do Mini Voice.' }}
+
+            Gerada a partir de `${{ needs.version.outputs.checkout_ref }}`.
 
             ### Downloads
             - **Windows**: instalador `.exe` (NSIS) e `.exe` portátil
@@ -185,7 +213,7 @@ jobs:
             ### Changelog
             ${{ steps.changelog.outputs.notes }}
           draft: false
-          prerelease: false
+          prerelease: ${{ needs.version.outputs.prerelease }}
           fail_on_unmatched_files: false
           files: |
             artifacts/**/*.exe

@@ -28,6 +28,7 @@ const api = {
     checkForUpdates: () => ipcRenderer.invoke('update-check'),
     downloadUpdate: () => ipcRenderer.invoke('update-download'),
     installUpdate: () => ipcRenderer.invoke('update-install'),
+    setUpdateChannel: (allowBeta) => ipcRenderer.invoke('update-set-channel', allowBeta),
     onUpdateProgress: (cb) => ipcRenderer.on('update:progress', (_e, percent) => cb(percent)),
     onUpdateDownloaded: (cb) => ipcRenderer.on('update:downloaded', (_e, info) => cb(info)),
     onUpdateError: (cb) => ipcRenderer.on('update:error', (_e, message) => cb(message)),
