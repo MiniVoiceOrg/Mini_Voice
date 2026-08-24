@@ -19,8 +19,11 @@ catch (e) {
     console.warn('[ScreenAudio:Main] Native module not available:', e.message);
     screenAudio = null;
 }
-function setupIpcHandlers(mainWindow, serverManager) {
+function setupIpcHandlers(mainWindow, serverManager, trayManager) {
     const lanDiscovery = new lanDiscovery_1.LanDiscovery(mainWindow);
+    electron_1.ipcMain.handle('tray:update-voice-status', (_, status) => {
+        trayManager?.updateVoiceStatus(status);
+    });
     electron_1.ipcMain.handle('window:maximize', () => {
         if (!mainWindow || mainWindow.isDestroyed())
             return;

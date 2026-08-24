@@ -41,6 +41,17 @@ const api = {
     screenAudioStop: () => electron_1.ipcRenderer.invoke('screen-audio-stop'),
     onScreenAudioFrame: (cb) => electron_1.ipcRenderer.on('screen-audio:frame', (_e, buffer) => cb(buffer)),
     removeScreenAudioFrameListener: () => electron_1.ipcRenderer.removeAllListeners('screen-audio:frame'),
+    updateTrayVoiceStatus: (status) => electron_1.ipcRenderer.invoke('tray:update-voice-status', status),
+    onTrayToggleMute: (cb) => {
+        const listener = () => cb();
+        electron_1.ipcRenderer.on('tray:toggle-mute', listener);
+        return () => electron_1.ipcRenderer.removeListener('tray:toggle-mute', listener);
+    },
+    onTrayToggleDeafen: (cb) => {
+        const listener = () => cb();
+        electron_1.ipcRenderer.on('tray:toggle-deafen', listener);
+        return () => electron_1.ipcRenderer.removeListener('tray:toggle-deafen', listener);
+    },
     platform: process.platform,
 };
 electron_1.contextBridge.exposeInMainWorld('api', api);

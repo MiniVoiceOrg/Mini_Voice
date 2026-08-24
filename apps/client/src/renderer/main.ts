@@ -13,6 +13,7 @@ import {
   VoiceUserJoinedPayload,
   VoiceUserLeftPayload,
 } from '@mini-voice/shared';
+import { audioProcessor } from './core/AudioProcessor';
 import { appEvents } from './core/EventBus';
 import { networkClient } from './core/NetworkClient';
 import { participantManager } from './core/ParticipantManager';
@@ -52,6 +53,7 @@ class App {
 
     this.setupGlobalEventListeners();
     this.setupTitleBar();
+    this.setupTraySync();
 
     // Render connection view initially
     this.connectionView.render();
@@ -61,6 +63,70 @@ class App {
 
     // Start checking for app updates (non-blocking)
     updateService.init();
+  }
+
+  private setupTraySync(): void {
+    const syncTrayVoiceStatus = () => {
+      window.api?.updateTrayVoiceStatus({
+        inCall: !!voiceStore.currentVoiceChannelId,
+        isMuted: voiceStore.isMuted,
+        isDeafened: voiceStore.isDeafened,
+        isSpeaking: voiceStore.isSpeaking,
+      });
+    };
+
+    appEvents.on('voice.state_updated', syncTrayVoiceStatus);
+    appEvents.on('voice.speaking_changed', syncTrayVoiceStatus);
+    appEvents.on('voice.channel_changed', syncTrayVoiceStatus);
+
+    // Initial sync
+    syncTrayVoiceStatus();
+
+    // Tray context menu actions
+    window.api?.onTrayToggleMute(() => {
+      this.toggleMuteFromTray();
+    });
+
+    window.api?.onTrayToggleDeafen(() => {
+      this.toggleDeafenFromTray();
+    });
+  }
+
+  private toggleMuteFromTray(): void {
+    if (!voiceStore.currentVoiceChannelId) return;
+    const newMuted = !voiceStore.isMuted;
+    voiceStore.setMuted(newMuted);
+    audioProcessor.setMuted(newMuted);
+    soundEffects.play(newMuted ? 'mic_mute' : 'mic_unmute');
+
+    // Unmuting the mic while deafened also undeafens the audio output (#62)
+    let undeafened = false;
+    if (!newMuted && voiceStore.isDeafened) {
+      voiceStore.setDeafened(false);
+      audioProcessor.setDeafened(false);
+      webRtcManager.setDeafened(false);
+      undeafened = true;
+    }
+
+    networkClient.send(MessageType.VOICE_STATE_UPDATE, {
+      isMuted: newMuted,
+      ...(undeafened ? { isDeafened: false } : {}),
+    });
+  }
+
+  private toggleDeafenFromTray(): void {
+    if (!voiceStore.currentVoiceChannelId) return;
+    const newDeafened = !voiceStore.isDeafened;
+    voiceStore.setDeafened(newDeafened);
+    audioProcessor.setDeafened(newDeafened);
+    // Restore the mic track to its (possibly restored) pre-deafen state (#74)
+    audioProcessor.setMuted(voiceStore.isMuted);
+    webRtcManager.setDeafened(newDeafened);
+    soundEffects.play(newDeafened ? 'deafen' : 'undeafen');
+    networkClient.send(MessageType.VOICE_STATE_UPDATE, {
+      isDeafened: newDeafened,
+      isMuted: voiceStore.isMuted,
+    });
   }
 
   private setupTitleBar(): void {

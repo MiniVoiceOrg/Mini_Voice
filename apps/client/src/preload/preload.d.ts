@@ -115,6 +115,14 @@ export interface ElectronApi {
     }>;
     onScreenAudioFrame: (cb: (buffer: ArrayBuffer) => void) => void;
     removeScreenAudioFrameListener: () => void;
+    updateTrayVoiceStatus: (status: {
+        inCall: boolean;
+        isMuted: boolean;
+        isDeafened: boolean;
+        isSpeaking: boolean;
+    }) => Promise<void>;
+    onTrayToggleMute: (cb: () => void) => () => void;
+    onTrayToggleDeafen: (cb: () => void) => () => void;
     platform: string;
 }
 declare global {
