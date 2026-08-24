@@ -44,6 +44,10 @@ class App {
   }
 
   private async init(): Promise<void> {
+    // Expose core services for DevTools debugging (screen audio diagnostics).
+    (window as any).__webRtcManager = webRtcManager;
+    (window as any).__screenAudioService = screenAudioService;
+
     // Obtain client ID
     if (window.api?.getClientId) {
       connectionStore.clientId = await window.api.getClientId();

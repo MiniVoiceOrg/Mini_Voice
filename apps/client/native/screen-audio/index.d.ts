@@ -1,5 +1,7 @@
 export interface ScreenAudioOptions {
   excludePid?: number;
+  /** Windows only: capture only this window's process tree (INCLUDE mode). */
+  includeHwnd?: number;
   sampleRate?: number;
   channels?: number;
 }

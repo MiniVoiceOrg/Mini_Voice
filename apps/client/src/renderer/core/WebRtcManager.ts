@@ -34,6 +34,8 @@ export class WebRtcManager {
   private audioElements: Map<string, HTMLAudioElement> = new Map();
   private screenAudioElements: Map<string, HTMLAudioElement> = new Map();
   private screenAudioStreamIds: Set<string> = new Set();
+  // Tracks received before screen-audio-meta arrived, keyed by streamId
+  private pendingScreenAudioTracks: Map<string, { track: MediaStreamTrack; peerUserId: string }> = new Map();
   private remoteAudioVads: Map<string, { ctx: AudioContext; interval: any }> = new Map();
   private localAudioTrack: MediaStreamTrack | null = null;
   private localCameraTrack: MediaStreamTrack | null = null;
@@ -80,6 +82,80 @@ export class WebRtcManager {
     appEvents.on('participants.updated', () => {
       this.applyUserVolumes();
     });
+  }
+
+  /**
+   * Route a screen audio track to a dedicated <audio> element for a peer.
+   */
+  private routeScreenAudioTrack(peerUserId: string, track: MediaStreamTrack): void {
+    let screenAudioEl = this.screenAudioElements.get(peerUserId);
+    if (!screenAudioEl) {
+      screenAudioEl = document.createElement('audio');
+      screenAudioEl.autoplay = true;
+      screenAudioEl.setAttribute('data-screen-audio-user', peerUserId);
+      document.body.appendChild(screenAudioEl);
+      this.screenAudioElements.set(peerUserId, screenAudioEl);
+    }
+    const screenStream = new MediaStream([track]);
+    screenAudioEl.srcObject = screenStream;
+    const participant = participantManager.get(peerUserId);
+    const clientId = participant?.user.clientId;
+    const volume = clientId ? settingsStore.getScreenAudioVolume(clientId) : 100;
+    screenAudioEl.volume = volume / 100;
+    this.applySinkToElement(screenAudioEl).finally(() => {
+      screenAudioEl!.play().catch((e) => console.warn('[WebRTC] Screen audio play error:', e));
+    });
+    track.onended = () => {
+      if (screenAudioEl) {
+        screenAudioEl.srcObject = null;
+      }
+    };
+  }
+
+  /**
+   * Wait for a peer connection's signaling state to become 'stable'.
+   * Returns immediately if already stable, otherwise waits up to timeoutMs.
+   */
+  private waitForStable(pc: RTCPeerConnection, timeoutMs = 5000): Promise<void> {
+    if (pc.signalingState === 'stable') return Promise.resolve();
+    return new Promise<void>((resolve) => {
+      const onStateChange = () => {
+        if (pc.signalingState === 'stable') {
+          pc.removeEventListener('signalingstatechange', onStateChange);
+          clearTimeout(timer);
+          resolve();
+        }
+      };
+      const timer = setTimeout(() => {
+        pc.removeEventListener('signalingstatechange', onStateChange);
+        resolve(); // resolve anyway to avoid blocking forever
+      }, timeoutMs);
+      pc.addEventListener('signalingstatechange', onStateChange);
+    });
+  }
+
+  /**
+   * True if any local sender track sits on a transceiver that has never been
+   * negotiated (mid === null). This happens when an offer that would have
+   * negotiated the track was discarded by an offer-collision rollback — leaving
+   * e.g. the screen-audio track added locally but never sent over the wire.
+   */
+  private hasUnnegotiatedSenders(pc: RTCPeerConnection): boolean {
+    return pc.getTransceivers().some((t) => !!t.sender.track && t.mid === null);
+  }
+
+  /**
+   * Re-send an offer when the connection is stable but still has a local track
+   * that was never negotiated (see hasUnnegotiatedSenders). This recovers the
+   * screen-audio track after a glare/rollback during screen sharing, where the
+   * video and audio renegotiations collide and the audio offer is dropped.
+   */
+  private async renegotiateIfNeeded(session: PeerSession): Promise<void> {
+    const pc = session.pc;
+    if (pc.signalingState === 'stable' && !session.makingOffer && this.hasUnnegotiatedSenders(pc)) {
+      console.log(`[WebRTC] Re-negotiating dropped track(s) for ${session.peerUserId}`);
+      await this.sendOffer(session);
+    }
   }
 
   public async connectToPeer(peerUserId: string, isInitiator: boolean): Promise<void> {
@@ -144,33 +220,20 @@ export class WebRtcManager {
     pc.ontrack = (event) => {
       console.log(`[WebRTC] Received remote track (${event.track.kind}) from ${peerUserId}`);
 
-      // Check if this is a screen audio track
+      // Check if this is a screen audio track — either by known stream ID
+      // or by detecting it as a 2nd audio track (the first is the mic).
       const incomingStreamId = event.streams?.[0]?.id;
-      if (event.track.kind === 'audio' && incomingStreamId && this.screenAudioStreamIds.has(incomingStreamId)) {
-        // Screen audio track — route to dedicated element with per-user volume (#75)
-        let screenAudioEl = this.screenAudioElements.get(peerUserId);
-        if (!screenAudioEl) {
-          screenAudioEl = document.createElement('audio');
-          screenAudioEl.autoplay = true;
-          screenAudioEl.setAttribute('data-screen-audio-user', peerUserId);
-          document.body.appendChild(screenAudioEl);
-          this.screenAudioElements.set(peerUserId, screenAudioEl);
-        }
-        const screenStream = new MediaStream([event.track]);
-        screenAudioEl.srcObject = screenStream;
-        const participant = participantManager.get(peerUserId);
-        const clientId = participant?.user.clientId;
-        const volume = clientId ? settingsStore.getScreenAudioVolume(clientId) : 100;
-        screenAudioEl.volume = volume / 100;
-        this.applySinkToElement(screenAudioEl).finally(() => {
-          screenAudioEl!.play().catch((e) => console.warn('[WebRTC] Screen audio play error:', e));
-        });
+      const isKnownScreenAudio = event.track.kind === 'audio' && incomingStreamId && this.screenAudioStreamIds.has(incomingStreamId);
+      const existingMicAudio = remoteStream.getAudioTracks().length > 0;
+      const isExtraAudioTrack = event.track.kind === 'audio' && existingMicAudio && incomingStreamId && !remoteStream.getTrackById(event.track.id);
 
-        event.track.onended = () => {
-          if (screenAudioEl) {
-            screenAudioEl.srcObject = null;
-          }
-        };
+      if (isKnownScreenAudio || isExtraAudioTrack) {
+        console.log(`[WebRTC] Routing screen audio track from ${peerUserId} (known=${isKnownScreenAudio}, extra=${isExtraAudioTrack}, streamId=${incomingStreamId})`);
+        // If meta hasn't arrived yet, store for potential reclassification
+        if (!isKnownScreenAudio && incomingStreamId) {
+          this.pendingScreenAudioTracks.set(incomingStreamId, { track: event.track, peerUserId });
+        }
+        this.routeScreenAudioTrack(peerUserId, event.track);
         return;
       }
 
@@ -312,6 +375,13 @@ export class WebRtcManager {
     if (signalType === 'screen-audio-meta') {
       if (streamId) {
         this.screenAudioStreamIds.add(streamId);
+        // If ontrack already fired before this meta arrived, reclassify the pending track
+        const pending = this.pendingScreenAudioTracks.get(streamId);
+        if (pending) {
+          console.log(`[WebRTC] Reclassifying pending track as screen audio for ${pending.peerUserId}`);
+          this.pendingScreenAudioTracks.delete(streamId);
+          // Already routed by ontrack — no further action needed
+        }
       }
       return;
     }
@@ -391,6 +461,10 @@ export class WebRtcManager {
         });
 
         this.applyBitrateConstraints();
+        // After answering a remote offer the connection is stable again; if a
+        // local track (e.g. screen audio) was left un-negotiated by a prior
+        // offer collision, re-offer it now.
+        await this.renegotiateIfNeeded(session);
       } else if (signalType === 'answer' && sdp) {
         if (session.pc.signalingState === 'have-local-offer') {
           await session.pc.setRemoteDescription(new RTCSessionDescription(sdp));
@@ -404,6 +478,9 @@ export class WebRtcManager {
           }
 
           this.applyBitrateConstraints();
+          // Connection is stable after applying the answer; re-offer any track
+          // that is still un-negotiated (recovers dropped screen-audio track).
+          await this.renegotiateIfNeeded(session);
         }
       } else if (signalType === 'candidate' && candidate) {
         if (session.pc.remoteDescription && session.pc.remoteDescription.type) {
@@ -485,13 +562,17 @@ export class WebRtcManager {
         });
       }
 
-      // Add track to all peers
+      // Add track to all peers — wait for stable signaling state before
+      // renegotiating, since screen video may have just triggered an offer.
       for (const session of this.peers.values()) {
         try {
+          await this.waitForStable(session.pc);
           session.screenAudioSender = session.pc.addTrack(track, stream);
-          if (session.pc.signalingState === 'stable') {
-            await this.sendOffer(session);
-          }
+          await this.sendOffer(session);
+          // Wait for the answer, then verify the track was actually negotiated.
+          // If a glare/rollback dropped the offer, re-send it now.
+          await this.waitForStable(session.pc);
+          await this.renegotiateIfNeeded(session);
         } catch (err) {
           console.warn(`[WebRTC] Error adding screen audio track for ${session.peerUserId}:`, err);
         }
@@ -501,11 +582,10 @@ export class WebRtcManager {
       for (const session of this.peers.values()) {
         if (session.screenAudioSender) {
           try {
+            await this.waitForStable(session.pc);
             session.pc.removeTrack(session.screenAudioSender);
             session.screenAudioSender = null;
-            if (session.pc.signalingState === 'stable') {
-              await this.sendOffer(session);
-            }
+            await this.sendOffer(session);
           } catch (err) {
             console.warn(`[WebRTC] Error removing screen audio track for ${session.peerUserId}:`, err);
           }
@@ -531,7 +611,6 @@ export class WebRtcManager {
           session.videoSender = session.pc.addTrack(track, new MediaStream([track]));
         }
 
-        // Renegotiate if signaling state is stable
         if (session.pc.signalingState === 'stable') {
           await this.sendOffer(session);
         }
@@ -767,6 +846,71 @@ export class WebRtcManager {
     for (const peerUserId of this.remoteAudioVads.keys()) {
       this.cleanupRemoteVad(peerUserId);
     }
+  }
+
+  /**
+   * Comprehensive screen-audio diagnostics. Reports, per peer, the RTP senders
+   * and receivers plus live outbound/inbound audio stats so we can tell whether
+   * the screen audio track is (a) present, (b) actually sending bytes, and
+   * (c) being received. Intended to be called from the DevTools console.
+   */
+  public async dumpScreenAudioDiagnostics(): Promise<Record<string, unknown>> {
+    const report: Record<string, unknown> = {
+      localScreenAudioTrack: this.localScreenAudioTrack
+        ? {
+            id: this.localScreenAudioTrack.id,
+            readyState: this.localScreenAudioTrack.readyState,
+            enabled: this.localScreenAudioTrack.enabled,
+            muted: this.localScreenAudioTrack.muted,
+          }
+        : null,
+      screenAudioStreamId: this.screenAudioStreamId,
+      knownScreenAudioStreamIds: Array.from(this.screenAudioStreamIds),
+      peerCount: this.peers.size,
+      peers: [],
+    };
+
+    for (const session of this.peers.values()) {
+      const pc = session.pc;
+      const senders = pc.getSenders().map((s) => ({
+        kind: s.track?.kind ?? 'none',
+        trackId: s.track?.id ?? null,
+        enabled: s.track?.enabled ?? null,
+      }));
+      const receivers = pc.getReceivers().map((r) => ({
+        kind: r.track?.kind ?? 'none',
+        trackId: r.track?.id ?? null,
+      }));
+
+      const outboundAudio: any[] = [];
+      const inboundAudio: any[] = [];
+      try {
+        const stats = await pc.getStats();
+        stats.forEach((s: any) => {
+          if (s.type === 'outbound-rtp' && s.kind === 'audio') {
+            outboundAudio.push({ ssrc: s.ssrc, bytesSent: s.bytesSent, packetsSent: s.packetsSent });
+          }
+          if (s.type === 'inbound-rtp' && s.kind === 'audio') {
+            inboundAudio.push({ ssrc: s.ssrc, bytesReceived: s.bytesReceived, packetsReceived: s.packetsReceived });
+          }
+        });
+      } catch {
+        // ignore
+      }
+
+      (report.peers as any[]).push({
+        peerUserId: session.peerUserId,
+        signalingState: pc.signalingState,
+        connectionState: pc.connectionState,
+        hasScreenAudioSender: !!session.screenAudioSender,
+        audioSenders: senders.filter((s) => s.kind === 'audio'),
+        audioReceivers: receivers.filter((r) => r.kind === 'audio'),
+        outboundAudio,
+        inboundAudio,
+      });
+    }
+
+    return report;
   }
 }
 

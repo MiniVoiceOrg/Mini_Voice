@@ -1,8 +1,12 @@
 /**
  * WASAPI Process Loopback Capture (Windows 10 2004+)
  *
- * Captures system audio EXCLUDING the MiniVoice process tree using
- * ActivateAudioInterfaceAsync with PROCESS_LOOPBACK_MODE_EXCLUDE_TARGET_PROCESS_TREE.
+ * Two capture targets are supported via ActivateAudioInterfaceAsync:
+ *   - loopbackMode 0 (EXCLUDE): capture the whole system audio EXCLUDING the
+ *     MiniVoice process tree (targetPid = our own pid). Used for full-screen
+ *     sharing.
+ *   - loopbackMode 1 (INCLUDE): capture ONLY the target application's process
+ *     tree (targetPid = shared window's pid). Used for single-app sharing.
  *
  * Uses the device's mix format (GetMixFormat) and converts to float32 stereo
  * 48 kHz before delivering frames to JS via Napi::ThreadSafeFunction.
@@ -104,7 +108,7 @@ static inline float sampleToFloat(const BYTE* src, WORD bitsPerSample, WORD form
   return 0.0f;
 }
 
-static void CaptureThreadFunc(uint32_t excludePid, uint32_t targetSampleRate, uint32_t targetChannels) {
+static void CaptureThreadFunc(uint32_t targetPid, uint32_t loopbackMode, uint32_t targetSampleRate, uint32_t targetChannels) {
   auto signalInitDone = [&]() { if (g_initDoneEvent) SetEvent(g_initDoneEvent); };
 
   HRESULT hr = CoInitializeEx(nullptr, COINIT_MULTITHREADED);
@@ -114,12 +118,13 @@ static void CaptureThreadFunc(uint32_t excludePid, uint32_t targetSampleRate, ui
     return;
   }
 
-  // Setup activation params for process loopback exclude
+  // Setup activation params for process loopback (include or exclude tree)
   AUDIOCLIENT_ACTIVATION_PARAMS clientParams = {};
   clientParams.ActivationType = AUDIOCLIENT_ACTIVATION_TYPE_PROCESS_LOOPBACK;
-  clientParams.ProcessLoopbackParams.TargetProcessId = excludePid;
+  clientParams.ProcessLoopbackParams.TargetProcessId = targetPid;
   clientParams.ProcessLoopbackParams.ProcessLoopbackMode =
-      PROCESS_LOOPBACK_MODE_EXCLUDE_TARGET_PROCESS_TREE;
+      (loopbackMode == 1) ? PROCESS_LOOPBACK_MODE_INCLUDE_TARGET_PROCESS_TREE
+                          : PROCESS_LOOPBACK_MODE_EXCLUDE_TARGET_PROCESS_TREE;
 
   PROPVARIANT activateParams = {};
   activateParams.vt = VT_BLOB;
@@ -379,7 +384,7 @@ bool platform_is_supported() {
          (osvi.dwMajorVersion == 10 && osvi.dwBuildNumber >= 19041);
 }
 
-bool platform_start(uint32_t excludePid, uint32_t sampleRate, uint32_t channels,
+bool platform_start(uint32_t targetPid, uint32_t loopbackMode, uint32_t sampleRate, uint32_t channels,
                     Napi::ThreadSafeFunction tsfn) {
   if (g_captureRunning.load()) return false;
   g_tsfn_win = tsfn;
@@ -392,7 +397,7 @@ bool platform_start(uint32_t excludePid, uint32_t sampleRate, uint32_t channels,
 
   // Create event so we can wait for the thread to finish init
   g_initDoneEvent = CreateEventW(nullptr, FALSE, FALSE, nullptr);
-  g_captureThread = std::thread(CaptureThreadFunc, excludePid, sampleRate, channels);
+  g_captureThread = std::thread(CaptureThreadFunc, targetPid, loopbackMode, sampleRate, channels);
 
   // Wait up to 3 seconds for the thread to signal init done
   if (g_initDoneEvent) {
@@ -430,4 +435,13 @@ const char* platform_get_last_error() {
 
 int platform_get_status() {
   return g_status.load();
+}
+
+// Resolve the owning process id for a top-level window handle. Used to target a
+// single application's audio (INCLUDE process tree) when sharing one window.
+uint32_t platform_pid_for_hwnd(int64_t hwnd) {
+  if (hwnd == 0) return 0;
+  DWORD pid = 0;
+  GetWindowThreadProcessId(reinterpret_cast<HWND>(static_cast<uintptr_t>(hwnd)), &pid);
+  return static_cast<uint32_t>(pid);
 }

@@ -35,7 +35,7 @@ const api = {
     probeServer: (host, port) => ipcRenderer.invoke('probe-server', host, port),
     screenAudioSupported: () => ipcRenderer.invoke('screen-audio-supported'),
     screenAudioDiagnose: () => ipcRenderer.invoke('screen-audio-diagnose'),
-    screenAudioStart: () => ipcRenderer.invoke('screen-audio-start'),
+    screenAudioStart: (sourceId) => ipcRenderer.invoke('screen-audio-start', sourceId),
     screenAudioStop: () => ipcRenderer.invoke('screen-audio-stop'),
     onScreenAudioFrame: (cb) => ipcRenderer.on('screen-audio:frame', (_e, buffer) => cb(buffer)),
     removeScreenAudioFrameListener: () => ipcRenderer.removeAllListeners('screen-audio:frame'),

@@ -43,6 +43,7 @@ export class VoiceStageView {
   private unbindEvents: Array<() => void> = [];
   private focusedUserId: string | null = null;
   private gridExpanded = false;
+  private suppressCardClickUntil = 0;
   private pingInterval: any = null;
   private telemetryInterval: number | null = null;
   private telemetryRefreshInFlight = false;
@@ -300,7 +301,12 @@ export class VoiceStageView {
     // Attach click listeners to cards for focus toggle & right-click for volume adjustment
     const allCards = area.querySelectorAll('[data-user-id]');
     allCards.forEach((card) => {
-      card.addEventListener('click', () => {
+      card.addEventListener('click', (e: Event) => {
+        // Don't toggle focus when the click originates from an interactive
+        // overlay (volume/fullscreen), nor right after a slider drag whose
+        // pointer-up may land outside the controls (#75).
+        if (Date.now() < this.suppressCardClickUntil) return;
+        if ((e.target as HTMLElement).closest('.stage-card-controls')) return;
         const userId = card.getAttribute('data-user-id');
         if (userId) {
           this.focusedUserId = (this.focusedUserId === userId ? null : userId);
@@ -370,6 +376,34 @@ export class VoiceStageView {
       });
     });
 
+    // Volume controls must not toggle card focus (which re-renders and drops
+    // fullscreen). Suppress the card click that follows any control interaction,
+    // and keep the slider popup open + tracking the pointer while dragging, even
+    // when the mouse leaves the small popup area (#75).
+    const controlBars = area.querySelectorAll('.stage-card-controls');
+    controlBars.forEach((bar) => {
+      bar.addEventListener('pointerdown', () => {
+        this.suppressCardClickUntil = Date.now() + 800;
+      });
+    });
+
+    const volWrappers = area.querySelectorAll('.stage-volume-wrapper');
+    volWrappers.forEach((wrapper) => {
+      const slider = wrapper.querySelector('.stage-screen-volume-slider') as HTMLInputElement | null;
+      if (!slider) return;
+      slider.addEventListener('pointerdown', (e: Event) => {
+        wrapper.classList.add('dragging');
+        try { slider.setPointerCapture((e as PointerEvent).pointerId); } catch { /* ignore */ }
+      });
+      const endDrag = () => {
+        wrapper.classList.remove('dragging');
+        // Keep suppressing briefly so the trailing click can't reach the card.
+        this.suppressCardClickUntil = Date.now() + 400;
+      };
+      slider.addEventListener('pointerup', endDrag);
+      slider.addEventListener('lostpointercapture', endDrag);
+    });
+
     // Attach media streams to video elements cleanly
     participants.forEach((p) => {
       const isLocal = p.user.id === serverStore.currentUser?.id;
@@ -417,15 +451,20 @@ export class VoiceStageView {
     videoEl.addEventListener('loadeddata', hide, { once: true });
   }
 
-  /** Toggles native fullscreen for a stage video tile (#68). */
+  /** Toggles native fullscreen for a stage video tile (#68).
+   *  Fullscreens the whole card (a <div>), not the bare <video>, so Chromium's
+   *  native video controls don't appear — they act on the muted <video> element
+   *  and can't reach the screen-audio <audio> element. Keeping the card in
+   *  fullscreen preserves the stage's real volume/mute controls (#75). */
   private async toggleVideoFullscreen(videoId: string): Promise<void> {
     const videoEl = document.getElementById(videoId) as HTMLVideoElement | null;
     if (!videoEl) return;
+    const target = (videoEl.closest('.stage-card, .stage-focused-main, .stage-mini-card') as HTMLElement | null) ?? videoEl;
     try {
-      if (document.fullscreenElement === videoEl) {
+      if (document.fullscreenElement === target) {
         await document.exitFullscreen();
       } else {
-        await videoEl.requestFullscreen();
+        await target.requestFullscreen();
       }
     } catch (err) {
       console.warn('[VoiceStageView] Fullscreen request failed:', err);

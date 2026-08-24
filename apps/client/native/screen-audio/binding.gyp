@@ -18,7 +18,8 @@
               "-lMmdevapi",
               "-lOle32",
               "-lAvrt",
-              "-lKsuser"
+              "-lKsuser",
+              "-lUser32"
             ],
             "msvs_settings": {
               "VCCLCompilerTool": {

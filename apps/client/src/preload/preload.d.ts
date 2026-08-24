@@ -102,7 +102,7 @@ export interface ElectronApi {
         osVersion: string;
         pid: number;
     }>;
-    screenAudioStart: () => Promise<{
+    screenAudioStart: (sourceId?: string) => Promise<{
         success: boolean;
         error?: string;
     }>;
