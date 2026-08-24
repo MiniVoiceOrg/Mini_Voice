@@ -92,6 +92,9 @@ export class WebRtcManager {
     if (!screenAudioEl) {
       screenAudioEl = document.createElement('audio');
       screenAudioEl.autoplay = true;
+      // #150: start silent — screen audio is gated behind "Assistir transmissão"
+      // in the stage view, which unmutes this element when the viewer opts in.
+      screenAudioEl.muted = true;
       screenAudioEl.setAttribute('data-screen-audio-user', peerUserId);
       document.body.appendChild(screenAudioEl);
       this.screenAudioElements.set(peerUserId, screenAudioEl);
@@ -846,71 +849,6 @@ export class WebRtcManager {
     for (const peerUserId of this.remoteAudioVads.keys()) {
       this.cleanupRemoteVad(peerUserId);
     }
-  }
-
-  /**
-   * Comprehensive screen-audio diagnostics. Reports, per peer, the RTP senders
-   * and receivers plus live outbound/inbound audio stats so we can tell whether
-   * the screen audio track is (a) present, (b) actually sending bytes, and
-   * (c) being received. Intended to be called from the DevTools console.
-   */
-  public async dumpScreenAudioDiagnostics(): Promise<Record<string, unknown>> {
-    const report: Record<string, unknown> = {
-      localScreenAudioTrack: this.localScreenAudioTrack
-        ? {
-            id: this.localScreenAudioTrack.id,
-            readyState: this.localScreenAudioTrack.readyState,
-            enabled: this.localScreenAudioTrack.enabled,
-            muted: this.localScreenAudioTrack.muted,
-          }
-        : null,
-      screenAudioStreamId: this.screenAudioStreamId,
-      knownScreenAudioStreamIds: Array.from(this.screenAudioStreamIds),
-      peerCount: this.peers.size,
-      peers: [],
-    };
-
-    for (const session of this.peers.values()) {
-      const pc = session.pc;
-      const senders = pc.getSenders().map((s) => ({
-        kind: s.track?.kind ?? 'none',
-        trackId: s.track?.id ?? null,
-        enabled: s.track?.enabled ?? null,
-      }));
-      const receivers = pc.getReceivers().map((r) => ({
-        kind: r.track?.kind ?? 'none',
-        trackId: r.track?.id ?? null,
-      }));
-
-      const outboundAudio: any[] = [];
-      const inboundAudio: any[] = [];
-      try {
-        const stats = await pc.getStats();
-        stats.forEach((s: any) => {
-          if (s.type === 'outbound-rtp' && s.kind === 'audio') {
-            outboundAudio.push({ ssrc: s.ssrc, bytesSent: s.bytesSent, packetsSent: s.packetsSent });
-          }
-          if (s.type === 'inbound-rtp' && s.kind === 'audio') {
-            inboundAudio.push({ ssrc: s.ssrc, bytesReceived: s.bytesReceived, packetsReceived: s.packetsReceived });
-          }
-        });
-      } catch {
-        // ignore
-      }
-
-      (report.peers as any[]).push({
-        peerUserId: session.peerUserId,
-        signalingState: pc.signalingState,
-        connectionState: pc.connectionState,
-        hasScreenAudioSender: !!session.screenAudioSender,
-        audioSenders: senders.filter((s) => s.kind === 'audio'),
-        audioReceivers: receivers.filter((r) => r.kind === 'audio'),
-        outboundAudio,
-        inboundAudio,
-      });
-    }
-
-    return report;
   }
 }
 

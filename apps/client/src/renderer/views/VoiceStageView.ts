@@ -44,6 +44,10 @@ export class VoiceStageView {
   private focusedUserId: string | null = null;
   private gridExpanded = false;
   private suppressCardClickUntil = 0;
+  // #150: remote screen shares are gated behind an explicit "Assistir
+  // transmissão". These sets survive innerHTML re-renders (instance state).
+  private watchingUserIds: Set<string> = new Set();
+  private mutedScreenUserIds: Set<string> = new Set();
   private pingInterval: any = null;
   private telemetryInterval: number | null = null;
   private telemetryRefreshInFlight = false;
@@ -266,6 +270,20 @@ export class VoiceStageView {
       return;
     }
 
+    const currentUserId = serverStore.currentUser?.id;
+
+    // #150: reset watch-state for anyone who is no longer sharing their screen
+    // so a fresh broadcast is gated behind "Assistir transmissão" again; also
+    // drop their explicit screen-audio mute.
+    for (const watchedId of [...this.watchingUserIds]) {
+      const wp = participants.find((p) => p.user.id === watchedId);
+      const stillSharing = !!wp && wp.user.id !== currentUserId && (wp.voiceState?.isScreenSharing ?? false);
+      if (!stillSharing) {
+        this.watchingUserIds.delete(watchedId);
+        this.mutedScreenUserIds.delete(watchedId);
+      }
+    }
+
     if (this.focusedUserId && !participants.some((p) => p.user.id === this.focusedUserId)) {
       this.focusedUserId = null;
     }
@@ -314,6 +332,17 @@ export class VoiceStageView {
       `;
     }
 
+    // #150: gate remote screen audio behind the "Assistir transmissão" opt-in
+    // while preserving explicit per-user mutes. The <audio> elements are created
+    // by WebRtcManager on document.body and persist across these re-renders.
+    participants.forEach((p) => {
+      if (p.user.id === currentUserId) return;
+      if (!(p.voiceState?.isScreenSharing ?? false)) return;
+      const audioEl = document.querySelector(`audio[data-screen-audio-user="${p.user.id}"]`) as HTMLAudioElement | null;
+      if (!audioEl) return;
+      audioEl.muted = !this.watchingUserIds.has(p.user.id) || this.mutedScreenUserIds.has(p.user.id);
+    });
+
     // Attach click listeners to cards for focus toggle & right-click for volume adjustment
     const allCards = area.querySelectorAll('[data-user-id]');
     allCards.forEach((card) => {
@@ -353,6 +382,35 @@ export class VoiceStageView {
       });
     });
 
+    // #150: "Assistir transmissão" — opt into a gated remote screen share.
+    // Starts video + audio and auto-focuses the broadcaster.
+    const watchBtns = area.querySelectorAll('.stage-watch-btn') as NodeListOf<HTMLButtonElement>;
+    watchBtns.forEach((btn) => {
+      btn.addEventListener('click', (e: Event) => {
+        e.stopPropagation();
+        const userId = btn.getAttribute('data-watch-user');
+        if (!userId) return;
+        this.watchingUserIds.add(userId);
+        this.mutedScreenUserIds.delete(userId);
+        this.focusedUserId = userId;
+        this.renderParticipants();
+      });
+    });
+
+    // #150: "Parar de assistir" — re-gate the broadcast (blur + silence) and
+    // drop back to the grid.
+    const stopWatchBtns = area.querySelectorAll('.stage-stopwatch-btn') as NodeListOf<HTMLButtonElement>;
+    stopWatchBtns.forEach((btn) => {
+      btn.addEventListener('click', (e: Event) => {
+        e.stopPropagation();
+        const userId = btn.getAttribute('data-stopwatch-user');
+        if (!userId) return;
+        this.watchingUserIds.delete(userId);
+        if (this.focusedUserId === userId) this.focusedUserId = null;
+        this.renderParticipants();
+      });
+    });
+
     // Screen audio volume sliders (#75)
     const volSliders = area.querySelectorAll('.stage-screen-volume-slider') as NodeListOf<HTMLInputElement>;
     volSliders.forEach((slider) => {
@@ -375,14 +433,11 @@ export class VoiceStageView {
       const initWrapper = btn.closest('.stage-volume-wrapper');
       const initSlider = initWrapper?.querySelector('.stage-screen-volume-slider') as HTMLInputElement | null;
       const initUserId = initSlider?.getAttribute('data-user-id');
-      if (initUserId) {
-        const initAudio = document.querySelector(`audio[data-screen-audio-user="${initUserId}"]`) as HTMLAudioElement | null;
-        if (initAudio?.muted) {
-          const initIcon = btn.querySelector('.material-symbols-outlined');
-          if (initIcon) initIcon.textContent = 'volume_off';
-          btn.title = 'Áudio da tela mutado (clique para desmutar)';
-          initWrapper?.classList.add('screen-audio-muted');
-        }
+      if (initUserId && this.mutedScreenUserIds.has(initUserId)) {
+        const initIcon = btn.querySelector('.material-symbols-outlined');
+        if (initIcon) initIcon.textContent = 'volume_off';
+        btn.title = 'Áudio da tela mutado (clique para desmutar)';
+        initWrapper?.classList.add('screen-audio-muted');
       }
 
       btn.addEventListener('click', (e: Event) => {
@@ -393,16 +448,17 @@ export class VoiceStageView {
         const userId = slider.getAttribute('data-user-id');
         if (!userId) return;
         const audioEl = document.querySelector(`audio[data-screen-audio-user="${userId}"]`) as HTMLAudioElement | null;
-        if (!audioEl) return;
 
         const icon = btn.querySelector('.material-symbols-outlined');
-        if (audioEl.muted) {
-          audioEl.muted = false;
+        if (this.mutedScreenUserIds.has(userId)) {
+          this.mutedScreenUserIds.delete(userId);
+          if (audioEl) audioEl.muted = false;
           if (icon) icon.textContent = 'volume_up';
           btn.title = 'Volume do áudio da tela';
           wrapper?.classList.remove('screen-audio-muted');
         } else {
-          audioEl.muted = true;
+          this.mutedScreenUserIds.add(userId);
+          if (audioEl) audioEl.muted = true;
           if (icon) icon.textContent = 'volume_off';
           btn.title = 'Áudio da tela mutado (clique para desmutar)';
           wrapper?.classList.add('screen-audio-muted');
@@ -513,35 +569,55 @@ export class VoiceStageView {
     const isDeafened = isLocal ? voiceStore.isDeafened : (p.voiceState?.isDeafened ?? false);
     const avatarSrc = getAvatarUrl(p.user.avatarUrl);
     const videoId = isMini ? `video-mini-${p.user.id}` : `video-${p.user.id}`;
+    const isRemoteScreen = isScreenOn && !isLocal;
+    const isWatching = this.watchingUserIds.has(p.user.id);
+    // #150: a remote screen share the local user has not opted into watching:
+    // render the video blurred + silent behind an "Assistir transmissão" CTA.
+    const isLocked = isRemoteScreen && !isWatching;
 
     return `
       ${(isCamOn || isScreenOn) ? `
-        <video id="${videoId}" class="stage-video-element ${isScreenOn ? 'screen-share' : ''}" autoplay playsinline muted></video>
-        <div class="stage-loading-overlay" id="loading-${videoId}">
-          <div class="reconnect-spinner"></div>
-          <span>${isScreenOn ? 'Carregando tela…' : 'Carregando câmera…'}</span>
-        </div>
-        ${isScreenOn ? `
+        <video id="${videoId}" class="stage-video-element ${isScreenOn ? 'screen-share' : ''}${isLocked ? ' screen-locked' : ''}" autoplay playsinline muted></video>
+        ${!isLocked ? `
+          <div class="stage-loading-overlay" id="loading-${videoId}">
+            <div class="reconnect-spinner"></div>
+            <span>${isScreenOn ? 'Carregando tela…' : 'Carregando câmera…'}</span>
+          </div>
+        ` : ''}
+        ${(isScreenOn && !isLocked) ? `
           <div
             class="telemetry-overlay position-${settingsStore.screenShareTelemetryPosition}${settingsStore.screenShareTelemetryEnabled ? '' : ' is-hidden'}"
             data-telemetry-user-id="${p.user.id}"
           >${this.getTelemetryText(p.user.id)}</div>
         ` : ''}
-        <div class="stage-card-controls">
-          ${(isScreenOn && !isLocal) ? `
-            <div class="stage-volume-wrapper">
-              <div class="stage-volume-popup">
-                <input type="range" class="stage-screen-volume-slider" data-user-id="${p.user.id}" min="0" max="100" value="${settingsStore.getScreenAudioVolume(p.user.id)}" />
+        ${isLocked ? `
+          <div class="stage-watch-overlay">
+            <button class="stage-watch-btn" data-watch-user="${p.user.id}">
+              <span class="material-symbols-outlined">smart_display</span>
+              <span>Assistir transmissão</span>
+            </button>
+            <div class="stage-watch-caption">${escapeHtml(p.user.nickname)} está compartilhando a tela</div>
+          </div>
+        ` : `
+          <div class="stage-card-controls">
+            ${isRemoteScreen ? `
+              <div class="stage-volume-wrapper">
+                <div class="stage-volume-popup">
+                  <input type="range" class="stage-screen-volume-slider" data-user-id="${p.user.id}" min="0" max="100" value="${settingsStore.getScreenAudioVolume(p.user.id)}" />
+                </div>
+                <button class="stage-volume-btn" title="Volume do áudio da tela" aria-label="Volume">
+                  <span class="material-symbols-outlined md-18">volume_up</span>
+                </button>
               </div>
-              <button class="stage-volume-btn" title="Volume do áudio da tela" aria-label="Volume">
-                <span class="material-symbols-outlined md-18">volume_up</span>
+              <button class="stage-stopwatch-btn" data-stopwatch-user="${p.user.id}" title="Parar de assistir" aria-label="Parar de assistir">
+                <span class="material-symbols-outlined md-18">visibility_off</span>
               </button>
-            </div>
-          ` : ''}
-          <button class="stage-fullscreen-btn" data-fullscreen-target="${videoId}" title="Tela cheia" aria-label="Tela cheia">
-            <span class="material-symbols-outlined md-18">fullscreen</span>
-          </button>
-        </div>
+            ` : ''}
+            <button class="stage-fullscreen-btn" data-fullscreen-target="${videoId}" title="Tela cheia" aria-label="Tela cheia">
+              <span class="material-symbols-outlined md-18">fullscreen</span>
+            </button>
+          </div>
+        `}
       ` : `
         <div class="stage-avatar-wrapper">
           <img class="stage-avatar-img" src="${avatarSrc}">

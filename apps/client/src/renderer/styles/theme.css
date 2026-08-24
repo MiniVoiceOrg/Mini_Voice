@@ -1288,6 +1288,15 @@ input:focus, textarea:focus, select:focus {
   cursor: text;
 }
 
+/* The global `* { user-select: none }` also hits the elements that renderMarkdown
+   generates inside a message (<p class="md-p">, <strong>, <a>, <code>, <li>, ...),
+   which made message text unselectable. Re-enable selection for all of them (#148). */
+.chat-message-text,
+.chat-message-text * {
+  user-select: text;
+  -webkit-user-select: text;
+}
+
 /* Markdown formatting inside chat messages */
 .chat-message-text strong { font-weight: 700; }
 .chat-message-text em { font-style: italic; }
@@ -1781,6 +1790,87 @@ input:focus, textarea:focus, select:focus {
 .stage-video-element.screen-share {
   object-fit: contain;
   background-color: #000000;
+}
+
+/* #150 — remote screen share gated behind an explicit "Assistir transmissão".
+   The preview is shown blurred and silent until the viewer opts in. */
+.stage-video-element.screen-locked {
+  filter: blur(22px) brightness(0.5);
+  transform: scale(1.08);
+}
+
+.stage-watch-overlay {
+  position: absolute;
+  inset: 0;
+  z-index: 5;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  padding: 16px;
+  text-align: center;
+  pointer-events: none;
+}
+
+.stage-watch-btn {
+  pointer-events: auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 12px 22px;
+  border: none;
+  border-radius: var(--radius-md);
+  background-color: var(--accent-primary);
+  color: #fff;
+  font-size: 15px;
+  font-weight: 600;
+  cursor: pointer;
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.45);
+  transition: background-color 0.15s ease, transform 0.1s ease;
+}
+
+.stage-watch-btn:hover {
+  background-color: var(--accent-hover);
+  transform: translateY(-1px);
+}
+
+.stage-watch-btn .material-symbols-outlined {
+  font-size: 22px;
+}
+
+.stage-watch-caption {
+  pointer-events: none;
+  color: #fff;
+  font-size: 13px;
+  font-weight: 500;
+  text-shadow: 0 1px 4px rgba(0, 0, 0, 0.8);
+  background-color: rgba(0, 0, 0, 0.45);
+  padding: 4px 12px;
+  border-radius: var(--radius-sm);
+  backdrop-filter: blur(4px);
+}
+
+/* "Parar de assistir" — mirrors the fullscreen button styling. */
+.stage-stopwatch-btn {
+  position: relative;
+  z-index: 3;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  border: none;
+  border-radius: var(--radius-sm);
+  background-color: rgba(0, 0, 0, 0.55);
+  color: #fff;
+  cursor: pointer;
+  transition: background-color 0.15s ease;
+  backdrop-filter: blur(4px);
+}
+
+.stage-stopwatch-btn:hover {
+  background-color: rgba(0, 0, 0, 0.85);
 }
 
 /* Loading overlay shown while a camera/screen stream is buffering (#48) */
