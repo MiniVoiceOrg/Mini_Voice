@@ -287,49 +287,6 @@ class ScreenAudioService {
     return this.frameCount;
   }
 
-  /**
-   * Measure the RMS/peak level of the local output track over ~1s. Proves
-   * whether the native capture is actually producing a non-silent signal,
-   * independent of WebRTC delivery. Intended for DevTools console debugging.
-   */
-  public async measureOutputLevel(durationMs = 1000): Promise<{ rms: number; peak: number; frames: number }> {
-    if (!this.outputTrack) {
-      return { rms: 0, peak: 0, frames: this.frameCount };
-    }
-    const ctx = new AudioContext();
-    const source = ctx.createMediaStreamSource(new MediaStream([this.outputTrack]));
-    const analyser = ctx.createAnalyser();
-    analyser.fftSize = 2048;
-    source.connect(analyser);
-    const buf = new Float32Array(analyser.fftSize);
-
-    let peak = 0;
-    let sumSq = 0;
-    let count = 0;
-    const start = performance.now();
-    await new Promise<void>((resolve) => {
-      const tick = () => {
-        analyser.getFloatTimeDomainData(buf);
-        for (let i = 0; i < buf.length; i++) {
-          const v = Math.abs(buf[i]);
-          if (v > peak) peak = v;
-          sumSq += buf[i] * buf[i];
-          count++;
-        }
-        if (performance.now() - start < durationMs) {
-          requestAnimationFrame(tick);
-        } else {
-          resolve();
-        }
-      };
-      tick();
-    });
-    source.disconnect();
-    await ctx.close().catch(() => {});
-    const rms = count > 0 ? Math.sqrt(sumSq / count) : 0;
-    return { rms, peak, frames: this.frameCount };
-  }
-
   private clearFrameWatchdog(): void {
     if (this.frameWatchdog) {
       clearTimeout(this.frameWatchdog);
