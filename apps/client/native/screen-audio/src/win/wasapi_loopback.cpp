@@ -170,14 +170,48 @@ static void CaptureThreadFunc(uint32_t excludePid, uint32_t targetSampleRate, ui
     return;
   }
 
-  // Use the device's mix format instead of hardcoding
+  // The virtual process-loopback device does NOT support GetMixFormat()
+  // (returns E_NOTIMPL).  Query the default render endpoint instead — the
+  // loopback capture delivers samples in the render engine's mix format.
   WAVEFORMATEX* pMixFormat = nullptr;
-  hr = audioClient->GetMixFormat(&pMixFormat);
-  if (FAILED(hr) || !pMixFormat) {
-    setError("GetMixFormat failed: " + std::to_string(hr));
-    signalInitDone();
-    CoUninitialize();
-    return;
+  {
+    ComPtr<IMMDeviceEnumerator> enumerator;
+    hr = CoCreateInstance(__uuidof(MMDeviceEnumerator), nullptr, CLSCTX_ALL,
+                          __uuidof(IMMDeviceEnumerator),
+                          reinterpret_cast<void**>(enumerator.GetAddressOf()));
+    if (FAILED(hr)) {
+      setError("CoCreateInstance(MMDeviceEnumerator) failed: " + std::to_string(hr));
+      signalInitDone();
+      CoUninitialize();
+      return;
+    }
+
+    ComPtr<IMMDevice> defaultDevice;
+    hr = enumerator->GetDefaultAudioEndpoint(eRender, eConsole, defaultDevice.GetAddressOf());
+    if (FAILED(hr)) {
+      setError("GetDefaultAudioEndpoint failed: " + std::to_string(hr));
+      signalInitDone();
+      CoUninitialize();
+      return;
+    }
+
+    ComPtr<IAudioClient> tmpClient;
+    hr = defaultDevice->Activate(__uuidof(IAudioClient), CLSCTX_ALL, nullptr,
+                                  reinterpret_cast<void**>(tmpClient.GetAddressOf()));
+    if (FAILED(hr)) {
+      setError("Activate default endpoint IAudioClient failed: " + std::to_string(hr));
+      signalInitDone();
+      CoUninitialize();
+      return;
+    }
+
+    hr = tmpClient->GetMixFormat(&pMixFormat);
+    if (FAILED(hr) || !pMixFormat) {
+      setError("GetMixFormat (default endpoint) failed: " + std::to_string(hr));
+      signalInitDone();
+      CoUninitialize();
+      return;
+    }
   }
 
   // Determine actual format details (may be WAVEFORMATEXTENSIBLE)
