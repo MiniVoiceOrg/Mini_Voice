@@ -66,10 +66,10 @@ export interface ServerDetails {
 export interface WebRtcSignalPayload {
   targetUserId: string;
   fromUserId: string;
-  signalType: 'offer' | 'answer' | 'candidate' | 'user-left' | 'screen-audio-meta';
+  signalType: 'offer' | 'answer' | 'candidate' | 'user-left' | 'screen-audio-meta' | 'screen-video-meta';
   sdp?: any; // RTCSessionDescriptionInit
   candidate?: any; // RTCIceCandidateInit
-  streamId?: string; // For screen-audio-meta: the MediaStream ID of the screen audio track
+  streamId?: string; // For screen-audio-meta/screen-video-meta: the MediaStream ID of the screen track
 }
 
 export interface BandwidthSettings {
