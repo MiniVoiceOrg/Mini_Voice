@@ -1783,10 +1783,10 @@ input:focus, textarea:focus, select:focus {
 .stage-volume-popup {
   display: none;
   position: absolute;
-  bottom: calc(100% + 6px);
+  bottom: 100%;
   left: 50%;
   transform: translateX(-50%);
-  padding: 10px 6px;
+  padding: 10px 6px 14px;
   background-color: rgba(0, 0, 0, 0.75);
   border-radius: var(--radius-md);
   backdrop-filter: blur(8px);

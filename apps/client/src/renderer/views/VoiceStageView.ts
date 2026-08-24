@@ -344,6 +344,32 @@ export class VoiceStageView {
       });
     });
 
+    // Volume button click → toggle mute screen audio
+    const volButtons = area.querySelectorAll('.stage-volume-btn') as NodeListOf<HTMLButtonElement>;
+    volButtons.forEach((btn) => {
+      btn.addEventListener('click', (e: Event) => {
+        e.stopPropagation();
+        const wrapper = btn.closest('.stage-volume-wrapper');
+        const slider = wrapper?.querySelector('.stage-screen-volume-slider') as HTMLInputElement | null;
+        if (!slider) return;
+        const userId = slider.getAttribute('data-user-id');
+        if (!userId) return;
+        const audioEl = document.querySelector(`audio[data-screen-audio-user="${userId}"]`) as HTMLAudioElement | null;
+        if (!audioEl) return;
+
+        const icon = btn.querySelector('.material-symbols-outlined');
+        if (audioEl.muted) {
+          audioEl.muted = false;
+          if (icon) icon.textContent = 'volume_up';
+          btn.title = 'Volume do áudio da tela';
+        } else {
+          audioEl.muted = true;
+          if (icon) icon.textContent = 'volume_off';
+          btn.title = 'Áudio da tela mutado (clique para desmutar)';
+        }
+      });
+    });
+
     // Attach media streams to video elements cleanly
     participants.forEach((p) => {
       const isLocal = p.user.id === serverStore.currentUser?.id;

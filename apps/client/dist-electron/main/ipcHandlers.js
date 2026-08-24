@@ -15,7 +15,8 @@ let screenAudio = null;
 try {
     screenAudio = require('@mini-voice/screen-audio');
 }
-catch {
+catch (e) {
+    console.warn('[ScreenAudio:Main] Native module not available:', e.message);
     screenAudio = null;
 }
 function setupIpcHandlers(mainWindow, serverManager) {
@@ -301,12 +302,14 @@ function setupIpcHandlers(mainWindow, serverManager) {
     });
     electron_1.ipcMain.handle('screen-audio-diagnose', () => {
         const os = require('os');
-        const release = os.release(); // e.g. "10.0.22631"
+        const release = os.release();
         return {
             nativeModuleLoaded: screenAudio !== null,
             platformSupported: screenAudio ? screenAudio.isSupported() : false,
             osVersion: `${os.platform()} ${release}`,
             pid: process.pid,
+            captureStatus: screenAudio ? screenAudio.getStatus() : -1,
+            lastError: screenAudio ? screenAudio.getLastError() : 'Module not loaded',
         };
     });
     electron_1.ipcMain.handle('screen-audio-start', () => {

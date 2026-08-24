@@ -6,3 +6,5 @@ bool platform_is_supported();
 bool platform_start(uint32_t excludePid, uint32_t sampleRate, uint32_t channels,
                     Napi::ThreadSafeFunction tsfn);
 void platform_stop();
+const char* platform_get_last_error();
+int platform_get_status();
