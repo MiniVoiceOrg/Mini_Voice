@@ -69,3 +69,31 @@ npm run package
 ```bash
 node apps/server/dist/index.js --port 3000 --data ./data --name "Servidor dos Amigos"
 ```
+
+---
+
+## 🗳️ Roadmap & Votação
+
+O que entra nas próximas versões é decidido pela comunidade — e você **não
+precisa saber programar** para participar.
+
+- 💡 **[Sugerir uma ideia](https://github.com/MiniVoiceOrg/Mini_Voice/discussions/new?category=ideias)** — uma proposta por discussão
+- ⬆️ **[Ver e votar nas ideias](https://github.com/MiniVoiceOrg/Mini_Voice/discussions/categories/ideias)** — antes de sugerir, veja se alguém já pediu o mesmo
+- 📋 **[Board do projeto](https://github.com/orgs/MiniVoiceOrg/projects/1)** — o que está em desenvolvimento, em QA e concluído
+- 🐛 **[Reportar um bug](https://github.com/MiniVoiceOrg/Mini_Voice/issues/new/choose)** — bugs vão direto para Issues, sem votação
+
+Na primeira semana de cada mês, as três ideias mais votadas (com no mínimo 5
+votos) viram issues no board e entram no fluxo de desenvolvimento. O status volta
+para a discussão original (`planejado`, `em-andamento`, `entregue` ou
+`fora-de-escopo`, sempre com o motivo).
+
+Os mesmos atalhos estão dentro do app, em **Configurações › Comunidade**.
+
+O processo completo — incluindo como rodar o projeto e abrir um PR — está em
+**[CONTRIBUTING.md](CONTRIBUTING.md)**.
+
+---
+
+## 📄 Licença
+
+[MIT](LICENSE) — use, modifique e hospede à vontade.

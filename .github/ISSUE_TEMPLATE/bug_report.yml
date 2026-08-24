@@ -1,0 +1,79 @@
+name: 🐛 Reportar um bug
+description: Algo no Mini Voice não funciona como deveria.
+labels: ['bug']
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Obrigado por reportar! Quanto mais preciso o passo a passo, mais rápido conseguimos corrigir.
+
+        > **Ideias de novas features não vão aqui** — elas vão para
+        > [Discussions › Ideias](https://github.com/MiniVoiceOrg/Mini_Voice/discussions/categories/ideias),
+        > onde a comunidade vota.
+
+  - type: textarea
+    id: descricao
+    attributes:
+      label: O que aconteceu?
+      description: Descreva o problema e o que você esperava que acontecesse.
+      placeholder: |
+        Ao entrar no canal de voz, o microfone continua mutado mesmo depois de clicar em desmutar.
+        Esperado: o microfone voltar a transmitir.
+    validations:
+      required: true
+
+  - type: textarea
+    id: passos
+    attributes:
+      label: Como reproduzir
+      description: Passo a passo para chegar no erro.
+      placeholder: |
+        1. Abrir o app e conectar em um servidor
+        2. Entrar no canal "Geral"
+        3. Clicar em mutar e depois desmutar
+        4. Falar — ninguém ouve
+    validations:
+      required: true
+
+  - type: input
+    id: versao
+    attributes:
+      label: Versão do Mini Voice
+      description: Está em **Configurações › Atualizações › Versão atual**.
+      placeholder: v1.0.34
+    validations:
+      required: true
+
+  - type: dropdown
+    id: so
+    attributes:
+      label: Sistema operacional
+      options:
+        - Windows
+        - macOS
+        - Linux
+    validations:
+      required: true
+
+  - type: dropdown
+    id: papel
+    attributes:
+      label: Você estava hospedando o servidor ou conectando em um?
+      options:
+        - Conectando em um servidor de outra pessoa
+        - Hospedando o servidor
+        - Ambos (servidor na mesma máquina do app)
+        - Não sei / não se aplica
+    validations:
+      required: true
+
+  - type: textarea
+    id: logs
+    attributes:
+      label: Logs ou capturas de tela
+      description: |
+        Opcional, mas ajuda muito. No app, abra o DevTools com `Ctrl+Shift+I` (Windows/Linux)
+        ou `Cmd+Option+I` (macOS) e cole os erros da aba Console.
+      render: text
+    validations:
+      required: false
