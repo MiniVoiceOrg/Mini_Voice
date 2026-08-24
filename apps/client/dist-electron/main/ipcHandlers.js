@@ -312,13 +312,25 @@ function setupIpcHandlers(mainWindow, serverManager) {
             lastError: screenAudio ? screenAudio.getLastError() : 'Module not loaded',
         };
     });
-    electron_1.ipcMain.handle('screen-audio-start', () => {
+    electron_1.ipcMain.handle('screen-audio-start', (_event, sourceId) => {
         if (!screenAudio || !screenAudio.isSupported()) {
             return { success: false, error: 'Not supported on this platform' };
         }
         const excludePid = process.pid;
-        console.log(`[ScreenAudio:Main] Starting capture (excludePid=${excludePid})`);
-        const result = screenAudio.start({ excludePid, sampleRate: 48000, channels: 2 }, (buffer) => {
+        // Electron encodes a window source id as `window:<HWND>:<n>`. When the user
+        // shares a single application window, capture only that app's audio
+        // (INCLUDE its process tree) instead of the whole PC.
+        let includeHwnd = 0;
+        if (sourceId && sourceId.startsWith('window:')) {
+            const parsed = Number.parseInt(sourceId.split(':')[1] ?? '', 10);
+            if (Number.isFinite(parsed) && parsed > 0)
+                includeHwnd = parsed;
+        }
+        const opts = { excludePid, sampleRate: 48000, channels: 2 };
+        if (includeHwnd)
+            opts.includeHwnd = includeHwnd;
+        console.log(`[ScreenAudio:Main] Starting capture (excludePid=${excludePid}, includeHwnd=${includeHwnd || 'none'}, source=${sourceId ?? 'screen'})`);
+        const result = screenAudio.start(opts, (buffer) => {
             if (!mainWindow.isDestroyed()) {
                 mainWindow.webContents.send('screen-audio:frame', buffer);
             }

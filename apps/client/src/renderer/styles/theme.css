@@ -1786,14 +1786,27 @@ input:focus, textarea:focus, select:focus {
   bottom: 100%;
   left: 50%;
   transform: translateX(-50%);
-  padding: 10px 6px 14px;
+  min-width: 40px;
+  padding: 12px 8px 16px;
   background-color: rgba(0, 0, 0, 0.75);
   border-radius: var(--radius-md);
   backdrop-filter: blur(8px);
   z-index: 10;
 }
 
-.stage-volume-wrapper:hover .stage-volume-popup {
+/* Invisible bridge so moving the mouse from the button up to the slider never
+   crosses a non-hovered gap that would hide the popup (#75). */
+.stage-volume-popup::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: -8px;
+  height: 8px;
+}
+
+.stage-volume-wrapper:hover .stage-volume-popup,
+.stage-volume-wrapper.dragging .stage-volume-popup {
   display: flex;
   align-items: center;
   justify-content: center;
@@ -1803,8 +1816,8 @@ input:focus, textarea:focus, select:focus {
   writing-mode: vertical-lr;
   direction: rtl;
   appearance: slider-vertical;
-  width: 4px;
-  height: 80px;
+  width: 22px;
+  height: 96px;
   cursor: pointer;
   accent-color: var(--accent-primary);
 }
@@ -1836,6 +1849,35 @@ input:focus, textarea:focus, select:focus {
 
 .stage-fullscreen-btn:hover {
   background-color: rgba(0, 0, 0, 0.85);
+}
+
+/* Fullscreen a stage card (#68/#75): the <div> card — not the bare <video> —
+   is promoted to fullscreen so the real volume/mute controls stay usable and
+   Chromium's native (and out-of-sync) video controls never appear. */
+.stage-card:fullscreen,
+.stage-focused-main:fullscreen,
+.stage-mini-card:fullscreen {
+  width: 100vw;
+  height: 100vh;
+  margin: 0;
+  border-radius: 0;
+  background: #000;
+}
+
+.stage-card:fullscreen .stage-video-element,
+.stage-focused-main:fullscreen .stage-video-element,
+.stage-mini-card:fullscreen .stage-video-element {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+}
+
+.stage-card:fullscreen .stage-card-controls,
+.stage-focused-main:fullscreen .stage-card-controls,
+.stage-mini-card:fullscreen .stage-card-controls {
+  opacity: 1;
+  bottom: 24px;
+  right: 24px;
 }
 
 .stage-badge-icon {
