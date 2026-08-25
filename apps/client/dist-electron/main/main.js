@@ -27,8 +27,12 @@ function quitApplication() {
 }
 function createWindow() {
     const iconCandidates = [
+        path_1.default.join(__dirname, '../../build/icon.ico'),
+        path_1.default.join(__dirname, '../../build/icon.png'),
         path_1.default.join(__dirname, '../../images/Logo.png'),
         path_1.default.join(__dirname, '../../src/renderer/assets/Logo.png'),
+        path_1.default.join(electron_1.app.getAppPath(), 'build/icon.ico'),
+        path_1.default.join(electron_1.app.getAppPath(), 'build/icon.png'),
         path_1.default.join(electron_1.app.getAppPath(), 'images/Logo.png'),
     ];
     const iconPath = iconCandidates.find((p) => fs_1.default.existsSync(p));

@@ -6,7 +6,8 @@ node_modules/
 # Builds e Distribuição
 dist/
 dist-electron/
-build/
+/build/
+!apps/client/build/**
 out/
 release/
 artifacts/
