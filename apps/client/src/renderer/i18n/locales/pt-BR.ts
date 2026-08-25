@@ -83,6 +83,12 @@ export const ptBR = {
 
   // ── Configurações do servidor (ServerSettingsModal.ts) ───────────────────
   'serverSettings.title': 'Configurações do Servidor',
+  'serverSettings.tabGeneral': 'Geral',
+  'serverSettings.tabSecurity': 'Segurança',
+  'serverSettings.tabVoiceVideo': 'Recursos de Voz e Vídeo',
+  'serverSettings.tabStorage': 'Armazenamento',
+  'serverSettings.tabNotifications': 'Notificações',
+  'serverSettings.generalInfo': 'Informações do Servidor',
   'serverSettings.nameLabel': 'Nome do Servidor',
   'serverSettings.securitySection': 'Segurança e Senha de Acesso',
   'serverSettings.statusProtected': 'Servidor Protegido com Senha',

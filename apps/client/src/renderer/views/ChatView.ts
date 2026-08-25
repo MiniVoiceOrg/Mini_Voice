@@ -241,6 +241,13 @@ export class ChatView {
     return `${date} ${time}`;
   }
 
+  private isUserMentioned(content: string, currentNickname: string): boolean {
+    if (!content || !currentNickname) return false;
+    const escaped = currentNickname.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const regex = new RegExp(`(^|[\\s(])@${escaped}(?=$|[\\s),.!?:;])`, 'i');
+    return regex.test(content);
+  }
+
   private renderMessageRow(m: ChatMessage): string {
     const time = this.formatDateTime(m.createdAt);
 
@@ -254,15 +261,25 @@ export class ChatView {
       `;
     }
 
+    const me = serverStore.currentUser;
+    const currentNickname = me?.nickname?.trim();
+    const isMentioned = !m.isSystem && !!currentNickname && this.isUserMentioned(m.content, currentNickname);
+
+    const knownNicknames = Array.from(serverStore.knownMembers.values()).map((u) => u.nickname);
+    if (currentNickname && !knownNicknames.includes(currentNickname)) {
+      knownNicknames.push(currentNickname);
+    }
+
     const avatarSrc = getAvatarUrl(m.userAvatarUrl);
     const textHtml =
       m.content && m.content.trim().length > 0
-        ? `<div class="chat-message-text">${renderMarkdown(m.content)}</div>`
+        ? `<div class="chat-message-text">${renderMarkdown(m.content, { currentNickname, knownNicknames })}</div>`
         : '';
     const attachmentsHtml = this.renderAttachments(m.attachments);
+    const rowClass = `chat-message-row${isMentioned ? ' chat-message-mentioned' : ''}`;
 
     return `
-      <div class="chat-message-row" data-user-id="${m.userId}">
+      <div class="${rowClass}" data-user-id="${m.userId}">
         <img class="chat-author-avatar" src="${avatarSrc}">
         <div class="chat-message-body">
           <div class="chat-author-header">

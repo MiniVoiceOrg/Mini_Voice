@@ -8,6 +8,7 @@ import { appEvents } from './EventBus';
 import { networkClient } from './NetworkClient';
 import { participantManager } from './ParticipantManager';
 import { settingsStore } from '../stores/settingsStore';
+import { voiceStore } from '../stores/voiceStore';
 
 export interface PeerSession {
   peerUserId: string;
@@ -21,6 +22,12 @@ export interface PeerSession {
   videoSender?: RTCRtpSender | null;
   screenVideoSender?: RTCRtpSender | null;
   screenAudioSender?: RTCRtpSender | null;
+  // Auto-recovery and retry management
+  iceRestartAttempts: number;
+  reconnectAttempts: number;
+  watchdogTimer?: any;
+  disconnectGraceTimer?: any;
+  isRecovering: boolean;
 }
 
 /**
@@ -60,6 +67,7 @@ export class WebRtcManager {
       { urls: 'stun:stun2.l.google.com:19302' },
       { urls: 'stun:stun3.l.google.com:19302' },
       { urls: 'stun:stun4.l.google.com:19302' },
+      { urls: 'stun:stun.cloudflare.com:3478' },
     ],
     iceCandidatePoolSize: 4,
   };
@@ -210,9 +218,117 @@ export class WebRtcManager {
     }
   }
 
-  public async connectToPeer(peerUserId: string, isInitiator: boolean): Promise<void> {
-    if (this.peers.has(peerUserId)) {
+  private clearPeerTimers(session: PeerSession): void {
+    if (session.watchdogTimer) {
+      clearTimeout(session.watchdogTimer);
+      session.watchdogTimer = undefined;
+    }
+    if (session.disconnectGraceTimer) {
+      clearTimeout(session.disconnectGraceTimer);
+      session.disconnectGraceTimer = undefined;
+    }
+  }
+
+  private startConnectionWatchdog(session: PeerSession, timeoutMs = 12000): void {
+    if (session.watchdogTimer) {
+      clearTimeout(session.watchdogTimer);
+    }
+    session.watchdogTimer = setTimeout(() => {
+      session.watchdogTimer = undefined;
+      const state = session.pc.connectionState;
+      const iceState = session.pc.iceConnectionState;
+      if (state !== 'connected' && state !== 'closed') {
+        console.warn(
+          `[WebRTC] Watchdog timeout (${timeoutMs}ms) for peer ${session.peerUserId} (state=${state}, iceState=${iceState}). Triggering recovery.`
+        );
+        this.recoverPeerConnection(session, 'watchdog_timeout');
+      }
+    }, timeoutMs);
+  }
+
+  private async triggerIceRestart(session: PeerSession, reason: string): Promise<void> {
+    if (session.isRecovering || session.pc.connectionState === 'closed') {
       return;
+    }
+
+    session.isRecovering = true;
+    session.iceRestartAttempts++;
+    console.log(
+      `[WebRTC] Attempting ICE restart #${session.iceRestartAttempts} for peer ${session.peerUserId} (reason: ${reason})`
+    );
+
+    try {
+      await this.waitForStable(session.pc, 3000);
+      if (typeof session.pc.restartIce === 'function') {
+        session.pc.restartIce();
+      }
+      await this.sendOffer(session, true);
+      this.startConnectionWatchdog(session, 10000);
+    } catch (err) {
+      console.warn(`[WebRTC] ICE restart failed for ${session.peerUserId}:`, err);
+      await this.hardReconnectPeer(session.peerUserId);
+    } finally {
+      session.isRecovering = false;
+    }
+  }
+
+  private async hardReconnectPeer(peerUserId: string): Promise<void> {
+    const existing = this.peers.get(peerUserId);
+    const attempts = (existing?.reconnectAttempts || 0) + 1;
+
+    if (attempts > 3) {
+      console.warn(`[WebRTC] Max hard reconnect attempts reached for peer ${peerUserId}. Aborting recovery.`);
+      appEvents.emit('remote.peer_degraded', { userId: peerUserId });
+      return;
+    }
+
+    console.log(`[WebRTC] Performing Hard Reconnect #${attempts} for peer ${peerUserId}...`);
+
+    if (existing) {
+      this.clearPeerTimers(existing);
+      try {
+        existing.pc.close();
+      } catch (e) {}
+      this.peers.delete(peerUserId);
+    }
+
+    // Exponential backoff delay (1s, 2s, 4s)
+    const backoffMs = Math.min(4000, 1000 * Math.pow(2, attempts - 1));
+    await new Promise((resolve) => setTimeout(resolve, backoffMs));
+
+    if (!voiceStore.currentVoiceChannelId) return;
+    const isPeerStillInVoice =
+      participantManager.get(peerUserId)?.voiceState?.channelId === voiceStore.currentVoiceChannelId;
+    if (!isPeerStillInVoice) return;
+
+    const isInitiator = this.currentUserId.localeCompare(peerUserId) < 0;
+    await this.connectToPeer(peerUserId, isInitiator);
+
+    const newSession = this.peers.get(peerUserId);
+    if (newSession) {
+      newSession.reconnectAttempts = attempts;
+    }
+  }
+
+  private recoverPeerConnection(session: PeerSession, reason: string): void {
+    if (session.iceRestartAttempts < 2) {
+      this.triggerIceRestart(session, reason);
+    } else {
+      this.hardReconnectPeer(session.peerUserId);
+    }
+  }
+
+  public async connectToPeer(peerUserId: string, isInitiator: boolean): Promise<void> {
+    const existingSession = this.peers.get(peerUserId);
+    if (existingSession) {
+      if (existingSession.pc.connectionState !== 'closed' && existingSession.pc.connectionState !== 'failed') {
+        return;
+      }
+      this.clearPeerTimers(existingSession);
+      try {
+        existingSession.pc.close();
+      } catch (e) {}
+      this.peers.delete(peerUserId);
     }
 
     const pc = new RTCPeerConnection(this.rtcConfig);
@@ -227,6 +343,9 @@ export class WebRtcManager {
       isPolite,
       makingOffer: false,
       candidateQueue: [],
+      iceRestartAttempts: 0,
+      reconnectAttempts: 0,
+      isRecovering: false,
     };
     this.peers.set(peerUserId, session);
 
@@ -416,15 +535,61 @@ export class WebRtcManager {
       };
     };
 
-    pc.onconnectionstatechange = () => {
-      console.log(`[WebRTC] Peer ${peerUserId} state: ${pc.connectionState}`);
-      if (pc.connectionState === 'connected') {
-        this.applyBitrateConstraints();
-        participantManager.setRemoteStream(peerUserId, remoteStream);
-      } else if (pc.connectionState === 'failed' || pc.connectionState === 'disconnected') {
-        appEvents.emit('remote.peer_degraded', { userId: peerUserId });
+    pc.oniceconnectionstatechange = () => {
+      const iceState = pc.iceConnectionState;
+      console.log(`[WebRTC] Peer ${peerUserId} ICE state: ${iceState}`);
+
+      if (iceState === 'connected' || iceState === 'completed') {
+        this.clearPeerTimers(session);
+        session.iceRestartAttempts = 0;
+        session.reconnectAttempts = 0;
+      } else if (iceState === 'disconnected') {
+        if (!session.disconnectGraceTimer) {
+          session.disconnectGraceTimer = setTimeout(() => {
+            session.disconnectGraceTimer = undefined;
+            if (pc.iceConnectionState === 'disconnected') {
+              console.warn(`[WebRTC] Peer ${peerUserId} ICE remained disconnected for 4s. Recovering.`);
+              this.recoverPeerConnection(session, 'ice_disconnected');
+            }
+          }, 4000);
+        }
+      } else if (iceState === 'failed') {
+        this.clearPeerTimers(session);
+        console.warn(`[WebRTC] Peer ${peerUserId} ICE state failed. Recovering immediately.`);
+        this.recoverPeerConnection(session, 'ice_failed');
       }
     };
+
+    pc.onconnectionstatechange = () => {
+      const state = pc.connectionState;
+      console.log(`[WebRTC] Peer ${peerUserId} state: ${state}`);
+
+      if (state === 'connected') {
+        this.clearPeerTimers(session);
+        session.iceRestartAttempts = 0;
+        session.reconnectAttempts = 0;
+        this.applyBitrateConstraints();
+        participantManager.setRemoteStream(peerUserId, remoteStream);
+      } else if (state === 'failed') {
+        this.clearPeerTimers(session);
+        appEvents.emit('remote.peer_degraded', { userId: peerUserId });
+        this.recoverPeerConnection(session, 'connection_failed');
+      } else if (state === 'disconnected') {
+        appEvents.emit('remote.peer_degraded', { userId: peerUserId });
+        if (!session.disconnectGraceTimer) {
+          session.disconnectGraceTimer = setTimeout(() => {
+            session.disconnectGraceTimer = undefined;
+            if (pc.connectionState === 'disconnected') {
+              console.warn(`[WebRTC] Peer ${peerUserId} connection remained disconnected for 4s. Recovering.`);
+              this.recoverPeerConnection(session, 'connection_disconnected');
+            }
+          }, 4000);
+        }
+      }
+    };
+
+    // Watchdog to ensure connection establishes within a reasonable time
+    this.startConnectionWatchdog(session);
 
     // Initial offer if initiator
     if (isInitiator) {
@@ -432,12 +597,13 @@ export class WebRtcManager {
     }
   }
 
-  private async sendOffer(session: PeerSession): Promise<void> {
+  private async sendOffer(session: PeerSession, iceRestart = false): Promise<void> {
     try {
       session.makingOffer = true;
       const offer = await session.pc.createOffer({
         offerToReceiveAudio: true,
         offerToReceiveVideo: true,
+        iceRestart,
       });
       await session.pc.setLocalDescription(offer);
 
@@ -1002,6 +1168,7 @@ export class WebRtcManager {
 
     const session = this.peers.get(peerUserId);
     if (session) {
+      this.clearPeerTimers(session);
       session.pc.close();
       this.peers.delete(peerUserId);
     }
