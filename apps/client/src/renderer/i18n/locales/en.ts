@@ -15,6 +15,7 @@ export const en: TranslationMap = {
   'common.done': 'Done',
   'common.you': 'You',
   'common.error': 'Error',
+  'common.download': 'Download',
   'common.remove': 'Remove',
   'common.moreOptions': 'More options',
 
@@ -76,6 +77,8 @@ export const en: TranslationMap = {
   'chat.dropSubtitle': 'Images, videos or files',
   'chat.attachmentEvicted': 'Attachment expired (removed to free up space)',
   'chat.tooManyAttachments': 'Maximum of {max} files per message.',
+  'chat.downloadFailedTitle': 'Download failed',
+  'chat.downloadFailedMessage': 'Could not download the attachment. {error}',
 
   // ── Server settings (ServerSettingsModal.ts) ─────────────────────────────
   'serverSettings.title': 'Server Settings',

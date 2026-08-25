@@ -34,6 +34,7 @@ const api = {
     onUpdateDownloaded: (cb) => ipcRenderer.on('update:downloaded', (_e, info) => cb(info)),
     onUpdateError: (cb) => ipcRenderer.on('update:error', (_e, message) => cb(message)),
     openExternal: (url) => ipcRenderer.invoke('open-external', url),
+    downloadFile: (url, fileName) => ipcRenderer.invoke('download-file', url, fileName),
     probeServer: (host, port) => ipcRenderer.invoke('probe-server', host, port),
     screenAudioSupported: () => ipcRenderer.invoke('screen-audio-supported'),
     screenAudioDiagnose: () => ipcRenderer.invoke('screen-audio-diagnose'),

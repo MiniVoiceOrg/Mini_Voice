@@ -16,6 +16,7 @@ export const ptBR = {
   'common.done': 'Pronto',
   'common.you': 'Você',
   'common.error': 'Erro',
+  'common.download': 'Baixar',
   'common.remove': 'Remover',
   'common.moreOptions': 'Mais opções',
 
@@ -77,6 +78,8 @@ export const ptBR = {
   'chat.dropSubtitle': 'Imagens, vídeos ou arquivos',
   'chat.attachmentEvicted': 'Anexo expirado (removido para liberar espaço)',
   'chat.tooManyAttachments': 'Máximo de {max} arquivos por mensagem.',
+  'chat.downloadFailedTitle': 'Falha no download',
+  'chat.downloadFailedMessage': 'Não foi possível baixar o anexo. {error}',
 
   // ── Configurações do servidor (ServerSettingsModal.ts) ───────────────────
   'serverSettings.title': 'Configurações do Servidor',
