@@ -379,6 +379,7 @@ monky config set password clear
 monky config set allowSoundboard false
 monky config set maxAttachmentFileBytes 10485760
 monky config set maxAttachmentStorageBytes 1073741824
+monky config set autoUpdate true
 ```
 
 No modo interativo sem argumentos, o CLI exibe um menu navegável:
@@ -392,6 +393,7 @@ Qual configuração deseja alterar?
   allowSoundboard
   maxAttachmentFileBytes
   maxAttachmentStorageBytes
+  autoUpdate
 ```
 
 Depois pergunta o novo valor com o valor atual como sugestão.
@@ -406,12 +408,57 @@ Depois pergunta o novo valor com o valor atual como sugestão.
 | `allowSoundboard`            | Habilitar soundboard                                 | booleano |
 | `maxAttachmentFileBytes`     | Tamanho máximo por arquivo anexado (bytes)           | inteiro  |
 | `maxAttachmentStorageBytes`  | Armazenamento máximo total de anexos (bytes)         | inteiro  |
+| `autoUpdate`                 | Atualização automática diária via PM2                | booleano |
 
 **Valores especiais para `password`:** `clear`, `none`, `null`, `empty` ou
 `remove` removem a senha do servidor.
 
 **Valores booleanos aceitos:** `true`/`false`, `1`/`0`, `yes`/`no`,
 `sim`/`nao`, `on`/`off`.
+
+---
+
+### `monky update`
+
+Atualiza o servidor Monky para a versão mais recente.
+
+#### Verificar se há atualização
+
+```bash
+monky update --check
+```
+
+Consulta a API do GitHub Releases e compara com a versão local.
+
+#### Atualizar
+
+```bash
+monky update
+```
+
+O comando:
+
+1. Verifica a versão mais recente no GitHub.
+2. Pede confirmação.
+3. Executa `git pull --ff-only`.
+4. Executa `npm install`.
+5. Executa `npm run build`.
+6. Se o servidor estiver rodando, pergunta se deseja reiniciar.
+
+#### Atualização automática
+
+```bash
+monky config set autoUpdate true
+```
+
+Habilita um processo PM2 (`monky-updater`) que roda diariamente às 4h da
+manhã. Se houver nova versão, faz pull + build + restart automaticamente.
+
+Para desabilitar:
+
+```bash
+monky config set autoUpdate false
+```
 
 ---
 
