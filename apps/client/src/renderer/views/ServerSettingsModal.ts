@@ -1,4 +1,4 @@
-import { LIMITS, MessageType, ServerUpdateSettingsPayload } from '@monky/shared';
+import { LIMITS, MessageType, Permission, Role, ServerUpdateSettingsPayload } from '@monky/shared';
 import logoUrl from '../assets/Logo.png';
 import { escapeHtml } from '../utils/html';
 import { enableBackdropClose } from '../utils/modal';
@@ -13,6 +13,7 @@ export class ServerSettingsModal {
   private modalEl: HTMLElement | null = null;
   private shouldRemovePassword = false;
   private pendingIconBase64: string | null | undefined = undefined;
+  private draggedRoleId: string | null = null;
 
   public open(): void {
     this.close();
@@ -23,6 +24,8 @@ export class ServerSettingsModal {
     if (!s) return;
 
     const hasPass = !!s.hasPassword;
+    const canManageServer = serverStore.hasPermission(Permission.MANAGE_SERVER);
+    const canManageRoles = serverStore.hasPermission(Permission.MANAGE_ROLES);
 
     // Attachment storage usage + configurable limits (#11).
     const storage = s.attachmentStorage;
@@ -63,6 +66,12 @@ export class ServerSettingsModal {
             <span class="material-symbols-outlined md-18">notifications</span>
             <span>${t('serverSettings.tabNotifications')}</span>
           </button>
+          ${canManageRoles ? `
+          <button type="button" class="settings-tab-btn" data-tab="roles">
+            <span class="material-symbols-outlined md-18">admin_panel_settings</span>
+            <span>${t('serverSettings.tabRoles')}</span>
+          </button>
+          ` : ''}
         </div>
 
         <!-- Main Content Area with Form -->
@@ -202,12 +211,18 @@ export class ServerSettingsModal {
                   </div>
                 </div>
               </div>
+
+              ${canManageRoles ? `
+              <div class="settings-tab-panel" id="tab-panel-roles" style="display: none;">
+                ${this.renderRolesTab()}
+              </div>
+              ` : ''}
             </div>
 
             <!-- Footer Action Bar -->
-            <div class="modal-footer" style="padding: 14px 24px; border-top: 1px solid var(--border-color); background: var(--bg-panel); margin-top: auto;">
+            <div class="modal-footer" style="padding: 14px 24px; border-top: 1px solid var(--border-color); background: var(--bg-panel); margin-top: auto; ${canManageServer ? '' : 'justify-content: flex-end;'}">
               <button type="button" id="btn-cancel" class="btn btn-secondary">${t('common.cancel')}</button>
-              <button type="submit" id="btn-save" class="btn btn-primary">${t('serverSettings.save')}</button>
+              ${canManageServer ? `<button type="submit" id="btn-save" class="btn btn-primary">${t('serverSettings.save')}</button>` : ''}
             </div>
           </form>
         </div>
@@ -231,6 +246,7 @@ export class ServerSettingsModal {
     const checkboxAllowSoundboard = this.modalEl.querySelector('#checkbox-allow-soundboard') as HTMLInputElement | null;
     const passHelpText = this.modalEl.querySelector('#pass-help-text') as HTMLElement | null;
     const statusDesc = this.modalEl.querySelector('#password-status-desc') as HTMLElement | null;
+    const canManageServer = serverStore.hasPermission(Permission.MANAGE_SERVER);
 
     btnClose?.addEventListener('click', () => this.close());
     enableBackdropClose(this.modalEl, () => this.close());
@@ -247,6 +263,7 @@ export class ServerSettingsModal {
       voice_video: { icon: 'music_note', title: t('serverSettings.tabVoiceVideo') },
       storage: { icon: 'cloud', title: t('serverSettings.tabStorage') },
       notifications: { icon: 'notifications', title: t('serverSettings.tabNotifications') },
+      roles: { icon: 'admin_panel_settings', title: t('serverSettings.tabRoles') },
     };
 
     const switchTab = (tabName: string) => {
@@ -285,6 +302,7 @@ export class ServerSettingsModal {
     }
 
     serverIconWrapper?.addEventListener('click', async () => {
+      if (!canManageServer) return;
       const s = serverStore.serverDetails;
       const currentIcon = this.pendingIconBase64 !== undefined
         ? this.pendingIconBase64
@@ -307,6 +325,7 @@ export class ServerSettingsModal {
     });
 
     btnRemovePass?.addEventListener('click', () => {
+      if (!canManageServer) return;
       this.shouldRemovePassword = true;
       if (inputPass) {
         inputPass.value = '';
@@ -323,6 +342,7 @@ export class ServerSettingsModal {
 
     form?.addEventListener('submit', async (e) => {
       e.preventDefault();
+      if (!canManageServer) return;
       const name = inputName?.value.trim();
       const passVal = inputPass?.value;
       const allowSoundboard = checkboxAllowSoundboard ? checkboxAllowSoundboard.checked : true;
@@ -388,6 +408,234 @@ export class ServerSettingsModal {
           btnSave.innerText = t('serverSettings.save');
         }
       }
+    });
+
+    this.attachRoleManagementEvents();
+  }
+
+  private renderRolesTab(): string {
+    const roles = [...serverStore.roles].sort((a, b) => b.position - a.position);
+    const members = [...(serverStore.serverDetails?.members ?? [])].sort((a, b) => a.nickname.localeCompare(b.nickname));
+
+    return `
+      <div style="display: grid; grid-template-columns: 1.1fr 1fr; gap: 16px; width: 100%;">
+        <div style="display: flex; flex-direction: column; gap: 12px;">
+          <div style="background: var(--bg-card); border: 1px solid var(--border-color); border-radius: var(--radius-md); padding: 14px;">
+            <div style="font-size: 13px; font-weight: 700; margin-bottom: 10px;">${t('roles.rolesList')}</div>
+            <div id="roles-list" style="display: flex; flex-direction: column; gap: 8px;">
+              ${roles.map((role) => `
+                <button type="button" class="btn btn-secondary role-item-btn" data-role-id="${role.id}" draggable="true" style="justify-content: space-between; ${role.color ? `border-left: 4px solid ${role.color};` : ''}">
+                  <span style="display: inline-flex; align-items: center; gap: 8px;">
+                    <span class="material-symbols-outlined md-16">drag_indicator</span>
+                    <span>${escapeHtml(role.name)}</span>
+                    ${role.isDefault ? `<span class="member-badge-you">${t('roles.defaultBadge')}</span>` : ''}
+                    ${role.name === 'Admin' ? `<span class="member-badge-you">${t('roles.adminBadge')}</span>` : ''}
+                  </span>
+                  <span style="font-size: 12px; color: var(--text-muted);">${this.describeRolePermissions(role)}</span>
+                </button>
+              `).join('')}
+            </div>
+          </div>
+
+          <div style="background: var(--bg-card); border: 1px solid var(--border-color); border-radius: var(--radius-md); padding: 14px;">
+            <div style="font-size: 13px; font-weight: 700; margin-bottom: 10px;">${t('roles.membersList')}</div>
+            <div id="roles-members-list" style="display: flex; flex-direction: column; gap: 8px; max-height: 260px; overflow: auto;">
+              ${members.map((member) => `
+                <div style="padding: 10px; border: 1px solid var(--border-color); border-radius: var(--radius-md);">
+                  <div style="display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 8px;">
+                    <span style="font-weight: 600;">${escapeHtml(member.nickname)}</span>
+                    <span style="font-size: 11px; color: var(--text-muted);">${escapeHtml(serverStore.getUserRoles(member.id).map((role) => role.name).join(', ') || t('roles.noExtraRoles'))}</span>
+                  </div>
+                  <div style="display: flex; flex-wrap: wrap; gap: 6px;">
+                    ${roles.map((role) => {
+                      const assigned = serverStore.getUserRoleIds(member.id).includes(role.id);
+                      const disabled = role.isDefault;
+                      return `
+                        <button type="button" class="btn btn-secondary member-role-toggle" data-user-id="${member.id}" data-role-id="${role.id}" ${disabled ? 'disabled' : ''} style="${role.color ? `border-color: ${role.color};` : ''}">
+                          ${assigned ? '✓ ' : ''}${escapeHtml(role.name)}
+                        </button>
+                      `;
+                    }).join('')}
+                  </div>
+                </div>
+              `).join('')}
+            </div>
+          </div>
+        </div>
+
+        <div style="background: var(--bg-card); border: 1px solid var(--border-color); border-radius: var(--radius-md); padding: 14px; display: flex; flex-direction: column; gap: 12px;">
+          <div style="font-size: 13px; font-weight: 700;">${t('roles.editorTitle')}</div>
+          <input type="hidden" id="role-editor-id">
+          <div class="form-group" style="margin-bottom: 0;">
+            <label>${t('roles.roleName')}</label>
+            <input id="role-editor-name" type="text" maxlength="32" placeholder="${t('roles.roleNamePlaceholder')}">
+          </div>
+          <div class="form-group" style="margin-bottom: 0;">
+            <label>${t('roles.roleColor')}</label>
+            <input id="role-editor-color" type="color" value="#5865f2">
+          </div>
+          <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px;">
+            ${this.renderPermissionCheckboxes()}
+          </div>
+          <div style="display: flex; gap: 8px;">
+            <button type="button" id="btn-role-save" class="btn btn-primary">${t('roles.createRole')}</button>
+            <button type="button" id="btn-role-reset" class="btn btn-secondary">${t('roles.newRole')}</button>
+            <button type="button" id="btn-role-delete" class="btn btn-danger">${t('common.delete')}</button>
+          </div>
+        </div>
+      </div>
+    `;
+  }
+
+  private renderPermissionCheckboxes(): string {
+    const items: Array<{ key: Permission; label: string }> = [
+      { key: Permission.MANAGE_CHANNELS, label: t('permissions.manageChannels') },
+      { key: Permission.MANAGE_SERVER, label: t('permissions.manageServer') },
+      { key: Permission.MANAGE_ROLES, label: t('permissions.manageRoles') },
+      { key: Permission.KICK_MEMBERS, label: t('permissions.kickMembers') },
+      { key: Permission.SPEAK, label: t('permissions.speak') },
+      { key: Permission.MUTE_MEMBERS, label: t('permissions.muteMembers') },
+      { key: Permission.DEAFEN_MEMBERS, label: t('permissions.deafenMembers') },
+      { key: Permission.MOVE_MEMBERS, label: t('permissions.moveMembers') },
+      { key: Permission.SEND_MESSAGES, label: t('permissions.sendMessages') },
+      { key: Permission.READ_MESSAGES, label: t('permissions.readMessages') },
+      { key: Permission.ATTACH_FILES, label: t('permissions.attachFiles') },
+      { key: Permission.ADMINISTRATOR, label: t('permissions.administrator') },
+    ];
+
+    return items.map((item) => `
+      <label style="display: flex; align-items: center; gap: 8px; font-size: 12px; cursor: pointer;">
+        <input type="checkbox" class="role-permission-checkbox" data-permission="${item.key}">
+        <span>${item.label}</span>
+      </label>
+    `).join('');
+  }
+
+  private describeRolePermissions(role: Role): string {
+    if (role.permissions & Permission.ADMINISTRATOR) {
+      return t('permissions.administrator');
+    }
+    const labels: string[] = [];
+    if (role.permissions & Permission.MANAGE_SERVER) labels.push(t('permissions.manageServer'));
+    if (role.permissions & Permission.MANAGE_CHANNELS) labels.push(t('permissions.manageChannels'));
+    if (role.permissions & Permission.MANAGE_ROLES) labels.push(t('permissions.manageRoles'));
+    if (role.permissions & Permission.SPEAK) labels.push(t('permissions.speak'));
+    return labels.slice(0, 3).join(', ') || t('roles.noPermissions');
+  }
+
+  private attachRoleManagementEvents(): void {
+    if (!this.modalEl || !serverStore.hasPermission(Permission.MANAGE_ROLES)) return;
+
+    const list = this.modalEl.querySelector('#roles-list');
+    const inputId = this.modalEl.querySelector('#role-editor-id') as HTMLInputElement | null;
+    const inputName = this.modalEl.querySelector('#role-editor-name') as HTMLInputElement | null;
+    const inputColor = this.modalEl.querySelector('#role-editor-color') as HTMLInputElement | null;
+    const btnSave = this.modalEl.querySelector('#btn-role-save') as HTMLButtonElement | null;
+    const btnReset = this.modalEl.querySelector('#btn-role-reset') as HTMLButtonElement | null;
+    const btnDelete = this.modalEl.querySelector('#btn-role-delete') as HTMLButtonElement | null;
+
+    const resetEditor = () => {
+      if (inputId) inputId.value = '';
+      if (inputName) inputName.value = '';
+      if (inputColor) inputColor.value = '#5865f2';
+      this.modalEl?.querySelectorAll('.role-permission-checkbox').forEach((checkbox) => {
+        (checkbox as HTMLInputElement).checked = false;
+      });
+      if (btnSave) btnSave.innerText = t('roles.createRole');
+      if (btnDelete) btnDelete.disabled = true;
+    };
+
+    const loadRoleIntoEditor = (role: Role) => {
+      if (inputId) inputId.value = role.id;
+      if (inputName) inputName.value = role.name;
+      if (inputColor) inputColor.value = role.color ?? '#5865f2';
+      this.modalEl?.querySelectorAll('.role-permission-checkbox').forEach((checkbox) => {
+        const permission = Number((checkbox as HTMLInputElement).dataset.permission || '0');
+        (checkbox as HTMLInputElement).checked = (role.permissions & permission) !== 0;
+      });
+      if (btnSave) btnSave.innerText = t('roles.updateRole');
+      if (btnDelete) {
+        const isProtected = role.isDefault || role.name === 'Admin';
+        btnDelete.disabled = isProtected && serverStore.currentUser?.id !== serverStore.ownerId;
+      }
+    };
+
+    resetEditor();
+
+    list?.querySelectorAll('.role-item-btn').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        const roleId = btn.getAttribute('data-role-id');
+        const role = roleId ? serverStore.getRole(roleId) : undefined;
+        if (role) loadRoleIntoEditor(role);
+      });
+      btn.addEventListener('dragstart', () => {
+        this.draggedRoleId = btn.getAttribute('data-role-id');
+      });
+      btn.addEventListener('dragover', (e) => e.preventDefault());
+      btn.addEventListener('drop', async () => {
+        const targetRoleId = btn.getAttribute('data-role-id');
+        if (!this.draggedRoleId || !targetRoleId || this.draggedRoleId === targetRoleId) return;
+        const ordered = [...serverStore.roles].sort((a, b) => b.position - a.position);
+        const from = ordered.findIndex((role) => role.id === this.draggedRoleId);
+        const to = ordered.findIndex((role) => role.id === targetRoleId);
+        if (from < 0 || to < 0) return;
+        const [moved] = ordered.splice(from, 1);
+        ordered.splice(to, 0, moved);
+        for (let i = 0; i < ordered.length; i += 1) {
+          await networkClient.sendRequest(MessageType.ROLE_UPDATE, {
+            roleId: ordered[i].id,
+            position: ordered.length - i,
+          });
+        }
+      });
+    });
+
+    btnReset?.addEventListener('click', () => resetEditor());
+    btnSave?.addEventListener('click', async () => {
+      const name = inputName?.value.trim();
+      if (!name) return;
+      let permissions = 0;
+      this.modalEl?.querySelectorAll('.role-permission-checkbox').forEach((checkbox) => {
+        const input = checkbox as HTMLInputElement;
+        if (input.checked) permissions |= Number(input.dataset.permission || '0');
+      });
+      const roleId = inputId?.value?.trim();
+      if (roleId) {
+        await networkClient.sendRequest(MessageType.ROLE_UPDATE, {
+          roleId,
+          name,
+          color: inputColor?.value || null,
+          permissions,
+        });
+      } else {
+        await networkClient.sendRequest(MessageType.ROLE_CREATE, {
+          name,
+          color: inputColor?.value || null,
+          permissions,
+        });
+      }
+      this.close();
+      this.open();
+    });
+
+    btnDelete?.addEventListener('click', async () => {
+      const roleId = inputId?.value?.trim();
+      if (!roleId || btnDelete.disabled) return;
+      await networkClient.sendRequest(MessageType.ROLE_DELETE, { roleId });
+      this.close();
+      this.open();
+    });
+
+    this.modalEl.querySelectorAll('.member-role-toggle').forEach((btn) => {
+      btn.addEventListener('click', async () => {
+        const userId = btn.getAttribute('data-user-id');
+        const roleId = btn.getAttribute('data-role-id');
+        if (!userId || !roleId) return;
+        const assigned = serverStore.getUserRoleIds(userId).includes(roleId);
+        await networkClient.sendRequest(assigned ? MessageType.ROLE_UNASSIGN : MessageType.ROLE_ASSIGN, { userId, roleId });
+        this.close();
+        this.open();
+      });
     });
   }
 

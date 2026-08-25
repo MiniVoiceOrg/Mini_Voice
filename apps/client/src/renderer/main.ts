@@ -1,10 +1,15 @@
 import {
+  AdminDeafenUserPayload,
+  AdminKickVoicePayload,
+  AdminMoveUserPayload,
+  AdminMuteUserPayload,
   AuthSuccessPayload,
   ChannelCreatedPayload,
   ChannelDeletedPayload,
   ChatHistoryPayload,
   ChatMessage,
   MessageType,
+  RolesListPayload,
   UserJoinedPayload,
   UserLeftPayload,
   UserConnectionStatePayload,
@@ -128,8 +133,8 @@ class App {
     const syncTrayVoiceStatus = () => {
       window.api?.updateTrayVoiceStatus({
         inCall: !!voiceStore.currentVoiceChannelId,
-        isMuted: voiceStore.isMuted,
-        isDeafened: voiceStore.isDeafened,
+        isMuted: voiceStore.getEffectiveMuted(),
+        isDeafened: voiceStore.getEffectiveDeafened(),
         isSpeaking: voiceStore.isSpeaking,
       });
     };
@@ -155,15 +160,15 @@ class App {
     if (!voiceStore.currentVoiceChannelId) return;
     const newMuted = !voiceStore.isMuted;
     voiceStore.setMuted(newMuted);
-    audioProcessor.setMuted(newMuted);
+    audioProcessor.setMuted(voiceStore.getEffectiveMuted());
     soundEffects.play(newMuted ? 'mic_mute' : 'mic_unmute');
 
     // Unmuting the mic while deafened also undeafens the audio output (#62)
     let undeafened = false;
     if (!newMuted && voiceStore.isDeafened) {
       voiceStore.setDeafened(false);
-      audioProcessor.setDeafened(false);
-      webRtcManager.setDeafened(false);
+      audioProcessor.setDeafened(voiceStore.getEffectiveDeafened());
+      webRtcManager.setDeafened(voiceStore.getEffectiveDeafened());
       undeafened = true;
     }
 
@@ -177,10 +182,10 @@ class App {
     if (!voiceStore.currentVoiceChannelId) return;
     const newDeafened = !voiceStore.isDeafened;
     voiceStore.setDeafened(newDeafened);
-    audioProcessor.setDeafened(newDeafened);
+    audioProcessor.setDeafened(voiceStore.getEffectiveDeafened());
     // Restore the mic track to its (possibly restored) pre-deafen state (#74)
-    audioProcessor.setMuted(voiceStore.isMuted);
-    webRtcManager.setDeafened(newDeafened);
+    audioProcessor.setMuted(voiceStore.getEffectiveMuted());
+    webRtcManager.setDeafened(voiceStore.getEffectiveDeafened());
     soundEffects.play(newDeafened ? 'deafen' : 'undeafen');
     networkClient.send(MessageType.VOICE_STATE_UPDATE, {
       isDeafened: newDeafened,
@@ -197,6 +202,12 @@ class App {
     document.getElementById('win-min')?.addEventListener('click', () => window.api?.minimize());
     document.getElementById('win-max')?.addEventListener('click', () => window.api?.maximize());
     document.getElementById('win-close')?.addEventListener('click', () => window.api?.close());
+  }
+
+  private syncLocalVoiceMediaState(): void {
+    audioProcessor.setMuted(voiceStore.getEffectiveMuted());
+    audioProcessor.setDeafened(voiceStore.getEffectiveDeafened());
+    webRtcManager.setDeafened(voiceStore.getEffectiveDeafened());
   }
 
   private showReconnectOverlay(): void {
@@ -253,6 +264,11 @@ class App {
         participantManager.updateVoiceState(state);
       }
 
+      const myVoiceState = payload.server.voiceStates[payload.currentUser.id];
+      voiceStore.setServerMuted(myVoiceState?.serverMuted ?? false);
+      voiceStore.setServerDeafened(myVoiceState?.serverDeafened ?? false);
+      this.syncLocalVoiceMediaState();
+
       webRtcManager.setCurrentUserId(payload.currentUser.id);
       // Drop any stale peer connections left over from a dropped session.
       webRtcManager.closeAllPeers();
@@ -291,6 +307,10 @@ class App {
     appEvents.on(`message.${MessageType.USER_JOINED}`, (payload: UserJoinedPayload) => {
       serverStore.addMember(payload.user);
       participantManager.addUser(payload.user);
+    });
+
+    appEvents.on(`message.${MessageType.ROLES_LIST}`, (payload: RolesListPayload) => {
+      serverStore.updateRoles(payload.roles, payload.userRoles);
     });
 
     appEvents.on(`message.${MessageType.USER_LEFT}`, (payload: UserLeftPayload) => {
@@ -405,6 +425,46 @@ class App {
       }
 
       participantManager.updateVoiceState(payload.voiceState);
+      if (payload.voiceState.userId === serverStore.currentUser?.id) {
+        voiceStore.setServerMuted(payload.voiceState.serverMuted);
+        voiceStore.setServerDeafened(payload.voiceState.serverDeafened);
+        this.syncLocalVoiceMediaState();
+      }
+    });
+
+    appEvents.on(`message.${MessageType.ADMIN_MUTE_USER}`, (payload: AdminMuteUserPayload) => {
+      const current = participantManager.get(payload.targetUserId)?.voiceState;
+      if (current) {
+        participantManager.updateVoiceState({ ...current, serverMuted: payload.muted, isSpeaking: false });
+      }
+      if (payload.targetUserId === serverStore.currentUser?.id) {
+        voiceStore.setServerMuted(payload.muted);
+        this.syncLocalVoiceMediaState();
+      }
+    });
+
+    appEvents.on(`message.${MessageType.ADMIN_DEAFEN_USER}`, (payload: AdminDeafenUserPayload) => {
+      const current = participantManager.get(payload.targetUserId)?.voiceState;
+      if (current) {
+        participantManager.updateVoiceState({ ...current, serverDeafened: payload.deafened });
+      }
+      if (payload.targetUserId === serverStore.currentUser?.id) {
+        voiceStore.setServerDeafened(payload.deafened);
+        this.syncLocalVoiceMediaState();
+      }
+    });
+
+    appEvents.on(`message.${MessageType.ADMIN_KICK_VOICE}`, (payload: AdminKickVoicePayload) => {
+      if (payload.targetUserId !== serverStore.currentUser?.id) return;
+      audioProcessor.stopMicrophone();
+      webRtcManager.closeAllPeers();
+      voiceStore.reset();
+      this.mainView.render();
+    });
+
+    appEvents.on(`message.${MessageType.ADMIN_MOVE_USER}`, (payload: AdminMoveUserPayload) => {
+      if (payload.targetUserId !== serverStore.currentUser?.id) return;
+      void this.mainView.rejoinVoiceChannel(payload.channelId);
     });
 
     // Local VAD speaking state

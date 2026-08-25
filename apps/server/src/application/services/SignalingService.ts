@@ -52,10 +52,12 @@ export class SignalingService {
       channelId,
       isMuted: previousState?.isMuted ?? false,
       isDeafened: previousState?.isDeafened ?? false,
+      serverMuted: previousState?.serverMuted ?? false,
+      serverDeafened: previousState?.serverDeafened ?? false,
       isSpeaking: false,
-      isCameraOn: false,
-      isScreenSharing: false,
-      isSharingScreenAudio: false,
+      isCameraOn: previousState?.isCameraOn ?? false,
+      isScreenSharing: previousState?.isScreenSharing ?? false,
+      isSharingScreenAudio: previousState?.isSharingScreenAudio ?? false,
     };
 
     this.voiceStates.set(userId, newState);

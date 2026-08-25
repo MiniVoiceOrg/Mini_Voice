@@ -21,6 +21,7 @@ const ERROR_KEYS: Record<ProtocolErrorCode, TranslationKey> = {
   [ProtocolErrorCode.PROTOCOL_VERSION_UNSUPPORTED]: 'protocolError.protocolVersionUnsupported',
   [ProtocolErrorCode.INTERNAL_ERROR]: 'protocolError.internalError',
   [ProtocolErrorCode.UNAUTHORIZED]: 'protocolError.unauthorized',
+  [ProtocolErrorCode.PERMISSION_DENIED]: 'protocolError.permissionDenied',
   [ProtocolErrorCode.BAD_REQUEST]: 'protocolError.badRequest',
   [ProtocolErrorCode.ATTACHMENT_TOO_LARGE]: 'protocolError.attachmentTooLarge',
   [ProtocolErrorCode.ATTACHMENT_INVALID_TYPE]: 'protocolError.attachmentInvalidType',

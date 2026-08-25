@@ -1,4 +1,4 @@
-import { AttachmentStorageInfo, ChannelSummary, ChatMessage, ServerDetails, UserSummary, VoiceParticipantState, WebRtcSignalPayload } from './models.js';
+import { AttachmentStorageInfo, ChannelSummary, ChatMessage, Role, ServerDetails, UserRoleSummary, UserSummary, VoiceParticipantState, WebRtcSignalPayload } from './models.js';
 
 export enum ProtocolErrorCode {
   AUTH_INVALID_PASSWORD = 'AUTH_INVALID_PASSWORD',
@@ -17,6 +17,7 @@ export enum ProtocolErrorCode {
   PROTOCOL_VERSION_UNSUPPORTED = 'PROTOCOL_VERSION_UNSUPPORTED',
   INTERNAL_ERROR = 'INTERNAL_ERROR',
   UNAUTHORIZED = 'UNAUTHORIZED',
+  PERMISSION_DENIED = 'PERMISSION_DENIED',
   BAD_REQUEST = 'BAD_REQUEST',
 }
 
@@ -33,9 +34,18 @@ export enum MessageType {
   USER_CHANGE_NICKNAME = 'USER_CHANGE_NICKNAME',
   USER_UPDATE_AVATAR = 'USER_UPDATE_AVATAR',
   SERVER_UPDATE_SETTINGS = 'SERVER_UPDATE_SETTINGS',
+  ROLE_CREATE = 'ROLE_CREATE',
+  ROLE_UPDATE = 'ROLE_UPDATE',
+  ROLE_DELETE = 'ROLE_DELETE',
+  ROLE_ASSIGN = 'ROLE_ASSIGN',
+  ROLE_UNASSIGN = 'ROLE_UNASSIGN',
   VOICE_JOIN = 'VOICE_JOIN',
   VOICE_LEAVE = 'VOICE_LEAVE',
   VOICE_STATE_UPDATE = 'VOICE_STATE_UPDATE',
+  ADMIN_MUTE_USER = 'ADMIN_MUTE_USER',
+  ADMIN_DEAFEN_USER = 'ADMIN_DEAFEN_USER',
+  ADMIN_KICK_VOICE = 'ADMIN_KICK_VOICE',
+  ADMIN_MOVE_USER = 'ADMIN_MOVE_USER',
   RTC_SIGNAL = 'RTC_SIGNAL',
   PING = 'PING',
   USER_LOGOUT = 'USER_LOGOUT',
@@ -47,6 +57,7 @@ export enum MessageType {
   AUTH_SUCCESS = 'AUTH_SUCCESS',
   AUTH_FAILED = 'AUTH_FAILED',
   SERVER_STATE = 'SERVER_STATE',
+  ROLES_LIST = 'ROLES_LIST',
   SERVER_SETTINGS_UPDATED = 'SERVER_SETTINGS_UPDATED',
   SERVER_INVITE_INFO = 'SERVER_INVITE_INFO',
   SERVER_SHUTDOWN = 'SERVER_SHUTDOWN',
@@ -154,6 +165,37 @@ export interface ServerUpdateSettingsPayload {
   maxAttachmentStorageBytes?: number;
 }
 
+export interface RoleCreatePayload {
+  name: string;
+  color?: string | null;
+  permissions: number;
+  position?: number;
+  isDefault?: boolean;
+}
+
+export interface RoleUpdatePayload {
+  roleId: string;
+  name?: string;
+  color?: string | null;
+  permissions?: number;
+  position?: number;
+  isDefault?: boolean;
+}
+
+export interface RoleDeletePayload {
+  roleId: string;
+}
+
+export interface RoleAssignPayload {
+  userId: string;
+  roleId: string;
+}
+
+export interface RoleUnassignPayload {
+  userId: string;
+  roleId: string;
+}
+
 export interface SoundboardPlayPayload {
   channelId: string;
   soundName: string;
@@ -178,10 +220,33 @@ export interface VoiceStateUpdatePayload {
   isSharingScreenAudio?: boolean;
 }
 
+export interface AdminMuteUserPayload {
+  targetUserId: string;
+  muted: boolean;
+}
+
+export interface AdminDeafenUserPayload {
+  targetUserId: string;
+  deafened: boolean;
+}
+
+export interface AdminKickVoicePayload {
+  targetUserId: string;
+}
+
+export interface AdminMoveUserPayload {
+  targetUserId: string;
+  channelId: string;
+}
+
 // Server Responses & Broadcast Payloads
 export interface AuthSuccessPayload {
   server: ServerDetails;
   currentUser: UserSummary;
+  roles?: Role[];
+  userRoles?: UserRoleSummary[];
+  ownerId?: string | null;
+  myPermissions?: number;
 }
 
 export interface ServerErrorPayload {
@@ -257,6 +322,11 @@ export interface VoiceUserLeftPayload {
 
 export interface VoiceStateChangedPayload {
   voiceState: VoiceParticipantState;
+}
+
+export interface RolesListPayload {
+  roles: Role[];
+  userRoles: UserRoleSummary[];
 }
 
 export interface ServerNetworkInterface {

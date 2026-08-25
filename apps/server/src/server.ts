@@ -2,11 +2,13 @@ import http from 'http';
 import fs from 'fs';
 import path from 'path';
 import { v4 as uuidv4 } from 'uuid';
-import { LIMITS, ProtocolErrorCode } from '@monky/shared';
+import { ADMIN_PERMISSIONS, DEFAULT_PERMISSIONS, LIMITS, ProtocolErrorCode } from '@monky/shared';
 import { AuthService } from './application/services/AuthService';
 import { AttachmentService } from './application/services/AttachmentService';
 import { ChannelService } from './application/services/ChannelService';
 import { ChatService } from './application/services/ChatService';
+import { PermissionService } from './application/services/PermissionService';
+import { RoleService } from './application/services/RoleService';
 import { SignalingService } from './application/services/SignalingService';
 import { UserService } from './application/services/UserService';
 import { DatabaseConnection } from './infrastructure/database/DatabaseConnection';
@@ -15,6 +17,7 @@ import {
   SqliteChannelRepository,
   SqliteMentionRepository,
   SqliteMessageRepository,
+  SqliteRoleRepository,
   SqliteServerRepository,
   SqliteUserRepository,
 } from './infrastructure/database/SqliteRepositories';
@@ -81,8 +84,11 @@ export class MonkyServer {
     const messageRepo = new SqliteMessageRepository(db);
     const mentionRepo = new SqliteMentionRepository(db);
     const attachmentRepo = new SqliteAttachmentRepository(db);
+    const roleRepo = new SqliteRoleRepository(db);
 
     const attachmentService = new AttachmentService(attachmentRepo, serverRepo, attachmentStorage, rateLimiter);
+    const permissionService = new PermissionService(serverRepo, roleRepo);
+    const roleService = new RoleService(roleRepo, userRepo, permissionService);
 
     const signalingService = new SignalingService(channelRepo);
     const channelService = new ChannelService(channelRepo, serverRepo);
@@ -105,7 +111,9 @@ export class MonkyServer {
       mentionRepo,
       avatarStorage,
       () => getOnlineUsers(),
-      attachmentService
+      attachmentService,
+      permissionService,
+      roleService
     );
 
     const userService = new UserService(
@@ -115,7 +123,7 @@ export class MonkyServer {
     );
 
     // Seed server and default channels if new database
-    await MonkyServer.seedServer(config, serverRepo, channelRepo);
+    await MonkyServer.seedServer(config, serverRepo, channelRepo, roleRepo);
 
     const httpServer = http.createServer((req, res) => {
       if (req.method === 'OPTIONS') {
@@ -226,7 +234,9 @@ export class MonkyServer {
       chatService,
       signalingService,
       serverRepo,
-      attachmentService
+      attachmentService,
+      permissionService,
+      roleService
     );
 
     getOnlineUsers = () => wsServer.getOnlineUsersMap();
@@ -389,13 +399,14 @@ export class MonkyServer {
   private static async seedServer(
     config: ServerConfig,
     serverRepo: SqliteServerRepository,
-    channelRepo: SqliteChannelRepository
+    channelRepo: SqliteChannelRepository,
+    roleRepo: SqliteRoleRepository
   ): Promise<void> {
     const server = await serverRepo.getServer();
+    const now = Date.now();
     if (!server) {
       const serverId = uuidv4();
       const passwordHash = config.password ? PasswordService.hashPassword(config.password) : '';
-      const now = Date.now();
 
       await serverRepo.createServer({
         id: serverId,
@@ -403,6 +414,7 @@ export class MonkyServer {
         passwordHash,
         createdAt: now,
         maxUsers: config.maxUsers || LIMITS.MAX_USERS_DEFAULT,
+        ownerUserId: null,
         allowSoundboard: true,
       });
 
@@ -429,6 +441,32 @@ export class MonkyServer {
       });
 
       Logger.info('DATABASE', `Server seeded successfully with default channels.`);
+    }
+
+    const adminRole = await roleRepo.findByName('Admin');
+    if (!adminRole) {
+      await roleRepo.create({
+        id: uuidv4(),
+        name: 'Admin',
+        color: '#ed4245',
+        position: 100,
+        permissions: ADMIN_PERMISSIONS,
+        isDefault: false,
+        createdAt: now,
+      });
+    }
+
+    const memberRole = await roleRepo.findByName('Membro');
+    if (!memberRole) {
+      await roleRepo.create({
+        id: uuidv4(),
+        name: 'Membro',
+        color: '#5865f2',
+        position: 0,
+        permissions: DEFAULT_PERMISSIONS,
+        isDefault: true,
+        createdAt: now,
+      });
     }
   }
 

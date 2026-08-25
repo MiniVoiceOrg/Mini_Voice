@@ -1,4 +1,4 @@
-import { MessageType } from '@monky/shared';
+import { MessageType, Permission } from '@monky/shared';
 import { escapeHtml } from '../utils/html';
 import { appEvents } from '../core/EventBus';
 import { networkClient } from '../core/NetworkClient';
@@ -48,6 +48,9 @@ export class MainView {
 
     const s = serverStore.serverDetails;
     const u = serverStore.currentUser;
+    const canManageChannels = serverStore.hasPermission(Permission.MANAGE_CHANNELS);
+    const canManageServer = serverStore.hasPermission(Permission.MANAGE_SERVER);
+    const canManageRoles = serverStore.hasPermission(Permission.MANAGE_ROLES);
 
     this.container.innerHTML = `
       <div class="main-layout">
@@ -64,10 +67,12 @@ export class MainView {
               <span class="material-symbols-outlined md-18 server-dropdown-caret">expand_more</span>
             </button>
             <div id="server-dropdown-menu" class="server-dropdown-menu" style="display: none;">
+              ${(canManageServer || canManageRoles) ? `
               <button id="btn-server-settings" class="server-dropdown-item" title="${t('main.serverSettingsTitle')}">
                 <span class="material-symbols-outlined md-18">settings</span>
                 <span>${t('serverSettings.title')}</span>
               </button>
+              ` : ''}
               <button id="btn-invite-friends" class="server-dropdown-item" title="${t('main.inviteTitle')}">
                 <span class="material-symbols-outlined md-18">person_add</span>
                 <span>${t('invite.title')}</span>
@@ -80,9 +85,9 @@ export class MainView {
             <div class="channel-category">
               <div class="category-title">
                 <span>${t('main.textChannels')}</span>
-                <button id="btn-add-text-channel" class="category-add-btn" title="${t('main.createTextChannel')}">
+                ${canManageChannels ? `<button id="btn-add-text-channel" class="category-add-btn" title="${t('main.createTextChannel')}">
                   <span class="material-symbols-outlined md-14">add</span>
-                </button>
+                </button>` : ''}
               </div>
               <div id="text-channels-list"></div>
             </div>
@@ -91,9 +96,9 @@ export class MainView {
             <div class="channel-category">
               <div class="category-title">
                 <span>${t('main.voiceChannels')}</span>
-                <button id="btn-add-voice-channel" class="category-add-btn" title="${t('main.createVoiceChannel')}">
+                ${canManageChannels ? `<button id="btn-add-voice-channel" class="category-add-btn" title="${t('main.createVoiceChannel')}">
                   <span class="material-symbols-outlined md-14">add</span>
-                </button>
+                </button>` : ''}
               </div>
               <div id="voice-channels-list"></div>
             </div>
@@ -125,11 +130,11 @@ export class MainView {
               </div>
 
               <div class="user-quick-actions">
-                <button id="bar-btn-mic" class="btn btn-icon ${voiceStore.isMuted ? 'danger-active' : ''}" title="${voiceStore.isMuted ? t('main.unmute') : t('main.mute')}">
-                  <span class="material-symbols-outlined md-18">${voiceStore.isMuted ? 'mic_off' : 'mic'}</span>
+                <button id="bar-btn-mic" class="btn btn-icon ${voiceStore.getEffectiveMuted() ? 'danger-active' : ''}" title="${voiceStore.getEffectiveMuted() ? t('main.unmute') : t('main.mute')}">
+                  <span class="material-symbols-outlined md-18">${voiceStore.getEffectiveMuted() ? 'mic_off' : 'mic'}</span>
                 </button>
-                <button id="bar-btn-deafen" class="btn btn-icon ${voiceStore.isDeafened ? 'danger-active' : ''}" title="${voiceStore.isDeafened ? t('main.undeafen') : t('main.deafen')}">
-                  <span class="material-symbols-outlined md-18">${voiceStore.isDeafened ? 'headset_off' : 'headphones'}</span>
+                <button id="bar-btn-deafen" class="btn btn-icon ${voiceStore.getEffectiveDeafened() ? 'danger-active' : ''}" title="${voiceStore.getEffectiveDeafened() ? t('main.undeafen') : t('main.deafen')}">
+                  <span class="material-symbols-outlined md-18">${voiceStore.getEffectiveDeafened() ? 'headset_off' : 'headphones'}</span>
                 </button>
                 <button id="bar-btn-settings" class="btn btn-icon" title="${t('connection.settingsTitle')}">
                   <span class="material-symbols-outlined md-18">tune</span>
@@ -543,6 +548,8 @@ export class MainView {
                     <div id="voice-mini-user-${p.user.id}" class="voice-participant-mini ${isSpeaking ? 'speaking' : ''}" data-user-id="${p.user.id}" title="${escapeHtml(p.user.nickname)} (${t('main.rightClickVolumeShort')})">
                       <img class="voice-mini-avatar" src="${avatar}">
                       <span class="voice-mini-name">${escapeHtml(p.user.nickname)}</span>
+                      ${p.voiceState?.serverMuted ? `<span class="material-symbols-outlined md-14 voice-mini-icon muted" title="${t('permissions.serverMuted')}">admin_panel_settings</span>` : ''}
+                      ${p.voiceState?.serverDeafened ? `<span class="material-symbols-outlined md-14 voice-mini-icon muted" title="${t('permissions.serverDeafened')}">hearing_disabled</span>` : ''}
                       ${isMicMuted ? `<span class="material-symbols-outlined md-14 voice-mini-icon muted" title="${t('main.micMuted')}">mic_off</span>` : ''}
                       ${isAudioMuted ? `<span class="material-symbols-outlined md-14 voice-mini-icon muted" title="${t('main.audioMuted')}">headset_off</span>` : ''}
                       ${p.voiceState?.isScreenSharing ? `<span class="material-symbols-outlined md-14 voice-mini-icon live" title="${t('main.sharingScreen')}">screen_share</span>` : ''}
@@ -665,14 +672,16 @@ export class MainView {
       });
     }
 
-    items.push({
-      label: t('main.deleteChannel'),
-      icon: 'delete',
-      danger: true,
-      onClick: () => {
-        void this.handleDeleteChannel(channelId);
-      },
-    });
+    if (serverStore.hasPermission(Permission.MANAGE_CHANNELS)) {
+      items.push({
+        label: t('main.deleteChannel'),
+        icon: 'delete',
+        danger: true,
+        onClick: () => {
+          void this.handleDeleteChannel(channelId);
+        },
+      });
+    }
 
     contextMenu.open(x, y, items);
   }
@@ -701,9 +710,9 @@ export class MainView {
       return;
     }
 
-    // If in another channel, leave it first
+    // If in another channel, close the current mesh locally; the server-side
+    // join handler updates the stored voice state to the new room directly.
     if (voiceStore.currentVoiceChannelId) {
-      networkClient.send(MessageType.VOICE_LEAVE, { channelId: voiceStore.currentVoiceChannelId });
       webRtcManager.closeAllPeers();
     }
 
@@ -799,11 +808,14 @@ export class MainView {
               <div class="member-name-row">
                 <span class="member-name">${escapeHtml(m.nickname)}</span>
                 ${isLocal ? `<span class="member-badge-you">${t('common.you')}</span>` : ''}
+                ${m.id === serverStore.ownerId ? `<span class="member-badge-you">${t('roles.ownerBadge')}</span>` : ''}
                 ${isReconnecting ? `<span class="member-reconnecting-badge" title="${t('main.reconnectingTitle')}"><span class="material-symbols-outlined md-14 spin">sync</span></span>` : ''}
                 ${voiceState?.isScreenSharing ? `<span class="member-live-badge" title="${t('main.sharingScreen')}">LIVE</span>` : ''}
                 ${voiceState?.isCameraOn ? `<span class="material-symbols-outlined md-14 member-cam-icon" title="${t('main.cameraOn')}">videocam</span>` : ''}
+                ${voiceState?.serverMuted ? `<span class="material-symbols-outlined md-14 member-cam-icon" title="${t('permissions.serverMuted')}">admin_panel_settings</span>` : ''}
+                ${voiceState?.serverDeafened ? `<span class="material-symbols-outlined md-14 member-cam-icon" title="${t('permissions.serverDeafened')}">hearing_disabled</span>` : ''}
               </div>
-              <span class="member-subtext">${isReconnecting ? t('main.reconnecting') : (inVoice ? t('main.inVoiceChannel') : t('main.statusOnline'))}</span>
+              <span class="member-subtext">${isReconnecting ? t('main.reconnecting') : (inVoice ? t('main.inVoiceChannel') : t('main.statusOnline'))}${serverStore.getUserRoles(m.id).length ? ` • ${escapeHtml(serverStore.getUserRoles(m.id).map((role) => role.name).join(', '))}` : ''}</span>
             </div>
           </div>
         `;
@@ -907,14 +919,14 @@ export class MainView {
     btnMic?.addEventListener('click', () => {
       const newMuted = !voiceStore.isMuted;
       voiceStore.setMuted(newMuted);
-      audioProcessor.setMuted(newMuted);
+      audioProcessor.setMuted(voiceStore.getEffectiveMuted());
       soundEffects.play(newMuted ? 'mic_mute' : 'mic_unmute');
       // Unmuting the mic while deafened also undeafens the audio output (#62).
       let undeafened = false;
       if (!newMuted && voiceStore.isDeafened) {
         voiceStore.setDeafened(false);
-        audioProcessor.setDeafened(false);
-        webRtcManager.setDeafened(false);
+        audioProcessor.setDeafened(voiceStore.getEffectiveDeafened());
+        webRtcManager.setDeafened(voiceStore.getEffectiveDeafened());
         undeafened = true;
       }
       networkClient.send(MessageType.VOICE_STATE_UPDATE, {
@@ -934,10 +946,10 @@ export class MainView {
     btnDeafen?.addEventListener('click', () => {
       const newDeafened = !voiceStore.isDeafened;
       voiceStore.setDeafened(newDeafened);
-      audioProcessor.setDeafened(newDeafened);
+      audioProcessor.setDeafened(voiceStore.getEffectiveDeafened());
       // Restore the mic track to its (possibly restored) pre-deafen state (#74).
-      audioProcessor.setMuted(voiceStore.isMuted);
-      webRtcManager.setDeafened(newDeafened);
+      audioProcessor.setMuted(voiceStore.getEffectiveMuted());
+      webRtcManager.setDeafened(voiceStore.getEffectiveDeafened());
       soundEffects.play(newDeafened ? 'deafen' : 'undeafen');
       networkClient.send(MessageType.VOICE_STATE_UPDATE, { isDeafened: newDeafened, isMuted: voiceStore.isMuted });
       if (btnDeafen) {
@@ -990,16 +1002,16 @@ export class MainView {
 
       const btnMicEl = document.getElementById('bar-btn-mic');
       if (btnMicEl) {
-        btnMicEl.className = `btn btn-icon ${voiceStore.isMuted ? 'danger-active' : ''}`;
-        btnMicEl.title = voiceStore.isMuted ? t('main.unmute') : t('main.mute');
-        btnMicEl.innerHTML = `<span class="material-symbols-outlined md-18">${voiceStore.isMuted ? 'mic_off' : 'mic'}</span>`;
+        btnMicEl.className = `btn btn-icon ${voiceStore.getEffectiveMuted() ? 'danger-active' : ''}`;
+        btnMicEl.title = voiceStore.getEffectiveMuted() ? t('main.unmute') : t('main.mute');
+        btnMicEl.innerHTML = `<span class="material-symbols-outlined md-18">${voiceStore.getEffectiveMuted() ? 'mic_off' : 'mic'}</span>`;
       }
 
       const btnDeafenEl = document.getElementById('bar-btn-deafen');
       if (btnDeafenEl) {
-        btnDeafenEl.className = `btn btn-icon ${voiceStore.isDeafened ? 'danger-active' : ''}`;
-        btnDeafenEl.title = voiceStore.isDeafened ? t('main.undeafen') : t('main.deafen');
-        btnDeafenEl.innerHTML = `<span class="material-symbols-outlined md-18">${voiceStore.isDeafened ? 'headset_off' : 'headphones'}</span>`;
+        btnDeafenEl.className = `btn btn-icon ${voiceStore.getEffectiveDeafened() ? 'danger-active' : ''}`;
+        btnDeafenEl.title = voiceStore.getEffectiveDeafened() ? t('main.undeafen') : t('main.deafen');
+        btnDeafenEl.innerHTML = `<span class="material-symbols-outlined md-18">${voiceStore.getEffectiveDeafened() ? 'headset_off' : 'headphones'}</span>`;
       }
 
       const mediaCamEl = document.getElementById('media-btn-camera');

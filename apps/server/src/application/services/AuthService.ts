@@ -19,6 +19,8 @@ import { AvatarStorageService } from '../../infrastructure/security/AvatarStorag
 import { PasswordService } from '../../infrastructure/security/PasswordService';
 import { Logger } from '../../infrastructure/logger/Logger';
 import { AttachmentService } from './AttachmentService';
+import { PermissionService } from './PermissionService';
+import { RoleService } from './RoleService';
 
 export interface AuthResult {
   success: boolean;
@@ -47,7 +49,9 @@ export class AuthService {
     private mentionRepo: IMentionRepository,
     private avatarStorage: AvatarStorageService,
     private getActiveOnlineUsers: () => Map<string, { user: UserSummary }>,
-    private attachmentService: AttachmentService
+    private attachmentService: AttachmentService,
+    private permissionService: PermissionService,
+    private roleService: RoleService
   ) {}
 
   public async createChallenge(
@@ -225,6 +229,14 @@ export class AuthService {
       userRecord.lastSeenAt = now;
     }
 
+    await this.roleService.ensureDefaultRolesAssigned(userRecord.id);
+
+    if (!server.ownerUserId) {
+      await this.serverRepo.updateServer({ ownerUserId: userRecord.id });
+      await this.roleService.assignAdminRole(userRecord.id);
+      server.ownerUserId = userRecord.id;
+    }
+
     const userSummary = this.toUserSummary(userRecord, 'ONLINE', now);
 
     const channels = await this.channelRepo.listByServerId(server.id);
@@ -243,6 +255,8 @@ export class AuthService {
     }
 
     const mentionedChannelIds = await this.mentionRepo.listChannelIdsForUser(userRecord.id);
+    const roleState = await this.roleService.getRoleState();
+    const myPermissions = await this.permissionService.getUserPermissions(userRecord.id);
 
     const serverDetails: ServerDetails = {
       id: server.id,
@@ -265,6 +279,10 @@ export class AuthService {
       knownMembers,
       mentionedChannelIds,
       voiceStates: {},
+      roles: roleState.roles,
+      userRoles: roleState.userRoles,
+      ownerId: server.ownerUserId ?? null,
+      myPermissions,
       attachmentStorage: await this.attachmentService.getStorageInfo(),
     };
 

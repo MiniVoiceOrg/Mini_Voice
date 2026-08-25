@@ -6,6 +6,7 @@ export interface ServerRecord {
   passwordHash: string;
   createdAt: number;
   maxUsers: number;
+  ownerUserId?: string | null;
   allowSoundboard?: boolean;
   iconPath?: string | null;
   // Attachment storage limits in bytes (#11); null → shared defaults.
@@ -68,4 +69,19 @@ export interface AttachmentRecord {
   durationMs?: number | null;
   evicted?: boolean;
   createdAt: number;
+}
+
+export interface RoleRecord {
+  id: string;
+  name: string;
+  color: string | null;
+  position: number;
+  permissions: number;
+  isDefault: boolean;
+  createdAt: number;
+}
+
+export interface UserRoleRecord {
+  userId: string;
+  roleId: string;
 }
