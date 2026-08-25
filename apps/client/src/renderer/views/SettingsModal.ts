@@ -33,346 +33,404 @@ export class SettingsModal {
     this.modalEl = document.createElement('div');
     this.modalEl.className = 'modal-backdrop';
     this.modalEl.innerHTML = `
-      <div class="modal-card" style="max-width: 580px; max-height: 90vh; overflow-y: auto;">
-        <div class="modal-header">
-          <div class="modal-title" style="display: flex; align-items: center; gap: 8px;">
-            <span class="material-symbols-outlined" style="color: var(--accent-primary);">settings</span>
-            <span>Configurações</span>
+      <div class="modal-card settings-modal-card">
+        <!-- Sidebar Navigation -->
+        <div class="settings-sidebar">
+          <div style="font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.6px; color: var(--text-muted); padding: 4px 10px 8px;">
+            Configurações
           </div>
-          <button id="modal-close" class="modal-close-btn">&times;</button>
-        </div>
-
-        <div id="settings-error-banner" class="error-banner"></div>
-
-        <!-- Nickname & Profile -->
-        <div style="display: flex; gap: 16px; align-items: center; padding: 12px; background: var(--bg-card); border-radius: var(--radius-md); margin-bottom: 16px; border: 1px solid var(--border-color);">
-          <div id="settings-avatar-wrapper" class="settings-avatar-wrapper" title="Clique para alterar ou remover sua foto de perfil">
-            <img id="settings-avatar-preview" class="settings-avatar-img" src="${serverStore.currentUser?.avatarUrl ? getAvatarUrl(serverStore.currentUser.avatarUrl) : (connectionStore.savedAvatarBase64 || getAvatarUrl(null))}" alt="Avatar">
-            <div class="settings-avatar-overlay">
-              <span class="material-symbols-outlined md-20">photo_camera</span>
-            </div>
-          </div>
-          <div style="flex: 1;">
-            <div class="form-group" style="margin-bottom: 0;">
-              <label>Seu Nickname</label>
-              <div style="display: flex; gap: 8px; margin-top: 4px;">
-                <input id="settings-nickname-input" type="text" value="${serverStore.currentUser?.nickname || connectionStore.savedNickname || ''}" style="flex: 1;" maxlength="32">
-                <button id="btn-save-nickname" class="btn btn-secondary" style="font-size: 12px; padding: 6px 12px;">Salvar</button>
-              </div>
-            </div>
-          </div>
-        </div>
-
-        <!-- Device Header with Refresh Button -->
-        <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 10px; border-top: 1px solid var(--border-color); padding-top: 14px;">
-          <span style="font-size: 13px; font-weight: 700; color: var(--text-primary); text-transform: uppercase; letter-spacing: 0.5px;">
-            Dispositivos de Entrada e Saída
-          </span>
-          <button id="btn-refresh-devices" class="btn btn-secondary" style="font-size: 11px; padding: 3px 8px; height: 26px;" title="Buscar novos microfones e fones conectados">
-            <span class="material-symbols-outlined md-14" style="margin-right: 4px;">refresh</span>
-            Atualizar Lista
+          <button type="button" class="settings-tab-btn active" data-tab="account">
+            <span class="material-symbols-outlined md-18">person</span>
+            <span>Meu Perfil</span>
+          </button>
+          <button type="button" class="settings-tab-btn" data-tab="voice_video">
+            <span class="material-symbols-outlined md-18">mic</span>
+            <span>Voz e Vídeo</span>
+          </button>
+          <button type="button" class="settings-tab-btn" data-tab="soundboard">
+            <span class="material-symbols-outlined md-18">music_note</span>
+            <span>Soundboard</span>
+          </button>
+          <button type="button" class="settings-tab-btn" data-tab="notifications">
+            <span class="material-symbols-outlined md-18">notifications</span>
+            <span>Notificações e Sons</span>
+          </button>
+          <button type="button" class="settings-tab-btn" data-tab="quality">
+            <span class="material-symbols-outlined md-18">speed</span>
+            <span>Qualidade</span>
+          </button>
+          <div style="height: 1px; background: var(--border-color); margin: 6px 4px;"></div>
+          <button type="button" class="settings-tab-btn" data-tab="about">
+            <span class="material-symbols-outlined md-18">info</span>
+            <span>Sobre e Updates</span>
           </button>
         </div>
 
-        <!-- Audio Inputs -->
-        <div class="form-group">
-          <label style="display: flex; align-items: center; gap: 6px;">
-            <span class="material-symbols-outlined md-16" style="color: var(--accent-primary);">mic</span>
-            Microfone
-          </label>
-          <select id="select-mic">
-            <option value="">Carregando microfones...</option>
-          </select>
-        </div>
-
-        <div class="form-group">
-          <label style="display: flex; align-items: center; gap: 6px;">
-            <span class="material-symbols-outlined md-16" style="color: var(--accent-primary);">tune</span>
-            Sensibilidade de Voz (VAD)
-          </label>
-          <div style="display: flex; align-items: center; gap: 12px;">
-            <input id="slider-vad" class="sb-slider" type="range" min="0" max="160" value="${settingsStore.vadSensitivity}" style="--slider-progress: ${(Math.min(160, Math.max(0, settingsStore.vadSensitivity)) / 160) * 100}%; flex: 1;">
+        <!-- Main Content Area -->
+        <div class="settings-main-container">
+          <!-- Top Header -->
+          <div class="settings-content-header">
+            <div id="settings-current-tab-title" style="font-size: 16px; font-weight: 700; color: var(--text-primary); display: flex; align-items: center; gap: 8px;">
+              <span class="material-symbols-outlined" style="color: var(--accent-primary);">person</span>
+              <span>Meu Perfil</span>
+            </div>
+            <button id="modal-close" class="modal-close-btn" title="Fechar">&times;</button>
           </div>
-          <div id="vad-meter" class="vad-meter" title="Nível do seu microfone">
-            <div id="vad-meter-fill" class="vad-meter-fill"></div>
-            <div id="vad-meter-threshold" class="vad-meter-threshold"></div>
-          </div>
-          <div style="font-size: 11px; color: var(--text-muted); margin-top: 2px;">Fale para ver o nível. Ajuste o slider (linha) logo acima de onde o nível fica em silêncio. Valores menores ativam com sussurros; maiores evitam ruídos de fundo.</div>
-        </div>
 
-        <!-- RNNoise Noise Suppression -->
-        <div class="form-group" style="padding: 10px 12px; background: var(--bg-card); border: 1px solid var(--border-color); border-radius: var(--radius-md);">
-          <div style="display: flex; align-items: center; justify-content: space-between; gap: 12px;">
-            <div>
-              <label style="display: flex; align-items: center; gap: 6px; margin-bottom: 2px; cursor: pointer; font-weight: 600;" for="checkbox-rnnoise">
-                <span class="material-symbols-outlined md-16" style="color: var(--accent-primary);">graphic_eq</span>
-                Supressão de Ruído Inteligente (RNNoise)
-              </label>
-              <div style="font-size: 11px; color: var(--text-muted);">
-                Utiliza Inteligência Artificial (Rede Neural) para remover ruídos de fundo como teclado mecânico, cliques, batidas e respiração.
+          <!-- Body Scroll Container -->
+          <div class="settings-content-body">
+            <div id="settings-error-banner" class="error-banner"></div>
+
+            <!-- Tab: account -->
+            <div class="settings-tab-panel" id="tab-panel-account">
+              <div style="font-size: 12px; color: var(--text-muted); margin-bottom: 12px;">
+                Personalize sua identidade visual e nome de exibição nos servidores.
               </div>
-            </div>
-            <input id="checkbox-rnnoise" type="checkbox" ${settingsStore.noiseSuppressionEnabled ? 'checked' : ''} style="width: 18px; height: 18px; cursor: pointer; accent-color: var(--accent-primary);">
-          </div>
-        </div>
-
-        <!-- Audio Outputs -->
-        <div class="form-group" id="group-speaker">
-          <label style="display: flex; align-items: center; gap: 6px;">
-            <span class="material-symbols-outlined md-16" style="color: var(--accent-primary);">headphones</span>
-            Dispositivo de Saída (Alto-falante / Fone)
-          </label>
-          <select id="select-speaker">
-            <option value="">Carregando dispositivos de saída...</option>
-          </select>
-        </div>
-
-        <!-- Soundboard Section -->
-        <div style="border-top: 1px solid var(--border-color); padding-top: 14px; margin-top: 14px;">
-          <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 10px;">
-            <span style="font-size: 13px; font-weight: 700; color: var(--text-primary); text-transform: uppercase; letter-spacing: 0.5px; display: flex; align-items: center; gap: 6px;">
-              <span class="material-symbols-outlined md-16" style="color: var(--accent-primary);">music_note</span>
-              Soundboard (Sons de Áudio)
-            </span>
-          </div>
-
-          <div class="form-group" style="margin-bottom: 12px;">
-            <label>Pasta de Sons (MP3 / WAV / OGG)</label>
-            <div style="display: flex; gap: 8px; align-items: center;">
-              <input id="input-soundboard-path" type="text" readonly value="${settingsStore.soundboardFolderPath || ''}" placeholder="Nenhuma pasta selecionada..." style="flex: 1; font-size: 12px; cursor: pointer;">
-              <button type="button" id="btn-select-soundboard-folder" class="btn btn-secondary" style="font-size: 12px; padding: 6px 12px; white-space: nowrap;">
-                <span class="material-symbols-outlined md-14" style="margin-right: 4px;">folder_open</span>
-                Escolher Pasta
-              </button>
-            </div>
-            <div id="soundboard-folder-info" style="font-size: 11px; color: var(--text-muted); margin-top: 4px;">
-              ${settingsStore.soundboardFolderPath ? `${soundboardService.getSounds().length} sons encontrados nesta pasta.` : 'Formatos suportados: MP3, WAV, OGG, M4A, AAC, WEBM (máx. 3MB por arquivo).'}
-            </div>
-          </div>
-
-          <div class="form-group" style="margin-bottom: 12px;">
-            <label style="display: flex; align-items: center; justify-content: space-between;">
-              <span>Volume de Reprodução do Soundboard</span>
-              <span id="soundboard-vol-val" style="font-family: var(--font-mono); font-size: 12px;">${settingsStore.soundboardVolume}%</span>
-            </label>
-            <input id="slider-soundboard-vol" class="sb-slider" type="range" min="0" max="100" value="${settingsStore.soundboardVolume}" style="--slider-progress: ${settingsStore.soundboardVolume}%; width: 100%;">
-            <div style="font-size: 11px; color: var(--text-muted); margin-top: 2px;">
-              Ajusta o volume dos sons de soundboard tocados por você e por outros usuários na sala.
-            </div>
-          </div>
-
-          <div class="form-group" style="padding: 10px 12px; background: var(--bg-card); border: 1px solid var(--border-color); border-radius: var(--radius-md);">
-            <div style="display: flex; align-items: center; justify-content: space-between; gap: 12px;">
-              <div>
-                <label style="display: flex; align-items: center; gap: 6px; margin-bottom: 2px; cursor: pointer; font-weight: 600;" for="checkbox-soundboard-mute">
-                  <span class="material-symbols-outlined md-16" style="color: var(--accent-primary);">volume_off</span>
-                  Mutar Sons do Soundboard (apenas para você)
-                </label>
-                <div style="font-size: 11px; color: var(--text-muted);">
-                  Silencia os sons tocados no soundboard sem afetar a voz dos outros participantes.
+              <!-- Nickname & Profile -->
+              <div style="display: flex; gap: 16px; align-items: center; padding: 14px; background: var(--bg-card); border-radius: var(--radius-md); margin-bottom: 16px; border: 1px solid var(--border-color);">
+                <div id="settings-avatar-wrapper" class="settings-avatar-wrapper" title="Clique para alterar ou remover sua foto de perfil">
+                  <img id="settings-avatar-preview" class="settings-avatar-img" src="${serverStore.currentUser?.avatarUrl ? getAvatarUrl(serverStore.currentUser.avatarUrl) : (connectionStore.savedAvatarBase64 || getAvatarUrl(null))}" alt="Avatar">
+                  <div class="settings-avatar-overlay">
+                    <span class="material-symbols-outlined md-20">photo_camera</span>
+                  </div>
+                </div>
+                <div style="flex: 1;">
+                  <div class="form-group" style="margin-bottom: 0;">
+                    <label>Seu Nickname</label>
+                    <div style="display: flex; gap: 8px; margin-top: 6px;">
+                      <input id="settings-nickname-input" type="text" value="${serverStore.currentUser?.nickname || connectionStore.savedNickname || ''}" style="flex: 1;" maxlength="32">
+                      <button id="btn-save-nickname" class="btn btn-secondary" style="font-size: 12px; padding: 6px 12px;">Salvar</button>
+                    </div>
+                  </div>
                 </div>
               </div>
-              <input id="checkbox-soundboard-mute" type="checkbox" ${settingsStore.soundboardMuted ? 'checked' : ''} style="width: 18px; height: 18px; cursor: pointer; accent-color: var(--accent-primary);">
             </div>
-          </div>
-        </div>
 
-        <!-- Camera Inputs -->
-        <div class="form-group" id="group-camera" style="border-top: 1px solid var(--border-color); padding-top: 14px; margin-top: 14px;">
-          <label style="display: flex; align-items: center; gap: 6px;">
-            <span class="material-symbols-outlined md-16" style="color: var(--accent-primary);">videocam</span>
-            Câmera de Vídeo
-          </label>
-          <select id="select-cam">
-            <option value="">Carregando câmeras...</option>
-          </select>
-          <div style="margin-top: 8px;">
-            <button id="btn-toggle-cam-preview" class="btn btn-secondary" style="font-size: 12px; padding: 6px 12px;">
-              <span class="material-symbols-outlined md-16" style="margin-right: 4px;">visibility</span>
-              Testar / Pré-visualizar câmera
-            </button>
-          </div>
-          <video id="settings-cam-preview" class="settings-cam-preview" autoplay playsinline muted style="display: none;"></video>
-        </div>
+            <!-- Tab: voice_video -->
+            <div class="settings-tab-panel" id="tab-panel-voice_video" style="display: none;">
+              <!-- Device Header with Refresh Button -->
+              <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px;">
+                <span style="font-size: 13px; font-weight: 700; color: var(--text-primary); text-transform: uppercase; letter-spacing: 0.5px;">
+                  Dispositivos de Entrada e Saída
+                </span>
+                <button id="btn-refresh-devices" class="btn btn-secondary" style="font-size: 11px; padding: 3px 8px; height: 26px;" title="Buscar novos microfones e fones conectados">
+                  <span class="material-symbols-outlined md-14" style="margin-right: 4px;">refresh</span>
+                  Atualizar Lista
+                </button>
+              </div>
 
-        <!-- Screen Share -->
-        <div style="border-top: 1px solid var(--border-color); padding-top: 14px; margin-top: 14px;">
-          <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 10px;">
-            <span style="font-size: 13px; font-weight: 700; color: var(--text-primary); text-transform: uppercase; letter-spacing: 0.5px; display: flex; align-items: center; gap: 6px;">
-              <span class="material-symbols-outlined md-16" style="color: var(--accent-primary);">screen_share</span>
-              Compartilhamento de Tela
-            </span>
-          </div>
-
-          <div class="form-group" style="padding: 10px 12px; background: var(--bg-card); border: 1px solid var(--border-color); border-radius: var(--radius-md); margin-bottom: 12px;">
-            <div style="display: flex; align-items: center; justify-content: space-between; gap: 12px;">
-              <div>
-                <label style="display: flex; align-items: center; gap: 6px; margin-bottom: 2px; cursor: pointer; font-weight: 600;" for="checkbox-screen-telemetry">
-                  <span class="material-symbols-outlined md-16" style="color: var(--accent-primary);">monitoring</span>
-                  Exibir telemetria sobre a transmissão
+              <!-- Audio Inputs -->
+              <div class="form-group">
+                <label style="display: flex; align-items: center; gap: 6px;">
+                  <span class="material-symbols-outlined md-16" style="color: var(--accent-primary);">mic</span>
+                  Microfone
                 </label>
-                <div style="font-size: 11px; color: var(--text-muted);">
-                  Mostra FPS, resolução, bitrate e métricas extras diretamente sobre os vídeos de compartilhamento.
+                <select id="select-mic">
+                  <option value="">Carregando microfones...</option>
+                </select>
+              </div>
+
+              <div class="form-group">
+                <label style="display: flex; align-items: center; gap: 6px;">
+                  <span class="material-symbols-outlined md-16" style="color: var(--accent-primary);">tune</span>
+                  Sensibilidade de Voz (VAD)
+                </label>
+                <div style="display: flex; align-items: center; gap: 12px;">
+                  <input id="slider-vad" class="sb-slider" type="range" min="0" max="160" value="${settingsStore.vadSensitivity}" style="--slider-progress: ${(Math.min(160, Math.max(0, settingsStore.vadSensitivity)) / 160) * 100}%; flex: 1;">
+                </div>
+                <div id="vad-meter" class="vad-meter" title="Nível do seu microfone">
+                  <div id="vad-meter-fill" class="vad-meter-fill"></div>
+                  <div id="vad-meter-threshold" class="vad-meter-threshold"></div>
+                </div>
+                <div style="font-size: 11px; color: var(--text-muted); margin-top: 2px;">Fale para ver o nível. Ajuste o slider (linha) logo acima de onde o nível fica em silêncio. Valores menores ativam com sussurros; maiores evitam ruídos de fundo.</div>
+              </div>
+
+              <!-- RNNoise Noise Suppression -->
+              <div class="form-group" style="padding: 10px 12px; background: var(--bg-card); border: 1px solid var(--border-color); border-radius: var(--radius-md);">
+                <div style="display: flex; align-items: center; justify-content: space-between; gap: 12px;">
+                  <div>
+                    <label style="display: flex; align-items: center; gap: 6px; margin-bottom: 2px; cursor: pointer; font-weight: 600;" for="checkbox-rnnoise">
+                      <span class="material-symbols-outlined md-16" style="color: var(--accent-primary);">graphic_eq</span>
+                      Supressão de Ruído Inteligente (RNNoise)
+                    </label>
+                    <div style="font-size: 11px; color: var(--text-muted);">
+                      Utiliza Inteligência Artificial (Rede Neural) para remover ruídos de fundo como teclado mecânico, cliques, batidas e respiração.
+                    </div>
+                  </div>
+                  <input id="checkbox-rnnoise" type="checkbox" ${settingsStore.noiseSuppressionEnabled ? 'checked' : ''} style="width: 18px; height: 18px; cursor: pointer; accent-color: var(--accent-primary);">
                 </div>
               </div>
-              <input id="checkbox-screen-telemetry" type="checkbox" ${settingsStore.screenShareTelemetryEnabled ? 'checked' : ''} style="width: 18px; height: 18px; cursor: pointer; accent-color: var(--accent-primary);">
-            </div>
-          </div>
 
-          <div class="form-group" style="margin-bottom: 12px;">
-            <label for="select-screen-telemetry-position">Posição da Overlay</label>
-            <select id="select-screen-telemetry-position">
-              <option value="top-right" ${settingsStore.screenShareTelemetryPosition === 'top-right' ? 'selected' : ''}>Superior direita</option>
-              <option value="top-left" ${settingsStore.screenShareTelemetryPosition === 'top-left' ? 'selected' : ''}>Superior esquerda</option>
-              <option value="bottom-right" ${settingsStore.screenShareTelemetryPosition === 'bottom-right' ? 'selected' : ''}>Inferior direita</option>
-              <option value="bottom-left" ${settingsStore.screenShareTelemetryPosition === 'bottom-left' ? 'selected' : ''}>Inferior esquerda</option>
-            </select>
-          </div>
-
-          <div class="form-group" style="margin-bottom: 0;">
-            <label for="select-screen-telemetry-mode">Modo da Telemetria</label>
-            <select id="select-screen-telemetry-mode">
-              <option value="simple" ${settingsStore.screenShareTelemetryMode === 'simple' ? 'selected' : ''}>Simples — FPS, resolução e bitrate</option>
-              <option value="complete" ${settingsStore.screenShareTelemetryMode === 'complete' ? 'selected' : ''}>Completo — inclui codec e métricas avançadas</option>
-            </select>
-          </div>
-        </div>
-
-        <!-- Chat Notifications (#152/#153) -->
-        <div class="form-group" style="border-top: 1px solid var(--border-color); padding-top: 14px; margin-top: 10px;">
-          <label style="display: flex; align-items: center; gap: 6px;">
-            <span class="material-symbols-outlined md-16" style="color: var(--accent-primary);">chat</span>
-            Notificações de Chat
-          </label>
-          <div style="font-size: 11px; color: var(--text-muted); margin-top: 4px;">
-            Configuração geral (padrão). Cada servidor ou canal pode sobrescrever isto pelas Configurações do Servidor ou pelo menu do canal.
-          </div>
-          <div class="form-group" style="padding: 10px 12px; background: var(--bg-card); border: 1px solid var(--border-color); border-radius: var(--radius-md); margin-top: 8px; margin-bottom: 10px;">
-            <div style="display: flex; align-items: center; justify-content: space-between; gap: 12px;">
-              <div>
-                <label style="display: flex; align-items: center; gap: 6px; margin-bottom: 2px; cursor: pointer; font-weight: 600;" for="checkbox-chat-sound">
-                  <span class="material-symbols-outlined md-16" style="color: var(--accent-primary);">notifications_active</span>
-                  Tocar som ao receber mensagens
+              <!-- Audio Outputs -->
+              <div class="form-group" id="group-speaker">
+                <label style="display: flex; align-items: center; gap: 6px;">
+                  <span class="material-symbols-outlined md-16" style="color: var(--accent-primary);">headphones</span>
+                  Dispositivo de Saída (Alto-falante / Fone)
                 </label>
-                <div style="font-size: 11px; color: var(--text-muted);">
-                  Reproduz um breve som quando uma nova mensagem de outra pessoa chega em qualquer canal de texto.
+                <select id="select-speaker">
+                  <option value="">Carregando dispositivos de saída...</option>
+                </select>
+              </div>
+
+              <!-- Camera Inputs -->
+              <div class="form-group" id="group-camera" style="border-top: 1px solid var(--border-color); padding-top: 14px; margin-top: 14px;">
+                <label style="display: flex; align-items: center; gap: 6px;">
+                  <span class="material-symbols-outlined md-16" style="color: var(--accent-primary);">videocam</span>
+                  Câmera de Vídeo
+                </label>
+                <select id="select-cam">
+                  <option value="">Carregando câmeras...</option>
+                </select>
+                <div style="margin-top: 8px;">
+                  <button id="btn-toggle-cam-preview" class="btn btn-secondary" style="font-size: 12px; padding: 6px 12px;">
+                    <span class="material-symbols-outlined md-16" style="margin-right: 4px;">visibility</span>
+                    Testar / Pré-visualizar câmera
+                  </button>
+                </div>
+                <video id="settings-cam-preview" class="settings-cam-preview" autoplay playsinline muted style="display: none;"></video>
+              </div>
+
+              <!-- Screen Share -->
+              <div style="border-top: 1px solid var(--border-color); padding-top: 14px; margin-top: 14px;">
+                <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 10px;">
+                  <span style="font-size: 13px; font-weight: 700; color: var(--text-primary); text-transform: uppercase; letter-spacing: 0.5px; display: flex; align-items: center; gap: 6px;">
+                    <span class="material-symbols-outlined md-16" style="color: var(--accent-primary);">screen_share</span>
+                    Compartilhamento de Tela
+                  </span>
+                </div>
+
+                <div class="form-group" style="padding: 10px 12px; background: var(--bg-card); border: 1px solid var(--border-color); border-radius: var(--radius-md); margin-bottom: 12px;">
+                  <div style="display: flex; align-items: center; justify-content: space-between; gap: 12px;">
+                    <div>
+                      <label style="display: flex; align-items: center; gap: 6px; margin-bottom: 2px; cursor: pointer; font-weight: 600;" for="checkbox-screen-telemetry">
+                        <span class="material-symbols-outlined md-16" style="color: var(--accent-primary);">monitoring</span>
+                        Exibir telemetria sobre a transmissão
+                      </label>
+                      <div style="font-size: 11px; color: var(--text-muted);">
+                        Mostra FPS, resolução, bitrate e métricas extras diretamente sobre os vídeos de compartilhamento.
+                      </div>
+                    </div>
+                    <input id="checkbox-screen-telemetry" type="checkbox" ${settingsStore.screenShareTelemetryEnabled ? 'checked' : ''} style="width: 18px; height: 18px; cursor: pointer; accent-color: var(--accent-primary);">
+                  </div>
+                </div>
+
+                <div class="form-group" style="margin-bottom: 12px;">
+                  <label for="select-screen-telemetry-position">Posição da Overlay</label>
+                  <select id="select-screen-telemetry-position">
+                    <option value="top-right" ${settingsStore.screenShareTelemetryPosition === 'top-right' ? 'selected' : ''}>Superior direita</option>
+                    <option value="top-left" ${settingsStore.screenShareTelemetryPosition === 'top-left' ? 'selected' : ''}>Superior esquerda</option>
+                    <option value="bottom-right" ${settingsStore.screenShareTelemetryPosition === 'bottom-right' ? 'selected' : ''}>Inferior direita</option>
+                    <option value="bottom-left" ${settingsStore.screenShareTelemetryPosition === 'bottom-left' ? 'selected' : ''}>Inferior esquerda</option>
+                  </select>
+                </div>
+
+                <div class="form-group" style="margin-bottom: 0;">
+                  <label for="select-screen-telemetry-mode">Modo da Telemetria</label>
+                  <select id="select-screen-telemetry-mode">
+                    <option value="simple" ${settingsStore.screenShareTelemetryMode === 'simple' ? 'selected' : ''}>Simples — FPS, resolução e bitrate</option>
+                    <option value="complete" ${settingsStore.screenShareTelemetryMode === 'complete' ? 'selected' : ''}>Completo — inclui codec e métricas avançadas</option>
+                  </select>
                 </div>
               </div>
-              <input id="checkbox-chat-sound" type="checkbox" ${settingsStore.chatMessageSoundEnabled ? 'checked' : ''} style="width: 18px; height: 18px; cursor: pointer; accent-color: var(--accent-primary);">
             </div>
-          </div>
-          <div class="form-group" style="padding: 10px 12px; background: var(--bg-card); border: 1px solid var(--border-color); border-radius: var(--radius-md); margin-bottom: 0;">
-            <div style="display: flex; align-items: center; justify-content: space-between; gap: 12px;">
-              <div>
-                <label style="display: flex; align-items: center; gap: 6px; margin-bottom: 2px; cursor: pointer; font-weight: 600;" for="checkbox-chat-sound-mentions">
-                  <span class="material-symbols-outlined md-16" style="color: var(--accent-primary);">alternate_email</span>
-                  Apenas quando eu for mencionado
-                </label>
-                <div style="font-size: 11px; color: var(--text-muted);">
-                  Toca o som somente quando seu apelido for citado na mensagem (ex.: @seu_apelido).
+
+            <!-- Tab: soundboard -->
+            <div class="settings-tab-panel" id="tab-panel-soundboard" style="display: none;">
+              <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px;">
+                <span style="font-size: 13px; font-weight: 700; color: var(--text-primary); text-transform: uppercase; letter-spacing: 0.5px; display: flex; align-items: center; gap: 6px;">
+                  <span class="material-symbols-outlined md-16" style="color: var(--accent-primary);">music_note</span>
+                  Soundboard (Sons de Áudio)
+                </span>
+              </div>
+
+              <div class="form-group" style="margin-bottom: 12px;">
+                <label>Pasta de Sons (MP3 / WAV / OGG)</label>
+                <div style="display: flex; gap: 8px; align-items: center;">
+                  <input id="input-soundboard-path" type="text" readonly value="${settingsStore.soundboardFolderPath || ''}" placeholder="Nenhuma pasta selecionada..." style="flex: 1; font-size: 12px; cursor: pointer;">
+                  <button type="button" id="btn-select-soundboard-folder" class="btn btn-secondary" style="font-size: 12px; padding: 6px 12px; white-space: nowrap;">
+                    <span class="material-symbols-outlined md-14" style="margin-right: 4px;">folder_open</span>
+                    Escolher Pasta
+                  </button>
+                </div>
+                <div id="soundboard-folder-info" style="font-size: 11px; color: var(--text-muted); margin-top: 4px;">
+                  ${settingsStore.soundboardFolderPath ? `${soundboardService.getSounds().length} sons encontrados nesta pasta.` : 'Formatos suportados: MP3, WAV, OGG, M4A, AAC, WEBM (máx. 3MB por arquivo).'}
                 </div>
               </div>
-              <input id="checkbox-chat-sound-mentions" type="checkbox" ${settingsStore.chatMessageSoundMentionsOnly ? 'checked' : ''} style="width: 18px; height: 18px; cursor: pointer; accent-color: var(--accent-primary);">
-            </div>
-          </div>
-        </div>
 
-        <!-- Quality Preset -->
-        <div class="form-group" style="border-top: 1px solid var(--border-color); padding-top: 14px; margin-top: 10px;">
-          <label style="display: flex; align-items: center; gap: 6px;">
-            <span class="material-symbols-outlined md-16" style="color: var(--accent-primary);">speed</span>
-            Perfil de Qualidade e Desempenho
-            <span class="material-symbols-outlined md-16" style="color: var(--text-muted); cursor: help;" title="Afeta APENAS o que você transmite (sua voz, câmera e tela). A qualidade do que você recebe depende da configuração de cada pessoa. Perfis mais altos usam mais internet e CPU.">help</span>
-          </label>
-          <select id="select-preset">
-            <option value="ECONOMIC" ${settingsStore.qualityPreset === 'ECONOMIC' ? 'selected' : ''}>Econômico — para internet lenta (menor resolução, prioriza estabilidade)</option>
-            <option value="NORMAL" ${settingsStore.qualityPreset === 'NORMAL' ? 'selected' : ''}>Normal (recomendado) — bom equilíbrio entre qualidade e banda</option>
-            <option value="HIGH" ${settingsStore.qualityPreset === 'HIGH' ? 'selected' : ''}>Alta Qualidade — para internet rápida (mais nitidez, usa mais banda e CPU)</option>
-            <option value="GAMING" ${settingsStore.qualityPreset === 'GAMING' ? 'selected' : ''}>Gaming — tela fluida em 60 FPS para jogos (reduz a câmera)</option>
-            <option value="CUSTOM" ${settingsStore.qualityPreset === 'CUSTOM' ? 'selected' : ''}>Personalizado — defina seus próprios valores</option>
-          </select>
-          <div id="preset-details" style="margin-top: 8px; padding: 10px 12px; background: rgba(255,255,255,0.03); border: 1px solid var(--border-color); border-radius: var(--radius-md);">
-            ${this.getPresetDetailsHtml(settingsStore.qualityPreset)}
-          </div>
-          <small style="display: block; margin-top: 6px; color: var(--text-muted); font-size: 11px;">
-            Afeta apenas o que <strong>você transmite</strong>. A qualidade que você recebe depende de cada pessoa.
-          </small>
-        </div>
-
-        <!-- Custom Sounds (#7) -->
-        <div class="form-group" style="border-top: 1px solid var(--border-color); padding-top: 14px; margin-top: 10px;">
-          <label style="display: flex; align-items: center; gap: 6px;">
-            <span class="material-symbols-outlined md-16" style="color: var(--accent-primary);">music_note</span>
-            Sons Personalizados
-          </label>
-          <div id="custom-sounds-list" style="display: flex; flex-direction: column; gap: 6px; margin-top: 6px;">
-            ${this.getCustomSoundsHtml()}
-          </div>
-          <button id="btn-reset-all-sounds" class="btn btn-secondary" style="margin-top: 8px; font-size: 11px; padding: 4px 10px;">
-            <span class="material-symbols-outlined md-14" style="margin-right: 4px;">restart_alt</span>
-            Restaurar todos ao padrão
-          </button>
-        </div>
-
-        <!-- Updates -->
-        <div class="form-group" style="border-top: 1px solid var(--border-color); padding-top: 14px; margin-top: 10px;">
-          <label style="display: flex; align-items: center; gap: 6px;">
-            <span class="material-symbols-outlined md-16" style="color: var(--accent-primary);">system_update</span>
-            Atualizações
-          </label>
-          <div style="display: flex; align-items: center; justify-content: space-between; gap: 12px;">
-            <div style="flex: 1;">
-              <div style="font-size: 12px; color: var(--text-secondary);">
-                Versão atual: <span id="settings-app-version" style="font-family: var(--font-mono);">…</span>
+              <div class="form-group" style="margin-bottom: 12px;">
+                <label style="display: flex; align-items: center; justify-content: space-between;">
+                  <span>Volume de Reprodução do Soundboard</span>
+                  <span id="soundboard-vol-val" style="font-family: var(--font-mono); font-size: 12px;">${settingsStore.soundboardVolume}%</span>
+                </label>
+                <input id="slider-soundboard-vol" class="sb-slider" type="range" min="0" max="100" value="${settingsStore.soundboardVolume}" style="--slider-progress: ${settingsStore.soundboardVolume}%; width: 100%;">
+                <div style="font-size: 11px; color: var(--text-muted); margin-top: 2px;">
+                  Ajusta o volume dos sons de soundboard tocados por você e por outros usuários na sala.
+                </div>
               </div>
-              <div id="settings-update-status" style="font-size: 11px; color: var(--text-muted); margin-top: 2px;"></div>
-            </div>
-            <button id="btn-check-updates" class="btn btn-secondary" style="font-size: 12px; padding: 6px 12px;">
-              <span class="material-symbols-outlined md-16" style="margin-right: 4px;">refresh</span>
-              Verificar atualizações
-            </button>
-          </div>
-          <div style="display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-top: 12px; padding-top: 12px; border-top: 1px dashed var(--border-color);">
-            <div>
-              <label style="display: flex; align-items: center; gap: 6px; margin-bottom: 2px; cursor: pointer; font-weight: 600;" for="checkbox-update-beta">
-                <span class="material-symbols-outlined md-16" style="color: var(--accent-primary);">science</span>
-                Receber versões beta
-              </label>
-              <div style="font-size: 11px; color: var(--text-muted);">
-                Recebe versões de teste (pré-lançamento) antes de virarem estáveis. Pode conter instabilidades.
+
+              <div class="form-group" style="padding: 10px 12px; background: var(--bg-card); border: 1px solid var(--border-color); border-radius: var(--radius-md);">
+                <div style="display: flex; align-items: center; justify-content: space-between; gap: 12px;">
+                  <div>
+                    <label style="display: flex; align-items: center; gap: 6px; margin-bottom: 2px; cursor: pointer; font-weight: 600;" for="checkbox-soundboard-mute">
+                      <span class="material-symbols-outlined md-16" style="color: var(--accent-primary);">volume_off</span>
+                      Mutar Sons do Soundboard (apenas para você)
+                    </label>
+                    <div style="font-size: 11px; color: var(--text-muted);">
+                      Silencia os sons tocados no soundboard sem afetar a voz dos outros participantes.
+                    </div>
+                  </div>
+                  <input id="checkbox-soundboard-mute" type="checkbox" ${settingsStore.soundboardMuted ? 'checked' : ''} style="width: 18px; height: 18px; cursor: pointer; accent-color: var(--accent-primary);">
+                </div>
               </div>
             </div>
-            <input id="checkbox-update-beta" type="checkbox" ${settingsStore.updateBetaChannel ? 'checked' : ''} style="width: 18px; height: 18px; cursor: pointer; accent-color: var(--accent-primary);">
-          </div>
-        </div>
 
-        <!-- Community -->
-        <div class="form-group" style="border-top: 1px solid var(--border-color); padding-top: 14px; margin-top: 10px;">
-          <label style="display: flex; align-items: center; gap: 6px;">
-            <span class="material-symbols-outlined md-16" style="color: var(--accent-primary);">forum</span>
-            Comunidade
-          </label>
-          <small style="display: block; margin-bottom: 8px; color: var(--text-muted); font-size: 11px;">
-            O Mini Voice é open source. As ideias mais votadas pela comunidade viram as próximas features.
-          </small>
-          <div style="display: flex; gap: 8px; flex-wrap: wrap;">
-            <button id="btn-suggest-idea" class="btn btn-secondary" style="font-size: 12px; padding: 6px 12px;">
-              <span class="material-symbols-outlined md-16" style="margin-right: 4px;">lightbulb</span>
-              Sugerir uma ideia
-            </button>
-            <button id="btn-vote-ideas" class="btn btn-secondary" style="font-size: 12px; padding: 6px 12px;">
-              <span class="material-symbols-outlined md-16" style="margin-right: 4px;">how_to_vote</span>
-              Votar nas ideias
-            </button>
-            <button id="btn-report-bug" class="btn btn-secondary" style="font-size: 12px; padding: 6px 12px;">
-              <span class="material-symbols-outlined md-16" style="margin-right: 4px;">bug_report</span>
-              Reportar um bug
-            </button>
-          </div>
-        </div>
+            <!-- Tab: notifications -->
+            <div class="settings-tab-panel" id="tab-panel-notifications" style="display: none;">
+              <!-- Chat Notifications -->
+              <div class="form-group" style="margin-bottom: 16px;">
+                <label style="display: flex; align-items: center; gap: 6px;">
+                  <span class="material-symbols-outlined md-16" style="color: var(--accent-primary);">chat</span>
+                  Notificações de Chat
+                </label>
+                <div style="font-size: 11px; color: var(--text-muted); margin-top: 4px;">
+                  Configuração geral (padrão). Cada servidor ou canal pode sobrescrever isto pelas Configurações do Servidor ou pelo menu do canal.
+                </div>
+                <div class="form-group" style="padding: 10px 12px; background: var(--bg-card); border: 1px solid var(--border-color); border-radius: var(--radius-md); margin-top: 8px; margin-bottom: 10px;">
+                  <div style="display: flex; align-items: center; justify-content: space-between; gap: 12px;">
+                    <div>
+                      <label style="display: flex; align-items: center; gap: 6px; margin-bottom: 2px; cursor: pointer; font-weight: 600;" for="checkbox-chat-sound">
+                        <span class="material-symbols-outlined md-16" style="color: var(--accent-primary);">notifications_active</span>
+                        Tocar som ao receber mensagens
+                      </label>
+                      <div style="font-size: 11px; color: var(--text-muted);">
+                        Reproduz um breve som quando uma nova mensagem de outra pessoa chega em qualquer canal de texto.
+                      </div>
+                    </div>
+                    <input id="checkbox-chat-sound" type="checkbox" ${settingsStore.chatMessageSoundEnabled ? 'checked' : ''} style="width: 18px; height: 18px; cursor: pointer; accent-color: var(--accent-primary);">
+                  </div>
+                </div>
+                <div class="form-group" style="padding: 10px 12px; background: var(--bg-card); border: 1px solid var(--border-color); border-radius: var(--radius-md); margin-bottom: 0;">
+                  <div style="display: flex; align-items: center; justify-content: space-between; gap: 12px;">
+                    <div>
+                      <label style="display: flex; align-items: center; gap: 6px; margin-bottom: 2px; cursor: pointer; font-weight: 600;" for="checkbox-chat-sound-mentions">
+                        <span class="material-symbols-outlined md-16" style="color: var(--accent-primary);">alternate_email</span>
+                        Apenas quando eu for mencionado
+                      </label>
+                      <div style="font-size: 11px; color: var(--text-muted);">
+                        Toca o som somente quando seu apelido for citado na mensagem (ex.: @seu_apelido).
+                      </div>
+                    </div>
+                    <input id="checkbox-chat-sound-mentions" type="checkbox" ${settingsStore.chatMessageSoundMentionsOnly ? 'checked' : ''} style="width: 18px; height: 18px; cursor: pointer; accent-color: var(--accent-primary);">
+                  </div>
+                </div>
+              </div>
 
-        <div class="modal-footer" style="margin-top: 20px;">
-          <button id="btn-settings-close" class="btn btn-primary">Pronto</button>
+              <!-- Custom Sounds -->
+              <div class="form-group" style="border-top: 1px solid var(--border-color); padding-top: 14px;">
+                <label style="display: flex; align-items: center; gap: 6px;">
+                  <span class="material-symbols-outlined md-16" style="color: var(--accent-primary);">music_note</span>
+                  Sons Personalizados do Sistema
+                </label>
+                <div id="custom-sounds-list" style="display: flex; flex-direction: column; gap: 6px; margin-top: 6px;">
+                  ${this.getCustomSoundsHtml()}
+                </div>
+                <button id="btn-reset-all-sounds" class="btn btn-secondary" style="margin-top: 8px; font-size: 11px; padding: 4px 10px;">
+                  <span class="material-symbols-outlined md-14" style="margin-right: 4px;">restart_alt</span>
+                  Restaurar todos ao padrão
+                </button>
+              </div>
+            </div>
+
+            <!-- Tab: quality -->
+            <div class="settings-tab-panel" id="tab-panel-quality" style="display: none;">
+              <!-- Quality Preset -->
+              <div class="form-group">
+                <label style="display: flex; align-items: center; gap: 6px;">
+                  <span class="material-symbols-outlined md-16" style="color: var(--accent-primary);">speed</span>
+                  Perfil de Qualidade e Desempenho
+                  <span class="material-symbols-outlined md-16" style="color: var(--text-muted); cursor: help;" title="Afeta APENAS o que você transmite (sua voz, câmera e tela). A qualidade do que você recebe depende da configuração de cada pessoa. Perfis mais altos usam mais internet e CPU.">help</span>
+                </label>
+                <select id="select-preset">
+                  <option value="ECONOMIC" ${settingsStore.qualityPreset === 'ECONOMIC' ? 'selected' : ''}>Econômico — para internet lenta (menor resolução, prioriza estabilidade)</option>
+                  <option value="NORMAL" ${settingsStore.qualityPreset === 'NORMAL' ? 'selected' : ''}>Normal (recomendado) — bom equilíbrio entre qualidade e banda</option>
+                  <option value="HIGH" ${settingsStore.qualityPreset === 'HIGH' ? 'selected' : ''}>Alta Qualidade — para internet rápida (mais nitidez, usa mais banda e CPU)</option>
+                  <option value="GAMING" ${settingsStore.qualityPreset === 'GAMING' ? 'selected' : ''}>Gaming — tela fluida em 60 FPS para jogos (reduz a câmera)</option>
+                  <option value="CUSTOM" ${settingsStore.qualityPreset === 'CUSTOM' ? 'selected' : ''}>Personalizado — defina seus próprios valores</option>
+                </select>
+                <div id="preset-details" style="margin-top: 8px; padding: 10px 12px; background: rgba(255,255,255,0.03); border: 1px solid var(--border-color); border-radius: var(--radius-md);">
+                  ${this.getPresetDetailsHtml(settingsStore.qualityPreset)}
+                </div>
+                <small style="display: block; margin-top: 6px; color: var(--text-muted); font-size: 11px;">
+                  Afeta apenas o que <strong>você transmite</strong>. A qualidade que você recebe depende de cada pessoa.
+                </small>
+              </div>
+            </div>
+
+            <!-- Tab: about -->
+            <div class="settings-tab-panel" id="tab-panel-about" style="display: none;">
+              <!-- Updates -->
+              <div class="form-group" style="margin-bottom: 16px;">
+                <label style="display: flex; align-items: center; gap: 6px;">
+                  <span class="material-symbols-outlined md-16" style="color: var(--accent-primary);">system_update</span>
+                  Atualizações
+                </label>
+                <div style="display: flex; align-items: center; justify-content: space-between; gap: 12px;">
+                  <div style="flex: 1;">
+                    <div style="font-size: 12px; color: var(--text-secondary);">
+                      Versão atual: <span id="settings-app-version" style="font-family: var(--font-mono);">…</span>
+                    </div>
+                    <div id="settings-update-status" style="font-size: 11px; color: var(--text-muted); margin-top: 2px;"></div>
+                  </div>
+                  <button id="btn-check-updates" class="btn btn-secondary" style="font-size: 12px; padding: 6px 12px;">
+                    <span class="material-symbols-outlined md-16" style="margin-right: 4px;">refresh</span>
+                    Verificar atualizações
+                  </button>
+                </div>
+                <div style="display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-top: 12px; padding-top: 12px; border-top: 1px dashed var(--border-color);">
+                  <div>
+                    <label style="display: flex; align-items: center; gap: 6px; margin-bottom: 2px; cursor: pointer; font-weight: 600;" for="checkbox-update-beta">
+                      <span class="material-symbols-outlined md-16" style="color: var(--accent-primary);">science</span>
+                      Receber versões beta
+                    </label>
+                    <div style="font-size: 11px; color: var(--text-muted);">
+                      Recebe versões de teste (pré-lançamento) antes de virarem estáveis. Pode conter instabilidades.
+                    </div>
+                  </div>
+                  <input id="checkbox-update-beta" type="checkbox" ${settingsStore.updateBetaChannel ? 'checked' : ''} style="width: 18px; height: 18px; cursor: pointer; accent-color: var(--accent-primary);">
+                </div>
+              </div>
+
+              <!-- Community -->
+              <div class="form-group" style="border-top: 1px solid var(--border-color); padding-top: 14px;">
+                <label style="display: flex; align-items: center; gap: 6px;">
+                  <span class="material-symbols-outlined md-16" style="color: var(--accent-primary);">forum</span>
+                  Comunidade
+                </label>
+                <small style="display: block; margin-bottom: 8px; color: var(--text-muted); font-size: 11px;">
+                  O Mini Voice é open source. As ideias mais votadas pela comunidade viram as próximas features.
+                </small>
+                <div style="display: flex; gap: 8px; flex-wrap: wrap;">
+                  <button id="btn-suggest-idea" class="btn btn-secondary" style="font-size: 12px; padding: 6px 12px;">
+                    <span class="material-symbols-outlined md-16" style="margin-right: 4px;">lightbulb</span>
+                    Sugerir uma ideia
+                  </button>
+                  <button id="btn-vote-ideas" class="btn btn-secondary" style="font-size: 12px; padding: 6px 12px;">
+                    <span class="material-symbols-outlined md-16" style="margin-right: 4px;">how_to_vote</span>
+                    Votar nas ideias
+                  </button>
+                  <button id="btn-report-bug" class="btn btn-secondary" style="font-size: 12px; padding: 6px 12px;">
+                    <span class="material-symbols-outlined md-16" style="margin-right: 4px;">bug_report</span>
+                    Reportar um bug
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Footer -->
+          <div class="modal-footer" style="padding: 12px 24px; border-top: 1px solid var(--border-color); margin: 0; background: var(--bg-secondary);">
+            <button id="btn-settings-close" class="btn btn-primary">Pronto</button>
+          </div>
         </div>
       </div>
     `;
@@ -661,6 +719,45 @@ export class SettingsModal {
 
   private attachEvents(): void {
     if (!this.modalEl) return;
+
+    // Tab switching navigation (#163)
+    const tabButtons = this.modalEl.querySelectorAll('.settings-tab-btn');
+    const tabPanels = this.modalEl.querySelectorAll('.settings-tab-panel');
+    const tabTitleEl = this.modalEl.querySelector('#settings-current-tab-title');
+
+    const tabTitles: Record<string, { icon: string; label: string }> = {
+      account: { icon: 'person', label: 'Meu Perfil' },
+      voice_video: { icon: 'mic', label: 'Voz e Vídeo' },
+      soundboard: { icon: 'music_note', label: 'Soundboard' },
+      notifications: { icon: 'notifications', label: 'Notificações e Sons' },
+      quality: { icon: 'speed', label: 'Qualidade e Desempenho' },
+      about: { icon: 'info', label: 'Sobre e Atualizações' },
+    };
+
+    tabButtons.forEach((btn) => {
+      btn.addEventListener('click', () => {
+        const tabKey = btn.getAttribute('data-tab');
+        if (!tabKey) return;
+
+        tabButtons.forEach((b) => b.classList.remove('active'));
+        btn.classList.add('active');
+
+        tabPanels.forEach((panel) => {
+          if (panel.id === `tab-panel-${tabKey}`) {
+            (panel as HTMLElement).style.display = 'block';
+          } else {
+            (panel as HTMLElement).style.display = 'none';
+          }
+        });
+
+        if (tabTitleEl && tabTitles[tabKey]) {
+          tabTitleEl.innerHTML = `
+            <span class="material-symbols-outlined" style="color: var(--accent-primary);">${tabTitles[tabKey].icon}</span>
+            <span>${tabTitles[tabKey].label}</span>
+          `;
+        }
+      });
+    });
 
     const btnClose = this.modalEl.querySelector('#modal-close');
     const btnDone = this.modalEl.querySelector('#btn-settings-close');
