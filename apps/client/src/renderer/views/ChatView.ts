@@ -32,6 +32,8 @@ interface LightboxMedia {
   kind: 'image' | 'video';
   url: string;
   fileName: string;
+  senderName: string;
+  timestamp: string;
   source: HTMLElement;
 }
 
@@ -74,8 +76,8 @@ export class ChatView {
     networkClient.send(MessageType.CHAT_MENTIONS_READ, { channelId });
     this.render();
     this.loadHistory();
-    // Auto-focus the message input when opening a channel (#181).
-    (document.getElementById('chat-message-input') as HTMLElement | null)?.focus();
+    // Auto-focus the message input after the fresh DOM has settled (#181).
+    this.focusChatInput({ defer: true });
   }
 
   public render(): void {
@@ -242,6 +244,34 @@ export class ChatView {
     return `${date} ${time}`;
   }
 
+  private focusChatInput(options?: { defer?: boolean }): void {
+    const applyFocus = () => {
+      const input = document.getElementById('chat-message-input') as HTMLTextAreaElement | null;
+      if (!input || input.disabled) return;
+      input.focus({ preventScroll: true });
+      const caret = input.value.length;
+      input.setSelectionRange(caret, caret);
+    };
+
+    if (options?.defer) {
+      requestAnimationFrame(() => requestAnimationFrame(applyFocus));
+      return;
+    }
+
+    applyFocus();
+  }
+
+  private isEditableTarget(target: EventTarget | null): boolean {
+    const el =
+      target instanceof HTMLElement
+        ? target
+        : target instanceof Node
+          ? target.parentElement
+          : null;
+    if (!el) return false;
+    return !!el.closest('textarea, input, [contenteditable]:not([contenteditable="false"])');
+  }
+
   private isUserMentioned(content: string, currentNickname: string): boolean {
     if (!content || !currentNickname) return false;
     const escaped = currentNickname.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
@@ -276,7 +306,7 @@ export class ChatView {
       m.content && m.content.trim().length > 0
         ? `<div class="chat-message-text">${renderMarkdown(m.content, { currentNickname, knownNicknames })}</div>`
         : '';
-    const attachmentsHtml = this.renderAttachments(m.attachments);
+    const attachmentsHtml = this.renderAttachments(m.attachments, m);
     const rowClass = `chat-message-row${isMentioned ? ' chat-message-mentioned' : ''}`;
 
     return `
@@ -296,13 +326,13 @@ export class ChatView {
   }
 
   /** Renders the attachment grid below a message body (#11). */
-  private renderAttachments(attachments?: AttachmentMeta[]): string {
+  private renderAttachments(attachments?: AttachmentMeta[], message?: ChatMessage): string {
     if (!attachments || attachments.length === 0) return '';
-    const items = attachments.map((a) => this.renderAttachment(a)).join('');
+    const items = attachments.map((a) => this.renderAttachment(a, message)).join('');
     return `<div class="chat-attachments">${items}</div>`;
   }
 
-  private renderAttachment(a: AttachmentMeta): string {
+  private renderAttachment(a: AttachmentMeta, message?: ChatMessage): string {
     // FIFO eviction removed the binary: show a placeholder instead of a broken link.
     if (!a.url) {
       return `
@@ -315,39 +345,60 @@ export class ChatView {
 
     const src = getAttachmentUrl(a.url);
     const name = escapeHtml(a.originalName);
+    const senderName = escapeHtml(message?.userNickname || '');
+    const sentAt = escapeHtml(message ? this.formatDateTime(message.createdAt) : '');
+    const lightboxMeta = `
+      data-lightbox-sender="${senderName}"
+      data-lightbox-timestamp="${sentAt}"
+    `;
+    const inlineActions = `
+      <div class="chat-inline-media-actions">
+        <button
+          type="button"
+          class="chat-attachment-action chat-attachment-lightbox-trigger"
+          title="${t('chat.openMediaViewer')}"
+        >
+          <span class="material-symbols-outlined md-18">open_in_full</span>
+        </button>
+        <button
+          type="button"
+          class="chat-attachment-action chat-attachment-download"
+          data-download-url="${src}"
+          data-file-name="${name}"
+          title="${t('common.download')}"
+        >
+          <span class="material-symbols-outlined md-18">download</span>
+        </button>
+      </div>
+    `;
 
     if (a.kind === 'image') {
-      return `<img class="chat-attachment-image" src="${src}" alt="${name}" title="${name}" data-lightbox-kind="image" data-lightbox-url="${src}" data-lightbox-name="${name}" loading="lazy">`;
+      return `
+        <div
+          class="chat-inline-media chat-inline-media--image"
+          data-lightbox-kind="image"
+          data-lightbox-url="${src}"
+          data-lightbox-name="${name}"
+          ${lightboxMeta}
+        >
+          <img class="chat-attachment-image" src="${src}" alt="${name}" title="${name}" loading="lazy">
+          ${inlineActions}
+        </div>
+      `;
     }
 
     if (a.kind === 'video') {
       return `
         <div
-          class="chat-attachment-video-wrap"
+          class="chat-attachment-video-wrap chat-inline-media chat-inline-media--video"
           data-lightbox-kind="video"
           data-lightbox-url="${src}"
           data-lightbox-name="${name}"
+          ${lightboxMeta}
         >
           <div class="chat-video-player">
             <video class="chat-attachment-video" preload="metadata" src="${src}" playsinline></video>
-            <div class="chat-video-top-actions">
-              <button
-                type="button"
-                class="chat-attachment-action chat-attachment-lightbox-trigger"
-                title="${t('chat.openMediaViewer')}"
-              >
-                <span class="material-symbols-outlined md-18">open_in_full</span>
-              </button>
-              <button
-                type="button"
-                class="chat-attachment-action chat-attachment-download chat-attachment-video-download"
-                data-download-url="${src}"
-                data-file-name="${name}"
-                title="${t('common.download')}"
-              >
-                <span class="material-symbols-outlined md-18">download</span>
-              </button>
-            </div>
+            ${inlineActions}
           </div>
         </div>
       `;
@@ -564,8 +615,11 @@ export class ChatView {
   }
 
   private bindMediaInteractions(feed: HTMLElement): void {
-    feed.querySelectorAll('.chat-attachment-image').forEach((img) => {
-      img.addEventListener('click', () => this.openLightboxFromSource(img as HTMLElement));
+    feed.querySelectorAll('.chat-inline-media[data-lightbox-kind="image"] .chat-attachment-image').forEach((img) => {
+      img.addEventListener('click', () => {
+        const source = (img as HTMLElement).closest('[data-lightbox-kind]') as HTMLElement | null;
+        if (source) this.openLightboxFromSource(source);
+      });
     });
 
     feed.querySelectorAll('.chat-attachment-lightbox-trigger').forEach((button) => {
@@ -618,10 +672,7 @@ export class ChatView {
       const controls = document.createElement('div');
       controls.className = 'chat-video-controls';
       controls.innerHTML = `
-        <button type="button" class="chat-video-control-btn" data-action="play" title="${t('common.play')}">
-          <span class="material-symbols-outlined md-20">play_arrow</span>
-        </button>
-        <div class="chat-video-progress-group">
+        <div class="chat-video-progress-shell">
           <input
             type="range"
             class="chat-video-progress"
@@ -633,23 +684,32 @@ export class ChatView {
             title="${t('chat.videoSeek')}"
           >
         </div>
-        <div class="chat-video-time">00:00 / --:--</div>
-        <button type="button" class="chat-video-control-btn" data-action="mute" title="${t('common.mute')}">
-          <span class="material-symbols-outlined md-20">volume_up</span>
-        </button>
-        <input
-          type="range"
-          class="chat-video-volume"
-          min="0"
-          max="1"
-          step="0.05"
-          value="${video.volume || 0.8}"
-          aria-label="${t('chat.videoVolume')}"
-          title="${t('chat.videoVolume')}"
-        >
-        <button type="button" class="chat-video-control-btn" data-action="fullscreen" title="${t('common.fullscreen')}">
-          <span class="material-symbols-outlined md-20">fullscreen</span>
-        </button>
+        <div class="chat-video-controls-row">
+          <button type="button" class="chat-video-control-btn" data-action="play" title="${t('common.play')}">
+            <span class="material-symbols-outlined md-20">play_arrow</span>
+          </button>
+          <div class="stage-volume-wrapper chat-video-volume-wrapper">
+            <div class="stage-volume-popup chat-video-volume-popup">
+              <input
+                type="range"
+                class="chat-video-volume"
+                min="0"
+                max="1"
+                step="0.05"
+                value="${video.volume || 0.8}"
+                aria-label="${t('chat.videoVolume')}"
+                title="${t('chat.videoVolume')}"
+              >
+            </div>
+            <button type="button" class="chat-video-control-btn stage-volume-btn" data-action="mute" title="${t('common.mute')}">
+              <span class="material-symbols-outlined md-20">volume_up</span>
+            </button>
+          </div>
+          <div class="chat-video-time">00:00 / --:--</div>
+          <button type="button" class="chat-video-control-btn" data-action="fullscreen" title="${t('common.fullscreen')}">
+            <span class="material-symbols-outlined md-20">fullscreen</span>
+          </button>
+        </div>
       `;
 
       player.append(bigPlay, controls);
@@ -662,6 +722,7 @@ export class ChatView {
       const fullscreenIcon = fullscreenButton?.querySelector('.material-symbols-outlined') as HTMLElement | null;
       const progress = controls.querySelector('.chat-video-progress') as HTMLInputElement | null;
       const volume = controls.querySelector('.chat-video-volume') as HTMLInputElement | null;
+      const volumeWrapper = controls.querySelector('.chat-video-volume-wrapper') as HTMLElement | null;
       const timeDisplay = controls.querySelector('.chat-video-time') as HTMLElement | null;
       let lastVolume = video.volume || 0.8;
 
@@ -730,6 +791,7 @@ export class ChatView {
       player.querySelectorAll('.chat-attachment-action').forEach((button) => {
         button.addEventListener('click', (e) => e.stopPropagation());
       });
+      controls.addEventListener('pointerdown', (e) => e.stopPropagation());
       controls.addEventListener('click', (e) => e.stopPropagation());
       controls.addEventListener('dblclick', (e) => e.stopPropagation());
       playButton?.addEventListener('click', (e) => {
@@ -785,6 +847,13 @@ export class ChatView {
         syncRangeFill(target, nextVolume);
         updateVolumeState();
       });
+      volume?.addEventListener('pointerdown', (e) => {
+        volumeWrapper?.classList.add('dragging');
+        try { volume.setPointerCapture((e as PointerEvent).pointerId); } catch { /* ignore */ }
+      });
+      const endVolumeDrag = () => volumeWrapper?.classList.remove('dragging');
+      volume?.addEventListener('pointerup', endVolumeDrag);
+      volume?.addEventListener('lostpointercapture', endVolumeDrag);
 
       fullscreenButton?.addEventListener('click', async (e) => {
         e.preventDefault();
@@ -826,8 +895,10 @@ export class ChatView {
         const kind = node.getAttribute('data-lightbox-kind');
         const url = node.getAttribute('data-lightbox-url');
         const fileName = node.getAttribute('data-lightbox-name') || 'attachment';
+        const senderName = node.getAttribute('data-lightbox-sender') || '';
+        const timestamp = node.getAttribute('data-lightbox-timestamp') || '';
         if ((kind === 'image' || kind === 'video') && url) {
-          return { kind, url, fileName, source: node } as LightboxMedia;
+          return { kind, url, fileName, senderName, timestamp, source: node } as LightboxMedia;
         }
         return null;
       })
@@ -855,6 +926,8 @@ export class ChatView {
     this.unbindEvents = [];
 
     const input = document.getElementById('chat-message-input') as HTMLTextAreaElement;
+    const inputContainer = this.container.querySelector('.chat-input-container') as HTMLElement | null;
+    const inputWrapper = this.container.querySelector('.chat-input-wrapper') as HTMLElement | null;
     const charCounter = document.getElementById('chat-char-counter');
     const btnSend = document.getElementById('btn-send-message');
     const canSendMessages = serverStore.hasPermission(Permission.SEND_MESSAGES);
@@ -865,6 +938,17 @@ export class ChatView {
       input.style.height = 'auto';
       input.style.height = `${Math.min(input.scrollHeight, 120)}px`;
     };
+
+    const focusFromInputShell = (e: MouseEvent) => {
+      const target = e.target as HTMLElement | null;
+      if (!input || input.disabled) return;
+      if (!target || target === input) return;
+      if (target.closest('button, input, .mention-dropup, #chat-attachment-tray')) return;
+      e.preventDefault();
+      this.focusChatInput();
+    };
+    inputContainer?.addEventListener('mousedown', focusFromInputShell);
+    inputWrapper?.addEventListener('mousedown', focusFromInputShell);
 
     input?.addEventListener('input', () => {
       if (charCounter) {
@@ -932,8 +1016,9 @@ export class ChatView {
     // text channel is open (#181).
     const onGlobalPaste = (e: Event) => {
       const ce = e as ClipboardEvent;
-      // Skip if the paste is already targeting the chat input (handled above).
-      if (ce.target === input) return;
+      // Never hijack normal paste into editable fields; only catch truly global
+      // pastes so text input keeps its native Ctrl+V behavior (#181).
+      if (this.isEditableTarget(ce.target)) return;
       if (!this.currentChannelId) return;
       const files = ce.clipboardData?.files;
       if (files && files.length > 0) {
@@ -941,11 +1026,15 @@ export class ChatView {
         e.preventDefault();
         this.addFiles(files);
         // Focus the input so the user can add a message to accompany the file.
-        input?.focus();
+        this.focusChatInput();
       }
     };
     document.addEventListener('paste', onGlobalPaste);
     this.unbindEvents.push(() => document.removeEventListener('paste', onGlobalPaste));
+    this.unbindEvents.push(() => {
+      inputContainer?.removeEventListener('mousedown', focusFromInputShell);
+      inputWrapper?.removeEventListener('mousedown', focusFromInputShell);
+    });
 
     // Drag & drop onto the chat pane. Listeners live on the persistent container,
     // so they must be unbound on re-render to avoid stacking.
@@ -1356,6 +1445,7 @@ export class ChatView {
             <span class="lightbox-zoom-indicator" hidden></span>
           </div>
           <div class="lightbox-caption"></div>
+          <div class="lightbox-meta-details"></div>
         </div>
         <div class="lightbox-actions">
           <button type="button" class="lightbox-btn lightbox-download" title="${t('common.download')}">
@@ -1381,12 +1471,13 @@ export class ChatView {
     const frame = overlay.querySelector('.lightbox-media-frame') as HTMLElement | null;
     const counter = overlay.querySelector('.lightbox-counter') as HTMLElement | null;
     const caption = overlay.querySelector('.lightbox-caption') as HTMLElement | null;
+    const metaDetails = overlay.querySelector('.lightbox-meta-details') as HTMLElement | null;
     const zoomIndicator = overlay.querySelector('.lightbox-zoom-indicator') as HTMLElement | null;
     const prevButton = overlay.querySelector('.lightbox-nav--prev') as HTMLButtonElement | null;
     const nextButton = overlay.querySelector('.lightbox-nav--next') as HTMLButtonElement | null;
     const downloadButton = overlay.querySelector('.lightbox-download') as HTMLButtonElement | null;
     const closeButton = overlay.querySelector('.lightbox-close') as HTMLButtonElement | null;
-    if (!stage || !frame || !counter || !caption || !zoomIndicator || !prevButton || !nextButton || !downloadButton || !closeButton) {
+    if (!stage || !frame || !counter || !caption || !metaDetails || !zoomIndicator || !prevButton || !nextButton || !downloadButton || !closeButton) {
       return;
     }
 
@@ -1482,6 +1573,9 @@ export class ChatView {
 
       counter.innerText = `${currentIndex + 1} / ${items.length}`;
       caption.innerText = item.fileName;
+      const metaLine = [item.senderName, item.timestamp].filter(Boolean).join(' • ');
+      metaDetails.innerText = metaLine;
+      metaDetails.hidden = metaLine.length === 0;
       prevButton.disabled = currentIndex === 0;
       nextButton.disabled = currentIndex === items.length - 1;
       zoomIndicator.hidden = item.kind !== 'image';
