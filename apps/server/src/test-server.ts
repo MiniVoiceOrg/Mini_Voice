@@ -1,7 +1,7 @@
+import { generateKeyPairSync, sign } from 'crypto';
 import path from 'path';
 import fs from 'fs';
-import { WebSocket } from 'ws';
-import { v4 as uuidv4 } from 'uuid';
+import { RawData, WebSocket } from 'ws';
 import {
   MessageType,
   ProtocolErrorCode,
@@ -10,7 +10,6 @@ import {
 } from '@monky/shared';
 import { MonkyServer } from './server';
 
-/** Rejects if the given promise does not settle within `ms`, preventing a hung test from blocking forever. */
 function withTimeout<T>(promise: Promise<T>, ms: number, label: string): Promise<T> {
   return Promise.race([
     promise,
@@ -18,6 +17,70 @@ function withTimeout<T>(promise: Promise<T>, ms: number, label: string): Promise
       setTimeout(() => reject(new Error(`Timeout (${ms}ms) aguardando: ${label}`)), ms)
     ),
   ]);
+}
+
+function createIdentity() {
+  const { publicKey, privateKey } = generateKeyPairSync('ed25519');
+  return {
+    publicKeyHex: publicKey.export({ format: 'der', type: 'spki' }).toString('hex'),
+    privateKey,
+  };
+}
+
+async function authenticateSocket(
+  ws: WebSocket,
+  requestId: string,
+  nickname: string,
+  password: string,
+  options?: { expectErrorCode?: ProtocolErrorCode }
+): Promise<any> {
+  const identity = createIdentity();
+
+  return await withTimeout(new Promise((resolve, reject) => {
+    const onMessage = (data: RawData) => {
+      const res = JSON.parse(data.toString());
+
+      if (options?.expectErrorCode) {
+        if (res.type === MessageType.SERVER_ERROR && res.payload.code === options.expectErrorCode) {
+          ws.off('message', onMessage);
+          resolve(res);
+        }
+        return;
+      }
+
+      if (res.type === MessageType.AUTH_CHALLENGE && res.requestId === requestId) {
+        const signature = sign(null, Buffer.from(res.payload.nonce, 'hex'), identity.privateKey).toString('hex');
+        const response: ProtocolMessage = {
+          type: MessageType.AUTH_CHALLENGE_RESPONSE,
+          requestId,
+          payload: { signature },
+        };
+        ws.send(JSON.stringify(response));
+        return;
+      }
+
+      if (res.type === MessageType.AUTH_SUCCESS && res.requestId === requestId) {
+        ws.off('message', onMessage);
+        resolve(res);
+      }
+    };
+
+    ws.on('message', onMessage);
+    ws.on('error', reject);
+    ws.on('open', () => {
+      const connectMsg: ProtocolMessage = {
+        type: MessageType.AUTH_CONNECT,
+        requestId,
+        payload: {
+          protocolVersion: PROTOCOL_VERSION,
+          publicKey: identity.publicKeyHex,
+          nickname,
+          password,
+        },
+      };
+      ws.send(JSON.stringify(connectMsg));
+    });
+  }), 5000, `Autenticação ${nickname}`);
 }
 
 async function runTests() {
@@ -39,85 +102,22 @@ async function runTests() {
   console.log('✔ Servidor iniciado na porta 3999');
 
   try {
-    // Test 1: Connect with wrong password
     const ws1 = new WebSocket('ws://127.0.0.1:3999');
-    await withTimeout(new Promise<void>((resolve, reject) => {
-      ws1.on('open', () => {
-        const connectMsg: ProtocolMessage = {
-          type: MessageType.AUTH_CONNECT,
-          requestId: 'req-1',
-          payload: {
-            protocolVersion: PROTOCOL_VERSION,
-            clientId: uuidv4(),
-            nickname: 'UserTest1',
-            password: 'senha-errada',
-          },
-        };
-        ws1.send(JSON.stringify(connectMsg));
-      });
+    await authenticateSocket(ws1, 'req-1', 'UserTest1', 'senha-errada', {
+      expectErrorCode: ProtocolErrorCode.AUTH_INVALID_PASSWORD,
+    });
+    console.log('✔ Teste 1 passou: Senha incorreta rejeitada com AUTH_INVALID_PASSWORD');
+    ws1.close();
 
-      ws1.on('message', (data) => {
-        const res = JSON.parse(data.toString());
-        if (res.type === MessageType.SERVER_ERROR && res.payload.code === ProtocolErrorCode.AUTH_INVALID_PASSWORD) {
-          console.log('✔ Teste 1 passou: Senha incorreta rejeitada com AUTH_INVALID_PASSWORD');
-          ws1.close();
-          resolve();
-        } else {
-          reject(new Error(`Esperado AUTH_INVALID_PASSWORD, recebido: ${JSON.stringify(res)}`));
-        }
-      });
-    }), 5000, 'Teste 1: senha incorreta');
-
-    // Test 2: Connect with correct password
     const ws2 = new WebSocket('ws://127.0.0.1:3999');
-    let user2Id = '';
-    let textChannelId = '';
-    let voiceChannelId = '';
+    const auth2 = await authenticateSocket(ws2, 'req-2', 'UserTest2', 'senha-secreta-123');
+    console.log('✔ Teste 2 passou: Conexão autenticada com sucesso! Servidor:', auth2.payload.server.name);
+    const textChannelId = auth2.payload.server.channels.find((c: any) => c.type === 'TEXT').id;
+    const voiceChannelId = auth2.payload.server.channels.find((c: any) => c.type === 'VOICE').id;
 
-    await withTimeout(new Promise<void>((resolve, reject) => {
-      ws2.on('open', () => {
-        const connectMsg: ProtocolMessage = {
-          type: MessageType.AUTH_CONNECT,
-          requestId: 'req-2',
-          payload: {
-            protocolVersion: PROTOCOL_VERSION,
-            clientId: uuidv4(),
-            nickname: 'UserTest2',
-            password: 'senha-secreta-123',
-          },
-        };
-        ws2.send(JSON.stringify(connectMsg));
-      });
-
-      ws2.on('message', (data) => {
-        const res = JSON.parse(data.toString());
-        if (res.type === MessageType.AUTH_SUCCESS) {
-          console.log('✔ Teste 2 passou: Conexão autenticada com sucesso! Servidor:', res.payload.server.name);
-          user2Id = res.payload.currentUser.id;
-          textChannelId = res.payload.server.channels.find((c: any) => c.type === 'TEXT').id;
-          voiceChannelId = res.payload.server.channels.find((c: any) => c.type === 'VOICE').id;
-          resolve();
-        }
-      });
-    }), 5000, 'Teste 2: autenticação');
-
-    // Test 3: Connect another user with same nickname (must fail)
     const ws3 = new WebSocket('ws://127.0.0.1:3999');
-    await withTimeout(new Promise<void>((resolve, reject) => {
-      ws3.on('open', () => {
-        const connectMsg: ProtocolMessage = {
-          type: MessageType.AUTH_CONNECT,
-          requestId: 'req-3',
-          payload: {
-            protocolVersion: PROTOCOL_VERSION,
-            clientId: uuidv4(),
-            nickname: 'UserTest2', // Same nickname!
-            password: 'senha-secreta-123',
-          },
-        };
-        ws3.send(JSON.stringify(connectMsg));
-      });
-
+    await withTimeout(new Promise<void>((resolve) => {
+      authenticateSocket(ws3, 'req-3', 'UserTest2', 'senha-secreta-123').catch(() => {});
       ws3.on('message', (data) => {
         const res = JSON.parse(data.toString());
         if (res.type === MessageType.SERVER_ERROR && res.payload.code === ProtocolErrorCode.NICKNAME_ALREADY_EXISTS) {
@@ -128,8 +128,7 @@ async function runTests() {
       });
     }), 5000, 'Teste 3: nickname duplicado');
 
-    // Test 4: Send chat message and receive broadcast
-    await withTimeout(new Promise<void>((resolve, reject) => {
+    await withTimeout(new Promise<void>((resolve) => {
       const sendMsg: ProtocolMessage = {
         type: MessageType.CHAT_SEND,
         requestId: 'req-4',
@@ -139,7 +138,7 @@ async function runTests() {
         },
       };
 
-      const handler = (data: any) => {
+      const handler = (data: RawData) => {
         const res = JSON.parse(data.toString());
         if (res.type === MessageType.CHAT_MESSAGE && res.payload.content === 'Olá mundo do Monky!') {
           console.log('✔ Teste 4 passou: Mensagem de chat enviada e recebida com sucesso!');
@@ -152,8 +151,7 @@ async function runTests() {
       ws2.send(JSON.stringify(sendMsg));
     }), 5000, 'Teste 4: mensagem de chat');
 
-    // Test 5: Soundboard Play and receive broadcast
-    await withTimeout(new Promise<void>((resolve, reject) => {
+    await withTimeout(new Promise<void>((resolve) => {
       const soundMsg: ProtocolMessage = {
         type: MessageType.SOUNDBOARD_PLAY,
         requestId: 'req-5',
@@ -165,7 +163,7 @@ async function runTests() {
         },
       };
 
-      const handler = (data: any) => {
+      const handler = (data: RawData) => {
         const res = JSON.parse(data.toString());
         if (res.type === MessageType.SOUNDBOARD_PLAYED && res.payload.soundName === 'Airhorn') {
           console.log('✔ Teste 5 passou: Reprodução de soundboard transmitida com sucesso!');
@@ -178,7 +176,6 @@ async function runTests() {
       ws2.send(JSON.stringify(soundMsg));
     }), 5000, 'Teste 5: reprodução de soundboard');
 
-    // Test 6: Disable Soundboard via server settings and verify play is rejected
     await withTimeout(new Promise<void>((resolve, reject) => {
       const updateSettingsMsg: ProtocolMessage = {
         type: MessageType.SERVER_UPDATE_SETTINGS,
@@ -189,12 +186,11 @@ async function runTests() {
         },
       };
 
-      const settingsHandler = (data: any) => {
+      const settingsHandler = (data: RawData) => {
         const res = JSON.parse(data.toString());
         if (res.type === MessageType.SERVER_SETTINGS_UPDATED && res.payload.allowSoundboard === false) {
           ws2.off('message', settingsHandler);
 
-          // Try playing soundboard now
           const soundMsg: ProtocolMessage = {
             type: MessageType.SOUNDBOARD_PLAY,
             requestId: 'req-6-play',
@@ -206,7 +202,7 @@ async function runTests() {
             },
           };
 
-          const soundHandler = (d: any) => {
+          const soundHandler = (d: RawData) => {
             const r = JSON.parse(d.toString());
             if (r.type === MessageType.SERVER_ERROR && r.payload.message.includes('desabilitada')) {
               console.log('✔ Teste 6 passou: Soundboard bloqueado com sucesso após desabilitação no servidor!');
@@ -224,7 +220,6 @@ async function runTests() {
       ws2.send(JSON.stringify(updateSettingsMsg));
     }), 5000, 'Teste 6: desabilitar soundboard no servidor');
 
-    // Test 7: Get server invite info with network interfaces
     await withTimeout(new Promise<void>((resolve, reject) => {
       const inviteReqMsg: ProtocolMessage = {
         type: MessageType.SERVER_GET_INVITE_INFO,
@@ -232,7 +227,7 @@ async function runTests() {
         payload: {},
       };
 
-      const inviteHandler = (data: any) => {
+      const inviteHandler = (data: RawData) => {
         const res = JSON.parse(data.toString());
         if (res.type === MessageType.SERVER_INVITE_INFO && res.requestId === 'req-7-invite') {
           if (typeof res.payload.port === 'number' && Array.isArray(res.payload.networkInterfaces) && res.payload.networkInterfaces.length > 0) {

@@ -4,8 +4,8 @@ import http from 'http';
 import https from 'https';
 import net from 'net';
 import path from 'path';
-import { v4 as uuidv4 } from 'uuid';
 import { LanDiscovery } from './lanDiscovery';
+import { exportIdentity, getClientId, getIdentity, hasIdentity, importIdentity, signChallenge } from './identityService';
 import { HostServerOptions, ServerManager } from './serverManager';
 import { mt, setMainLanguage } from './i18n';
 import { TrayManager, VoiceStatus } from './trayManager';
@@ -136,28 +136,12 @@ export function setupIpcHandlers(
     trayManager?.refresh();
   });
 
-  // Client ID persistence
-  ipcMain.handle('get-client-id', async () => {
-    const clientIdFile = path.join(app.getPath('userData'), 'client-id.json');
-    try {
-      if (fs.existsSync(clientIdFile)) {
-        const data = JSON.parse(fs.readFileSync(clientIdFile, 'utf8'));
-        if (data.clientId) {
-          return data.clientId;
-        }
-      }
-    } catch (e) {
-      console.warn('Could not read existing client-id.json', e);
-    }
-
-    const newClientId = uuidv4();
-    try {
-      fs.writeFileSync(clientIdFile, JSON.stringify({ clientId: newClientId }, null, 2), 'utf8');
-    } catch (e) {
-      console.error('Could not save client-id.json', e);
-    }
-    return newClientId;
-  });
+  ipcMain.handle('has-identity', async () => hasIdentity());
+  ipcMain.handle('get-identity', async () => getIdentity(true));
+  ipcMain.handle('get-client-id', async () => getClientId());
+  ipcMain.handle('sign-challenge', async (_event, nonceHex: string) => signChallenge(nonceHex));
+  ipcMain.handle('export-identity', async (_event, password: string) => exportIdentity(password));
+  ipcMain.handle('import-identity', async (_event, exportedIdentity: string, password: string) => importIdentity(exportedIdentity, password));
 
   // Local Server Management
   ipcMain.handle('host-server-start', async (_, options: HostServerOptions) => {

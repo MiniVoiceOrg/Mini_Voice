@@ -23,10 +23,13 @@
     "@monky/shared": "*",
     "@sapphi-red/web-noise-suppressor": "^0.4.0",
     "electron-updater": "^6.8.9",
+    "jsqr": "^1.4.0",
+    "qrcode": "^1.5.4",
     "uuid": "^11.1.0"
   },
   "devDependencies": {
     "@types/node": "^22.13.4",
+    "@types/qrcode": "^1.5.6",
     "@types/uuid": "^10.0.0",
     "electron": "34.2.0",
     "electron-builder": "^25.1.8",

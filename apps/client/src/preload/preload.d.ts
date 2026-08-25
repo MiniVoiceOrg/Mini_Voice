@@ -14,7 +14,18 @@ export interface ElectronApi {
         version: string;
     }) => void) => void;
     setLanguage: (language: string) => Promise<void>;
+    hasIdentity: () => Promise<boolean>;
+    getIdentity: () => Promise<{
+        publicKey: string;
+        clientId: string;
+    }>;
     getClientId: () => Promise<string>;
+    signChallenge: (nonceHex: string) => Promise<string>;
+    exportIdentity: (password: string) => Promise<string>;
+    importIdentity: (exportedIdentity: string, password: string) => Promise<{
+        publicKey: string;
+        clientId: string;
+    }>;
     maximizeWindow: () => Promise<void>;
     hostServerStart: (options: {
         port: number;

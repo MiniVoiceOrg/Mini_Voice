@@ -2,6 +2,9 @@ import http from 'http';
 import { WebSocket, WebSocketServer as WSServer } from 'ws';
 import {
   AuthConnectPayload,
+  AuthChallengePayload,
+  AuthChallengeResponsePayload,
+  AuthFailedPayload,
   AuthSuccessPayload,
   ChannelCreatePayload,
   ChannelCreatedPayload,
@@ -148,6 +151,11 @@ export class WebSocketServer {
       return;
     }
 
+    if (type === MessageType.AUTH_CHALLENGE_RESPONSE) {
+      await this.handleAuthChallengeResponse(session, payload as AuthChallengeResponsePayload, requestId);
+      return;
+    }
+
     // Require authentication for all subsequent messages
     if (!session.user) {
       this.sendError(session.ws, ProtocolErrorCode.UNAUTHORIZED, 'Não autenticado no servidor', requestId);
@@ -232,9 +240,44 @@ export class WebSocketServer {
     payload: AuthConnectPayload,
     requestId?: string
   ): Promise<void> {
-    const result = await this.authService.authenticate(payload);
+    const result = await this.authService.createChallenge(session.ws, payload);
+
+    if (!result.success || !result.nonce) {
+      this.sendError(
+        session.ws,
+        result.errorCode || ProtocolErrorCode.INTERNAL_ERROR,
+        result.errorMessage || 'Falha na autenticação',
+        requestId
+      );
+      return;
+    }
+
+    this.send(session.ws, {
+      type: MessageType.AUTH_CHALLENGE,
+      requestId,
+      payload: { nonce: result.nonce } satisfies AuthChallengePayload,
+    });
+  }
+
+  private async handleAuthChallengeResponse(
+    session: ClientSession,
+    payload: AuthChallengeResponsePayload,
+    requestId?: string
+  ): Promise<void> {
+    const result = await this.authService.verifyChallengeResponse(session.ws, payload.signature);
 
     if (!result.success || !result.user || !result.serverDetails) {
+      if (result.authFailed) {
+        this.send(session.ws, {
+          type: MessageType.AUTH_FAILED,
+          requestId,
+          payload: {
+            code: result.errorCode,
+            message: result.errorMessage || 'Falha na autenticação',
+          } satisfies AuthFailedPayload,
+        });
+        return;
+      }
       this.sendError(
         session.ws,
         result.errorCode || ProtocolErrorCode.INTERNAL_ERROR,
@@ -719,6 +762,7 @@ export class WebSocketServer {
 
   private handleDisconnect(session: ClientSession): void {
     this.sessions.delete(session.ws);
+    this.authService.clearChallenge(session.ws);
 
     // If this session was replaced by a newer connection of the same user, it
     // is a stale/zombie socket. Do not broadcast USER_LEFT nor touch the

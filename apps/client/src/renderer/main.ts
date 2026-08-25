@@ -47,9 +47,12 @@ class App {
   }
 
   private async init(): Promise<void> {
-    // Obtain client ID
-    if (window.api?.getClientId) {
-      connectionStore.clientId = await window.api.getClientId();
+    if (window.api?.hasIdentity) {
+      connectionStore.hasIdentity = await window.api.hasIdentity();
+      if (connectionStore.hasIdentity && window.api?.getIdentity) {
+        const identity = await window.api.getIdentity();
+        connectionStore.setIdentity(identity);
+      }
     }
 
     initI18n();

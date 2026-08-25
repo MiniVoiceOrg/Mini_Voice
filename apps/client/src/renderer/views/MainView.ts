@@ -377,13 +377,12 @@ export class MainView {
     networkClient.disconnect();
 
     try {
-      let clientId = connectionStore.clientId;
-      if (!clientId && window.api?.getClientId) {
-        clientId = await window.api.getClientId();
-        connectionStore.clientId = clientId;
-      }
+      const identity = connectionStore.hasIdentity && connectionStore.clientId && connectionStore.publicKey
+        ? { clientId: connectionStore.clientId, publicKey: connectionStore.publicKey }
+        : await window.api.getIdentity();
+      connectionStore.setIdentity(identity);
       const nickname = connectionStore.savedNickname || t('connection.unknownUser');
-      const res = await networkClient.connect(server.host, server.port, clientId, nickname, server.password);
+      const res = await networkClient.connect(server.host, server.port, identity, nickname, server.password);
       connectionStore.addSavedServer({
         host: server.host,
         port: server.port,
