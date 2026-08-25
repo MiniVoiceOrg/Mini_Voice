@@ -15,7 +15,7 @@ exatamente estas etapas, nesta ordem:
      bloqueados não devem ser trabalhados enquanto estiverem nessa coluna. Se o
      desenvolvedor quiser que algo em `Blocked` seja desenvolvido, **solicite
      que ele (ou alguém com permissão) mova o card para fora de `Blocked`**
-     (ex.: `Ready`/`In progress`) antes de qualquer implementação. Não mova o
+     (ex.: `Backlog`/`In progress`) antes de qualquer implementação. Não mova o
      card para fora de `Blocked` por conta própria — peça a autorização/ação de
      quem tem permissão.
 2. **Entenda a issue por completo antes de codar.** Se a issue **não estiver
@@ -65,12 +65,14 @@ seção **"Como testar"**.
 - Project ID: `PVT_kwDOEws3wM4BhD7I`
 - Campo Status (field ID): `PVTSSF_lADOEws3wM4BhD7IzhgBIGI`
 - Opções de Status (single-select-option-id):
+  - Discussing: `146d7ce6`
   - Backlog: `f75ad846`
   - Blocked: `7a1e61fe`
-  - Ready: `61e4505c`
   - In progress: `47fc9ee4`
   - QA: `df73e18b`
+  - After QA Review: `98330754`
   - Done: `98236657`
+  - Ideias descartadas: `6eeb0bfb`
 
 ### Comando para mover um card
 
