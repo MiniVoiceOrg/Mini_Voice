@@ -47,15 +47,24 @@ class App {
   }
 
   private async init(): Promise<void> {
+    initI18n();
+
+    // Check if identity exists BEFORE rendering anything
     if (window.api?.hasIdentity) {
       connectionStore.hasIdentity = await window.api.hasIdentity();
-      if (connectionStore.hasIdentity && window.api?.getIdentity) {
-        const identity = await window.api.getIdentity();
-        connectionStore.setIdentity(identity);
-      }
     }
 
-    initI18n();
+    if (!connectionStore.hasIdentity) {
+      // Show onboarding screen and wait for identity to be created/imported
+      await this.showIdentityOnboarding();
+    }
+
+    // At this point, identity is guaranteed to exist
+    if (window.api?.getIdentity) {
+      const identity = await window.api.getIdentity();
+      connectionStore.setIdentity(identity);
+    }
+
     this.setupGlobalEventListeners();
     this.setupTitleBar();
     this.setupTraySync();
@@ -68,6 +77,51 @@ class App {
 
     // Start checking for app updates (non-blocking)
     updateService.init();
+  }
+
+  private showIdentityOnboarding(): Promise<void> {
+    return new Promise((resolve) => {
+      const logoUrl = new URL('./assets/Logo.png', import.meta.url).href;
+      this.appContainer.innerHTML = `
+        <div class="identity-onboarding">
+          <img src="${logoUrl}" alt="Monky" style="width: 120px; height: 120px; object-fit: contain; margin-bottom: 16px; filter: drop-shadow(0 4px 16px rgba(88, 101, 242, 0.4));">
+          <h1 style="font-size: 28px; font-weight: 700; margin: 0 0 8px; color: var(--text-primary);">Monky</h1>
+          <p style="font-size: 14px; color: var(--text-secondary); margin: 0 0 32px; text-align: center; max-width: 360px; line-height: 1.5;">
+            ${t('identity.onboardingDesc')}
+          </p>
+          <div style="display: flex; flex-direction: column; gap: 12px; width: 280px;">
+            <button type="button" id="btn-onboard-create" class="btn btn-primary" style="padding: 14px 24px; font-size: 15px; font-weight: 600;">
+              <span class="material-symbols-outlined md-20" style="margin-right: 8px;">add_circle</span>
+              ${t('identity.onboardingCreate')}
+            </button>
+            <button type="button" id="btn-onboard-import" class="btn btn-secondary" style="padding: 14px 24px; font-size: 15px;">
+              <span class="material-symbols-outlined md-20" style="margin-right: 8px;">qr_code_scanner</span>
+              ${t('identity.onboardingImport')}
+            </button>
+          </div>
+        </div>
+      `;
+
+      document.getElementById('btn-onboard-create')?.addEventListener('click', async () => {
+        // Generate identity
+        if (window.api?.getIdentity) {
+          const identity = await window.api.getIdentity();
+          connectionStore.setIdentity(identity);
+          connectionStore.hasIdentity = true;
+        }
+        resolve();
+      });
+
+      document.getElementById('btn-onboard-import')?.addEventListener('click', async () => {
+        const { showIdentityImportDialog } = await import('./views/IdentityDialogs');
+        const result = await showIdentityImportDialog();
+        if (result) {
+          connectionStore.setIdentity(result);
+          connectionStore.hasIdentity = true;
+          resolve();
+        }
+      });
+    });
   }
 
   private setupTraySync(): void {
