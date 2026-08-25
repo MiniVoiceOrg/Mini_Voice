@@ -27,7 +27,7 @@ export class SoundboardModal {
     await soundboardService.loadSounds();
     const sounds = soundboardService.getSounds();
     const serverAllows = serverStore.serverDetails?.allowSoundboard !== false;
-    const currentPlayback = soundboardService.getCurrentPlayback();
+    const activePlaybacks = soundboardService.getActivePlaybacks();
 
     this.modalEl = document.createElement('div');
     this.modalEl.className = 'modal-backdrop';
@@ -75,34 +75,19 @@ export class SoundboardModal {
           </div>
         </div>
 
-        <!-- Active Sound Playback Mini Player -->
-        <div id="sb-player-container" style="display: ${currentPlayback.isPlaying ? 'block' : 'none'};">
-          <div style="padding: 8px 20px; background: rgba(88, 101, 242, 0.1); border-bottom: 1px solid rgba(88, 101, 242, 0.25); display: flex; align-items: center; gap: 12px;">
-            <span class="material-symbols-outlined md-18" style="color: var(--accent-primary); animation: pulse 1.5s infinite;">graphic_eq</span>
-            
-            <div style="flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 4px;">
-              <div style="display: flex; align-items: center; justify-content: space-between; gap: 8px;">
-                <span id="sb-player-sound-name" style="font-size: 12px; font-weight: 600; color: var(--text-primary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">
-                  ${currentPlayback.soundName ? escapeHtml(currentPlayback.soundName) : t('soundboard.playingAudio')}
-                </span>
-                <div style="font-family: var(--font-mono); font-size: 10px; color: var(--text-muted); white-space: nowrap;">
-                  <span id="sb-player-current-time">${formatTime(currentPlayback.currentTime)}</span>
-                  <span>/</span>
-                  <span id="sb-player-total-time">${formatTime(currentPlayback.duration)}</span>
-                </div>
-              </div>
-              
-              <!-- Progress Bar -->
-              <div id="sb-player-progress-bar" style="width: 100%; height: 4px; background: rgba(255, 255, 255, 0.1); border-radius: 2px; overflow: hidden; position: relative;">
-                <div id="sb-player-progress-fill" style="width: ${currentPlayback.duration > 0 ? (currentPlayback.currentTime / currentPlayback.duration) * 100 : 0}%; height: 100%; background: var(--accent-primary); border-radius: 2px; transition: width 0.1s linear;"></div>
-              </div>
-            </div>
-
-            <button id="sb-player-btn-stop" class="btn btn-secondary" style="font-size: 11px; padding: 4px 8px; height: 26px; display: flex; align-items: center; gap: 4px; color: var(--danger); border-color: rgba(237, 66, 69, 0.3);" title="${t('soundboard.stopPlayback')}">
-              <span class="material-symbols-outlined md-14">stop</span>
-              <span>${t('stage.stop')}</span>
-            </button>
-          </div>
+        <!-- Active Sounds Playback Multi-Player Container -->
+        <div id="sb-players-container" class="sb-players-container" style="display: ${activePlaybacks.length > 0 ? 'flex' : 'none'};">
+          ${activePlaybacks
+            .map((p) =>
+              this.renderPlayerItemHtml(
+                p.userId,
+                p.soundName,
+                p.userName,
+                p.audio.currentTime || 0,
+                p.audio.duration || 0
+              )
+            )
+            .join('')}
         </div>
 
         <!-- Server disabled alert banner -->
@@ -123,7 +108,7 @@ export class SoundboardModal {
 
         <!-- Sounds Grid Area -->
         <div id="sb-sounds-container" style="flex: 1; overflow-y: auto; padding: 16px 20px; min-height: 220px;">
-          ${this.renderSoundsGrid(sounds, currentPlayback.soundName)}
+          ${this.renderSoundsGrid(sounds)}
         </div>
 
         <!-- Footer -->
@@ -139,6 +124,54 @@ export class SoundboardModal {
     document.body.appendChild(this.modalEl);
     this.attachEvents();
     this.setupPlaybackListeners();
+  }
+
+  private renderPlayerItemHtml(
+    userId: string,
+    soundName: string,
+    userName?: string,
+    currentTime: number = 0,
+    duration: number = 0
+  ): string {
+    const isLocal = userId === 'local';
+    const displayName = userName || (isLocal ? t('common.you') : undefined);
+    const percent = duration > 0 ? Math.min(100, Math.max(0, (currentTime / duration) * 100)) : 0;
+
+    return `
+      <div class="sb-player-bar" data-userid="${escapeHtml(userId)}">
+        <span class="material-symbols-outlined md-18 sb-player-icon">graphic_eq</span>
+        
+        <div class="sb-player-progress-container">
+          <div style="display: flex; align-items: center; justify-content: space-between; gap: 8px;">
+            <div style="display: flex; align-items: center; gap: 6px; min-width: 0; overflow: hidden;">
+              <span class="sb-player-item-name" title="${escapeHtml(soundName)}">
+                ${escapeHtml(soundName)}
+              </span>
+              ${displayName ? `
+                <span class="sb-player-user" title="${escapeHtml(displayName)}">
+                  ${escapeHtml(displayName)}
+                </span>
+              ` : ''}
+            </div>
+            <div class="sb-player-time">
+              <span class="sb-player-current-time">${formatTime(currentTime)}</span>
+              <span>/</span>
+              <span class="sb-player-total-time">${formatTime(duration)}</span>
+            </div>
+          </div>
+          
+          <!-- Progress Bar -->
+          <div class="sb-player-progress-track">
+            <div class="sb-player-progress-fill" style="width: ${percent}%;"></div>
+          </div>
+        </div>
+
+        <button type="button" class="sb-player-stop-btn" data-userid="${escapeHtml(userId)}" title="${t('soundboard.stopPlayback')}">
+          <span class="material-symbols-outlined md-14">stop</span>
+          <span>${t('stage.stop')}</span>
+        </button>
+      </div>
+    `;
   }
 
   private renderSoundsGrid(sounds: SoundItem[], activeSoundName: string | null = null): string {
@@ -352,7 +385,7 @@ export class SoundboardModal {
     const btnMute = this.modalEl.querySelector('#sb-btn-mute');
     const sliderVol = this.modalEl.querySelector('#sb-slider-volume') as HTMLInputElement | null;
     const volLabel = this.modalEl.querySelector('#sb-volume-label');
-    const btnStop = this.modalEl.querySelector('#sb-player-btn-stop');
+    const playersContainer = this.modalEl.querySelector('#sb-players-container');
 
     const handleClose = () => this.close();
     btnClose?.addEventListener('click', handleClose);
@@ -393,8 +426,26 @@ export class SoundboardModal {
       settingsStore.save();
     });
 
-    btnStop?.addEventListener('click', () => {
-      soundboardService.stopSound();
+    playersContainer?.addEventListener('click', (e) => {
+      const target = e.target as HTMLElement;
+      const stopBtn = target.closest('.sb-player-stop-btn') as HTMLElement | null;
+      if (stopBtn) {
+        const userId = stopBtn.getAttribute('data-userid');
+        if (userId) {
+          soundboardService.stopSound(userId);
+          const itemEl = playersContainer.querySelector(`[data-userid="${userId}"]`);
+          if (itemEl) {
+            itemEl.remove();
+          }
+          const remainingBars = playersContainer.querySelectorAll('.sb-player-bar');
+          if (remainingBars.length === 0) {
+            (playersContainer as HTMLElement).style.display = 'none';
+            this.clearActiveButtons();
+          } else {
+            this.updateActiveButtons();
+          }
+        }
+      }
     });
 
     this.attachSoundClickEvents();
@@ -440,71 +491,123 @@ export class SoundboardModal {
   }
 
   private setupPlaybackListeners(): void {
-    // 1. Playback started
-    const onPlaybackStarted = (payload: { soundName: string; duration: number; userName?: string }) => {
+    // 1. Playback started for a user
+    const onPlaybackStarted = (payload: { userId: string; userName?: string; soundName: string; duration: number }) => {
       if (!this.modalEl) return;
+      const container = this.modalEl.querySelector('#sb-players-container') as HTMLElement | null;
+      if (!container) return;
 
-      const playerContainer = this.modalEl.querySelector('#sb-player-container') as HTMLElement | null;
-      const soundNameEl = this.modalEl.querySelector('#sb-player-sound-name');
-      const progressFill = this.modalEl.querySelector('#sb-player-progress-fill') as HTMLElement | null;
-      const currentTimeEl = this.modalEl.querySelector('#sb-player-current-time');
-      const totalTimeEl = this.modalEl.querySelector('#sb-player-total-time');
+      container.style.display = 'flex';
 
-      if (playerContainer) playerContainer.style.display = 'block';
-      if (soundNameEl) {
-        const activeCount = soundboardService.getActivePlaybacks().length;
-        if (activeCount > 1) {
-          soundNameEl.textContent = `${payload.soundName} (+${activeCount - 1} outros sons)`;
-          soundNameEl.setAttribute('title', t('soundboard.alsoPlaying', { sound: payload.soundName, count: activeCount - 1 }));
-        } else {
-          const userSuffix = payload.userName ? ` (${payload.userName})` : '';
-          soundNameEl.textContent = `${payload.soundName}${userSuffix}`;
-          soundNameEl.setAttribute('title', `${payload.soundName}${userSuffix}`);
+      const existingItem = container.querySelector(`[data-userid="${payload.userId}"]`) as HTMLElement | null;
+      if (existingItem) {
+        // Update existing player for this user
+        const nameEl = existingItem.querySelector('.sb-player-item-name');
+        if (nameEl) {
+          nameEl.textContent = payload.soundName;
+          nameEl.setAttribute('title', payload.soundName);
+        }
+        const userEl = existingItem.querySelector('.sb-player-user');
+        const isLocal = payload.userId === 'local';
+        const displayName = payload.userName || (isLocal ? t('common.you') : undefined);
+        if (userEl && displayName) {
+          userEl.textContent = displayName;
+          userEl.setAttribute('title', displayName);
+        }
+        const progressFill = existingItem.querySelector('.sb-player-progress-fill') as HTMLElement | null;
+        if (progressFill) progressFill.style.width = '0%';
+        const currentTimeEl = existingItem.querySelector('.sb-player-current-time');
+        if (currentTimeEl) currentTimeEl.textContent = '0:00';
+        const totalTimeEl = existingItem.querySelector('.sb-player-total-time');
+        if (totalTimeEl) totalTimeEl.textContent = formatTime(payload.duration);
+      } else {
+        // Append new player element
+        const temp = document.createElement('div');
+        temp.innerHTML = this.renderPlayerItemHtml(
+          payload.userId,
+          payload.soundName,
+          payload.userName,
+          0,
+          payload.duration
+        );
+        const newPlayerEl = temp.firstElementChild as HTMLElement;
+        if (newPlayerEl) {
+          container.appendChild(newPlayerEl);
         }
       }
-      if (progressFill) progressFill.style.width = '0%';
-      if (currentTimeEl) currentTimeEl.textContent = '0:00';
-      if (totalTimeEl) totalTimeEl.textContent = formatTime(payload.duration);
 
-      // Highlight active sound buttons
       this.updateActiveButtons();
     };
 
-    // 2. Playback progress
-    const onPlaybackProgress = (payload: { soundName: string; currentTime: number; duration: number; percent: number }) => {
+    // 2. Playback progress for a user
+    const onPlaybackProgress = (payload: { userId: string; userName?: string; soundName: string; currentTime: number; duration: number; percent: number }) => {
       if (!this.modalEl) return;
+      // If this playback has already ended or is not active, ignore progress
+      if (!soundboardService.getActivePlaybacks().some((p) => p.userId === payload.userId)) {
+        return;
+      }
 
-      const progressFill = this.modalEl.querySelector('#sb-player-progress-fill') as HTMLElement | null;
-      const currentTimeEl = this.modalEl.querySelector('#sb-player-current-time');
-      const totalTimeEl = this.modalEl.querySelector('#sb-player-total-time');
+      const container = this.modalEl.querySelector('#sb-players-container') as HTMLElement | null;
+      if (!container) return;
 
-      if (progressFill) progressFill.style.width = `${payload.percent}%`;
-      if (currentTimeEl) currentTimeEl.textContent = formatTime(payload.currentTime);
-      if (totalTimeEl) totalTimeEl.textContent = formatTime(payload.duration);
+      let itemEl = container.querySelector(`[data-userid="${payload.userId}"]`) as HTMLElement | null;
+      if (!itemEl) {
+        container.style.display = 'flex';
+        const temp = document.createElement('div');
+        temp.innerHTML = this.renderPlayerItemHtml(
+          payload.userId,
+          payload.soundName,
+          payload.userName,
+          payload.currentTime,
+          payload.duration
+        );
+        const newPlayerEl = temp.firstElementChild as HTMLElement;
+        if (newPlayerEl) {
+          container.appendChild(newPlayerEl);
+          itemEl = newPlayerEl;
+        }
+      }
+
+      if (itemEl) {
+        const progressFill = itemEl.querySelector('.sb-player-progress-fill') as HTMLElement | null;
+        if (progressFill) progressFill.style.width = `${payload.percent}%`;
+        const currentTimeEl = itemEl.querySelector('.sb-player-current-time');
+        if (currentTimeEl) currentTimeEl.textContent = formatTime(payload.currentTime);
+        const totalTimeEl = itemEl.querySelector('.sb-player-total-time');
+        if (totalTimeEl) totalTimeEl.textContent = formatTime(payload.duration);
+      }
     };
 
-    // 3. Playback ended / stopped
-    const onPlaybackEnded = () => {
+    // 3. Playback ended / stopped for a user
+    const onPlaybackEnded = (payload?: { userId?: string; soundName?: string }) => {
       if (!this.modalEl) return;
+      const container = this.modalEl.querySelector('#sb-players-container') as HTMLElement | null;
+      if (!container) return;
 
-      const activePlaybacks = soundboardService.getActivePlaybacks();
-      if (activePlaybacks.length === 0) {
-        const playerContainer = this.modalEl.querySelector('#sb-player-container') as HTMLElement | null;
-        if (playerContainer) playerContainer.style.display = 'none';
+      if (payload && payload.userId) {
+        const itemEl = container.querySelector(`[data-userid="${payload.userId}"]`);
+        if (itemEl) {
+          itemEl.remove();
+        }
+      } else {
+        container.innerHTML = '';
+      }
+
+      // Clean up any remaining bars that are not active in SoundboardService
+      const activeIds = new Set(soundboardService.getActivePlaybacks().map((p) => p.userId));
+      const allBars = container.querySelectorAll('.sb-player-bar');
+      allBars.forEach((bar) => {
+        const uid = bar.getAttribute('data-userid');
+        if (uid && !activeIds.has(uid)) {
+          bar.remove();
+        }
+      });
+
+      const activeBars = container.querySelectorAll('.sb-player-bar');
+      if (activeBars.length === 0) {
+        container.style.display = 'none';
         this.clearActiveButtons();
       } else {
-        const playerContainer = this.modalEl.querySelector('#sb-player-container') as HTMLElement | null;
-        const soundNameEl = this.modalEl.querySelector('#sb-player-sound-name');
-        if (playerContainer) playerContainer.style.display = 'block';
-        if (soundNameEl) {
-          const latest = activePlaybacks[activePlaybacks.length - 1];
-          if (activePlaybacks.length > 1) {
-            soundNameEl.textContent = `${latest.soundName} (+${activePlaybacks.length - 1} outros sons)`;
-          } else {
-            const userSuffix = latest.userName ? ` (${latest.userName})` : '';
-            soundNameEl.textContent = `${latest.soundName}${userSuffix}`;
-          }
-        }
         this.updateActiveButtons();
       }
     };

@@ -23,7 +23,12 @@ import { escapeHtml } from './html';
  *   bare https://url      -> <a>
  *   newlines              -> <br> (inside paragraphs/quotes)
  */
-export function renderMarkdown(raw: string): string {
+export interface MarkdownOptions {
+  currentNickname?: string;
+  knownNicknames?: string[];
+}
+
+export function renderMarkdown(raw: string, options?: MarkdownOptions): string {
   if (!raw) return '';
 
   // 1. Escape everything up-front - no raw HTML from users can survive this.
@@ -47,19 +52,46 @@ export function renderMarkdown(raw: string): string {
 
   // Inline-level formatting applied to the text content of each block.
   const applyInline = (s: string): string => {
+    const links: string[] = [];
     // Links: [label](url) - only http/https.
     s = s.replace(/\[([^\]]+?)\]\((https?:\/\/[^\s)]+)\)/g, (_m, label, url) => {
-      return `<a href="${url}" class="md-link" data-external-link="${url}">${label}</a>`;
+      const idx = links.push(`<a href="${url}" class="md-link" data-external-link="${url}">${label}</a>`) - 1;
+      return `\u0000LK${idx}\u0000`;
     });
     // Bare URLs (not already inside an anchor from the rule above).
     s = s.replace(/(^|[\s])(https?:\/\/[^\s<]+)/g, (_m, pre, url) => {
-      return `${pre}<a href="${url}" class="md-link" data-external-link="${url}">${url}</a>`;
+      const idx = links.push(`<a href="${url}" class="md-link" data-external-link="${url}">${url}</a>`) - 1;
+      return `${pre}\u0000LK${idx}\u0000`;
     });
+
     // Emphasis. Order matters: bold before italic.
     s = s.replace(/\*\*([^\n]+?)\*\*/g, '<strong>$1</strong>');
     s = s.replace(/~~([^\n]+?)~~/g, '<del>$1</del>');
     s = s.replace(/(^|[^\w*])\*([^\s*][^*\n]*?)\*(?![\w*])/g, '$1<em>$2</em>');
     s = s.replace(/(^|[^\w_])_([^\s_][^_\n]*?)_(?![\w_])/g, '$1<em>$2</em>');
+
+    // Mentions (@nickname)
+    if (options?.knownNicknames && options.knownNicknames.length > 0) {
+      const sortedNicks = [...new Set(options.knownNicknames)].sort((a, b) => b.length - a.length);
+      for (const nick of sortedNicks) {
+        if (!nick) continue;
+        const isMe = !!options.currentNickname && nick.toLowerCase() === options.currentNickname.toLowerCase();
+        const cls = isMe ? 'chat-mention chat-mention-me' : 'chat-mention';
+        const escapedNick = nick.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+        const escapedHtmlNick = escapeHtml(nick);
+        const regex = new RegExp(`(^|[\\s(])@${escapedNick}(?=$|[\\s),.!?:;])`, 'gi');
+        s = s.replace(regex, `$1<span class="${cls}">@${escapedHtmlNick}</span>`);
+      }
+    } else if (options?.currentNickname) {
+      const escapedNick = options.currentNickname.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+      const escapedHtmlNick = escapeHtml(options.currentNickname);
+      const regex = new RegExp(`(^|[\\s(])@${escapedNick}(?=$|[\\s),.!?:;])`, 'gi');
+      s = s.replace(regex, `$1<span class="chat-mention chat-mention-me">@${escapedHtmlNick}</span>`);
+    }
+
+    // Restore link placeholders
+    s = s.replace(/\u0000LK(\d+)\u0000/g, (_m, idx) => links[Number(idx)]);
+
     return s;
   };
 

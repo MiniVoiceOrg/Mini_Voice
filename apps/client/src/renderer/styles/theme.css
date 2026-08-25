@@ -1236,10 +1236,58 @@ input:focus, textarea:focus, select:focus {
   line-height: 1.4;
   user-select: text;
   -webkit-user-select: text;
+  padding: 2px 0;
+  border-radius: var(--radius-sm);
+  transition: background-color 0.12s ease;
 }
 
 .chat-message-row:hover {
   background-color: rgba(255, 255, 255, 0.015);
+}
+
+/* Discord-style Highlight for Mentioned Messages */
+.chat-message-row.chat-message-mentioned {
+  background-color: rgba(242, 63, 67, 0.08);
+  border-left: 3px solid #f23f43;
+  padding: 4px 8px 4px 10px;
+  margin: -2px -8px;
+  border-radius: 0 var(--radius-sm) var(--radius-sm) 0;
+}
+
+.chat-message-row.chat-message-mentioned:hover {
+  background-color: rgba(242, 63, 67, 0.13);
+}
+
+/* Mention badge/token inside message text */
+.chat-mention {
+  display: inline-block;
+  padding: 0 4px;
+  border-radius: 3px;
+  font-weight: 600;
+  background-color: rgba(88, 101, 242, 0.15);
+  color: var(--accent-primary);
+  vertical-align: baseline;
+  user-select: text;
+  -webkit-user-select: text;
+  cursor: pointer;
+  transition: background-color 0.15s ease, color 0.15s ease;
+}
+
+.chat-mention:hover {
+  background-color: rgba(88, 101, 242, 0.28);
+  color: #ffffff;
+}
+
+/* Mention directed to the current user (bold & highlighted in red like Discord) */
+.chat-mention.chat-mention-me {
+  background-color: rgba(242, 63, 67, 0.2);
+  color: #ff5c5c;
+  font-weight: 700;
+}
+
+.chat-mention.chat-mention-me:hover {
+  background-color: rgba(242, 63, 67, 0.35);
+  color: #ffffff;
 }
 
 .chat-author-avatar {
@@ -3478,23 +3526,34 @@ button[data-loading="1"]::after {
   }
 }
 
-/* Soundboard Mini Player Bar */
+/* Soundboard Mini Player Bar & Multi-Player Container */
+.sb-players-container {
+  display: flex;
+  flex-direction: column;
+  max-height: 150px;
+  overflow-y: auto;
+  background: rgba(88, 101, 242, 0.08);
+  border-bottom: 1px solid rgba(88, 101, 242, 0.25);
+}
+
 .sb-player-bar {
   display: flex;
   align-items: center;
   gap: 12px;
-  padding: 10px 16px;
-  background: linear-gradient(135deg, rgba(88, 101, 242, 0.15) 0%, rgba(35, 39, 42, 0.9) 100%);
-  border: 1px solid rgba(88, 101, 242, 0.35);
-  border-radius: var(--radius-md);
-  margin: 10px 20px 0;
-  animation: sbSlideDown 0.2s ease-out;
+  padding: 8px 20px;
+  background: transparent;
+  border-bottom: 1px solid rgba(88, 101, 242, 0.15);
+  animation: sbSlideDown 0.15s ease-out;
+}
+
+.sb-player-bar:last-child {
+  border-bottom: none;
 }
 
 @keyframes sbSlideDown {
   from {
     opacity: 0;
-    transform: translateY(-8px);
+    transform: translateY(-4px);
   }
   to {
     opacity: 1;
@@ -3512,17 +3571,17 @@ button[data-loading="1"]::after {
 
 .sb-player-icon {
   color: var(--accent-primary);
-  font-size: 20px;
+  font-size: 18px;
   animation: sbPulseIcon 1.2s infinite ease-in-out;
 }
 
 @keyframes sbPulseIcon {
   0% { transform: scale(1); opacity: 0.85; }
-  50% { transform: scale(1.2); opacity: 1; }
+  50% { transform: scale(1.15); opacity: 1; }
   100% { transform: scale(1); opacity: 0.85; }
 }
 
-.sb-player-name {
+.sb-player-name, .sb-player-item-name {
   font-size: 12px;
   font-weight: 600;
   color: var(--text-primary);
@@ -3531,19 +3590,30 @@ button[data-loading="1"]::after {
   text-overflow: ellipsis;
 }
 
+.sb-player-user {
+  font-size: 10px;
+  font-weight: 600;
+  color: var(--text-muted);
+  background: var(--bg-tertiary);
+  padding: 1px 6px;
+  border-radius: 6px;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
 .sb-player-progress-container {
   display: flex;
   flex-direction: column;
   gap: 4px;
   flex: 1;
-  min-width: 120px;
+  min-width: 0;
 }
 
 .sb-player-progress-track {
   width: 100%;
-  height: 6px;
+  height: 4px;
   background: rgba(255, 255, 255, 0.12);
-  border-radius: 3px;
+  border-radius: 2px;
   overflow: hidden;
   position: relative;
 }
@@ -3552,7 +3622,7 @@ button[data-loading="1"]::after {
   height: 100%;
   width: 0%;
   background: linear-gradient(90deg, #5865f2, #7289da);
-  border-radius: 3px;
+  border-radius: 2px;
   transition: width 0.08s linear;
 }
 
@@ -3568,11 +3638,12 @@ button[data-loading="1"]::after {
   display: inline-flex;
   align-items: center;
   gap: 4px;
-  padding: 5px 12px;
+  padding: 4px 8px;
+  height: 26px;
   font-size: 11px;
   font-weight: 600;
-  background: rgba(237, 66, 69, 0.18);
-  border: 1px solid rgba(237, 66, 69, 0.4);
+  background: rgba(237, 66, 69, 0.15);
+  border: 1px solid rgba(237, 66, 69, 0.35);
   color: var(--danger);
   border-radius: var(--radius-sm);
   cursor: pointer;

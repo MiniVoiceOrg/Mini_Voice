@@ -82,6 +82,12 @@ export const en: TranslationMap = {
 
   // ── Server settings (ServerSettingsModal.ts) ─────────────────────────────
   'serverSettings.title': 'Server Settings',
+  'serverSettings.tabGeneral': 'General',
+  'serverSettings.tabSecurity': 'Security',
+  'serverSettings.tabVoiceVideo': 'Voice & Video',
+  'serverSettings.tabStorage': 'Storage',
+  'serverSettings.tabNotifications': 'Notifications',
+  'serverSettings.generalInfo': 'Server Information',
   'serverSettings.nameLabel': 'Server name',
   'serverSettings.securitySection': 'Security and access password',
   'serverSettings.statusProtected': 'Server protected with a password',
