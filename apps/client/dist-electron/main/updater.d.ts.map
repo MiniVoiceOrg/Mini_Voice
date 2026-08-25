@@ -1,1 +1,1 @@
-{"version":3,"file":"updater.d.ts","sourceRoot":"","sources":["../../src/main/updater.ts"],"names":[],"mappings":"AAAA,OAAO,EAAO,aAAa,EAAkB,MAAM,UAAU,CAAC;AAuL9D,wBAAgB,YAAY,CAAC,UAAU,EAAE,aAAa,GAAG,IAAI,CAuE5D"}
+{"version":3,"file":"updater.d.ts","sourceRoot":"","sources":["../../src/main/updater.ts"],"names":[],"mappings":"AAAA,OAAO,EAAO,aAAa,EAAkB,MAAM,UAAU,CAAC;AAsQ9D,wBAAgB,YAAY,CAAC,UAAU,EAAE,aAAa,GAAG,IAAI,CAuF5D"}

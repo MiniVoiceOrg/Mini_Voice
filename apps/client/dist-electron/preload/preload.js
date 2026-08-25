@@ -30,6 +30,7 @@ const api = {
     checkForUpdates: () => electron_1.ipcRenderer.invoke('update-check'),
     downloadUpdate: () => electron_1.ipcRenderer.invoke('update-download'),
     installUpdate: () => electron_1.ipcRenderer.invoke('update-install'),
+    setUpdateChannel: (allowBeta) => electron_1.ipcRenderer.invoke('update-set-channel', allowBeta),
     onUpdateProgress: (cb) => electron_1.ipcRenderer.on('update:progress', (_e, percent) => cb(percent)),
     onUpdateDownloaded: (cb) => electron_1.ipcRenderer.on('update:downloaded', (_e, info) => cb(info)),
     onUpdateError: (cb) => electron_1.ipcRenderer.on('update:error', (_e, message) => cb(message)),

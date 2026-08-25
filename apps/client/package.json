@@ -39,7 +39,8 @@
     "electronVersion": "34.2.0",
     "asar": false,
     "directories": {
-      "output": "../../release"
+      "output": "../../release",
+      "buildResources": "build"
     },
     "detectUpdateChannel": false,
     "publish": [
@@ -52,9 +53,11 @@
     "files": [
       "dist/**/*",
       "dist-electron/**/*",
+      "build/**/*",
       "package.json"
     ],
     "win": {
+      "icon": "build/icon.ico",
       "target": [
         {
           "target": "nsis",
@@ -79,6 +82,7 @@
       "artifactName": "Mini-Voice-${version}-win-${arch}-portable.${ext}"
     },
     "mac": {
+      "icon": "build/icon.png",
       "category": "public.app-category.social-networking",
       "artifactName": "Mini-Voice-${version}-mac-${arch}.${ext}",
       "target": [

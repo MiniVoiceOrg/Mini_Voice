@@ -59,9 +59,13 @@ export class TrayManager {
 
   private initAppLogo(): void {
     const iconCandidates = [
+      path.join(__dirname, '../../build/icon.png'),
+      path.join(__dirname, '../../build/icon.ico'),
       path.join(__dirname, '../../images/Logo.png'),
       path.join(__dirname, '../../src/renderer/assets/Logo.png'),
       path.join(__dirname, '../../assets/Logo.png'),
+      path.join(app.getAppPath(), 'build/icon.png'),
+      path.join(app.getAppPath(), 'build/icon.ico'),
       path.join(app.getAppPath(), 'images/Logo.png'),
       path.join(app.getAppPath(), 'src/renderer/assets/Logo.png'),
     ];

@@ -26,8 +26,12 @@ function quitApplication(): void {
 
 function createWindow(): void {
   const iconCandidates = [
+    path.join(__dirname, '../../build/icon.ico'),
+    path.join(__dirname, '../../build/icon.png'),
     path.join(__dirname, '../../images/Logo.png'),
     path.join(__dirname, '../../src/renderer/assets/Logo.png'),
+    path.join(app.getAppPath(), 'build/icon.ico'),
+    path.join(app.getAppPath(), 'build/icon.png'),
     path.join(app.getAppPath(), 'images/Logo.png'),
   ];
   const iconPath = iconCandidates.find((p) => fs.existsSync(p));
