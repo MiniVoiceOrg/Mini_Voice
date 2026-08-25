@@ -304,7 +304,7 @@ monky config set       # configuration menu
 monky --help           # all options
 ```
 
-➡️ Full CLI documentation: [docs/CLI.md](docs/CLI.md)
+➡️ Full CLI documentation: [docs/CLI.en.md](docs/CLI.en.md)
 
 ### Ports used
 

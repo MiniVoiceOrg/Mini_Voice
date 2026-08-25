@@ -2,211 +2,456 @@
 
 O `monky` é a ferramenta de administração do servidor Monky para VPS, Docker
 ou qualquer ambiente sem cliente gráfico. Ele abre o mesmo banco `server.db`
-usado pelo servidor e agora funciona tanto com argumentos inline quanto em modo
-interativo.
+usado pelo servidor e funciona em dois modos:
 
-> Importante: para comandos administrativos (`members`, `roles`, `admin`,
+- **Modo interativo** — execute o comando sem argumentos e o CLI faz as
+  perguntas necessárias passo a passo.
+- **Modo direto** — passe todos os argumentos na linha de comando para
+  execução imediata (útil para scripts e automação).
+
+> **Nota:** para comandos administrativos (`members`, `roles`, `admin`,
 > `config`), prefira usar o CLI com o servidor parado para evitar duas
 > instâncias gravando o mesmo SQLite ao mesmo tempo.
 
+---
+
 ## Instalação
 
-Depois de compilar o monorepo:
+### Pré-requisitos
+
+- Node.js 18+
+- npm
+
+### Compilar o monorepo
 
 ```bash
+git clone https://github.com/MonkyOrg/Monky.git
+cd Monky
+npm install
 npm run build
 ```
 
-você pode usar de três formas:
-
-```bash
-node apps/server/dist/cli.js <comando>
-```
-
-```bash
-npm run cli --workspace=apps/server -- <comando>
-```
+### Instalar como comando do sistema
 
 ```bash
 npm install -g ./apps/server
-monky <comando>
 ```
 
-Se preferir instalar de dentro da pasta:
+Depois disso, `monky` fica disponível globalmente no terminal — de qualquer
+pasta, sem `npx`.
+
+### Formas alternativas de execução
+
+Se não quiser instalar globalmente:
 
 ```bash
-cd apps/server
-npm install -g .
+# Via npx (na raiz do monorepo)
+npx monky <comando>
+
+# Via node direto
+node apps/server/dist/cli.js <comando>
+
+# Via npm workspace
+npm run cli --workspace=apps/server -- <comando>
 ```
 
-Opção global:
+---
 
-```bash
---data <pasta>
-```
+## Opções globais
 
-Define a pasta de dados do servidor. O padrão é `./data`.
+| Opção            | Descrição                                | Padrão   |
+|------------------|------------------------------------------|----------|
+| `--data <pasta>` | Caminho da pasta de dados do servidor    | `./data` |
+| `--help`, `-h`   | Exibe a ajuda                            | —        |
 
-## Ajuda rápida
+A opção `--data` pode ser usada em qualquer comando. Quando omitida, o CLI
+usa `./data` como padrão. Se a pasta não existir (em comandos que precisam
+de um servidor existente), o CLI pergunta o caminho interativamente.
 
-```text
-Monky CLI - Ferramenta de administração do servidor Monky
+---
 
-Uso:
-  monky bootstrap          Configura um novo servidor (interativo)
-  monky start              Inicia o servidor
-  monky stop               Para o servidor
-  monky members            Lista membros
-  monky members info <id>  Info detalhada de um membro
-  monky admin add [user]   Concede admin (interativo se sem arg)
-  monky admin remove [user] Remove admin
-  monky roles              Lista cargos
-  monky roles create       Cria um novo cargo (interativo)
-  monky roles assign       Atribui cargo a membro (interativo)
-  monky roles unassign     Remove cargo de membro (interativo)
-  monky roles delete       Remove um cargo (interativo)
-  monky config             Mostra configuração do servidor
-  monky config set [k] [v] Altera uma configuração (interativo se sem args)
-```
+## Referência de comandos
 
-## Comandos
+### `monky bootstrap`
 
-### Bootstrap interativo
+Configura um novo servidor definindo o dono/administrador inicial. É o
+primeiro comando a executar numa VPS nova.
 
-O fluxo recomendado para um servidor novo:
+#### Modo interativo
 
 ```bash
 monky bootstrap
 ```
 
-Perguntas feitas pelo CLI:
+O CLI pergunta passo a passo:
 
-1. Caminho dos dados do servidor
-2. Código de identidade do dono (`MONKY-ID:...`)
-3. Senha da identidade
-4. Nickname do dono
-5. Nome do servidor
-6. Porta do servidor
-7. Senha do servidor
-8. Confirmação final
-9. Opcionalmente iniciar o servidor
+1. **Caminho dos dados do servidor** (padrão: `./data`)
+2. **Código de identidade do dono** (`MONKY-ID:...`) — obtido no app Monky
+   em Configurações → Exportar Identidade
+3. **Senha da identidade** (entrada oculta)
+4. **Nickname do dono** (padrão: `Owner`)
+5. **Nome do servidor** (padrão: `Servidor dos Amigos`)
+6. **Porta do servidor** (padrão: `3001`)
+7. **Senha do servidor** (deixe vazio para sem senha)
+8. **Confirmação** — exibe um resumo antes de aplicar
+9. **Iniciar o servidor agora?** — opcionalmente já inicia após o bootstrap
 
-Também funciona inline:
+#### Modo direto
 
 ```bash
-monky bootstrap --identity "MONKY-ID:..." --nickname Owner --port 3001 --password minhasenha
+monky bootstrap --identity "MONKY-ID:..." --nickname "MeuNick" --name "Servidor" --port 3001 --password "senhaDoServidor"
 ```
 
-### Iniciar o servidor
+| Flag           | Descrição                                      | Obrigatório |
+|----------------|-------------------------------------------------|-------------|
+| `--identity`   | Código de identidade exportado (`MONKY-ID:...`) | Sim*        |
+| `--nickname`   | Nickname do dono no servidor                    | Não         |
+| `--name`       | Nome do servidor                                | Não         |
+| `--port`       | Porta do servidor                               | Não         |
+| `--password`   | Senha do servidor                               | Não         |
+
+\* A senha da identidade é sempre solicitada interativamente (entrada oculta).
+
+**Exemplo completo:**
 
 ```bash
-monky start --data ./data
-monky start --data ./data --port 3001 --name "Servidor dos Amigos"
+monky --data /var/monky bootstrap --identity "MONKY-ID:1:eyJ..." --nickname Admin --name "QG da Galera" --port 4000
+```
+
+---
+
+### `monky start`
+
+Inicia o servidor Monky em foreground.
+
+```bash
+# Usa configurações do banco (nome, senha, etc.)
+monky start
+
+# Com opções explícitas
+monky start --port 3001
+monky start --data /var/monky --port 4000 --name "Meu Servidor"
+```
+
+| Flag               | Descrição                          | Padrão                |
+|--------------------|------------------------------------|-----------------------|
+| `--port`           | Porta do servidor                  | `3001`                |
+| `--name`           | Nome do servidor                   | Valor salvo no banco  |
+| `--password`       | Senha (só se não tiver no banco)   | —                     |
+| `--max-users`      | Máximo de usuários                 | Valor salvo ou `100`  |
+| `--voice-channel`  | Nome do canal de voz inicial       | `Geral`               |
+| `--text-channel`   | Nome do canal de texto inicial     | `geral`               |
+
+O comando:
+
+- Cria a pasta de dados se não existir.
+- Grava o PID em `<dataDir>/monky.pid`.
+- Lê configurações já salvas no banco quando disponíveis.
+- Trata `SIGINT` (Ctrl+C) e `SIGTERM` para shutdown gracioso.
+- Se já existe um servidor rodando (PID ativo), exibe aviso e não inicia.
+
+---
+
+### `monky stop`
+
+Para o servidor Monky que estiver em execução.
+
+```bash
+monky stop
+monky stop --data /var/monky
 ```
 
 O comando:
 
-- lê a configuração já salva no banco quando disponível;
-- grava o PID em `<dataDir>/monky.pid`;
-- inicia o servidor em foreground;
-- trata `SIGINT`/`SIGTERM` para shutdown gracioso.
+- Lê o arquivo `monky.pid` na pasta de dados.
+- Envia `SIGTERM` para o processo.
+- Aguarda até 5 segundos para confirmação de encerramento.
+- Remove o PID file automaticamente.
+- Se o processo não estiver mais rodando, limpa PID files stale.
 
-### Parar o servidor
+---
 
-```bash
-monky stop --data ./data
-```
+### `monky members`
 
-Lê o arquivo `monky.pid`, envia `SIGTERM` e remove PID stale quando necessário.
+Gerencia membros do servidor.
 
-### Membros
+#### Listar membros
 
 ```bash
 monky members
 monky members list
+```
+
+Exibe tabela com ID, Nickname, Client ID e Roles de cada membro.
+
+#### Informações de um membro
+
+```bash
+# Modo interativo — pergunta o nickname/clientId
+monky members info
+
+# Modo direto — por nickname
 monky members info lucas
+
+# Modo direto — por clientId
 monky members info abcd1234efgh5678
 ```
 
-Sem subcomando, `monky members` vira `monky members list`.
+Exibe informações detalhadas: id, clientId, publicKey, avatar, datas de
+criação e último acesso, se é owner, e cargos atribuídos.
 
-### Admin
+---
+
+### `monky admin`
+
+Gerencia o cargo de administrador.
+
+#### Adicionar admin
 
 ```bash
+# Modo interativo — lista membros numerados para escolher
 monky admin add
+
+# Modo direto — por nickname
 monky admin add lucas
-monky admin remove lucas
+
+# Modo direto — por clientId
+monky admin add abcd1234efgh5678
 ```
 
-Sem usuário, `admin add` mostra todos os membros numerados para escolha
-interativa.
+No modo interativo, o CLI exibe:
 
-### Cargos
+```
+Membros do servidor:
+  1. Alice (abc123...)
+  2. Bob (def456...)
+  3. Carlos (ghi789...)
+Selecione o membro (número): _
+```
+
+#### Remover admin
+
+```bash
+monky admin remove lucas
+monky admin remove abcd1234efgh5678
+```
+
+---
+
+### `monky roles`
+
+Gerencia cargos (roles) do servidor.
+
+#### Listar cargos
 
 ```bash
 monky roles
 monky roles list
-monky roles create
-monky roles assign
-monky roles unassign
-monky roles delete
 ```
 
-Sem subcomando, `monky roles` vira `monky roles list`.
+Exibe cada cargo com: nome, ID, cor, posição, permissões (valor numérico),
+se é padrão, e quantidade de membros atribuídos.
 
-No modo interativo:
+#### Criar cargo
 
-- `roles create` pergunta nome, cor e permissões;
-- `roles assign` deixa escolher membro e cargo;
-- `roles unassign` faz o mesmo para remoção;
-- `roles delete` lista cargos e pede confirmação.
+```bash
+# Modo interativo — pergunta nome, cor e permissões
+monky roles create
 
-### Configuração
+# Modo direto
+monky roles create "Moderador" "#00ff88" MANAGE_CHANNELS,MUTE_MEMBERS
+```
+
+No modo interativo, as permissões são exibidas como uma lista numerada:
+
+```
+Permissões do cargo:
+  1. [ ] Administrator (ADMINISTRATOR)
+  2. [ ] Manage Server (MANAGE_SERVER)
+  3. [ ] Manage Channels (MANAGE_CHANNELS)
+  4. [ ] Mute Members (MUTE_MEMBERS)
+  5. [ ] Deafen Members (DEAFEN_MEMBERS)
+  6. [ ] Move Members (MOVE_MEMBERS)
+  7. [ ] Kick Members (KICK_MEMBERS)
+  8. [ ] Speak (SPEAK)
+  9. [ ] Send Messages (SEND_MESSAGES)
+  10. [ ] Read Messages (READ_MESSAGES)
+  11. [ ] Attach Files (ATTACH_FILES)
+Digite os números separados por vírgula. Deixe vazio para nenhuma permissão.
+Permissões: _
+```
+
+#### Atribuir cargo a membro
+
+```bash
+# Modo interativo — escolhe membro e cargo nas listas
+monky roles assign
+
+# Modo direto
+monky roles assign lucas Moderador
+```
+
+No modo interativo, primeiro seleciona o membro (lista numerada), depois o
+cargo (lista numerada).
+
+#### Remover cargo de membro
+
+```bash
+# Modo interativo — escolhe membro e cargo a remover
+monky roles unassign
+
+# Modo direto
+monky roles unassign lucas Moderador
+```
+
+Cargos marcados como padrão não podem ser removidos.
+
+#### Excluir cargo
+
+```bash
+# Modo interativo — lista cargos e pede confirmação
+monky roles delete
+
+# Modo direto
+monky roles delete Moderador
+```
+
+O CLI pede confirmação antes de excluir (`Confirma a remoção do cargo X? (s/N)`).
+
+---
+
+### `monky config`
+
+Gerencia a configuração do servidor.
+
+#### Exibir configuração
 
 ```bash
 monky config
 monky config show
-monky config set
-monky config set name "QG dos Amigos"
-monky config set maxUsers 50
-monky config set allowSoundboard false
-monky config set password clear
 ```
 
-Sem subcomando, `monky config` vira `monky config show`.
+Exibe: dataDir, id, name, hasPassword, maxUsers, ownerUserId, ownerNickname,
+allowSoundboard, iconPath, maxAttachmentFileBytes, maxAttachmentStorageBytes
+e createdAt.
 
-Chaves suportadas:
+#### Alterar configuração
 
-- `name`
-- `password` (`clear`, `none`, `null`, `empty` ou `remove` removem a senha)
-- `maxUsers`
-- `allowSoundboard`
-- `maxAttachmentFileBytes`
-- `maxAttachmentStorageBytes`
+```bash
+# Modo interativo — menu com as chaves disponíveis
+monky config set
 
-## Fluxo recomendado para VPS
+# Modo direto
+monky config set name "Servidor dos Amigos"
+monky config set maxUsers 50
+monky config set password "novasenha"
+monky config set password clear
+monky config set allowSoundboard false
+monky config set maxAttachmentFileBytes 10485760
+monky config set maxAttachmentStorageBytes 1073741824
+```
 
-1. Exporte sua identidade no app Monky.
-2. Instale o CLI globalmente:
+No modo interativo sem argumentos, o CLI exibe um menu:
 
-   ```bash
-   npm install -g ./apps/server
-   ```
+```
+Qual configuração deseja alterar?
+  1. name
+  2. password
+  3. maxUsers
+  4. allowSoundboard
+  5. maxAttachmentFileBytes
+  6. maxAttachmentStorageBytes
+Selecione uma opção: _
+```
 
-3. Faça o bootstrap:
+Depois pergunta o novo valor com o valor atual como sugestão.
 
-   ```bash
-   monky bootstrap --data ./data
-   ```
+#### Chaves suportadas
 
-4. Inicie o servidor:
+| Chave                        | Descrição                                            | Tipo     |
+|------------------------------|------------------------------------------------------|----------|
+| `name`                       | Nome do servidor (mín. 2 caracteres)                 | texto    |
+| `password`                   | Senha do servidor                                    | texto    |
+| `maxUsers`                   | Número máximo de usuários                            | inteiro  |
+| `allowSoundboard`            | Habilitar soundboard                                 | booleano |
+| `maxAttachmentFileBytes`     | Tamanho máximo por arquivo anexado (bytes)           | inteiro  |
+| `maxAttachmentStorageBytes`  | Armazenamento máximo total de anexos (bytes)         | inteiro  |
 
-   ```bash
-   monky start --data ./data --port 3001
-   ```
+**Valores especiais para `password`:** `clear`, `none`, `null`, `empty` ou
+`remove` removem a senha do servidor.
 
-5. Quando precisar parar:
+**Valores booleanos aceitos:** `true`/`false`, `1`/`0`, `yes`/`no`,
+`sim`/`nao`, `on`/`off`.
 
-   ```bash
-   monky stop --data ./data
-   ```
+---
+
+## Fluxo completo para VPS
+
+### 1. Preparar o servidor
+
+```bash
+git clone https://github.com/MonkyOrg/Monky.git
+cd Monky
+npm install
+npm run build
+npm install -g ./apps/server
+```
+
+### 2. Exportar identidade no app Monky
+
+No cliente Monky, vá em **Configurações → Exportar Identidade** e copie o
+código `MONKY-ID:...`.
+
+### 3. Configurar o servidor
+
+```bash
+monky bootstrap
+```
+
+Siga as perguntas. Ao final, o CLI oferece iniciar o servidor automaticamente.
+
+### 4. Iniciar manualmente (quando necessário)
+
+```bash
+monky start
+```
+
+### 5. Parar o servidor
+
+```bash
+monky stop
+```
+
+### 6. Administrar
+
+```bash
+monky members          # ver quem está registrado
+monky admin add        # promover alguém a admin
+monky roles create     # criar um novo cargo
+monky roles assign     # atribuir cargo a membro
+monky config set       # alterar configurações
+```
+
+---
+
+## Exemplos rápidos
+
+```bash
+# Bootstrap completo inline
+monky bootstrap --identity "MONKY-ID:1:..." --nickname Admin --port 3001
+
+# Iniciar servidor na porta 4000 com dados em outra pasta
+monky --data /var/monky start --port 4000
+
+# Listar membros de um servidor com dados em pasta customizada
+monky --data /var/monky members
+
+# Criar cargo Moderador com cor verde e permissão de gerenciar canais
+monky roles create "Moderador" "#00ff88" MANAGE_CHANNELS
+
+# Alterar nome do servidor
+monky config set name "QG da Galera"
+
+# Remover senha do servidor
+monky config set password clear
+```
