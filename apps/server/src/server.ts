@@ -20,6 +20,7 @@ import {
 } from './infrastructure/database/SqliteRepositories';
 import { Logger } from './infrastructure/logger/Logger';
 import { LanBroadcaster } from './infrastructure/discovery/LanBroadcaster';
+import { scanServerNetworkInterfaces } from './infrastructure/discovery/ServerIpScanner';
 import { AttachmentStorageService } from './infrastructure/security/AttachmentStorageService';
 import { AvatarStorageService } from './infrastructure/security/AvatarStorageService';
 import { PasswordService } from './infrastructure/security/PasswordService';
@@ -160,6 +161,32 @@ export class MiniVoiceServer {
           .catch(() => {
             res.writeHead(500, { 'Access-Control-Allow-Origin': '*' });
             res.end();
+          });
+        return;
+      }
+      if (req.url === '/invite-info') {
+        serverRepo
+          .getServer()
+          .then(async (server) => {
+            const addr = httpServer.address();
+            const port = addr && typeof addr === 'object' ? addr.port : config.port || LIMITS.DEFAULT_PORT;
+            const networkInterfaces = await scanServerNetworkInterfaces();
+
+            res.writeHead(200, {
+              'Content-Type': 'application/json',
+              'Access-Control-Allow-Origin': '*',
+            });
+            res.end(
+              JSON.stringify({
+                port,
+                serverName: server?.name || config.serverName || 'Mini Voice Server',
+                networkInterfaces,
+              })
+            );
+          })
+          .catch((err) => {
+            res.writeHead(500, { 'Access-Control-Allow-Origin': '*' });
+            res.end(JSON.stringify({ error: 'Erro ao obter dados de convite' }));
           });
         return;
       }
