@@ -355,7 +355,7 @@ precisa saber programar** para participar.
 - 💡 **[Sugerir uma ideia](https://github.com/MonkyOrg/Monky/discussions/new?category=ideas)** — uma proposta por discussão
 - ⬆️ **[Ver e votar nas ideias](https://github.com/MonkyOrg/Monky/discussions/categories/ideas)** — antes de sugerir, veja se alguém já pediu o mesmo
 - 📋 **[Issues abertas](https://github.com/MonkyOrg/Monky/issues)** — o que já foi planejado e o que está em andamento
-- 🐛 **[Reportar um bug](https://github.com/MonkyOrg/Monky/issues/new/choose)** — bugs vão direto para Issues, sem votação
+- 🐛 **[Reportar um bug](https://github.com/MonkyOrg/Monky/discussions/new?category=bug-reports)** — bugs começam em Discussions e viram issue depois de confirmados, sem votação
 
 Na primeira semana de cada mês, as três ideias mais votadas (com no mínimo 5
 votos) viram issues e entram no fluxo de desenvolvimento. O status volta
@@ -376,7 +376,7 @@ Toda ajuda conta, e a maior parte dela **não exige escrever código**.
 |---|---|
 | Sugerir uma funcionalidade | [Discussions › Ideas](https://github.com/MonkyOrg/Monky/discussions/new?category=ideas) — uma proposta por discussão |
 | Votar no que vem primeiro | [Ideias abertas](https://github.com/MonkyOrg/Monky/discussions/categories/ideas) — o voto define o próximo ciclo |
-| Reportar um bug | [Nova issue](https://github.com/MonkyOrg/Monky/issues/new/choose) — com passos para reproduzir |
+| Reportar um bug | [Discussions › Bug Reports](https://github.com/MonkyOrg/Monky/discussions/new?category=bug-reports) — com passos para reproduzir |
 | Testar uma versão beta | **Configurações › Sobre e Updates › Receber versões beta** |
 | Melhorar a documentação | PR direto neste `README.md` ou no `CONTRIBUTING.md` |
 

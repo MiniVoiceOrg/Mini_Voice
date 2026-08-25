@@ -73,8 +73,20 @@ Duas coisas que assumimos como compromisso:
 
 ### Reportar um bug
 
-Bugs vão direto em [Issues](https://github.com/MonkyOrg/Monky/issues/new/choose),
-não em Discussions — eles não precisam de votação para serem corrigidos.
+Bugs começam em **[Discussions › Bug Reports](https://github.com/MonkyOrg/Monky/discussions/categories/bug-reports)**, não em Issues.
+
+O caminho é: você relata → alguém do projeto confirma que reproduz → vira uma
+issue com o label `bug` e entra na fila de correção.
+
+Esse passo de confirmação existe para separar defeito de configuração de rede,
+de versão antiga ou de mal-entendido — coisas que consomem a fila sem serem
+bugs. Relate mesmo assim quando estiver em dúvida: descobrir que não era bug
+também é resultado.
+
+**Não há votação em bug.** A categoria existe para triagem, não para disputa de
+popularidade: um problema confirmado é corrigido independente de quantas
+pessoas votaram nele. Voto vale para ideias, onde a pergunta é *o que fazer
+primeiro* — num bug a pergunta é apenas *isso está quebrado?*.
 
 ---
 

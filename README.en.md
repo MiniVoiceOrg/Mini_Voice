@@ -27,6 +27,7 @@
 - [Hosting on a VPS (or Linux/Docker)](#-hosting-on-a-vps-or-linuxdocker)
 - [Common problems](#-common-problems)
 - [Features at a glance](#-features-at-a-glance)
+- [Release verification](#-release-verification)
 - [Roadmap & voting](#️-roadmap--voting)
 - [How to contribute](#-how-to-contribute)
 - [For developers](#-for-developers)
@@ -322,6 +323,31 @@ After that, your friends join normally using the **VPS IP** and the port.
 
 ---
 
+## 🔐 Release verification
+
+Every release is signed with [Sigstore Cosign](https://docs.sigstore.dev/)
+(keyless, through GitHub Actions OIDC). To verify a download's authenticity:
+
+```bash
+# 1. Download the file, checksums-sha256.txt, .sig and .crt from the release
+
+# 2. Verify integrity (SHA256)
+sha256sum -c checksums-sha256.txt
+
+# 3. Verify the cryptographic signature (requires cosign)
+cosign verify-blob \
+  --signature checksums-sha256.txt.sig \
+  --certificate checksums-sha256.txt.crt \
+  --certificate-identity-regexp "https://github.com/MonkyOrg/Monky" \
+  --certificate-oidc-issuer "https://token.actions.githubusercontent.com" \
+  checksums-sha256.txt
+```
+
+This proves the artifact was produced by the project's official pipeline and has
+not been tampered with.
+
+---
+
 ## 🗳️ Roadmap & voting
 
 What goes into the next versions is decided by the community — and you **do not
@@ -330,7 +356,7 @@ need to know how to code** to take part.
 - 💡 **[Suggest an idea](https://github.com/MonkyOrg/Monky/discussions/new?category=ideas)** — one proposal per discussion
 - ⬆️ **[See and vote on ideas](https://github.com/MonkyOrg/Monky/discussions/categories/ideas)** — before suggesting, check whether someone already asked for the same thing
 - 📋 **[Open issues](https://github.com/MonkyOrg/Monky/issues)** — what is already planned and what is in progress
-- 🐛 **[Report a bug](https://github.com/MonkyOrg/Monky/issues/new/choose)** — bugs go straight to Issues, no voting
+- 🐛 **[Report a bug](https://github.com/MonkyOrg/Monky/discussions/new?category=bug-reports)** — bugs start in Discussions and become issues once confirmed, no voting
 
 In the first week of every month, the three most-voted ideas (with at least 5
 votes) become issues and enter the development flow. The status goes back to the
@@ -351,7 +377,7 @@ Every bit helps, and most of it **does not require writing code**.
 |---|---|
 | Suggest a feature | [Discussions › Ideas](https://github.com/MonkyOrg/Monky/discussions/new?category=ideas) — one proposal per discussion |
 | Vote on what comes first | [Open ideas](https://github.com/MonkyOrg/Monky/discussions/categories/ideas) — the votes decide the next cycle |
-| Report a bug | [New issue](https://github.com/MonkyOrg/Monky/issues/new/choose) — with steps to reproduce |
+| Report a bug | [Discussions › Bug Reports](https://github.com/MonkyOrg/Monky/discussions/new?category=bug-reports) — with steps to reproduce |
 | Test a beta build | **Settings › About and Updates › Receive beta versions** |
 | Improve the documentation | A PR straight to this `README.en.md`, to `README.md` or to `CONTRIBUTING.md` |
 

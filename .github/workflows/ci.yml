@@ -22,6 +22,34 @@ jobs:
         with:
           fetch-depth: 0
 
+      - name: Conferir slug dos templates de discussao
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        shell: bash
+        run: |
+          # O GitHub aplica o template de discussao casando o nome do arquivo
+          # com o slug da categoria. Quando nao casa, o formulario simplesmente
+          # nao aparece — sem erro e sem aviso. Ja aconteceu duas vezes aqui.
+          slugs=$(gh api graphql -f query='
+            { repository(owner: "${{ github.repository_owner }}", name: "'"${GITHUB_REPOSITORY#*/}"'") {
+                discussionCategories(first: 50) { nodes { slug } } } }' \
+            -q '.data.repository.discussionCategories.nodes[].slug')
+
+          echo "Categorias existentes:"; echo "$slugs" | sed 's/^/  /'
+
+          fail=0
+          shopt -s nullglob
+          for f in .github/DISCUSSION_TEMPLATE/*.yml .github/DISCUSSION_TEMPLATE/*.yaml; do
+            base=$(basename "$f"); slug="${base%.*}"
+            if ! echo "$slugs" | grep -Fxq "$slug"; then
+              echo "::error file=$f::Nao existe categoria de Discussions com o slug '$slug'. O template nao sera aplicado."
+              fail=1
+            else
+              echo "  ok: $base casa com a categoria '$slug'"
+            fi
+          done
+          exit $fail
+
       - name: Conferir pares PT/EN
         env:
           BASE: ${{ github.event.pull_request.base.sha }}
