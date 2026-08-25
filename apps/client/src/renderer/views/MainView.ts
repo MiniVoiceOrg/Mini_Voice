@@ -34,6 +34,8 @@ export class MainView {
   private unbindEvents: Array<() => void> = [];
   private activeContentView: 'chat' | 'stage' = 'chat';
   private sidebarPingInterval: number | null = null;
+  private textChannelDragHoverTimer: number | null = null;
+  private textChannelDragHoverId: string | null = null;
 
   constructor(container: HTMLElement) {
     this.container = container;
@@ -375,13 +377,12 @@ export class MainView {
     networkClient.disconnect();
 
     try {
-      let clientId = connectionStore.clientId;
-      if (!clientId && window.api?.getClientId) {
-        clientId = await window.api.getClientId();
-        connectionStore.clientId = clientId;
-      }
+      const identity = connectionStore.hasIdentity && connectionStore.clientId && connectionStore.publicKey
+        ? { clientId: connectionStore.clientId, publicKey: connectionStore.publicKey }
+        : await window.api.getIdentity();
+      connectionStore.setIdentity(identity);
       const nickname = connectionStore.savedNickname || t('connection.unknownUser');
-      const res = await networkClient.connect(server.host, server.port, clientId, nickname, server.password);
+      const res = await networkClient.connect(server.host, server.port, identity, nickname, server.password);
       connectionStore.addSavedServer({
         host: server.host,
         port: server.port,
@@ -443,6 +444,52 @@ export class MainView {
     const min = 280;
     const max = Math.max(min, Math.floor(window.innerWidth * 0.35));
     return Math.min(max, Math.max(min, width));
+  }
+
+  private activateTextChannel(channelId: string): void {
+    this.clearTextChannelDragHover();
+    serverStore.setActiveTextChannel(channelId);
+    this.activeContentView = 'chat';
+    this.chatView?.setChannel(channelId);
+    this.renderChannels();
+  }
+
+  private isFileDrag(event: DragEvent): boolean {
+    const types = event.dataTransfer?.types;
+    return !!types && Array.from(types).includes('Files');
+  }
+
+  private clearTextChannelDragHover(): void {
+    if (this.textChannelDragHoverTimer !== null) {
+      window.clearTimeout(this.textChannelDragHoverTimer);
+      this.textChannelDragHoverTimer = null;
+    }
+
+    if (this.textChannelDragHoverId) {
+      const previousItem = this.container.querySelector(
+        `.channel-item[data-channel-id="${this.textChannelDragHoverId}"][data-channel-type="TEXT"]`
+      ) as HTMLElement | null;
+      previousItem?.classList.remove('drag-hover');
+    }
+
+    this.textChannelDragHoverId = null;
+  }
+
+  private scheduleTextChannelAutoSwitch(item: HTMLElement, channelId: string): void {
+    if (this.textChannelDragHoverId !== channelId) {
+      this.clearTextChannelDragHover();
+      this.textChannelDragHoverId = channelId;
+      item.classList.add('drag-hover');
+    }
+
+    if (this.textChannelDragHoverTimer !== null) return;
+
+    this.textChannelDragHoverTimer = window.setTimeout(() => {
+      this.textChannelDragHoverTimer = null;
+      if (this.textChannelDragHoverId !== channelId) return;
+      if (serverStore.activeTextChannelId === channelId && this.activeContentView === 'chat') return;
+      this.activateTextChannel(channelId);
+    }, 500);
   }
 
   private renderChannels(): void {
@@ -532,10 +579,7 @@ export class MainView {
         const type = item.getAttribute('data-channel-type')!;
 
         if (type === 'TEXT') {
-          serverStore.setActiveTextChannel(channelId);
-          this.activeContentView = 'chat';
-          this.chatView?.setChannel(channelId);
-          this.renderChannels();
+          this.activateTextChannel(channelId);
         } else if (type === 'VOICE') {
           // Show a loading spinner on the channel while the voice join happens (#48).
           const iconEl = item.querySelector('.channel-icon');
@@ -553,6 +597,33 @@ export class MainView {
           }
         }
       });
+    });
+
+    this.container.querySelectorAll('.channel-item[data-channel-type="TEXT"]').forEach((item) => {
+      const el = item as HTMLElement;
+      const channelId = el.getAttribute('data-channel-id');
+      if (!channelId) return;
+
+      const handleDragHover = (e: Event) => {
+        const dragEvent = e as DragEvent;
+        if (!this.isFileDrag(dragEvent)) return;
+        dragEvent.preventDefault();
+        if (dragEvent.dataTransfer) dragEvent.dataTransfer.dropEffect = 'copy';
+        this.scheduleTextChannelAutoSwitch(el, channelId);
+      };
+
+      el.addEventListener('dragenter', handleDragHover);
+      el.addEventListener('dragover', handleDragHover);
+      el.addEventListener('dragleave', (e) => {
+        const dragEvent = e as DragEvent;
+        if (!this.isFileDrag(dragEvent)) return;
+        const nextTarget = dragEvent.relatedTarget as Node | null;
+        if (nextTarget && el.contains(nextTarget)) return;
+        if (this.textChannelDragHoverId === channelId) {
+          this.clearTextChannelDragHover();
+        }
+      });
+      el.addEventListener('drop', () => this.clearTextChannelDragHover());
     });
 
     // Right-clicking a channel opens the same options menu as the ⋮ button (#151).
@@ -795,6 +866,14 @@ export class MainView {
     document.addEventListener('click', outsideClickHandler);
     this.unbindEvents.push(() => document.removeEventListener('click', outsideClickHandler));
 
+    const clearTextChannelDragHover = () => this.clearTextChannelDragHover();
+    document.addEventListener('drop', clearTextChannelDragHover);
+    document.addEventListener('dragend', clearTextChannelDragHover);
+    this.unbindEvents.push(
+      () => document.removeEventListener('drop', clearTextChannelDragHover),
+      () => document.removeEventListener('dragend', clearTextChannelDragHover)
+    );
+
     const mediaCam = document.getElementById('media-btn-camera');
     const mediaScreen = document.getElementById('media-btn-screen');
     mediaCam?.addEventListener('click', async () => {
@@ -1036,6 +1115,7 @@ export class MainView {
 
   public destroy(): void {
     this.stopSidebarPing();
+    this.clearTextChannelDragHover();
     this.unbindEvents.forEach((u) => u());
     this.unbindEvents = [];
     this.chatView?.destroy();

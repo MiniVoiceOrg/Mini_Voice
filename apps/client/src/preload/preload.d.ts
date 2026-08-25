@@ -14,7 +14,18 @@ export interface ElectronApi {
         version: string;
     }) => void) => void;
     setLanguage: (language: string) => Promise<void>;
+    hasIdentity: () => Promise<boolean>;
+    getIdentity: () => Promise<{
+        publicKey: string;
+        clientId: string;
+    }>;
     getClientId: () => Promise<string>;
+    signChallenge: (nonceHex: string) => Promise<string>;
+    exportIdentity: (password: string) => Promise<string>;
+    importIdentity: (exportedIdentity: string, password: string) => Promise<{
+        publicKey: string;
+        clientId: string;
+    }>;
     maximizeWindow: () => Promise<void>;
     hostServerStart: (options: {
         port: number;
@@ -95,6 +106,10 @@ export interface ElectronApi {
     onUpdateError: (cb: (message: string) => void) => void;
     openExternal: (url: string) => Promise<{
         success: boolean;
+    }>;
+    downloadFile: (url: string, fileName: string) => Promise<{
+        success: boolean;
+        error?: string;
     }>;
     probeServer: (host: string, port: number) => Promise<{
         reachable: boolean;

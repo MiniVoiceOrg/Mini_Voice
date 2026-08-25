@@ -13,7 +13,8 @@
     "sourceMap": true,
     "baseUrl": ".",
     "paths": {
-      "@monky/shared": ["packages/shared/dist/index.d.ts"]
+      "@monky/shared": ["packages/shared/dist/index.d.ts"],
+      "@monky/server": ["apps/server/dist/index.d.ts"]
     }
   }
 }

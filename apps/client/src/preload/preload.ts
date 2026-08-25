@@ -16,7 +16,12 @@ export interface ElectronApi {
     version: string;
   }) => void) => void;
   setLanguage: (language: string) => Promise<void>;
+  hasIdentity: () => Promise<boolean>;
+  getIdentity: () => Promise<{ publicKey: string; clientId: string }>;
   getClientId: () => Promise<string>;
+  signChallenge: (nonceHex: string) => Promise<string>;
+  exportIdentity: (password: string) => Promise<string>;
+  importIdentity: (exportedIdentity: string, password: string) => Promise<{ publicKey: string; clientId: string }>;
   maximizeWindow: () => Promise<void>;
   hostServerStart: (options: {
     port: number;
@@ -70,6 +75,7 @@ export interface ElectronApi {
   onUpdateDownloaded: (cb: (info: { manual: boolean }) => void) => void;
   onUpdateError: (cb: (message: string) => void) => void;
   openExternal: (url: string) => Promise<{ success: boolean }>;
+  downloadFile: (url: string, fileName: string) => Promise<{ success: boolean; error?: string }>;
   probeServer: (
     host: string,
     port: number
@@ -97,7 +103,12 @@ const api: ElectronApi = {
   onLanDiscoveryFound: (cb) => ipcRenderer.on('lan-discovery:found', (_e, server) => cb(server)),
   onLanDiscoveryLost: (cb) => ipcRenderer.on('lan-discovery:lost', (_e, server) => cb(server)),
   setLanguage: (language) => ipcRenderer.invoke('app-set-language', language),
+  hasIdentity: () => ipcRenderer.invoke('has-identity'),
+  getIdentity: () => ipcRenderer.invoke('get-identity'),
   getClientId: () => ipcRenderer.invoke('get-client-id'),
+  signChallenge: (nonceHex) => ipcRenderer.invoke('sign-challenge', nonceHex),
+  exportIdentity: (password) => ipcRenderer.invoke('export-identity', password),
+  importIdentity: (exportedIdentity, password) => ipcRenderer.invoke('import-identity', exportedIdentity, password),
   maximizeWindow: () => ipcRenderer.invoke('window:maximize'),
   hostServerStart: (options) => ipcRenderer.invoke('host-server-start', options),
   hostServerStop: () => ipcRenderer.invoke('host-server-stop'),
@@ -126,6 +137,7 @@ const api: ElectronApi = {
   onUpdateDownloaded: (cb) => ipcRenderer.on('update:downloaded', (_e, info) => cb(info)),
   onUpdateError: (cb) => ipcRenderer.on('update:error', (_e, message) => cb(message)),
   openExternal: (url) => ipcRenderer.invoke('open-external', url),
+  downloadFile: (url, fileName) => ipcRenderer.invoke('download-file', url, fileName),
   probeServer: (host, port) => ipcRenderer.invoke('probe-server', host, port),
   screenAudioSupported: () => ipcRenderer.invoke('screen-audio-supported'),
   screenAudioDiagnose: () => ipcRenderer.invoke('screen-audio-diagnose'),

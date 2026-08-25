@@ -16,6 +16,7 @@ export interface ServerRecord {
 export interface UserRecord {
   id: string;
   clientId: string;
+  publicKey: string | null;
   nickname: string;
   avatarPath: string | null;
   createdAt: number;

@@ -324,6 +324,29 @@ Depois, seus amigos entram normalmente usando o **IP do VPS** e a porta.
 
 ---
 
+## 🔐 Verificação de Releases
+
+Todas as releases são assinadas com [Sigstore Cosign](https://docs.sigstore.dev/) (keyless, via OIDC do GitHub Actions). Para verificar a autenticidade de um download:
+
+```bash
+# 1. Baixe o arquivo, checksums-sha256.txt, .sig e .crt da release
+
+# 2. Verificar integridade (SHA256)
+sha256sum -c checksums-sha256.txt
+
+# 3. Verificar assinatura criptográfica (requer cosign)
+cosign verify-blob \
+  --signature checksums-sha256.txt.sig \
+  --certificate checksums-sha256.txt.crt \
+  --certificate-identity-regexp "https://github.com/MonkyOrg/Monky" \
+  --certificate-oidc-issuer "https://token.actions.githubusercontent.com" \
+  checksums-sha256.txt
+```
+
+Isso garante que o artefato foi gerado pelo pipeline oficial do projeto e não foi adulterado.
+
+---
+
 ## 🗳️ Roadmap & Votação
 
 O que entra nas próximas versões é decidido pela comunidade — e você **não

@@ -1,12 +1,95 @@
 import { app, BrowserWindow, desktopCapturer, dialog, globalShortcut, ipcMain, shell } from 'electron';
 import fs from 'fs';
+import http from 'http';
+import https from 'https';
 import net from 'net';
 import path from 'path';
-import { v4 as uuidv4 } from 'uuid';
 import { LanDiscovery } from './lanDiscovery';
+import { exportIdentity, getClientId, getIdentity, hasIdentity, importIdentity, signChallenge } from './identityService';
 import { HostServerOptions, ServerManager } from './serverManager';
 import { mt, setMainLanguage } from './i18n';
 import { TrayManager, VoiceStatus } from './trayManager';
+
+function sanitizeDownloadFileName(fileName: string): string {
+  const baseName = path.basename((fileName || '').trim()) || 'download';
+  const sanitized = baseName.replace(/[<>:"/\\|?*\x00-\x1F]/g, '_').trim();
+  return sanitized || 'download';
+}
+
+async function downloadToFile(url: string, destPath: string): Promise<void> {
+  const tempPath = `${destPath}.downloading`;
+  return await new Promise((resolve, reject) => {
+    const requestDownload = (currentUrl: string, redirects: number): void => {
+      if (redirects > 5) {
+        reject(new Error('Too many redirects'));
+        return;
+      }
+
+      const transport = currentUrl.startsWith('https:') ? https : http;
+      const request = transport.get(currentUrl, { headers: { 'User-Agent': 'Monky-App' } }, (response) => {
+        const status = response.statusCode ?? 0;
+        if (status >= 300 && status < 400) {
+          const locationHeader = response.headers.location;
+          const location = Array.isArray(locationHeader) ? locationHeader[0] : locationHeader;
+          response.resume();
+          if (!location) {
+            reject(new Error(`HTTP ${status}`));
+            return;
+          }
+          requestDownload(new URL(location, currentUrl).toString(), redirects + 1);
+          return;
+        }
+
+        if (status !== 200) {
+          response.resume();
+          reject(new Error(`HTTP ${status}`));
+          return;
+        }
+
+        const file = fs.createWriteStream(tempPath);
+        let settled = false;
+        const fail = (err: Error) => {
+          if (settled) return;
+          settled = true;
+          file.destroy();
+          fs.unlink(tempPath, () => reject(err));
+        };
+
+        response.on('aborted', () => fail(new Error('Download aborted')));
+        response.on('error', fail);
+        file.on('error', fail);
+        file.on('finish', () => {
+          if (settled) return;
+          file.close((closeErr) => {
+            if (closeErr) {
+              fail(closeErr);
+              return;
+            }
+            fs.rm(destPath, { force: true }, (removeErr) => {
+              if (removeErr) {
+                fail(removeErr);
+                return;
+              }
+              fs.rename(tempPath, destPath, (renameErr) => {
+                if (renameErr) {
+                  fail(renameErr);
+                  return;
+                }
+                settled = true;
+                resolve();
+              });
+            });
+          });
+        });
+        response.pipe(file);
+      });
+      request.on('error', reject);
+      request.on('error', reject);
+    };
+
+    requestDownload(url, 0);
+  });
+}
 
 // Screen audio native module (compiled only on CI — graceful fallback)
 let screenAudio: {
@@ -53,28 +136,12 @@ export function setupIpcHandlers(
     trayManager?.refresh();
   });
 
-  // Client ID persistence
-  ipcMain.handle('get-client-id', async () => {
-    const clientIdFile = path.join(app.getPath('userData'), 'client-id.json');
-    try {
-      if (fs.existsSync(clientIdFile)) {
-        const data = JSON.parse(fs.readFileSync(clientIdFile, 'utf8'));
-        if (data.clientId) {
-          return data.clientId;
-        }
-      }
-    } catch (e) {
-      console.warn('Could not read existing client-id.json', e);
-    }
-
-    const newClientId = uuidv4();
-    try {
-      fs.writeFileSync(clientIdFile, JSON.stringify({ clientId: newClientId }, null, 2), 'utf8');
-    } catch (e) {
-      console.error('Could not save client-id.json', e);
-    }
-    return newClientId;
-  });
+  ipcMain.handle('has-identity', async () => hasIdentity());
+  ipcMain.handle('get-identity', async () => getIdentity(true));
+  ipcMain.handle('get-client-id', async () => getClientId());
+  ipcMain.handle('sign-challenge', async (_event, nonceHex: string) => signChallenge(nonceHex));
+  ipcMain.handle('export-identity', async (_event, password: string) => exportIdentity(password));
+  ipcMain.handle('import-identity', async (_event, exportedIdentity: string, password: string) => importIdentity(exportedIdentity, password));
 
   // Local Server Management
   ipcMain.handle('host-server-start', async (_, options: HostServerOptions) => {
@@ -290,6 +357,33 @@ export function setupIpcHandlers(
       return { success: true };
     }
     return { success: false };
+  });
+
+  ipcMain.handle('download-file', async (_, url: string, fileName: string) => {
+    try {
+      const parsedUrl = new URL(url);
+      if (!['http:', 'https:'].includes(parsedUrl.protocol)) {
+        return { success: false, error: 'Invalid URL' };
+      }
+
+      const fallbackName = sanitizeDownloadFileName(decodeURIComponent(path.basename(parsedUrl.pathname) || 'download'));
+      const suggestedName = sanitizeDownloadFileName(fileName || fallbackName);
+      const saveResult = await dialog.showSaveDialog(mainWindow, {
+        defaultPath: path.join(app.getPath('downloads'), suggestedName),
+      });
+
+      if (saveResult.canceled || !saveResult.filePath) {
+        return { success: false };
+      }
+
+      await downloadToFile(parsedUrl.toString(), saveResult.filePath);
+      return { success: true };
+    } catch (error) {
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : 'Unknown error',
+      };
+    }
   });
 
   // TCP reachability probe (#37): distinguishes an unreachable host (offline)

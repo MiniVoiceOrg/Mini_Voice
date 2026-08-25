@@ -9,6 +9,7 @@ export interface IServerRepository {
 export interface IUserRepository {
   findById(id: string): Promise<UserRecord | null>;
   findByClientId(clientId: string): Promise<UserRecord | null>;
+  findByPublicKey(publicKey: string): Promise<UserRecord | null>;
   findByNickname(nickname: string): Promise<UserRecord | null>;
   create(user: UserRecord): Promise<void>;
   update(id: string, updates: Partial<UserRecord>): Promise<void>;

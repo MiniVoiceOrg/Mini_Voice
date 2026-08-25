@@ -15,7 +15,7 @@ exatamente estas etapas, nesta ordem:
      bloqueados não devem ser trabalhados enquanto estiverem nessa coluna. Se o
      desenvolvedor quiser que algo em `Blocked` seja desenvolvido, **solicite
      que ele (ou alguém com permissão) mova o card para fora de `Blocked`**
-     (ex.: `Ready`/`In progress`) antes de qualquer implementação. Não mova o
+     (ex.: `Backlog`/`In progress`) antes de qualquer implementação. Não mova o
      card para fora de `Blocked` por conta própria — peça a autorização/ação de
      quem tem permissão.
 2. **Entenda a issue por completo antes de codar.** Se a issue **não estiver
@@ -23,17 +23,23 @@ exatamente estas etapas, nesta ordem:
    aceite vagos, decisões de design em aberto), **tire dúvidas com o
    desenvolvedor** antes de prosseguir. **Nunca assuma nada** — pergunte e só
    comece a implementar depois de esclarecer.
-3. **Desenvolva** a solução completa da issue.
-4. **Ao terminar**: abra um Pull Request para o branch padrão (`main`).
+3. **Crie a branch a partir da `main` atualizada.** Sempre
+   `git checkout main && git pull` **antes** de `git checkout -b <branch>` —
+   nunca ramifique da branch em que você estava. Ramificar de uma branch com PR
+   aberto faz o seu PR arrastar os commits dela no diff, e os dois passam a
+   depender um do outro para mergear. Se a issue realmente depender de outro PR
+   aberto, **combine o empilhamento com o desenvolvedor antes de ramificar**.
+4. **Desenvolva** a solução completa da issue.
+5. **Ao terminar**: abra um Pull Request para o branch padrão (`main`).
    - O `main` é protegido; todo merge deve passar por PR.
    - Faça o merge com squash e delete do branch após aprovação.
-5. **Comente na issue/card do board (em PT-BR)** descrevendo:
+6. **Comente na issue/card do board (em PT-BR)** descrevendo:
    - **Como foi implementado**: resumo técnico da solução (arquivos/áreas
      alteradas, decisões relevantes).
    - **Como testar**: passo a passo claro para o QA validar (cenários,
      resultados esperados e casos de borda).
    - Objetivo: facilitar o trabalho do QA.
-6. **Após o merge, aguarde a release ser gerada.** O push na `main` dispara
+7. **Após o merge, aguarde a release ser gerada.** O push na `main` dispara
    automaticamente o workflow **Release** (GitHub Actions), que calcula a versão
    SemVer (`v<MAJOR>.<MINOR>.<PATCH>`) baseada nas convenções de commit, builda e publica
    uma nova release com os artefatos Win/Mac:
@@ -43,13 +49,13 @@ exatamente estas etapas, nesta ordem:
    **Só mova o card para `QA` depois que a release estiver publicada** (run do
    workflow concluída com sucesso), pois o QA valida a partir do build publicado
    — nunca apenas após o merge.
-7. **Não mova para Done automaticamente.** Após o QA ser concluído, o
+8. **Não mova para Done automaticamente.** Após o QA ser concluído, o
    desenvolvedor pode pedir ao agente para mover para **Done** ou fazer isso
    manualmente.
 
-> Resumo: (esclarecer dúvidas se necessário) → `In progress` → (PR para `main`)
-> → (comentário PT-BR: como foi feito + como testar) → (release publicada
-> automaticamente) → `QA` → (após QA) `Done`.
+> Resumo: (esclarecer dúvidas se necessário) → `In progress` → (branch a partir
+> da `main` atualizada) → (PR para `main`) → (comentário PT-BR: como foi feito +
+> como testar) → (release publicada automaticamente) → `QA` → (após QA) `Done`.
 
 ### Comando para comentar na issue
 
@@ -65,12 +71,14 @@ seção **"Como testar"**.
 - Project ID: `PVT_kwDOEws3wM4BhD7I`
 - Campo Status (field ID): `PVTSSF_lADOEws3wM4BhD7IzhgBIGI`
 - Opções de Status (single-select-option-id):
+  - Discussing: `146d7ce6`
   - Backlog: `f75ad846`
   - Blocked: `7a1e61fe`
-  - Ready: `61e4505c`
   - In progress: `47fc9ee4`
   - QA: `df73e18b`
+  - After QA Review: `98330754`
   - Done: `98236657`
+  - Ideias descartadas: `6eeb0bfb`
 
 ### Comando para mover um card
 
@@ -93,6 +101,7 @@ gh project item-list 1 --owner MonkyOrg --format json
 
 ```bash
 export GIT_SSH_COMMAND='ssh -o BatchMode=yes'
+git checkout main && git pull      # toda branch nova sai da main atualizada
 git checkout -b <branch>
 # ... commits ...
 git push -u origin <branch>

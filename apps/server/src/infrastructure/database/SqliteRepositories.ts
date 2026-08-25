@@ -82,29 +82,36 @@ export class SqliteUserRepository implements IUserRepository {
 
   async findById(id: string): Promise<UserRecord | null> {
     const row = this.db.prepare(
-      'SELECT id, client_id as clientId, nickname, avatar_path as avatarPath, created_at as createdAt, last_seen_at as lastSeenAt FROM users WHERE id = ?'
+      'SELECT id, client_id as clientId, public_key as publicKey, nickname, avatar_path as avatarPath, created_at as createdAt, last_seen_at as lastSeenAt FROM users WHERE id = ?'
     ).get(id) as UserRecord | undefined;
     return row || null;
   }
 
   async findByClientId(clientId: string): Promise<UserRecord | null> {
     const row = this.db.prepare(
-      'SELECT id, client_id as clientId, nickname, avatar_path as avatarPath, created_at as createdAt, last_seen_at as lastSeenAt FROM users WHERE client_id = ?'
+      'SELECT id, client_id as clientId, public_key as publicKey, nickname, avatar_path as avatarPath, created_at as createdAt, last_seen_at as lastSeenAt FROM users WHERE client_id = ?'
     ).get(clientId) as UserRecord | undefined;
+    return row || null;
+  }
+
+  async findByPublicKey(publicKey: string): Promise<UserRecord | null> {
+    const row = this.db.prepare(
+      'SELECT id, client_id as clientId, public_key as publicKey, nickname, avatar_path as avatarPath, created_at as createdAt, last_seen_at as lastSeenAt FROM users WHERE public_key = ?'
+    ).get(publicKey) as UserRecord | undefined;
     return row || null;
   }
 
   async findByNickname(nickname: string): Promise<UserRecord | null> {
     const row = this.db.prepare(
-      'SELECT id, client_id as clientId, nickname, avatar_path as avatarPath, created_at as createdAt, last_seen_at as lastSeenAt FROM users WHERE nickname = ? COLLATE NOCASE'
+      'SELECT id, client_id as clientId, public_key as publicKey, nickname, avatar_path as avatarPath, created_at as createdAt, last_seen_at as lastSeenAt FROM users WHERE nickname = ? COLLATE NOCASE'
     ).get(nickname) as UserRecord | undefined;
     return row || null;
   }
 
   async create(user: UserRecord): Promise<void> {
     this.db.prepare(
-      'INSERT INTO users (id, client_id, nickname, avatar_path, created_at, last_seen_at) VALUES (?, ?, ?, ?, ?, ?)'
-    ).run(user.id, user.clientId, user.nickname, user.avatarPath, user.createdAt, user.lastSeenAt);
+      'INSERT INTO users (id, client_id, public_key, nickname, avatar_path, created_at, last_seen_at) VALUES (?, ?, ?, ?, ?, ?, ?)'
+    ).run(user.id, user.clientId, user.publicKey, user.nickname, user.avatarPath, user.createdAt, user.lastSeenAt);
   }
 
   async update(id: string, updates: Partial<UserRecord>): Promise<void> {
@@ -114,6 +121,10 @@ export class SqliteUserRepository implements IUserRepository {
     if (updates.nickname !== undefined) {
       fields.push('nickname = ?');
       values.push(updates.nickname);
+    }
+    if (updates.publicKey !== undefined) {
+      fields.push('public_key = ?');
+      values.push(updates.publicKey);
     }
     if (updates.avatarPath !== undefined) {
       fields.push('avatar_path = ?');
@@ -132,7 +143,7 @@ export class SqliteUserRepository implements IUserRepository {
 
   async listAll(): Promise<UserRecord[]> {
     return this.db.prepare(
-      'SELECT id, client_id as clientId, nickname, avatar_path as avatarPath, created_at as createdAt, last_seen_at as lastSeenAt FROM users'
+      'SELECT id, client_id as clientId, public_key as publicKey, nickname, avatar_path as avatarPath, created_at as createdAt, last_seen_at as lastSeenAt FROM users'
     ).all() as UserRecord[];
   }
 
@@ -140,7 +151,7 @@ export class SqliteUserRepository implements IUserRepository {
     if (ids.length === 0) return [];
     const placeholders = ids.map(() => '?').join(', ');
     return this.db.prepare(
-      `SELECT id, client_id as clientId, nickname, avatar_path as avatarPath, created_at as createdAt, last_seen_at as lastSeenAt FROM users WHERE id IN (${placeholders})`
+      `SELECT id, client_id as clientId, public_key as publicKey, nickname, avatar_path as avatarPath, created_at as createdAt, last_seen_at as lastSeenAt FROM users WHERE id IN (${placeholders})`
     ).all(...ids) as UserRecord[];
   }
 }

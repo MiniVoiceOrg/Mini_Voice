@@ -37,9 +37,17 @@ export const authConnectSchema = z.object({
   protocolVersion: z.number().refine((v) => v === PROTOCOL_VERSION, {
     message: `Versão de protocolo incompatível. Esperado: ${PROTOCOL_VERSION}`,
   }),
-  clientId: z.string().uuid('Client ID deve ser um UUID válido'),
+  publicKey: z
+    .string()
+    .min(64, 'Chave pública inválida')
+    .max(128, 'Chave pública inválida')
+    .regex(/^[a-fA-F0-9]+$/, 'Chave pública deve estar em hexadecimal'),
   nickname: nicknameSchema,
   password: z.string().optional().default(''),
+});
+
+export const authChallengeResponseSchema = z.object({
+  signature: z.string().regex(/^[a-fA-F0-9]+$/, 'Assinatura inválida'),
 });
 
 export const channelCreateSchema = z.object({

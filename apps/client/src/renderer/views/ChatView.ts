@@ -12,6 +12,7 @@ import { renderMarkdown } from '../utils/markdown';
 import { getLanguage, t } from '../i18n';
 import { uploadAttachment, UploadHandle } from '../core/AttachmentUploader';
 import { getAttachmentUrl, formatBytes, fileIconName } from '../utils/attachment';
+import { showAlert } from './Dialog';
 
 /** A file picked for upload, tracked until its message is sent (#11). */
 interface PendingAttachment {
@@ -54,6 +55,8 @@ export class ChatView {
     networkClient.send(MessageType.CHAT_MENTIONS_READ, { channelId });
     this.render();
     this.loadHistory();
+    // Auto-focus the message input when opening a channel (#181).
+    (document.getElementById('chat-message-input') as HTMLElement | null)?.focus();
   }
 
   public render(): void {
@@ -173,17 +176,28 @@ export class ChatView {
       });
     });
 
-    // Image attachments open in a lightbox; file chips download externally (#11).
+    // Image attachments open in a lightbox; downloads stay inside the app (#184).
     feed.querySelectorAll('.chat-attachment-image').forEach((img) => {
       img.addEventListener('click', () => {
         const url = img.getAttribute('data-full-url');
-        if (url) this.openLightbox(url);
+        const name = img.getAttribute('data-file-name') || 'image';
+        if (url) this.openLightbox(url, name);
       });
     });
     feed.querySelectorAll('.chat-attachment-file').forEach((chip) => {
       chip.addEventListener('click', () => {
         const url = chip.getAttribute('data-download-url');
-        if (url && window.api?.openExternal) window.api.openExternal(url);
+        const name = chip.getAttribute('data-file-name') || 'attachment';
+        if (url) void this.downloadAttachment(url, name);
+      });
+    });
+    feed.querySelectorAll('.chat-attachment-download').forEach((button) => {
+      button.addEventListener('click', (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        const url = button.getAttribute('data-download-url');
+        const name = button.getAttribute('data-file-name') || 'attachment';
+        if (url) void this.downloadAttachment(url, name);
       });
     });
 
@@ -227,6 +241,13 @@ export class ChatView {
     return `${date} ${time}`;
   }
 
+  private isUserMentioned(content: string, currentNickname: string): boolean {
+    if (!content || !currentNickname) return false;
+    const escaped = currentNickname.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const regex = new RegExp(`(^|[\\s(])@${escaped}(?=$|[\\s),.!?:;])`, 'i');
+    return regex.test(content);
+  }
+
   private renderMessageRow(m: ChatMessage): string {
     const time = this.formatDateTime(m.createdAt);
 
@@ -240,15 +261,25 @@ export class ChatView {
       `;
     }
 
+    const me = serverStore.currentUser;
+    const currentNickname = me?.nickname?.trim();
+    const isMentioned = !m.isSystem && !!currentNickname && this.isUserMentioned(m.content, currentNickname);
+
+    const knownNicknames = Array.from(serverStore.knownMembers.values()).map((u) => u.nickname);
+    if (currentNickname && !knownNicknames.includes(currentNickname)) {
+      knownNicknames.push(currentNickname);
+    }
+
     const avatarSrc = getAvatarUrl(m.userAvatarUrl);
     const textHtml =
       m.content && m.content.trim().length > 0
-        ? `<div class="chat-message-text">${renderMarkdown(m.content)}</div>`
+        ? `<div class="chat-message-text">${renderMarkdown(m.content, { currentNickname, knownNicknames })}</div>`
         : '';
     const attachmentsHtml = this.renderAttachments(m.attachments);
+    const rowClass = `chat-message-row${isMentioned ? ' chat-message-mentioned' : ''}`;
 
     return `
-      <div class="chat-message-row" data-user-id="${m.userId}">
+      <div class="${rowClass}" data-user-id="${m.userId}">
         <img class="chat-author-avatar" src="${avatarSrc}">
         <div class="chat-message-body">
           <div class="chat-author-header">
@@ -284,15 +315,34 @@ export class ChatView {
     const name = escapeHtml(a.originalName);
 
     if (a.kind === 'image') {
-      return `<img class="chat-attachment-image" src="${src}" alt="${name}" title="${name}" data-full-url="${src}" loading="lazy">`;
+      return `<img class="chat-attachment-image" src="${src}" alt="${name}" title="${name}" data-full-url="${src}" data-file-name="${name}" loading="lazy">`;
     }
 
     if (a.kind === 'video') {
-      return `<video class="chat-attachment-video" controls preload="metadata" src="${src}"></video>`;
+      return `
+        <div class="chat-attachment-video-wrap">
+          <video class="chat-attachment-video" controls preload="metadata" src="${src}"></video>
+          <button
+            type="button"
+            class="chat-attachment-download chat-attachment-video-download"
+            data-download-url="${src}"
+            data-file-name="${name}"
+            title="${t('common.download')}"
+          >
+            <span class="material-symbols-outlined md-18">download</span>
+          </button>
+        </div>
+      `;
     }
 
     return `
-      <button type="button" class="chat-attachment-file" data-download-url="${src}" title="Baixar ${name}">
+      <button
+        type="button"
+        class="chat-attachment-file"
+        data-download-url="${src}"
+        data-file-name="${name}"
+        title="${t('common.download')} ${name}"
+      >
         <span class="material-symbols-outlined md-24 af-icon">${fileIconName(a.kind, a.mimeType, a.originalName)}</span>
         <span class="af-meta">
           <span class="af-name">${name}</span>
@@ -374,6 +424,24 @@ export class ChatView {
         this.addFiles(files);
       }
     });
+
+    // Global paste handler: Ctrl+V anywhere on the page uploads files when a
+    // text channel is open (#181).
+    const onGlobalPaste = (e: Event) => {
+      const ce = e as ClipboardEvent;
+      // Skip if the paste is already targeting the chat input (handled above).
+      if (ce.target === input) return;
+      if (!this.currentChannelId) return;
+      const files = ce.clipboardData?.files;
+      if (files && files.length > 0) {
+        e.preventDefault();
+        this.addFiles(files);
+        // Focus the input so the user can add a message to accompany the file.
+        input?.focus();
+      }
+    };
+    document.addEventListener('paste', onGlobalPaste);
+    this.unbindEvents.push(() => document.removeEventListener('paste', onGlobalPaste));
 
     // Drag & drop onto the chat pane. Listeners live on the persistent container,
     // so they must be unbound on re-render to avoid stacking.
@@ -746,15 +814,42 @@ export class ChatView {
     setTimeout(() => notice.remove(), 3000);
   }
 
-  private openLightbox(url: string): void {
+  private async downloadAttachment(url: string, fileName: string): Promise<void> {
+    if (!window.api?.downloadFile) return;
+    const result = await window.api.downloadFile(url, fileName);
+    if (!result.success && result.error) {
+      await showAlert({
+        title: t('chat.downloadFailedTitle'),
+        message: t('chat.downloadFailedMessage', { error: result.error }),
+        variant: 'danger',
+      });
+    }
+  }
+
+  private openLightbox(url: string, fileName: string): void {
     const overlay = document.createElement('div');
     overlay.className = 'attachment-lightbox';
     overlay.innerHTML = `
       <img src="${url}" alt="">
+      <button type="button" class="lightbox-download" title="${t('common.download')}">
+        <span class="material-symbols-outlined">download</span>
+      </button>
       <button type="button" class="lightbox-close" title="${t('common.close')}">
         <span class="material-symbols-outlined">close</span>
       </button>
     `;
+    const btnDownload = overlay.querySelector('.lightbox-download') as HTMLButtonElement | null;
+    btnDownload?.addEventListener('click', (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      void this.downloadAttachment(url, fileName);
+    });
+    const btnClose = overlay.querySelector('.lightbox-close') as HTMLButtonElement | null;
+    btnClose?.addEventListener('click', (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      close();
+    });
     const close = () => {
       document.removeEventListener('keydown', onKey, true);
       overlay.remove();

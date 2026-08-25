@@ -39,10 +39,14 @@ export class SoundboardService {
       this.handleIncomingSound(payload);
     });
 
-    // Update speaker device when settings change
+    // Update speaker device and active audio volume when settings change
     appEvents.on('settings.updated', () => {
       if (settingsStore.selectedSpeakerId && settingsStore.selectedSpeakerId !== this.sinkId) {
         this.setSinkId(settingsStore.selectedSpeakerId);
+      }
+      const vol = settingsStore.soundboardMuted ? 0 : Math.max(0, Math.min(1, settingsStore.soundboardVolume / 100));
+      for (const playback of this.activePlaybacks.values()) {
+        playback.audio.volume = vol;
       }
     });
 
@@ -158,13 +162,14 @@ export class SoundboardService {
   public stopSoundForUser(userId: string): void {
     const existing = this.activePlaybacks.get(userId);
     if (existing) {
+      this.activePlaybacks.delete(userId);
       try {
         existing.audio.pause();
         existing.audio.currentTime = 0;
+        existing.audio.src = '';
       } catch (err) {
         console.warn('[SoundboardService] Error stopping user audio:', err);
       }
-      this.activePlaybacks.delete(userId);
       appEvents.emit('soundboard.playback_ended', { userId, soundName: existing.soundName });
     }
   }
@@ -175,15 +180,18 @@ export class SoundboardService {
       return;
     }
     for (const [uid, playback] of Array.from(this.activePlaybacks.entries())) {
+      this.activePlaybacks.delete(uid);
       try {
         playback.audio.pause();
         playback.audio.currentTime = 0;
+        playback.audio.src = '';
       } catch (err) {
         console.warn('[SoundboardService] Error stopping audio:', err);
       }
       appEvents.emit('soundboard.playback_ended', { userId: uid, soundName: playback.soundName });
     }
     this.activePlaybacks.clear();
+    appEvents.emit('soundboard.playback_ended', {});
   }
 
   public async selectFolder(): Promise<string | null> {
@@ -268,6 +276,7 @@ export class SoundboardService {
     });
 
     audio.addEventListener('timeupdate', () => {
+      if (audio.paused || audio.ended || !this.activePlaybacks.has(userId)) return;
       const duration = audio.duration || 0;
       const currentTime = audio.currentTime || 0;
       const percent = duration > 0 ? (currentTime / duration) * 100 : 0;

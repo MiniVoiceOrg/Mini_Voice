@@ -1,7 +1,7 @@
 import path from 'path';
 import fs from 'fs';
 import { app } from 'electron';
-import { MonkyServer, ServerConfig } from '@monky/server/dist/server.js';
+import { MonkyServer, ServerConfig } from '@monky/server';
 import { mt } from './i18n';
 
 export interface HostServerOptions {
