@@ -1969,7 +1969,20 @@ input:focus, textarea:focus, select:focus {
   margin-top: 6px;
 }
 
+.chat-inline-media {
+  position: relative;
+  display: inline-flex;
+  max-width: min(400px, 100%);
+  border-radius: 12px;
+}
+
+.chat-inline-media--image {
+  max-width: min(320px, 100%);
+}
+
 .chat-attachment-image {
+  display: block;
+  width: 100%;
   max-width: 320px;
   max-height: 260px;
   border-radius: 10px;
@@ -2015,23 +2028,21 @@ input:focus, textarea:focus, select:focus {
   max-height: 72vh;
 }
 
-.chat-video-top-actions {
+.chat-inline-media-actions {
   position: absolute;
   top: 10px;
-  left: 10px;
   right: 10px;
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  gap: 10px;
+  gap: 8px;
   opacity: 0;
   pointer-events: none;
   transition: opacity 0.18s ease;
 }
 
-.chat-video-player:hover .chat-video-top-actions,
-.chat-video-player:focus-within .chat-video-top-actions,
-.chat-video-player.is-paused .chat-video-top-actions {
+.chat-inline-media:hover .chat-inline-media-actions,
+.chat-inline-media:focus-within .chat-inline-media-actions,
+.chat-video-player.is-paused .chat-inline-media-actions {
   opacity: 1;
 }
 
@@ -2089,17 +2100,17 @@ input:focus, textarea:focus, select:focus {
 
 .chat-video-controls {
   position: absolute;
-  left: 12px;
-  right: 12px;
-  bottom: 12px;
+  left: 10px;
+  right: 10px;
+  bottom: 10px;
   display: flex;
-  align-items: center;
-  gap: 10px;
-  padding: 10px 12px;
+  flex-direction: column;
+  gap: 8px;
+  padding: 8px 10px;
   border: 1px solid rgba(255, 255, 255, 0.08);
   border-radius: 14px;
-  background: linear-gradient(180deg, rgba(11, 14, 20, 0.42) 0%, rgba(11, 14, 20, 0.88) 100%);
-  backdrop-filter: blur(16px);
+  background: rgba(0, 0, 0, 0.62);
+  backdrop-filter: blur(10px);
   opacity: 0;
   transform: translateY(8px);
   transition: opacity 0.18s ease, transform 0.18s ease;
@@ -2116,33 +2127,38 @@ input:focus, textarea:focus, select:focus {
   width: 34px;
   height: 34px;
   border: none;
-  border-radius: 50%;
+  border-radius: var(--radius-sm);
   display: inline-flex;
   align-items: center;
   justify-content: center;
   flex-shrink: 0;
   cursor: pointer;
-  color: var(--text-primary);
-  background: rgba(255, 255, 255, 0.08);
-  transition: background-color 0.15s ease, transform 0.15s ease;
+  color: #fff;
+  background: rgba(0, 0, 0, 0.55);
+  transition: background-color 0.15s ease;
 }
 
 .chat-video-control-btn:hover {
-  background: rgba(255, 255, 255, 0.14);
-  transform: translateY(-1px);
+  background: rgba(0, 0, 0, 0.85);
 }
 
-.chat-video-progress-group {
-  flex: 1;
-  min-width: 120px;
+.chat-video-progress-shell {
+  width: 100%;
   display: flex;
   align-items: center;
 }
 
+.chat-video-controls-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
 .chat-video-time {
-  min-width: 90px;
-  font-size: 12px;
-  color: var(--text-primary);
+  flex: 1;
+  min-width: 0;
+  font-size: 11px;
+  color: rgba(255, 255, 255, 0.88);
   text-align: center;
   font-variant-numeric: tabular-nums;
 }
@@ -2150,7 +2166,14 @@ input:focus, textarea:focus, select:focus {
 .chat-video-progress,
 .chat-video-volume {
   appearance: none;
+  cursor: pointer;
+  accent-color: var(--accent-primary);
+}
+
+.chat-video-progress {
+  flex: 1;
   height: 4px;
+  width: 100%;
   border-radius: var(--radius-full);
   background: linear-gradient(
     to right,
@@ -2159,20 +2182,18 @@ input:focus, textarea:focus, select:focus {
     rgba(255, 255, 255, 0.22) var(--value, 0%),
     rgba(255, 255, 255, 0.22) 100%
   );
-  cursor: pointer;
-}
-
-.chat-video-progress {
-  width: 100%;
 }
 
 .chat-video-volume {
-  width: 82px;
-  flex-shrink: 0;
+  writing-mode: vertical-lr;
+  direction: rtl;
+  appearance: slider-vertical;
+  width: 22px;
+  height: 96px;
+  background: transparent;
 }
 
-.chat-video-progress::-webkit-slider-thumb,
-.chat-video-volume::-webkit-slider-thumb {
+.chat-video-progress::-webkit-slider-thumb {
   appearance: none;
   width: 12px;
   height: 12px;
@@ -2182,14 +2203,17 @@ input:focus, textarea:focus, select:focus {
   box-shadow: 0 0 0 2px rgba(11, 14, 20, 0.75);
 }
 
-.chat-video-progress::-moz-range-thumb,
-.chat-video-volume::-moz-range-thumb {
+.chat-video-progress::-moz-range-thumb {
   width: 12px;
   height: 12px;
   border: none;
   border-radius: 50%;
   background: var(--text-primary);
   box-shadow: 0 0 0 2px rgba(11, 14, 20, 0.75);
+}
+
+.chat-video-volume-popup {
+  min-width: 40px;
 }
 
 .chat-attachment-download {
@@ -2322,6 +2346,15 @@ input:focus, textarea:focus, select:focus {
   max-width: min(68vw, 840px);
   color: var(--text-secondary);
   font-size: 13px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.lightbox-meta-details {
+  max-width: min(68vw, 840px);
+  color: var(--text-muted);
+  font-size: 12px;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
