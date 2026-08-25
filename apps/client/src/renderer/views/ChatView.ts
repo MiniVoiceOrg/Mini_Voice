@@ -35,6 +35,15 @@ interface LightboxMedia {
   source: HTMLElement;
 }
 
+interface LinkPreviewData {
+  url: string;
+  title: string;
+  description?: string;
+  image?: string;
+  siteName?: string;
+  favicon?: string;
+}
+
 export class ChatView {
   private container: HTMLElement;
   private currentChannelId: string | null = null;
@@ -48,6 +57,8 @@ export class ChatView {
   private pending: PendingAttachment[] = [];
   private uploadSeq = 0;
   private closeLightbox: (() => void) | null = null;
+  private linkPreviewCache = new Map<string, LinkPreviewData | null>();
+  private linkPreviewRequests = new Map<string, Promise<LinkPreviewData | null>>();
 
   constructor(container: HTMLElement) {
     this.container = container;
@@ -162,6 +173,8 @@ export class ChatView {
       });
     });
 
+    this.initializeLinkPreviews(feed);
+
     // Attach right-click context menu on message rows (when not selecting text)
     feed.querySelectorAll('.chat-message-row').forEach((row) => {
       row.addEventListener('contextmenu', (e: Event) => {
@@ -267,7 +280,7 @@ export class ChatView {
     const rowClass = `chat-message-row${isMentioned ? ' chat-message-mentioned' : ''}`;
 
     return `
-      <div class="${rowClass}" data-user-id="${m.userId}">
+      <div class="${rowClass}" data-user-id="${m.userId}" data-message-id="${m.id}">
         <img class="chat-author-avatar" src="${avatarSrc}">
         <div class="chat-message-body">
           <div class="chat-author-header">
@@ -275,6 +288,7 @@ export class ChatView {
             <span class="chat-timestamp">${time}</span>
           </div>
           ${textHtml}
+          <div class="chat-link-previews" data-message-id="${escapeHtml(m.id)}"></div>
           ${attachmentsHtml}
         </div>
       </div>
@@ -355,6 +369,198 @@ export class ChatView {
         <span class="material-symbols-outlined md-20 af-dl">download</span>
       </button>
     `;
+  }
+
+  private initializeLinkPreviews(feed: HTMLElement): void {
+    if (!window.api?.fetchLinkPreview) return;
+
+    feed.querySelectorAll<HTMLElement>('.chat-link-previews').forEach((container) => {
+      const row = container.closest('.chat-message-row') as HTMLElement | null;
+      if (!row) {
+        container.remove();
+        return;
+      }
+
+      const urls = this.collectPreviewUrls(row);
+      if (urls.length === 0) {
+        container.remove();
+        return;
+      }
+
+      container.innerHTML = '';
+      for (const url of urls) {
+        const slot = document.createElement('div');
+        slot.className = 'chat-link-preview-slot';
+        slot.innerHTML = this.renderLinkPreviewSkeleton();
+        container.appendChild(slot);
+        void this.populateLinkPreview(url, slot);
+      }
+    });
+  }
+
+  private collectPreviewUrls(row: HTMLElement): string[] {
+    const attachmentUrls = new Set<string>();
+    row.querySelectorAll<HTMLElement>('[data-download-url], [data-lightbox-url]').forEach((element) => {
+      const rawUrl = element.getAttribute('data-download-url') || element.getAttribute('data-lightbox-url');
+      const normalized = this.normalizePreviewUrl(rawUrl);
+      if (normalized) {
+        attachmentUrls.add(normalized);
+      }
+    });
+
+    const seen = new Set<string>();
+    const urls: string[] = [];
+    row.querySelectorAll<HTMLAnchorElement>('.chat-message-text .md-link[data-external-link]').forEach((link) => {
+      const normalized = this.normalizePreviewUrl(link.getAttribute('data-external-link'));
+      if (!normalized || seen.has(normalized) || attachmentUrls.has(normalized)) {
+        return;
+      }
+
+      seen.add(normalized);
+      urls.push(normalized);
+    });
+
+    return urls;
+  }
+
+  private normalizePreviewUrl(url: string | null | undefined): string | null {
+    if (!url) return null;
+
+    try {
+      const parsed = new URL(url);
+      if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') {
+        return null;
+      }
+
+      parsed.hash = '';
+      return parsed.toString();
+    } catch {
+      return null;
+    }
+  }
+
+  private async populateLinkPreview(url: string, slot: HTMLElement): Promise<void> {
+    const preview = await this.fetchLinkPreview(url);
+    if (!slot.isConnected) return;
+
+    const parent = slot.parentElement;
+    if (!preview) {
+      slot.remove();
+      if (parent && parent.childElementCount === 0) {
+        parent.remove();
+      }
+      return;
+    }
+
+    slot.innerHTML = this.renderLinkPreviewCard(preview);
+
+    const card = slot.querySelector<HTMLElement>('.chat-link-preview');
+    card?.addEventListener('click', () => {
+      void window.api.openExternal(preview.url);
+    });
+
+    const favicon = slot.querySelector<HTMLImageElement>('.chat-link-preview-favicon');
+    favicon?.addEventListener('error', () => {
+      const iconWrap = favicon.parentElement;
+      if (!iconWrap) return;
+      iconWrap.classList.add('chat-link-preview-site-icon--fallback');
+      iconWrap.innerHTML = '<span class="material-symbols-outlined md-16">public</span>';
+    });
+
+    const thumb = slot.querySelector<HTMLImageElement>('.chat-link-preview-thumb');
+    thumb?.addEventListener('error', () => {
+      thumb.closest('.chat-link-preview-media')?.remove();
+      card?.classList.add('chat-link-preview--no-image');
+    });
+  }
+
+  private async fetchLinkPreview(url: string): Promise<LinkPreviewData | null> {
+    if (this.linkPreviewCache.has(url)) {
+      return this.linkPreviewCache.get(url) ?? null;
+    }
+
+    const pendingRequest = this.linkPreviewRequests.get(url);
+    if (pendingRequest) {
+      return pendingRequest;
+    }
+
+    const request = window.api.fetchLinkPreview(url)
+      .catch(() => null)
+      .then((preview) => {
+        this.linkPreviewCache.set(url, preview);
+        const normalizedPreviewUrl = this.normalizePreviewUrl(preview?.url);
+        if (normalizedPreviewUrl && normalizedPreviewUrl !== url) {
+          this.linkPreviewCache.set(normalizedPreviewUrl, preview);
+        }
+        this.linkPreviewRequests.delete(url);
+        return preview;
+      });
+
+    this.linkPreviewRequests.set(url, request);
+    return request;
+  }
+
+  private renderLinkPreviewSkeleton(): string {
+    return `
+      <div class="chat-link-preview chat-link-preview--loading" aria-hidden="true">
+        <div class="chat-link-preview-main">
+          <div class="chat-link-preview-site">
+            <span class="chat-link-preview-site-icon chat-link-preview-skeleton-block"></span>
+            <span class="chat-link-preview-skeleton-line chat-link-preview-skeleton-line--site"></span>
+          </div>
+          <span class="chat-link-preview-skeleton-line chat-link-preview-skeleton-line--title"></span>
+          <span class="chat-link-preview-skeleton-line chat-link-preview-skeleton-line--text"></span>
+          <span class="chat-link-preview-skeleton-line chat-link-preview-skeleton-line--text chat-link-preview-skeleton-line--short"></span>
+        </div>
+        <div class="chat-link-preview-media chat-link-preview-skeleton-block"></div>
+      </div>
+    `;
+  }
+
+  private renderLinkPreviewCard(preview: LinkPreviewData): string {
+    const normalizedUrl = this.normalizePreviewUrl(preview.url) ?? preview.url;
+    const hostname = this.getPreviewHostname(normalizedUrl);
+    const siteLabel = escapeHtml((preview.siteName || hostname || normalizedUrl).trim());
+    const title = escapeHtml((preview.title || preview.siteName || hostname || normalizedUrl).trim());
+    const description = preview.description ? escapeHtml(preview.description.trim()) : '';
+    const faviconHtml = preview.favicon
+      ? `<img class="chat-link-preview-favicon" src="${escapeHtml(preview.favicon)}" alt="" loading="lazy">`
+      : '<span class="material-symbols-outlined md-16">public</span>';
+    const thumbHtml = preview.image
+      ? `
+        <div class="chat-link-preview-media">
+          <img class="chat-link-preview-thumb" src="${escapeHtml(preview.image)}" alt="" loading="lazy">
+        </div>
+      `
+      : '';
+
+    return `
+      <button
+        type="button"
+        class="chat-link-preview${preview.image ? '' : ' chat-link-preview--no-image'}"
+        title="${escapeHtml(normalizedUrl)}"
+      >
+        <div class="chat-link-preview-main">
+          <div class="chat-link-preview-site">
+            <span class="chat-link-preview-site-icon${preview.favicon ? '' : ' chat-link-preview-site-icon--fallback'}">
+              ${faviconHtml}
+            </span>
+            <span class="chat-link-preview-site-label">${siteLabel}</span>
+          </div>
+          <span class="chat-link-preview-title">${title}</span>
+          ${description ? `<span class="chat-link-preview-description">${description}</span>` : ''}
+        </div>
+        ${thumbHtml}
+      </button>
+    `;
+  }
+
+  private getPreviewHostname(url: string): string {
+    try {
+      return new URL(url).hostname.replace(/^www\./i, '');
+    } catch {
+      return '';
+    }
   }
 
   private bindMediaInteractions(feed: HTMLElement): void {

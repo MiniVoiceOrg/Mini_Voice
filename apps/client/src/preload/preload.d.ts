@@ -1,3 +1,11 @@
+export interface LinkPreviewData {
+    url: string;
+    title: string;
+    description?: string;
+    image?: string;
+    siteName?: string;
+    favicon?: string;
+}
 export interface ElectronApi {
     startLanDiscovery: () => Promise<void>;
     stopLanDiscovery: () => Promise<void>;
@@ -107,6 +115,7 @@ export interface ElectronApi {
     openExternal: (url: string) => Promise<{
         success: boolean;
     }>;
+    fetchLinkPreview: (url: string) => Promise<LinkPreviewData | null>;
     downloadFile: (url: string, fileName: string) => Promise<{
         success: boolean;
         error?: string;
