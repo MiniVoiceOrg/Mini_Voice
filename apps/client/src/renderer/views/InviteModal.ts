@@ -1,4 +1,4 @@
-import { MessageType, ServerInviteInfoPayload, ServerNetworkInterface } from '@mini-voice/shared';
+import { MessageType, ServerInviteInfoPayload, ServerNetworkInterface } from '@monky/shared';
 import { networkClient } from '../core/NetworkClient';
 import { serverStore } from '../stores/serverStore';
 import { enableBackdropClose } from '../utils/modal';
@@ -8,14 +8,14 @@ export class InviteModal {
   private modalEl: HTMLElement | null = null;
   private selectedIp: string = '';
   private selectedPort: number = 3000;
-  private serverName: string = 'Mini Voice';
+  private serverName: string = 'Monky';
   private networkInterfaces: ServerNetworkInterface[] = [];
   private isLoading = true;
 
   public async open(): Promise<void> {
     this.close();
 
-    this.serverName = serverStore.serverDetails?.name || 'Mini Voice';
+    this.serverName = serverStore.serverDetails?.name || 'Monky';
     this.selectedPort = this.getFallbackPort();
     this.selectedIp = this.getFallbackHost();
     this.isLoading = true;

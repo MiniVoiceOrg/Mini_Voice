@@ -2,7 +2,7 @@ import {
   ProtocolErrorCode,
   VoiceParticipantState,
   WebRtcSignalPayload,
-} from '@mini-voice/shared';
+} from '@monky/shared';
 import { IChannelRepository } from '../../domain/repositories';
 import { Logger } from '../../infrastructure/logger/Logger';
 

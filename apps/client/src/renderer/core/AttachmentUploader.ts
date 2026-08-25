@@ -1,4 +1,4 @@
-import { AttachmentMeta, ChatUploadTokenPayload, MessageType } from '@mini-voice/shared';
+import { AttachmentMeta, ChatUploadTokenPayload, MessageType } from '@monky/shared';
 import { networkClient } from './NetworkClient';
 import { t } from '../i18n';
 

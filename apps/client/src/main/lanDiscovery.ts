@@ -2,7 +2,7 @@ import dgram from 'dgram';
 import { BrowserWindow } from 'electron';
 
 const DEFAULT_DISCOVERY_PORT = 41234;
-const ANNOUNCEMENT_TYPE = 'mini-voice-announce';
+const ANNOUNCEMENT_TYPE = 'monky-announce';
 const SERVER_TTL_MS = 10000;
 const PRUNE_INTERVAL_MS = 1000;
 

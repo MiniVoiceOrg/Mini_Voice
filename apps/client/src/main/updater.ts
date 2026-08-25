@@ -4,7 +4,7 @@ import https from 'https';
 import path from 'path';
 import { mt } from './i18n';
 
-const GITHUB_REPO = 'MiniVoiceOrg/Mini_Voice';
+const GITHUB_REPO = 'MonkyOrg/Monky';
 
 interface CheckResult {
   ok: boolean;
@@ -134,7 +134,7 @@ interface GithubRelease {
  * so a newer beta, or the final stable that supersedes it, is always chosen.
  */
 async function fetchTargetRelease(): Promise<GithubRelease | null | { error: string }> {
-  const headers = { Accept: 'application/vnd.github+json', 'User-Agent': 'MiniVoice-App' };
+  const headers = { Accept: 'application/vnd.github+json', 'User-Agent': 'Monky-App' };
 
   if (betaChannel) {
     const res = await fetch(`https://api.github.com/repos/${GITHUB_REPO}/releases?per_page=30`, {
@@ -204,7 +204,7 @@ function downloadToFile(
         return;
       }
       https
-        .get(currentUrl, { headers: { 'User-Agent': 'MiniVoice-App' } }, (response) => {
+        .get(currentUrl, { headers: { 'User-Agent': 'Monky-App' } }, (response) => {
           const status = response.statusCode ?? 0;
           if (status >= 300 && status < 400 && response.headers.location) {
             response.resume();

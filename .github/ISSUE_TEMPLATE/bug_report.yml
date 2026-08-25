@@ -1,5 +1,5 @@
 name: 🐛 Reportar um bug
-description: Algo no Mini Voice não funciona como deveria.
+description: Algo no Monky não funciona como deveria.
 labels: ['bug']
 body:
   - type: textarea
@@ -33,7 +33,7 @@ body:
   - type: input
     id: versao
     attributes:
-      label: Versão do Mini Voice
+      label: Versão do Monky
       description: Está em **Configurações › Sobre e Updates › Versão atual**.
       placeholder: v1.10.0
     validations:

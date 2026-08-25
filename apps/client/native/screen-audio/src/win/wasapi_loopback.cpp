@@ -3,7 +3,7 @@
  *
  * Two capture targets are supported via ActivateAudioInterfaceAsync:
  *   - loopbackMode 0 (EXCLUDE): capture the whole system audio EXCLUDING the
- *     MiniVoice process tree (targetPid = our own pid). Used for full-screen
+ *     Monky process tree (targetPid = our own pid). Used for full-screen
  *     sharing.
  *   - loopbackMode 1 (INCLUDE): capture ONLY the target application's process
  *     tree (targetPid = shared window's pid). Used for single-app sharing.

@@ -1,4 +1,4 @@
-import { ChannelType, UserStatus } from '@mini-voice/shared';
+import { ChannelType, UserStatus } from '@monky/shared';
 
 export interface ServerRecord {
   id: string;

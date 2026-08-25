@@ -2,7 +2,7 @@ import http from 'http';
 import fs from 'fs';
 import path from 'path';
 import { v4 as uuidv4 } from 'uuid';
-import { LIMITS, ProtocolErrorCode } from '@mini-voice/shared';
+import { LIMITS, ProtocolErrorCode } from '@monky/shared';
 import { AuthService } from './application/services/AuthService';
 import { AttachmentService } from './application/services/AttachmentService';
 import { ChannelService } from './application/services/ChannelService';
@@ -38,7 +38,7 @@ export interface ServerConfig {
   initialTextChannel?: string;
 }
 
-export class MiniVoiceServer {
+export class MonkyServer {
   private dbConn: DatabaseConnection;
   private httpServer: http.Server;
   private wsServer: WebSocketServer;
@@ -66,7 +66,7 @@ export class MiniVoiceServer {
     this.attachmentService = attachmentService;
   }
 
-  public static async create(config: ServerConfig): Promise<MiniVoiceServer> {
+  public static async create(config: ServerConfig): Promise<MonkyServer> {
     const dbPath = path.join(config.dataDir, 'server.db');
     const dbConn = await DatabaseConnection.create(dbPath);
 
@@ -115,7 +115,7 @@ export class MiniVoiceServer {
     );
 
     // Seed server and default channels if new database
-    await MiniVoiceServer.seedServer(config, serverRepo, channelRepo);
+    await MonkyServer.seedServer(config, serverRepo, channelRepo);
 
     const httpServer = http.createServer((req, res) => {
       if (req.method === 'OPTIONS') {
@@ -150,7 +150,7 @@ export class MiniVoiceServer {
             });
             res.end(
               JSON.stringify({
-                name: server?.name || config.serverName || 'Mini Voice Server',
+                name: server?.name || config.serverName || 'Monky Server',
                 hasPassword: !!(server?.passwordHash && server.passwordHash.length > 0),
                 userCount: online.size,
                 maxUsers: server?.maxUsers || LIMITS.MAX_USERS_DEFAULT,
@@ -179,7 +179,7 @@ export class MiniVoiceServer {
             res.end(
               JSON.stringify({
                 port,
-                serverName: server?.name || config.serverName || 'Mini Voice Server',
+                serverName: server?.name || config.serverName || 'Monky Server',
                 networkInterfaces,
               })
             );
@@ -207,11 +207,11 @@ export class MiniVoiceServer {
         return;
       }
       if (req.url && req.url.split('?')[0] === '/attachments' && req.method === 'POST') {
-        void MiniVoiceServer.handleAttachmentUpload(req, res, attachmentService, attachmentStorage);
+        void MonkyServer.handleAttachmentUpload(req, res, attachmentService, attachmentStorage);
         return;
       }
       if (req.url && req.url.startsWith('/attachments/') && (req.method === 'GET' || req.method === 'HEAD')) {
-        MiniVoiceServer.handleAttachmentDownload(req, res, attachmentStorage);
+        MonkyServer.handleAttachmentDownload(req, res, attachmentStorage);
         return;
       }
       res.writeHead(404);
@@ -232,12 +232,12 @@ export class MiniVoiceServer {
     getOnlineUsers = () => wsServer.getOnlineUsersMap();
 
     const lanBroadcaster = new LanBroadcaster({
-      serverName: config.serverName || 'Mini Voice Server',
+      serverName: config.serverName || 'Monky Server',
       serverPort: config.port,
       discoveryPort: config.discoveryPort,
     });
 
-    return new MiniVoiceServer(config, dbConn, httpServer, wsServer, avatarStorage, rateLimiter, lanBroadcaster, attachmentService);
+    return new MonkyServer(config, dbConn, httpServer, wsServer, avatarStorage, rateLimiter, lanBroadcaster, attachmentService);
   }
 
   private static async handleAttachmentUpload(
@@ -399,7 +399,7 @@ export class MiniVoiceServer {
 
       await serverRepo.createServer({
         id: serverId,
-        name: config.serverName || 'Mini Voice Server',
+        name: config.serverName || 'Monky Server',
         passwordHash,
         createdAt: now,
         maxUsers: config.maxUsers || LIMITS.MAX_USERS_DEFAULT,
@@ -435,7 +435,7 @@ export class MiniVoiceServer {
   public async start(): Promise<void> {
     return new Promise((resolve) => {
       this.httpServer.listen(this.config.port, '0.0.0.0', () => {
-        Logger.info('INFO', `Mini Voice Server running on 0.0.0.0:${this.config.port}`);
+        Logger.info('INFO', `Monky Server running on 0.0.0.0:${this.config.port}`);
         Logger.info('INFO', `Data directory: ${this.config.dataDir}`);
         void this.attachmentService.reconcile();
         this.lanBroadcaster
@@ -447,7 +447,7 @@ export class MiniVoiceServer {
   }
 
   public async stop(): Promise<void> {
-    Logger.info('INFO', 'Stopping Mini Voice Server...');
+    Logger.info('INFO', 'Stopping Monky Server...');
     await this.lanBroadcaster.stop();
     this.rateLimiter.dispose();
     this.wsServer.close();

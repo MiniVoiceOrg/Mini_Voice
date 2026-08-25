@@ -24,7 +24,7 @@ export const SUPPORTED_LANGUAGES: Array<{ code: SupportedLanguage; label: string
 ];
 
 const FALLBACK_LANGUAGE: SupportedLanguage = 'pt-BR';
-const STORAGE_KEY = 'mini_voice_language';
+const STORAGE_KEY = 'monky_language';
 
 const CATALOGS: Record<SupportedLanguage, TranslationMap> = {
   'pt-BR': ptBR,

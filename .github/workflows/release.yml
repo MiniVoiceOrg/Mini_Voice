@@ -107,7 +107,7 @@ jobs:
 
       # tsc does not copy the .sql migration files into the compiled server
       # output, so we copy them next to the compiled DatabaseConnection.js. This
-      # ensures the migrations are bundled inside the packaged @mini-voice/server.
+      # ensures the migrations are bundled inside the packaged @monky/server.
       - name: Copy database migrations into server dist
         shell: bash
         run: |
@@ -200,9 +200,9 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           tag_name: v${{ needs.version.outputs.version }}
-          name: ${{ needs.version.outputs.channel == 'beta' && format('Mini Voice v{0} (Beta)', needs.version.outputs.version) || format('Mini Voice v{0}', needs.version.outputs.version) }}
+          name: ${{ needs.version.outputs.channel == 'beta' && format('Monky v{0} (Beta)', needs.version.outputs.version) || format('Monky v{0}', needs.version.outputs.version) }}
           body: |
-            ${{ needs.version.outputs.channel == 'beta' && '> ⚠️ **Versão beta** — em validação. Só recebe automaticamente quem ativou "Receber versões beta" nas Configurações. Após validada, é promovida a estável.' || 'Release estável do Mini Voice.' }}
+            ${{ needs.version.outputs.channel == 'beta' && '> ⚠️ **Versão beta** — em validação. Só recebe automaticamente quem ativou "Receber versões beta" nas Configurações. Após validada, é promovida a estável.' || 'Release estável do Monky.' }}
 
             Gerada a partir de `${{ needs.version.outputs.checkout_ref }}`.
 

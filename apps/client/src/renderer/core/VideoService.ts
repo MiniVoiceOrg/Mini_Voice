@@ -1,4 +1,4 @@
-import { QUALITY_PRESETS, QualityProfile, QualityPresetType } from '@mini-voice/shared';
+import { QUALITY_PRESETS, QualityProfile, QualityPresetType } from '@monky/shared';
 import { appEvents } from './EventBus';
 import { settingsStore } from '../stores/settingsStore';
 

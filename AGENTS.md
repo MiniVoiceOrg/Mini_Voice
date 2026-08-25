@@ -5,7 +5,7 @@ desenvolvem neste repositório a partir do board do GitHub.
 
 ## Fluxo de trabalho a partir do board
 
-O board fica em: https://github.com/orgs/MiniVoiceOrg/projects/1
+O board fica em: https://github.com/orgs/MonkyOrg/projects/1
 
 Sempre que iniciar um desenvolvimento a partir de uma issue/card do board, siga
 exatamente estas etapas, nesta ordem:
@@ -60,7 +60,7 @@ gh issue comment <NÚMERO_DA_ISSUE> --body "<comentário em PT-BR>"
 O comentário deve conter, no mínimo, uma seção **"Como foi implementado"** e uma
 seção **"Como testar"**.
 
-## Referência do board (org `MiniVoiceOrg`, projeto #1)
+## Referência do board (org `MonkyOrg`, projeto #1)
 
 - Project ID: `PVT_kwDOEws3wM4BhD7I`
 - Campo Status (field ID): `PVTSSF_lADOEws3wM4BhD7IzhgBIGI`
@@ -86,7 +86,7 @@ O `<ITEM_ID>` é o ID do item do projeto (não o número da issue). Liste os ite
 e seus IDs com:
 
 ```bash
-gh project item-list 1 --owner MiniVoiceOrg --format json
+gh project item-list 1 --owner MonkyOrg --format json
 ```
 
 ## Fluxo de PR (branch protegido)

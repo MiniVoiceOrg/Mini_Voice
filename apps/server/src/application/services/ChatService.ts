@@ -6,7 +6,7 @@ import {
   ProtocolErrorCode,
   attachmentCaptionSchema,
   messageContentSchema,
-} from '@mini-voice/shared';
+} from '@monky/shared';
 import { MentionRecord, MessageRecord } from '../../domain/entities';
 import {
   IChannelRepository,
