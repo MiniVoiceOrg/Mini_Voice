@@ -264,27 +264,28 @@ git clone https://github.com/MonkyOrg/Monky.git
 cd Monky
 npm install
 npm run build
+npm install -g ./apps/server
 ```
 
 ### Configuração inicial com o CLI
 
-Toda administração do servidor em VPS é feita pelo **Monky CLI**. Primeiro,
-faça o bootstrap para definir o dono/admin inicial do servidor:
+Toda administração do servidor em VPS é feita pelo **Monky CLI**. Depois do
+`npm install -g ./apps/server`, use o comando `monky`. Primeiro, faça o
+bootstrap para definir o dono/admin inicial do servidor:
 
 ```bash
 # Bootstrap: define o owner usando seu código de identidade exportado
-npx monky bootstrap --identity "MONKY-ID:1:..." --data ./data
+monky bootstrap --identity "MONKY-ID:1:..." --data ./data
 
 # Configurar o servidor
-npx monky config set name "Servidor dos Amigos" --data ./data
-npx monky config set port 3000 --data ./data
-npx monky config set password "minhasenha" --data ./data
+monky config set name "Servidor dos Amigos" --data ./data
+monky config set password "minhasenha" --data ./data
 ```
 
 ### Iniciar o servidor
 
 ```bash
-node apps/server/dist/index.js --data ./data
+monky start --data ./data --port 3001
 ```
 
 Depois, seus amigos entram normalmente usando o **IP do VPS** e a porta.
@@ -296,13 +297,13 @@ cliente gráfico:
 
 ```bash
 # Listar membros
-npx monky members list --data ./data
+monky members --data ./data
 
 # Promover alguém a admin
-npx monky admin add "NicknameDoUsuario" --data ./data
+monky admin add "NicknameDoUsuario" --data ./data
 
 # Ver todas as opções
-npx monky --help
+monky --help
 ```
 
 ➡️ Documentação completa do CLI: [docs/CLI.md](docs/CLI.md)
@@ -469,4 +470,3 @@ Quer mandar uma mudança? Veja [Como colaborar](#-como-colaborar).
 ## 📄 Licença
 
 [MIT](LICENSE) — use, modifique e hospede à vontade.
-
