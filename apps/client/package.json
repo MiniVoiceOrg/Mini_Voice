@@ -34,7 +34,7 @@
     "vite": "^6.2.0"
   },
   "build": {
-    "appId": "com.minivoice.app",
+    "appId": "com.monky.app",
     "productName": "Monky",
     "electronVersion": "34.2.0",
     "asar": false,

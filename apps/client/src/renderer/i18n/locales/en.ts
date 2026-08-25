@@ -458,7 +458,7 @@ export const en: TranslationMap = {
 
   // ── Network and connection (NetworkClient.ts) ────────────────────────────
   'network.genericConnectError': 'Could not connect. The server may be offline or closed, or the IP/port may be wrong.',
-  'network.notMiniVoiceServer': '{host}:{port} answered, but it is not a valid Monky server. Check the port.',
+  'network.notMonkyServer': '{host}:{port} answered, but it is not a valid Monky server. Check the port.',
   'network.portClosed': 'The computer {host} is online, but no Monky server is running on port {port}. Check that the server was started.',
   'network.hostUnreachable': 'Could not find a server at {host}:{port}. The computer seems to be offline. Check the IP and your connection.',
   'network.connectionTimeout': 'The server at {host}:{port} did not answer. It may be closed (or blocked by a firewall), or the computer may be offline. Check that the server is running and the port is open.',
