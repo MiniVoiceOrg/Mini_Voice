@@ -4,6 +4,7 @@ import fs from 'fs';
 import path from 'path';
 import readline from 'readline';
 import { createDecipheriv, createPrivateKey, createPublicKey, pbkdf2Sync } from 'crypto';
+import { execSync, spawnSync } from 'child_process';
 import { v4 as uuidv4 } from 'uuid';
 import { deriveClientIdFromPublicKey, LIMITS, normalizePublicKeyHex, Permission } from '@monky/shared';
 import { RoleRecord, UserRecord } from './domain/entities';
@@ -15,7 +16,7 @@ import {
   SqliteUserRepository,
 } from './infrastructure/database/SqliteRepositories';
 import { PasswordService } from './infrastructure/security/PasswordService';
-import { ensureServerSeedData, MonkyServer, ServerConfig } from './server';
+import { ensureServerSeedData, ServerConfig } from './server';
 
 const EXPORT_PREFIX = 'MONKY-ID:';
 const PBKDF2_ITERATIONS = 210_000;
@@ -24,7 +25,6 @@ const DEFAULT_DATA_DIR = path.resolve(process.cwd(), 'data');
 const DEFAULT_OWNER_NICKNAME = 'Owner';
 const DEFAULT_SERVER_NAME = 'Servidor dos Amigos';
 const DEFAULT_BOOTSTRAP_PORT = 3001;
-const PID_FILE_NAME = 'monky.pid';
 const SERVER_DB_NAME = 'server.db';
 const CONFIG_KEYS = [
   'name',
@@ -94,8 +94,11 @@ ${color('Monky CLI - Ferramenta de administração do servidor Monky', ANSI.bold
 
 Uso:
   monky bootstrap          Configura um novo servidor (interativo)
-  monky start              Inicia o servidor
+  monky start              Inicia o servidor (via PM2, daemon)
   monky stop               Para o servidor
+  monky restart            Reinicia o servidor
+  monky status             Exibe o estado do servidor
+  monky logs               Exibe logs em tempo real
   monky members            Lista membros
   monky members info <id>  Info detalhada de um membro
   monky admin add [user]   Concede admin (interativo se sem arg)
@@ -143,10 +146,6 @@ function parseGlobalArgs(argv: string[]): GlobalArgs {
 
 function dataDbPath(dataDir: string): string {
   return path.join(dataDir, SERVER_DB_NAME);
-}
-
-function dataPidPath(dataDir: string): string {
-  return path.join(dataDir, PID_FILE_NAME);
 }
 
 function formatDataDirForPrompt(dataDir: string): string {
@@ -1170,114 +1169,175 @@ async function buildStartConfig(dataDir: string, args: string[]): Promise<Server
   };
 }
 
-function isProcessRunning(pid: number): boolean {
+const PM2_PROCESS_NAME = 'monky-server';
+
+function isPm2Available(): boolean {
   try {
-    process.kill(pid, 0);
+    execSync('pm2 --version', { stdio: 'ignore' });
     return true;
-  } catch (error) {
-    const code = (error as NodeJS.ErrnoException).code;
-    return code === 'EPERM';
+  } catch {
+    return false;
   }
 }
 
-async function removePidFile(pidPath: string): Promise<void> {
-  if (fs.existsSync(pidPath)) {
-    await fs.promises.rm(pidPath, { force: true });
+function ensurePm2(): void {
+  if (!isPm2Available()) {
+    console.log(color('PM2 não encontrado. Instalando globalmente...', ANSI.yellow));
+    try {
+      execSync('npm install -g pm2', { stdio: 'inherit' });
+    } catch {
+      throw new Error('Falha ao instalar PM2. Instale manualmente: npm install -g pm2');
+    }
   }
+}
+
+function getEcosystemPath(dataDir: string): string {
+  return path.join(dataDir, 'ecosystem.config.js');
+}
+
+function getServerEntryPath(): string {
+  return path.resolve(__dirname, 'index.js');
+}
+
+function generateEcosystem(dataDir: string, port: number, serverName: string): string {
+  const entryPath = getServerEntryPath().replace(/\\/g, '\\\\');
+  const resolvedDataDir = path.resolve(dataDir).replace(/\\/g, '\\\\');
+  return `module.exports = {
+  apps: [{
+    name: '${PM2_PROCESS_NAME}',
+    script: '${entryPath}',
+    args: '--data "${resolvedDataDir}" --port ${port} --name "${serverName.replace(/"/g, '\\"')}"',
+    cwd: '${resolvedDataDir}',
+    autorestart: true,
+    watch: false,
+    max_memory_restart: '512M',
+    env: {
+      NODE_ENV: 'production'
+    }
+  }]
+};
+`;
 }
 
 async function startServerCommand(globalArgs: GlobalArgs, args: string[]): Promise<void> {
   const dataDir = globalArgs.dataDir;
   await fs.promises.mkdir(dataDir, { recursive: true });
 
-  const pidPath = dataPidPath(dataDir);
-  if (fs.existsSync(pidPath)) {
-    const raw = fs.readFileSync(pidPath, 'utf8').trim();
-    const existingPid = Number.parseInt(raw, 10);
-    if (Number.isInteger(existingPid) && isProcessRunning(existingPid)) {
-      console.log(color(`O servidor já está em execução (PID ${existingPid}).`, ANSI.yellow));
-      return;
-    }
-    await removePidFile(pidPath);
-  }
+  ensurePm2();
 
   const config = await buildStartConfig(dataDir, args);
-  const server = await MonkyServer.create(config);
-  await fs.promises.writeFile(pidPath, String(process.pid), 'utf8');
+  const ecosystemPath = getEcosystemPath(dataDir);
+  const ecosystemContent = generateEcosystem(dataDir, config.port, config.serverName || DEFAULT_SERVER_NAME);
+  await fs.promises.writeFile(ecosystemPath, ecosystemContent, 'utf8');
 
-  let stopping = false;
-  const cleanup = async (signal?: NodeJS.Signals) => {
-    if (stopping) return;
-    stopping = true;
+  // Check if already running
+  const listResult = spawnSync('pm2', ['jlist'], { encoding: 'utf8', shell: true });
+  if (listResult.status === 0) {
     try {
-      if (signal) {
-        console.log(color(`Recebido ${signal}. Encerrando servidor...`, ANSI.yellow));
+      const processes = JSON.parse(listResult.stdout);
+      const existing = processes.find((p: any) => p.name === PM2_PROCESS_NAME && p.pm2_env?.status === 'online');
+      if (existing) {
+        console.log(color(`O servidor já está em execução (PID ${existing.pid}).`, ANSI.yellow));
+        console.log(color('Use "monky restart" para reiniciar ou "monky stop" para parar.', ANSI.dim));
+        return;
       }
-      await server.stop();
-    } finally {
-      await removePidFile(pidPath);
-      process.exit(0);
-    }
-  };
+    } catch { /* ignore parse errors */ }
+  }
 
-  process.once('SIGINT', () => {
-    void cleanup('SIGINT');
-  });
-  process.once('SIGTERM', () => {
-    void cleanup('SIGTERM');
-  });
-  process.once('exit', () => {
-    if (fs.existsSync(pidPath)) {
-      fs.rmSync(pidPath, { force: true });
-    }
-  });
+  const result = spawnSync('pm2', ['start', ecosystemPath], { stdio: 'inherit', shell: true });
+  if (result.status !== 0) {
+    throw new Error('Falha ao iniciar o servidor via PM2.');
+  }
 
-  console.log(color('Servidor Monky iniciando...', ANSI.green));
+  console.log();
+  console.log(color('Servidor Monky iniciado com sucesso!', ANSI.green));
   console.log(`porta: ${config.port}`);
-  console.log(`dataDir: ${config.dataDir}`);
+  console.log(`dataDir: ${path.resolve(dataDir)}`);
   console.log(`serverName: ${config.serverName}`);
-  console.log(color('Pressione Ctrl+C para encerrar.', ANSI.dim));
-
-  await server.start();
+  console.log();
+  console.log(color('Comandos úteis:', ANSI.bold));
+  console.log(`  monky status    — ver estado do servidor`);
+  console.log(`  monky logs      — ver logs em tempo real`);
+  console.log(`  monky restart   — reiniciar o servidor`);
+  console.log(`  monky stop      — parar o servidor`);
 }
 
-function sleep(ms: number): Promise<void> {
-  return new Promise((resolve) => setTimeout(resolve, ms));
-}
+async function stopServerCommand(_dataDir: string): Promise<void> {
+  ensurePm2();
 
-async function stopServerCommand(dataDir: string): Promise<void> {
-  const pidPath = dataPidPath(dataDir);
-  if (!fs.existsSync(pidPath)) {
-    console.log(color('Nenhum servidor Monky em execução foi encontrado.', ANSI.yellow));
-    return;
-  }
-
-  const raw = fs.readFileSync(pidPath, 'utf8').trim();
-  const pid = Number.parseInt(raw, 10);
-  if (!Number.isInteger(pid)) {
-    await removePidFile(pidPath);
-    console.log(color('Arquivo PID inválido removido. Nenhum servidor ativo encontrado.', ANSI.yellow));
-    return;
-  }
-
-  if (!isProcessRunning(pid)) {
-    await removePidFile(pidPath);
-    console.log(color('O processo salvo no PID file não está mais em execução. Arquivo removido.', ANSI.yellow));
-    return;
-  }
-
-  process.kill(pid, 'SIGTERM');
-
-  for (let attempt = 0; attempt < 20; attempt++) {
-    await sleep(250);
-    if (!isProcessRunning(pid)) {
-      await removePidFile(pidPath);
-      console.log(color(`Servidor Monky parado com sucesso (PID ${pid}).`, ANSI.green));
+  const result = spawnSync('pm2', ['stop', PM2_PROCESS_NAME], { encoding: 'utf8', shell: true });
+  if (result.status !== 0) {
+    if (result.stderr?.includes('not found') || result.stdout?.includes('not found')) {
+      console.log(color('Nenhum servidor Monky em execução foi encontrado.', ANSI.yellow));
       return;
     }
+    throw new Error('Falha ao parar o servidor.');
   }
 
-  console.log(color(`Sinal SIGTERM enviado para o PID ${pid}. Aguarde alguns segundos.`, ANSI.green));
+  spawnSync('pm2', ['delete', PM2_PROCESS_NAME], { stdio: 'ignore', shell: true });
+  console.log(color('Servidor Monky parado com sucesso.', ANSI.green));
+}
+
+async function restartServerCommand(_dataDir: string): Promise<void> {
+  ensurePm2();
+
+  const result = spawnSync('pm2', ['restart', PM2_PROCESS_NAME], { encoding: 'utf8', shell: true });
+  if (result.status !== 0) {
+    if (result.stderr?.includes('not found') || result.stdout?.includes('not found')) {
+      console.log(color('Nenhum servidor Monky em execução. Use "monky start" primeiro.', ANSI.yellow));
+      return;
+    }
+    throw new Error('Falha ao reiniciar o servidor.');
+  }
+
+  console.log(color('Servidor Monky reiniciado com sucesso.', ANSI.green));
+}
+
+function logsServerCommand(): void {
+  ensurePm2();
+
+  console.log(color('Exibindo logs do servidor (Ctrl+C para sair)...', ANSI.dim));
+  spawnSync('pm2', ['logs', PM2_PROCESS_NAME, '--lines', '50'], { stdio: 'inherit', shell: true });
+}
+
+function statusServerCommand(): void {
+  ensurePm2();
+
+  const listResult = spawnSync('pm2', ['jlist'], { encoding: 'utf8', shell: true });
+  if (listResult.status !== 0) {
+    console.log(color('Não foi possível verificar o estado do servidor.', ANSI.yellow));
+    return;
+  }
+
+  try {
+    const processes = JSON.parse(listResult.stdout);
+    const monky = processes.find((p: any) => p.name === PM2_PROCESS_NAME);
+    if (!monky) {
+      console.log(color('Servidor Monky não está registrado no PM2.', ANSI.yellow));
+      console.log(color('Use "monky start" para iniciar.', ANSI.dim));
+      return;
+    }
+
+    const status = monky.pm2_env?.status || 'unknown';
+    const pid = monky.pid || '-';
+    const uptime = monky.pm2_env?.pm_uptime ? new Date(monky.pm2_env.pm_uptime).toISOString() : '-';
+    const restarts = monky.pm2_env?.restart_time ?? 0;
+    const memory = monky.monit?.memory ? `${Math.round(monky.monit.memory / 1024 / 1024)} MB` : '-';
+    const cpu = monky.monit?.cpu !== undefined ? `${monky.monit.cpu}%` : '-';
+
+    const statusColor = status === 'online' ? ANSI.green : status === 'stopped' ? ANSI.yellow : ANSI.red;
+
+    console.log(color('Estado do Servidor Monky', ANSI.bold));
+    console.log(`status: ${color(status, statusColor)}`);
+    console.log(`pid: ${pid}`);
+    console.log(`uptime: ${uptime}`);
+    console.log(`restarts: ${restarts}`);
+    console.log(`memory: ${memory}`);
+    console.log(`cpu: ${cpu}`);
+  } catch {
+    // Fallback to pm2 show
+    spawnSync('pm2', ['show', PM2_PROCESS_NAME], { stdio: 'inherit', shell: true });
+  }
 }
 
 async function runDataCommand(
@@ -1308,6 +1368,21 @@ async function runCommand(globalArgs: GlobalArgs): Promise<void> {
 
   if (section === 'stop') {
     await stopServerCommand(globalArgs.dataDir);
+    return;
+  }
+
+  if (section === 'restart') {
+    await restartServerCommand(globalArgs.dataDir);
+    return;
+  }
+
+  if (section === 'logs') {
+    logsServerCommand();
+    return;
+  }
+
+  if (section === 'status') {
+    statusServerCommand();
     return;
   }
 

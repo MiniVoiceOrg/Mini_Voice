@@ -122,13 +122,11 @@ monky --data /var/monky bootstrap --identity "MONKY-ID:1:eyJ..." --nickname Admi
 
 ### `monky start`
 
-Inicia o servidor Monky em foreground.
+Inicia o servidor Monky como daemon via **PM2** (process manager). O servidor
+roda em background com auto-restart automático em caso de crash.
 
 ```bash
-# Usa configurações do banco (nome, senha, etc.)
 monky start
-
-# Com opções explícitas
 monky start --port 3001
 monky start --data /var/monky --port 4000 --name "Meu Servidor"
 ```
@@ -144,30 +142,60 @@ monky start --data /var/monky --port 4000 --name "Meu Servidor"
 
 O comando:
 
+- Instala PM2 globalmente se não estiver disponível.
 - Cria a pasta de dados se não existir.
-- Grava o PID em `<dataDir>/monky.pid`.
-- Lê configurações já salvas no banco quando disponíveis.
-- Trata `SIGINT` (Ctrl+C) e `SIGTERM` para shutdown gracioso.
-- Se já existe um servidor rodando (PID ativo), exibe aviso e não inicia.
+- Gera um arquivo `ecosystem.config.js` na pasta de dados.
+- Inicia o processo via PM2 como daemon (background).
+- Auto-restart: se o servidor crashar, PM2 reinicia automaticamente.
+- Limite de memória: 512 MB (reinicia se exceder).
 
 ---
 
 ### `monky stop`
 
-Para o servidor Monky que estiver em execução.
+Para o servidor Monky.
 
 ```bash
 monky stop
-monky stop --data /var/monky
 ```
 
-O comando:
+Remove o processo do PM2.
 
-- Lê o arquivo `monky.pid` na pasta de dados.
-- Envia `SIGTERM` para o processo.
-- Aguarda até 5 segundos para confirmação de encerramento.
-- Remove o PID file automaticamente.
-- Se o processo não estiver mais rodando, limpa PID files stale.
+---
+
+### `monky restart`
+
+Reinicia o servidor Monky sem downtime.
+
+```bash
+monky restart
+```
+
+---
+
+### `monky status`
+
+Exibe o estado atual do servidor.
+
+```bash
+monky status
+```
+
+Mostra: status (online/stopped/errored), PID, uptime, quantidade de
+restarts, memória e CPU.
+
+---
+
+### `monky logs`
+
+Exibe os logs do servidor em tempo real (tail).
+
+```bash
+monky logs
+```
+
+Pressione `Ctrl+C` para sair. Exibe as últimas 50 linhas e acompanha
+novas entradas.
 
 ---
 

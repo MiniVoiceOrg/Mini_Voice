@@ -287,8 +287,11 @@ servidor automaticamente.
 ### Iniciar / parar o servidor
 
 ```bash
-monky start    # inicia o servidor
-monky stop     # para o servidor
+monky start      # inicia como daemon (PM2, auto-restart)
+monky stop       # para o servidor
+monky restart    # reinicia
+monky status     # ver estado (PID, memória, uptime)
+monky logs       # logs em tempo real
 ```
 
 Depois, seus amigos entram normalmente usando o **IP do VPS** e a porta.

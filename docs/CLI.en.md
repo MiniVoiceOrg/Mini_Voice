@@ -122,13 +122,11 @@ monky --data /var/monky bootstrap --identity "MONKY-ID:1:eyJ..." --nickname Admi
 
 ### `monky start`
 
-Starts the Monky server in the foreground.
+Starts the Monky server as a daemon via **PM2** (process manager). The server
+runs in the background with automatic restart on crash.
 
 ```bash
-# Uses settings from the database (name, password, etc.)
 monky start
-
-# With explicit options
 monky start --port 3001
 monky start --data /var/monky --port 4000 --name "My Server"
 ```
@@ -144,30 +142,59 @@ monky start --data /var/monky --port 4000 --name "My Server"
 
 The command:
 
+- Installs PM2 globally if not available.
 - Creates the data directory if it doesn't exist.
-- Writes the PID to `<dataDir>/monky.pid`.
-- Reads settings already stored in the database when available.
-- Handles `SIGINT` (Ctrl+C) and `SIGTERM` for graceful shutdown.
-- If a server is already running (active PID), shows a warning and doesn't start.
+- Generates an `ecosystem.config.js` file in the data directory.
+- Starts the process via PM2 as a daemon (background).
+- Auto-restart: if the server crashes, PM2 restarts it automatically.
+- Memory limit: 512 MB (restarts if exceeded).
 
 ---
 
 ### `monky stop`
 
-Stops a running Monky server.
+Stops the Monky server.
 
 ```bash
 monky stop
-monky stop --data /var/monky
 ```
 
-The command:
+Removes the process from PM2.
 
-- Reads the `monky.pid` file from the data directory.
-- Sends `SIGTERM` to the process.
-- Waits up to 5 seconds for shutdown confirmation.
-- Removes the PID file automatically.
-- If the process is no longer running, cleans up stale PID files.
+---
+
+### `monky restart`
+
+Restarts the Monky server with zero downtime.
+
+```bash
+monky restart
+```
+
+---
+
+### `monky status`
+
+Shows the current server state.
+
+```bash
+monky status
+```
+
+Displays: status (online/stopped/errored), PID, uptime, restart count,
+memory and CPU.
+
+---
+
+### `monky logs`
+
+Shows server logs in real time (tail).
+
+```bash
+monky logs
+```
+
+Press `Ctrl+C` to exit. Shows the last 50 lines and follows new entries.
 
 ---
 

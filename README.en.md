@@ -285,8 +285,11 @@ automatically.
 ### Starting / stopping the server
 
 ```bash
-monky start    # start the server
-monky stop     # stop the server
+monky start      # start as daemon (PM2, auto-restart)
+monky stop       # stop the server
+monky restart    # restart
+monky status     # show state (PID, memory, uptime)
+monky logs       # real-time logs
 ```
 
 After that, your friends join normally using the **VPS IP** and the port.
