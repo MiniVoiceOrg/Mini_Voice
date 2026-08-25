@@ -148,6 +148,7 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: write
+      id-token: write
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -196,6 +197,20 @@ jobs:
       - name: List artifacts
         run: ls -R artifacts
 
+      - name: Install Cosign
+        uses: sigstore/cosign-installer@v3
+
+      - name: Generate checksums and sign artifacts
+        run: |
+          cd artifacts
+          find . -type f \( -name '*.exe' -o -name '*.dmg' -o -name '*.zip' \) \
+            -exec sha256sum {} + | sort > checksums-sha256.txt
+          echo "=== Checksums ==="
+          cat checksums-sha256.txt
+
+      - name: Sign checksums with Cosign (keyless)
+        run: cosign sign-blob --yes --output-signature artifacts/checksums-sha256.txt.sig --output-certificate artifacts/checksums-sha256.txt.crt artifacts/checksums-sha256.txt
+
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
@@ -210,6 +225,22 @@ jobs:
             - **Windows**: instalador `.exe` (NSIS) e `.exe` portátil
             - **macOS**: `.dmg` (Intel + Apple Silicon) e `.zip`
 
+            ### Verificação de autenticidade
+            Todos os artefatos são assinados com [Sigstore Cosign](https://docs.sigstore.dev/) (keyless, via OIDC do GitHub Actions).
+
+            ```bash
+            # 1. Verificar checksums
+            sha256sum -c checksums-sha256.txt
+
+            # 2. Verificar assinatura (requer cosign instalado)
+            cosign verify-blob \
+              --signature checksums-sha256.txt.sig \
+              --certificate checksums-sha256.txt.crt \
+              --certificate-identity-regexp "https://github.com/MonkyOrg/Monky" \
+              --certificate-oidc-issuer "https://token.actions.githubusercontent.com" \
+              checksums-sha256.txt
+            ```
+
             ### Changelog
             ${{ steps.changelog.outputs.notes }}
           draft: false
@@ -221,3 +252,6 @@ jobs:
             artifacts/**/*.zip
             artifacts/**/*.blockmap
             artifacts/**/latest*.yml
+            artifacts/checksums-sha256.txt
+            artifacts/checksums-sha256.txt.sig
+            artifacts/checksums-sha256.txt.crt
