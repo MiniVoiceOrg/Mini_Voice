@@ -6,6 +6,7 @@ import { serverStore } from '../stores/serverStore';
 import { connectionStore } from '../stores/connectionStore';
 import { webRtcManager } from '../core/WebRtcManager';
 import { appEvents } from '../core/EventBus';
+import { t } from '../i18n';
 
 export class UserContextMenu {
   private menuEl: HTMLElement | null = null;
@@ -39,7 +40,7 @@ export class UserContextMenu {
         <img class="context-menu-avatar" src="${avatarSrc}" alt="">
         <div class="context-menu-user-info">
           <span class="context-menu-nickname">${escapeHtml(user.nickname)}</span>
-          <span class="context-menu-subtext">Configurações de Áudio</span>
+          <span class="context-menu-subtext">${t('userMenu.audioSettings')}</span>
         </div>
       </div>
 
@@ -51,7 +52,7 @@ export class UserContextMenu {
             <span id="ctx-volume-icon" class="material-symbols-outlined md-18" style="color: var(--accent-primary);">
               ${this.getVolumeIcon(currentVol)}
             </span>
-            <span>Volume de Voz</span>
+            <span>${t('userMenu.voiceVolume')}</span>
           </div>
           <span id="ctx-volume-badge" class="context-menu-volume-badge">${currentVol}%</span>
         </div>
@@ -69,9 +70,9 @@ export class UserContextMenu {
         </div>
 
         <div class="context-menu-quick-btns">
-          <button id="ctx-vol-0" class="btn-ctx-quick" title="Mutar áudio deste usuário">0% (Mudo)</button>
-          <button id="ctx-vol-50" class="btn-ctx-quick" title="Definir volume em 50%">50%</button>
-          <button id="ctx-vol-100" class="btn-ctx-quick active" title="Restaurar volume padrão (100%)">100%</button>
+          <button id="ctx-vol-0" class="btn-ctx-quick" title="${t('userMenu.muteUserTitle')}">${t('userMenu.volumeMuted')}</button>
+          <button id="ctx-vol-50" class="btn-ctx-quick" title="${t('userMenu.setVolume50')}">50%</button>
+          <button id="ctx-vol-100" class="btn-ctx-quick active" title="${t('userMenu.restoreVolume')}">100%</button>
         </div>
       </div>
     `;

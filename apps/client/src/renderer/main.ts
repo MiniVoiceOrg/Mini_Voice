@@ -31,6 +31,7 @@ import { MainView } from './views/MainView';
 import { screenAudioService } from './core/ScreenAudioService';
 import { screenSharePickerModal } from './views/ScreenSharePickerModal';
 import { showAlert } from './views/Dialog';
+import { initI18n, t } from './i18n';
 
 class App {
   private appContainer: HTMLElement;
@@ -51,6 +52,7 @@ class App {
       connectionStore.clientId = await window.api.getClientId();
     }
 
+    initI18n();
     this.setupGlobalEventListeners();
     this.setupTitleBar();
     this.setupTraySync();
@@ -149,7 +151,7 @@ class App {
       overlay.innerHTML = `
         <div class="reconnect-card">
           <div class="reconnect-spinner"></div>
-          <div class="reconnect-title">Conexão perdida</div>
+          <div class="reconnect-title">${t('app.connectionLost')}</div>
           <div id="reconnect-subtitle" class="reconnect-subtitle"></div>
         </div>
       `;
@@ -157,7 +159,7 @@ class App {
     }
     const subtitle = document.getElementById('reconnect-subtitle');
     if (subtitle) {
-      subtitle.textContent = 'Tentando reconectar…';
+      subtitle.textContent = t('app.reconnecting');
     }
   }
 
@@ -166,6 +168,16 @@ class App {
   }
 
   private setupGlobalEventListeners(): void {
+    // Language switch (#16): re-render whichever screen is on, so every label
+    // built into the templates comes back in the new language.
+    appEvents.on('i18n.language_changed', () => {
+      if (serverStore.serverDetails) {
+        this.mainView.render();
+      } else {
+        this.connectionView.render();
+      }
+    });
+
     // Network Connect / Disconnect
     appEvents.on('network.connected', (payload: AuthSuccessPayload) => {
       // Preserve the voice channel we were in so we can auto-rejoin after an
@@ -378,8 +390,8 @@ class App {
     // returned us to the home screen).
     appEvents.on('network.server_shutdown', (data: { reason?: string }) => {
       showAlert({
-        title: 'Servidor encerrado',
-        message: data?.reason || 'O anfitrião encerrou o servidor. Você foi desconectado.',
+        title: t('app.serverShutdownTitle'),
+        message: data?.reason || t('app.serverShutdownMessage'),
         variant: 'warning',
       });
     });
