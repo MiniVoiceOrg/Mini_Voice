@@ -259,38 +259,53 @@ Abra pelo ícone de engrenagem (na tela de conexão ou na barra inferior).
 Se você quer o servidor no ar 24/7, rode só o servidor (sem interface gráfica)
 numa máquina Linux. Requer **Node.js 20 ou superior** (a CI do projeto usa a 22):
 
-## 💻 Administração via CLI
-
-Para administrar um servidor Monky em VPS sem abrir o cliente gráfico, use o
-`monky-cli`. Ele acessa diretamente o mesmo `server.db` do servidor para listar
-membros, promover/remover admins, ajustar configurações e fazer o bootstrap do
-owner inicial.
-
-➡️ Veja a documentação completa em [docs/CLI.md](docs/CLI.md)
-
-Continuando o fluxo manual de VPS:
-
 ```bash
 git clone https://github.com/MonkyOrg/Monky.git
 cd Monky
 npm install
 npm run build
-node apps/server/dist/index.js --port 3000 --data ./data --name "Servidor dos Amigos"
 ```
 
-Opções disponíveis:
+### Configuração inicial com o CLI
 
-| Opção | Padrão | Descrição |
-|---|---|---|
-| `--port <n>` | `3000` | Porta TCP do servidor |
-| `--data <caminho>` | `./data` | Onde ficam o `server.db` e os avatares |
-| `--name <texto>` | `Servidor dos Amigos` | Nome exibido no app |
-| `--password <senha>` | *(vazio)* | Senha de acesso |
-| `--max-users <n>` | `20` | Limite de usuários simultâneos |
-| `--text-channel <nome>` | `geral` | Canal de texto inicial |
-| `--voice-channel <nome>` | `Geral` | Canal de voz inicial |
+Toda administração do servidor em VPS é feita pelo **Monky CLI**. Primeiro,
+faça o bootstrap para definir o dono/admin inicial do servidor:
+
+```bash
+# Bootstrap: define o owner usando seu código de identidade exportado
+npx ts-node apps/server/src/cli.ts bootstrap --identity "MONKY-ID:1:..." --data ./data
+
+# Configurar o servidor
+npx ts-node apps/server/src/cli.ts config set name "Servidor dos Amigos" --data ./data
+npx ts-node apps/server/src/cli.ts config set port 3000 --data ./data
+npx ts-node apps/server/src/cli.ts config set password "minhasenha" --data ./data
+```
+
+### Iniciar o servidor
+
+```bash
+node apps/server/dist/index.js --data ./data
+```
 
 Depois, seus amigos entram normalmente usando o **IP do VPS** e a porta.
+
+### Administração
+
+Use o CLI para gerenciar membros, cargos e configurações sem precisar abrir o
+cliente gráfico:
+
+```bash
+# Listar membros
+npx ts-node apps/server/src/cli.ts members list --data ./data
+
+# Promover alguém a admin
+npx ts-node apps/server/src/cli.ts admin add "NicknameDoUsuario" --data ./data
+
+# Ver todas as opções
+npx ts-node apps/server/src/cli.ts --help
+```
+
+➡️ Documentação completa do CLI: [docs/CLI.md](docs/CLI.md)
 
 ### Portas usadas
 
