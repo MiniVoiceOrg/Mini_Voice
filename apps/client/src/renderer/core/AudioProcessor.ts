@@ -80,6 +80,7 @@ export class AudioProcessor {
       const AudioCtx = window.AudioContext || (window as any).webkitAudioContext;
       // RNNoise operates on 48kHz audio frames
       this.audioContext = new AudioCtx({ sampleRate: 48000 });
+      this.isWorkletModuleLoaded = false;
       if (this.audioContext.state !== 'running') {
         this.audioContext.resume().catch(() => {});
       }
@@ -95,22 +96,31 @@ export class AudioProcessor {
       let rnnoiseApplied = false;
 
       if (rnnoiseWanted) {
-        const wasm = await this.loadWasmBinary();
-        if (wasm) {
-          if (!this.isWorkletModuleLoaded) {
+        try {
+          const wasm = await this.loadWasmBinary();
+          if (wasm && this.audioContext) {
             await this.audioContext.audioWorklet.addModule(rnnoiseWorkletUrl);
             this.isWorkletModuleLoaded = true;
-          }
-          this.rnnoiseNode = new RnnoiseWorkletNode(this.audioContext, {
-            maxChannels: 1,
-            wasmBinary: wasm,
-          });
+            this.rnnoiseNode = new RnnoiseWorkletNode(this.audioContext, {
+              maxChannels: 1,
+              wasmBinary: wasm,
+            });
 
-          this.microphoneSource.connect(this.rnnoiseNode);
-          this.rnnoiseNode.connect(this.destinationNode);
-          this.rnnoiseNode.connect(this.analyser);
-          rnnoiseApplied = true;
-          console.log('[AudioProcessor] RNNoise Neural Noise Suppression successfully initialized.');
+            this.microphoneSource.connect(this.rnnoiseNode);
+            this.rnnoiseNode.connect(this.destinationNode);
+            this.rnnoiseNode.connect(this.analyser);
+            rnnoiseApplied = true;
+            console.log('[AudioProcessor] RNNoise Neural Noise Suppression successfully initialized.');
+          }
+        } catch (rnnoiseErr) {
+          console.warn('[AudioProcessor] RNNoise initialization failed, using standard routing:', rnnoiseErr);
+          rnnoiseApplied = false;
+          if (this.rnnoiseNode) {
+            try {
+              this.rnnoiseNode.disconnect();
+            } catch {}
+            this.rnnoiseNode = null;
+          }
         }
       }
 
@@ -141,7 +151,9 @@ export class AudioProcessor {
       if (this.rnnoiseNode) {
         try {
           this.rnnoiseNode.disconnect();
+          this.rnnoiseNode.destroy();
         } catch {}
+        this.rnnoiseNode = null;
       }
 
       if (enabled) {
@@ -151,12 +163,10 @@ export class AudioProcessor {
             await this.audioContext.audioWorklet.addModule(rnnoiseWorkletUrl);
             this.isWorkletModuleLoaded = true;
           }
-          if (!this.rnnoiseNode) {
-            this.rnnoiseNode = new RnnoiseWorkletNode(this.audioContext, {
-              maxChannels: 1,
-              wasmBinary: wasm,
-            });
-          }
+          this.rnnoiseNode = new RnnoiseWorkletNode(this.audioContext, {
+            maxChannels: 1,
+            wasmBinary: wasm,
+          });
 
           this.microphoneSource.connect(this.rnnoiseNode);
           this.rnnoiseNode.connect(this.destinationNode);
@@ -172,6 +182,10 @@ export class AudioProcessor {
       console.log('[AudioProcessor] Switched to standard/direct audio routing.');
     } catch (err) {
       console.warn('[AudioProcessor] Error switching noise suppression mode:', err);
+      try {
+        this.microphoneSource.connect(this.destinationNode);
+        this.microphoneSource.connect(this.analyser);
+      } catch {}
     }
   }
 
@@ -299,6 +313,7 @@ export class AudioProcessor {
       } catch {}
       this.rnnoiseNode = null;
     }
+    this.isWorkletModuleLoaded = false;
     if (this.microphoneSource) {
       try {
         this.microphoneSource.disconnect();
