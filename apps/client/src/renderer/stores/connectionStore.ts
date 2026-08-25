@@ -22,6 +22,8 @@ export interface CreatedServer {
 export class ConnectionStore {
   public status: ConnectionStatus = 'DISCONNECTED';
   public clientId: string = '';
+  public publicKey: string = '';
+  public hasIdentity: boolean = false;
   public lastError: string | null = null;
   public savedServers: SavedServer[] = [];
   public createdServers: CreatedServer[] = [];
@@ -161,6 +163,12 @@ export class ConnectionStore {
     try {
       localStorage.setItem('monky_created_servers', JSON.stringify(this.createdServers));
     } catch (e) {}
+  }
+
+  public setIdentity(identity: { publicKey: string; clientId: string } | null): void {
+    this.publicKey = identity?.publicKey || '';
+    this.clientId = identity?.clientId || '';
+    this.hasIdentity = !!identity;
   }
 }
 

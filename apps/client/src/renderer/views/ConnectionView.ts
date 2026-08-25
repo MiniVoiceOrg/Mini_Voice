@@ -5,7 +5,8 @@ import { networkClient } from '../core/NetworkClient';
 import { getAvatarUrl } from '../utils/avatar';
 import { settingsModal } from './SettingsModal';
 import { withButtonLoading } from '../utils/buttonLoading';
-import { showConfirm } from './Dialog';
+import { showAlert, showConfirm } from './Dialog';
+import { showIdentityImportDialog } from './IdentityDialogs';
 import logoUrl from '../assets/Logo.png';
 import { getLanguage, t } from '../i18n';
 
@@ -185,6 +186,26 @@ export class ConnectionView {
             <div id="lan-discovery-section">
               ${this.getDiscoveredServersSectionHtml()}
             </div>
+
+            ${
+              !connectionStore.hasIdentity
+                ? `
+              <div style="margin-bottom: 14px; padding: 12px; border: 1px solid rgba(88, 101, 242, 0.35); border-radius: var(--radius-md); background: rgba(88, 101, 242, 0.08);">
+                <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 6px; color: var(--text-primary); font-weight: 600;">
+                  <span class="material-symbols-outlined md-18" style="color: var(--accent-primary);">manage_accounts</span>
+                  ${t('identity.firstLaunchTitle')}
+                </div>
+                <div style="font-size: 12px; color: var(--text-secondary); line-height: 1.45; margin-bottom: 10px;">
+                  ${t('identity.firstLaunchHint')}
+                </div>
+                <button type="button" id="btn-import-existing-identity" class="btn btn-secondary" style="font-size: 12px;">
+                  <span class="material-symbols-outlined md-16" style="margin-right: 4px;">qr_code_scanner</span>
+                  ${t('identity.importAction')}
+                </button>
+              </div>
+            `
+                : ''
+            }
 
             ${savedServers.length > 0 ? `
               <div class="saved-servers-container">
@@ -367,13 +388,12 @@ export class ConnectionView {
     this.isHostedServerRunning = true;
     this.runningCreatedServerId = updatedServer.id;
 
-    let clientId = connectionStore.clientId;
-    if (!clientId && window.api?.getClientId) {
-      clientId = await window.api.getClientId();
-      connectionStore.clientId = clientId;
-    }
+    const identity = connectionStore.hasIdentity && connectionStore.clientId && connectionStore.publicKey
+      ? { clientId: connectionStore.clientId, publicKey: connectionStore.publicKey }
+      : await window.api.getIdentity();
+    connectionStore.setIdentity(identity);
 
-    await networkClient.connect('127.0.0.1', updatedServer.port, clientId, nickname, updatedServer.password);
+    await networkClient.connect('127.0.0.1', updatedServer.port, identity, nickname, updatedServer.password);
 
     if (this.selectedAvatarBase64) {
       try {
@@ -643,13 +663,12 @@ export class ConnectionView {
     btn.innerText = 'Conectando...';
 
     try {
-      let clientId = connectionStore.clientId;
-      if (!clientId && window.api?.getClientId) {
-        clientId = await window.api.getClientId();
-        connectionStore.clientId = clientId;
-      }
+      const identity = connectionStore.hasIdentity && connectionStore.clientId && connectionStore.publicKey
+        ? { clientId: connectionStore.clientId, publicKey: connectionStore.publicKey }
+        : await window.api.getIdentity();
+      connectionStore.setIdentity(identity);
 
-      const res = await networkClient.connect(host, port, clientId, nickname, password);
+      const res = await networkClient.connect(host, port, identity, nickname, password);
 
       if (this.selectedAvatarBase64) {
         try {
@@ -692,6 +711,7 @@ export class ConnectionView {
     const startCreatedButtons = this.container.querySelectorAll('.btn-start-created-server');
     const stopCreatedButtons = this.container.querySelectorAll('.btn-stop-created-server');
     const removeCreatedButtons = this.container.querySelectorAll('.btn-remove-created-server');
+    const importIdentityButton = document.getElementById('btn-import-existing-identity');
 
     // Sync and save nickname as user types
     const handleNickChange = (val: string) => {
@@ -705,6 +725,18 @@ export class ConnectionView {
 
     document.getElementById('btn-open-settings')?.addEventListener('click', (e) => {
       withButtonLoading(e.currentTarget as HTMLElement, () => settingsModal.open());
+    });
+
+    importIdentityButton?.addEventListener('click', async () => {
+      const identity = await showIdentityImportDialog();
+      if (!identity) return;
+      connectionStore.setIdentity(identity);
+      this.render();
+      await showAlert({
+        title: t('identity.importTitle'),
+        message: t('identity.importSuccess'),
+        variant: 'success',
+      });
     });
 
     this.loadServerPreviews();

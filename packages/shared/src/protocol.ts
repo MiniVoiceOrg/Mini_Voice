@@ -23,6 +23,7 @@ export enum ProtocolErrorCode {
 export enum MessageType {
   // Client -> Server
   AUTH_CONNECT = 'AUTH_CONNECT',
+  AUTH_CHALLENGE_RESPONSE = 'AUTH_CHALLENGE_RESPONSE',
   CHAT_SEND = 'CHAT_SEND',
   CHAT_LOAD_HISTORY = 'CHAT_LOAD_HISTORY',
   CHAT_MENTIONS_READ = 'CHAT_MENTIONS_READ',
@@ -42,6 +43,7 @@ export enum MessageType {
   SERVER_GET_INVITE_INFO = 'SERVER_GET_INVITE_INFO',
 
   // Server -> Client
+  AUTH_CHALLENGE = 'AUTH_CHALLENGE',
   AUTH_SUCCESS = 'AUTH_SUCCESS',
   AUTH_FAILED = 'AUTH_FAILED',
   SERVER_STATE = 'SERVER_STATE',
@@ -74,9 +76,22 @@ export interface ProtocolMessage<T = any> {
 // Client Payloads
 export interface AuthConnectPayload {
   protocolVersion: number;
-  clientId: string;
+  publicKey: string;
   nickname: string;
   password?: string;
+}
+
+export interface AuthChallengePayload {
+  nonce: string;
+}
+
+export interface AuthChallengeResponsePayload {
+  signature: string;
+}
+
+export interface AuthFailedPayload {
+  code?: ProtocolErrorCode;
+  message: string;
 }
 
 export interface ChatSendPayload {

@@ -2,6 +2,7 @@ import { MessageType, QUALITY_PRESETS, QualityPresetType, DEFAULT_CUSTOM_PROFILE
 import { appEvents } from '../core/EventBus';
 import { networkClient } from '../core/NetworkClient';
 import { enableBackdropClose } from '../utils/modal';
+import { escapeHtml } from '../utils/html';
 import { audioProcessor } from '../core/AudioProcessor';
 import { serverStore } from '../stores/serverStore';
 import { settingsStore } from '../stores/settingsStore';
@@ -14,6 +15,8 @@ import { getAvatarUrl } from '../utils/avatar';
 import { updateService } from '../core/UpdateService';
 import { soundboardService } from '../core/SoundboardService';
 import { getLanguage, setLanguage, SUPPORTED_LANGUAGES, t, tCount, type SupportedLanguage } from '../i18n';
+import { showAlert } from './Dialog';
+import { showIdentityExportDialog, showIdentityImportDialog } from './IdentityDialogs';
 
 const IDEAS_URL = 'https://github.com/MonkyOrg/Monky/discussions/categories/ideias';
 const NEW_IDEA_URL = 'https://github.com/MonkyOrg/Monky/discussions/new?category=ideias';
@@ -121,6 +124,38 @@ export class SettingsModal {
                 <small style="display: block; margin-top: 6px; color: var(--text-muted); font-size: 11px;">
                   ${t('settings.languageHint')}
                 </small>
+              </div>
+
+              <div class="form-group" style="border-top: 1px solid var(--border-color); padding-top: 14px; margin-top: 14px;">
+                <label style="display: flex; align-items: center; gap: 6px;">
+                  <span class="material-symbols-outlined md-16" style="color: var(--accent-primary);">manage_accounts</span>
+                  ${t('identity.sectionTitle')}
+                </label>
+                <div style="padding: 12px; background: var(--bg-card); border: 1px solid var(--border-color); border-radius: var(--radius-md);">
+                  <div style="font-size: 12px; color: var(--text-secondary); line-height: 1.45; margin-bottom: 10px;">
+                    ${connectionStore.hasIdentity ? t('identity.sectionReady') : t('identity.sectionMissing')}
+                  </div>
+                  <div style="display: grid; gap: 6px; margin-bottom: 12px;">
+                    <div style="font-size: 11px; color: var(--text-muted);">
+                      ${t('identity.clientIdLabel')}
+                      <div style="font-family: var(--font-mono); color: var(--text-primary); word-break: break-all;">${escapeHtml(connectionStore.clientId || '—')}</div>
+                    </div>
+                    <div style="font-size: 11px; color: var(--text-muted);">
+                      ${t('identity.publicKeyLabel')}
+                      <div style="font-family: var(--font-mono); color: var(--text-primary); word-break: break-all;">${escapeHtml(connectionStore.publicKey || '—')}</div>
+                    </div>
+                  </div>
+                  <div style="display: flex; gap: 8px; flex-wrap: wrap;">
+                    <button type="button" id="btn-export-identity" class="btn btn-secondary" ${connectionStore.hasIdentity ? '' : 'disabled'}>
+                      <span class="material-symbols-outlined md-16" style="margin-right: 4px;">qr_code_2</span>
+                      ${t('identity.exportAction')}
+                    </button>
+                    <button type="button" id="btn-import-identity-settings" class="btn btn-secondary">
+                      <span class="material-symbols-outlined md-16" style="margin-right: 4px;">qr_code_scanner</span>
+                      ${t('identity.importAction')}
+                    </button>
+                  </div>
+                </div>
               </div>
             </div>
 
@@ -782,6 +817,8 @@ export class SettingsModal {
     const btnDone = this.modalEl.querySelector('#btn-settings-close');
     const btnRefresh = this.modalEl.querySelector('#btn-refresh-devices');
     const btnSaveNick = this.modalEl.querySelector('#btn-save-nickname');
+    const btnExportIdentity = this.modalEl.querySelector('#btn-export-identity') as HTMLButtonElement | null;
+    const btnImportIdentity = this.modalEl.querySelector('#btn-import-identity-settings') as HTMLButtonElement | null;
     const inputNick = this.modalEl.querySelector('#settings-nickname-input') as HTMLInputElement;
     const selectMic = this.modalEl.querySelector('#select-mic') as HTMLSelectElement;
     const selectSpeaker = this.modalEl.querySelector('#select-speaker') as HTMLSelectElement;
@@ -820,6 +857,22 @@ export class SettingsModal {
     btnSuggestIdea?.addEventListener('click', () => window.api?.openExternal(NEW_IDEA_URL));
     btnVoteIdeas?.addEventListener('click', () => window.api?.openExternal(IDEAS_URL));
     btnReportBug?.addEventListener('click', () => window.api?.openExternal(NEW_ISSUE_URL));
+
+    btnExportIdentity?.addEventListener('click', async () => {
+      await showIdentityExportDialog(connectionStore.clientId);
+    });
+
+    btnImportIdentity?.addEventListener('click', async () => {
+      const identity = await showIdentityImportDialog();
+      if (!identity) return;
+      connectionStore.setIdentity(identity);
+      await showAlert({
+        title: t('identity.importTitle'),
+        message: t('identity.importSuccess'),
+        variant: 'success',
+      });
+      await this.open();
+    });
 
     // Language switch (#16): persists the choice, re-renders every open view
     // (through `i18n.language_changed`) and reopens this modal already

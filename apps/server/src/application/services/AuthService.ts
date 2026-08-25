@@ -1,3 +1,5 @@
+import { createPublicKey, randomBytes, verify } from 'crypto';
+import type { WebSocket } from 'ws';
 import { v4 as uuidv4 } from 'uuid';
 import {
   AttachmentStorageInfo,
@@ -6,9 +8,12 @@ import {
   ProtocolErrorCode,
   ServerDetails,
   UserSummary,
+  authChallengeResponseSchema,
   authConnectSchema,
+  deriveClientIdFromPublicKey,
+  normalizePublicKeyHex,
 } from '@monky/shared';
-import { ServerRecord } from '../../domain/entities';
+import { ServerRecord, UserRecord } from '../../domain/entities';
 import { IChannelRepository, IMentionRepository, IServerRepository, IUserRepository } from '../../domain/repositories';
 import { AvatarStorageService } from '../../infrastructure/security/AvatarStorageService';
 import { PasswordService } from '../../infrastructure/security/PasswordService';
@@ -19,11 +24,22 @@ export interface AuthResult {
   success: boolean;
   errorCode?: ProtocolErrorCode;
   errorMessage?: string;
+  authFailed?: boolean;
   user?: UserSummary;
   serverDetails?: ServerDetails;
 }
 
+interface PendingAuthChallenge {
+  publicKey: string;
+  clientId: string;
+  nickname: string;
+  password: string;
+  nonce: string;
+}
+
 export class AuthService {
+  private pendingChallenges = new Map<WebSocket, PendingAuthChallenge>();
+
   constructor(
     private serverRepo: IServerRepository,
     private userRepo: IUserRepository,
@@ -34,7 +50,10 @@ export class AuthService {
     private attachmentService: AttachmentService
   ) {}
 
-  public async authenticate(payload: AuthConnectPayload): Promise<AuthResult> {
+  public async createChallenge(
+    ws: WebSocket,
+    payload: AuthConnectPayload
+  ): Promise<{ success: boolean; nonce?: string; errorCode?: ProtocolErrorCode; errorMessage?: string }> {
     const parseResult = authConnectSchema.safeParse(payload);
     if (!parseResult.success) {
       const firstError = parseResult.error.errors[0]?.message || 'Dados de conexão inválidos';
@@ -45,7 +64,16 @@ export class AuthService {
       };
     }
 
-    const { clientId, nickname, password } = parseResult.data;
+    const publicKey = normalizePublicKeyHex(parseResult.data.publicKey);
+    try {
+      this.getNodePublicKey(publicKey);
+    } catch {
+      return {
+        success: false,
+        errorCode: ProtocolErrorCode.BAD_REQUEST,
+        errorMessage: 'Chave pública inválida',
+      };
+    }
 
     const server = await this.serverRepo.getServer();
     if (!server) {
@@ -56,11 +84,10 @@ export class AuthService {
       };
     }
 
-    // Verify Password
     if (server.passwordHash && server.passwordHash.length > 0) {
-      const isValid = PasswordService.verifyPassword(password || '', server.passwordHash);
+      const isValid = PasswordService.verifyPassword(parseResult.data.password || '', server.passwordHash);
       if (!isValid) {
-        Logger.security(`Failed authentication attempt for nickname: ${nickname}`);
+        Logger.security(`Failed authentication attempt for nickname: ${parseResult.data.nickname}`);
         return {
           success: false,
           errorCode: ProtocolErrorCode.AUTH_INVALID_PASSWORD,
@@ -69,7 +96,84 @@ export class AuthService {
       }
     }
 
-    // Check online users limit
+    const nonce = randomBytes(32).toString('hex');
+    this.pendingChallenges.set(ws, {
+      publicKey,
+      clientId: deriveClientIdFromPublicKey(publicKey),
+      nickname: parseResult.data.nickname.trim(),
+      password: parseResult.data.password || '',
+      nonce,
+    });
+
+    return {
+      success: true,
+      nonce,
+    };
+  }
+
+  public async verifyChallengeResponse(ws: WebSocket, signature: string): Promise<AuthResult> {
+    const pending = this.pendingChallenges.get(ws);
+    if (!pending) {
+      return {
+        success: false,
+        authFailed: true,
+        errorCode: ProtocolErrorCode.UNAUTHORIZED,
+        errorMessage: 'Desafio de autenticação não encontrado ou expirado.',
+      };
+    }
+
+    const parseResult = authChallengeResponseSchema.safeParse({ signature });
+    if (!parseResult.success) {
+      this.pendingChallenges.delete(ws);
+      return {
+        success: false,
+        errorCode: ProtocolErrorCode.BAD_REQUEST,
+        errorMessage: parseResult.error.errors[0]?.message || 'Assinatura inválida',
+      };
+    }
+
+    const normalizedSignature = parseResult.data.signature.toLowerCase();
+
+    let isValidSignature = false;
+    try {
+      isValidSignature = verify(
+        null,
+        Buffer.from(pending.nonce, 'hex'),
+        this.getNodePublicKey(pending.publicKey),
+        Buffer.from(normalizedSignature, 'hex')
+      );
+    } catch {
+      isValidSignature = false;
+    }
+
+    if (!isValidSignature) {
+      this.pendingChallenges.delete(ws);
+      return {
+        success: false,
+        authFailed: true,
+        errorCode: ProtocolErrorCode.UNAUTHORIZED,
+        errorMessage: 'Falha ao validar a assinatura do desafio.',
+      };
+    }
+
+    this.pendingChallenges.delete(ws);
+    return await this.finishAuthentication(pending);
+  }
+
+  public clearChallenge(ws: WebSocket): void {
+    this.pendingChallenges.delete(ws);
+  }
+
+  private async finishAuthentication(pending: PendingAuthChallenge): Promise<AuthResult> {
+    const server = await this.serverRepo.getServer();
+    if (!server) {
+      return {
+        success: false,
+        errorCode: ProtocolErrorCode.INTERNAL_ERROR,
+        errorMessage: 'Servidor não inicializado',
+      };
+    }
+
     const onlineMap = this.getActiveOnlineUsers();
     if (onlineMap.size >= server.maxUsers) {
       return {
@@ -79,12 +183,11 @@ export class AuthService {
       };
     }
 
-    // Check unique nickname among currently online users
-    const trimmedNick = nickname.trim();
-    for (const [_, session] of onlineMap.entries()) {
+    const trimmedNick = pending.nickname.trim();
+    for (const session of onlineMap.values()) {
       if (
         session.user.nickname.toLowerCase() === trimmedNick.toLowerCase() &&
-        session.user.clientId !== clientId
+        session.user.clientId !== pending.clientId
       ) {
         return {
           success: false,
@@ -94,14 +197,17 @@ export class AuthService {
       }
     }
 
-    // Find or create user by clientId
-    let userRecord = await this.userRepo.findByClientId(clientId);
-    const now = Date.now();
+    let userRecord = await this.userRepo.findByPublicKey(pending.publicKey);
+    if (!userRecord) {
+      userRecord = await this.userRepo.findByClientId(pending.clientId);
+    }
 
+    const now = Date.now();
     if (!userRecord) {
       userRecord = {
         id: uuidv4(),
-        clientId,
+        clientId: pending.clientId,
+        publicKey: pending.publicKey,
         nickname: trimmedNick,
         avatarPath: null,
         createdAt: now,
@@ -109,55 +215,33 @@ export class AuthService {
       };
       await this.userRepo.create(userRecord);
     } else {
-      // Update nickname and lastSeenAt
       await this.userRepo.update(userRecord.id, {
         nickname: trimmedNick,
+        publicKey: pending.publicKey,
         lastSeenAt: now,
       });
       userRecord.nickname = trimmedNick;
+      userRecord.publicKey = pending.publicKey;
       userRecord.lastSeenAt = now;
     }
 
-    const userSummary: UserSummary = {
-      id: userRecord.id,
-      clientId: userRecord.clientId,
-      nickname: userRecord.nickname,
-      avatarUrl: this.avatarStorage.getPublicUrl(userRecord.avatarPath),
-      status: 'ONLINE',
-      joinedAt: now,
-    };
+    const userSummary = this.toUserSummary(userRecord, 'ONLINE', now);
 
-    // Load server details for client state
     const channels = await this.channelRepo.listByServerId(server.id);
-
-    // Build active members list (including this new user)
     const members: UserSummary[] = Array.from(onlineMap.values()).map((s) => s.user);
     if (!members.some((m) => m.id === userSummary.id)) {
       members.push(userSummary);
     }
 
-    // Build the full known-members list (everyone who ever connected) so offline
-    // users can still be mentioned (#14). Online users keep their live summary;
-    // offline users are marked DISCONNECTED.
     const allUsers = await this.userRepo.listAll();
-    const knownMembers: UserSummary[] = allUsers.map((u) => {
-      const online = onlineMap.get(u.id);
-      if (online) return online.user;
-      return {
-        id: u.id,
-        clientId: u.clientId,
-        nickname: u.nickname,
-        avatarUrl: this.avatarStorage.getPublicUrl(u.avatarPath),
-        status: 'DISCONNECTED',
-        joinedAt: u.lastSeenAt,
-      };
+    const knownMembers: UserSummary[] = allUsers.map((user) => {
+      const online = onlineMap.get(user.id);
+      return online?.user ?? this.toUserSummary(user, 'DISCONNECTED', user.lastSeenAt);
     });
     if (!knownMembers.some((m) => m.id === userSummary.id)) {
       knownMembers.push(userSummary);
     }
 
-    // Channels where this user has unread @-mentions, so the red @ badge shows
-    // even for mentions received while they were offline (#14).
     const mentionedChannelIds = await this.mentionRepo.listChannelIdsForUser(userRecord.id);
 
     const serverDetails: ServerDetails = {
@@ -191,6 +275,25 @@ export class AuthService {
     };
   }
 
+  private toUserSummary(user: UserRecord, status: UserSummary['status'], joinedAt: number): UserSummary {
+    return {
+      id: user.id,
+      clientId: user.clientId,
+      nickname: user.nickname,
+      avatarUrl: this.avatarStorage.getPublicUrl(user.avatarPath),
+      status,
+      joinedAt,
+    };
+  }
+
+  private getNodePublicKey(publicKeyHex: string) {
+    return createPublicKey({
+      key: Buffer.from(publicKeyHex, 'hex'),
+      format: 'der',
+      type: 'spki',
+    });
+  }
+
   public async updateServerSettings(payload: {
     name?: string;
     password?: string | null;
@@ -218,7 +321,6 @@ export class AuthService {
       updates.name = payload.name.trim();
     }
 
-    // Attachment storage limits (#11): validate positive and file <= total.
     if (payload.maxAttachmentFileBytes !== undefined || payload.maxAttachmentStorageBytes !== undefined) {
       const currentFile = server.maxAttachmentFileBytes ?? LIMITS.MAX_ATTACHMENT_FILE_SIZE_DEFAULT;
       const currentTotal = server.maxAttachmentStorageBytes ?? LIMITS.MAX_ATTACHMENT_STORAGE_TOTAL_DEFAULT;
@@ -248,13 +350,11 @@ export class AuthService {
 
     if (payload.iconBase64 !== undefined) {
       if (!payload.iconBase64 || payload.iconBase64.trim() === '') {
-        // Remove server icon
         if (server.iconPath) {
           this.avatarStorage.deleteAvatar(server.iconPath);
         }
         updates.iconPath = null;
       } else {
-        // Save new server icon
         let rawBase64 = payload.iconBase64;
         if (payload.iconBase64.includes(',')) {
           rawBase64 = payload.iconBase64.split(',')[1];

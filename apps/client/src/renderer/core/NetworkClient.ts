@@ -1,9 +1,10 @@
 import { v4 as uuidv4 } from 'uuid';
 import {
+  AuthChallengePayload,
   AuthConnectPayload,
+  AuthFailedPayload,
   AuthSuccessPayload,
   MessageType,
-  ProtocolErrorCode,
   ProtocolMessage,
   PROTOCOL_VERSION,
   RECONNECT_DELAYS_MS,
@@ -21,36 +22,42 @@ export interface PendingRequest {
   timer: any;
 }
 
+interface ClientIdentity {
+  publicKey: string;
+  clientId: string;
+}
+
+interface PendingAuthRequest {
+  requestId: string;
+  resolve: (value: AuthSuccessPayload) => void;
+  reject: (reason: Error) => void;
+  timer: any;
+}
+
+type ConnectState = AuthConnectPayload & ClientIdentity;
+
 export class NetworkClient {
   private ws: WebSocket | null = null;
   private status: ConnectionStatus = 'DISCONNECTED';
   private reconnectAttempt: number = 0;
   private reconnectTimeout: any = null;
   private pendingRequests: Map<string, PendingRequest> = new Map();
+  private pendingAuth: PendingAuthRequest | null = null;
   private currentServerUrl: string = '';
-  private lastConnectPayload: AuthConnectPayload | null = null;
+  private lastConnectPayload: ConnectState | null = null;
   private manualDisconnect: boolean = false;
   private hasEverConnected: boolean = false;
   private heartbeatInterval: any = null;
   private lastPongAt: number = 0;
-  /** How often the client pings the server to detect a dead connection. */
   private static readonly HEARTBEAT_INTERVAL_MS = 5000;
-  /** If no PONG is received within this window, the connection is considered dead. */
   private static readonly HEARTBEAT_TIMEOUT_MS = 12000;
 
   constructor() {
-    // When the OS/network reports it is back online, don't wait for the current
-    // backoff delay — try to reconnect immediately so the "reconnecting"
-    // overlays clear as soon as connectivity returns (#44).
     if (typeof window !== 'undefined') {
       window.addEventListener('online', () => this.reconnectNow());
     }
   }
 
-  /**
-   * Forces an immediate reconnection attempt, bypassing the backoff timer. Used
-   * when the network comes back so recovery is near-instant (#44).
-   */
   private reconnectNow(): void {
     if (this.manualDisconnect || !this.lastConnectPayload || !this.hasEverConnected) return;
     if (this.status !== 'RECONNECTING') return;
@@ -59,12 +66,6 @@ export class NetworkClient {
     void this.doReconnect();
   }
 
-  /**
-   * When an initial connection attempt fails, probe the host via a raw TCP
-   * connection to tell the user *why* it failed: host offline/unreachable vs.
-   * host online but the server (port) is closed/refused (#37). Falls back to a
-   * generic message if the probe API is unavailable (e.g. web build).
-   */
   private async diagnoseConnectionFailure(host: string, port: number): Promise<Error> {
     const probe = (window as any).api?.probeServer;
     if (typeof probe !== 'function') {
@@ -74,8 +75,6 @@ export class NetworkClient {
       const result: { reachable: boolean; reason: string } = await probe(host, port);
       switch (result.reason) {
         case 'online':
-          // The TCP port accepted the connection but the WebSocket handshake
-          // still failed — likely an incompatible/non-Monky service.
           return new Error(t('network.notMonkyServer', { host, port }));
         case 'refused':
           return new Error(t('network.portClosed', { host, port }));
@@ -83,9 +82,6 @@ export class NetworkClient {
           return new Error(t('network.hostUnreachable', { host, port }));
         case 'timeout':
         default:
-          // A silent timeout can't be told apart from an offline host at the TCP
-          // level: the server may be closed/blocked by a firewall, or the host
-          // may be offline. Be honest about both possibilities.
           return new Error(t('network.connectionTimeout', { host, port }));
       }
     } catch {
@@ -97,7 +93,6 @@ export class NetworkClient {
     return this.status;
   }
 
-  /** Returns the HTTP base URL of the currently connected server (e.g. http://host:port). */
   public getHttpBaseUrl(): string {
     if (!this.currentServerUrl) return '';
     return this.currentServerUrl.replace(/^ws:\/\//, 'http://').replace(/^wss:\/\//, 'https://');
@@ -110,15 +105,13 @@ export class NetworkClient {
   public async connect(
     host: string,
     port: number,
-    clientId: string,
+    identity: ClientIdentity,
     nickname: string,
     password?: string,
     isReconnect = false
   ): Promise<AuthSuccessPayload> {
     this.manualDisconnect = false;
     if (!isReconnect) {
-      // Only reset the backoff counter for user-initiated connects, so that
-      // automatic reconnection preserves its exponential backoff.
       this.reconnectAttempt = 0;
       this.hasEverConnected = false;
     }
@@ -126,10 +119,10 @@ export class NetworkClient {
 
     const cleanHost = host.trim().replace(/^ws:\/\//, '').replace(/^wss:\/\//, '');
     this.currentServerUrl = `ws://${cleanHost}:${port}`;
-
     this.lastConnectPayload = {
       protocolVersion: PROTOCOL_VERSION,
-      clientId,
+      publicKey: identity.publicKey,
+      clientId: identity.clientId,
       nickname,
       password: password || '',
     };
@@ -138,8 +131,6 @@ export class NetworkClient {
       this.setStatus('CONNECTING');
 
       try {
-        // Tear down any pre-existing socket so we never leave a zombie
-        // connection alive (which would receive broadcasts twice).
         if (this.ws) {
           this.ws.onopen = null;
           this.ws.onmessage = null;
@@ -147,67 +138,85 @@ export class NetworkClient {
           this.ws.onerror = null;
           try {
             this.ws.close();
-          } catch {
-            /* ignore */
-          }
+          } catch {}
           this.ws = null;
         }
         this.ws = new WebSocket(this.currentServerUrl);
       } catch (err: any) {
         this.setStatus('DISCONNECTED');
-        return reject(new Error(t('network.addressError', { url: this.currentServerUrl, error: err.message })));
+        reject(new Error(t('network.addressError', { url: this.currentServerUrl, error: err.message })));
+        return;
       }
 
       const connectionTimeout = setTimeout(() => {
         if (this.status === 'CONNECTING') {
+          this.rejectPendingAuth(new Error(t('network.timeout')));
           this.ws?.close();
           this.setStatus('DISCONNECTED');
-          if (isReconnect) {
-            reject(new Error(t('network.timeout')));
-          } else {
+          if (!isReconnect) {
             void this.diagnoseConnectionFailure(cleanHost, port).then(reject);
+          } else {
+            reject(new Error(t('network.timeout')));
           }
         }
-      }, 8000);
+      }, 12000);
 
       this.ws.onopen = () => {
         clearTimeout(connectionTimeout);
-        // Send AUTH_CONNECT
         const authRequestId = uuidv4();
-
-        this.sendRequest<AuthSuccessPayload>(MessageType.AUTH_CONNECT, this.lastConnectPayload, authRequestId)
-          .then((res) => {
+        this.pendingAuth = {
+          requestId: authRequestId,
+          timer: setTimeout(() => {
+            this.rejectPendingAuth(new Error(t('network.timeout')));
+            this.ws?.close();
+          }, 15000),
+          resolve: (res) => {
+            this.clearPendingAuth();
             this.setStatus('CONNECTED');
             this.reconnectAttempt = 0;
             this.hasEverConnected = true;
             this.startHeartbeat();
             appEvents.emit('network.connected', res);
             resolve(res);
-          })
-          .catch((err) => {
-            clearTimeout(connectionTimeout);
+          },
+          reject: (error) => {
+            this.clearPendingAuth();
             this.ws?.close();
             this.setStatus('DISCONNECTED');
-            reject(err);
-          });
+            reject(error);
+          },
+        };
+
+        this.send(
+          MessageType.AUTH_CONNECT,
+          {
+            protocolVersion: PROTOCOL_VERSION,
+            publicKey: identity.publicKey,
+            nickname,
+            password: password || '',
+          },
+          authRequestId
+        );
       };
 
       this.ws.onmessage = (event) => {
         try {
           const message: ProtocolMessage = JSON.parse(event.data.toString());
           this.handleIncomingMessage(message);
-        } catch (e) {
-          console.error('Failed to parse incoming WebSocket message', e);
+        } catch (error) {
+          console.error('Failed to parse incoming WebSocket message', error);
         }
       };
 
       this.ws.onclose = () => {
         clearTimeout(connectionTimeout);
-        // A close while still in the CONNECTING phase means the server refused
-        // the connection or is unreachable (offline / closed / wrong IP:port).
-        // Reject with a friendly message and do NOT enter the reconnect loop.
         if (this.status === 'CONNECTING') {
+          const authError = this.clearPendingAuth();
           this.setStatus('DISCONNECTED');
+          if (authError) {
+            reject(authError);
+            return;
+          }
           if (isReconnect) {
             reject(new Error(t('network.genericConnectError')));
           } else {
@@ -228,15 +237,12 @@ export class NetworkClient {
     this.manualDisconnect = true;
     this.clearReconnect();
     this.stopHeartbeat();
+    this.clearPendingAuth();
     if (this.ws) {
-      // Tell the server this is an intentional logout so it announces our
-      // departure immediately instead of showing a "reconnecting" state (#44).
       if (this.ws.readyState === WebSocket.OPEN) {
         try {
           this.ws.send(JSON.stringify({ type: MessageType.USER_LOGOUT, payload: {} }));
-        } catch {
-          /* ignore */
-        }
+        } catch {}
       }
       this.ws.close();
       this.ws = null;
@@ -279,13 +285,11 @@ export class NetworkClient {
   private handleIncomingMessage(message: ProtocolMessage): void {
     const { type, requestId, payload } = message;
 
-    // Heartbeat response: mark the connection as alive.
     if (type === MessageType.PONG) {
       this.lastPongAt = Date.now();
       return;
     }
 
-    // Host shut the server down: notify the UI and stop any reconnection.
     if (type === MessageType.SERVER_SHUTDOWN) {
       const reason = (payload as { reason?: string })?.reason;
       appEvents.emit('network.server_shutdown', { reason });
@@ -293,7 +297,30 @@ export class NetworkClient {
       return;
     }
 
-    // Check if matching a pending request
+    if (this.pendingAuth && requestId === this.pendingAuth.requestId) {
+      if (type === MessageType.AUTH_CHALLENGE) {
+        void this.respondToAuthChallenge(payload as AuthChallengePayload, requestId);
+        return;
+      }
+
+      if (type === MessageType.AUTH_SUCCESS) {
+        this.pendingAuth.resolve(payload as AuthSuccessPayload);
+        return;
+      }
+
+      if (type === MessageType.AUTH_FAILED) {
+        const authFailed = payload as AuthFailedPayload;
+        this.pendingAuth.reject(new Error(authFailed.message || t('network.genericConnectError')));
+        return;
+      }
+
+      if (type === MessageType.SERVER_ERROR) {
+        const errorPayload = payload as ServerErrorPayload;
+        this.pendingAuth.reject(new Error(translateProtocolError(errorPayload.code, errorPayload.message)));
+        return;
+      }
+    }
+
     if (requestId && this.pendingRequests.has(requestId)) {
       const pending = this.pendingRequests.get(requestId)!;
       clearTimeout(pending.timer);
@@ -308,16 +335,26 @@ export class NetworkClient {
       pending.resolve(payload);
     }
 
-    // Emit event for all message types
     appEvents.emit(`message.${type}`, payload);
+  }
+
+  private async respondToAuthChallenge(payload: AuthChallengePayload, requestId?: string): Promise<void> {
+    if (!this.pendingAuth || !requestId) return;
+
+    try {
+      const signature = await window.api.signChallenge(payload.nonce);
+      this.send(MessageType.AUTH_CHALLENGE_RESPONSE, { signature }, requestId);
+    } catch (error: any) {
+      this.pendingAuth.reject(new Error(error?.message || t('network.genericConnectError')));
+    }
   }
 
   private handleSocketClosed(): void {
     this.ws = null;
     this.stopHeartbeat();
+    this.clearPendingAuth();
 
-    // Reject all pending requests
-    for (const [id, pending] of this.pendingRequests.entries()) {
+    for (const pending of this.pendingRequests.values()) {
       clearTimeout(pending.timer);
       pending.reject(new Error(t('network.connectionClosed')));
     }
@@ -328,13 +365,10 @@ export class NetworkClient {
       return;
     }
 
-    // Attempt automatic reconnection
     this.scheduleReconnect();
   }
 
   private scheduleReconnect(): void {
-    // Never auto-reconnect when the drop happened before we had a successful
-    // session (e.g. a refused initial connect or an auth failure).
     if (this.manualDisconnect || !this.lastConnectPayload || !this.hasEverConnected) {
       this.setStatus('DISCONNECTED');
       return;
@@ -356,14 +390,13 @@ export class NetworkClient {
 
     try {
       console.log(`[NetworkClient] Trying to reconnect (attempt ${this.reconnectAttempt})...`);
-      const { clientId, nickname, password } = this.lastConnectPayload;
-      // Parse host & port
+      const { clientId, publicKey, nickname, password } = this.lastConnectPayload;
       const urlObj = new URL(this.currentServerUrl);
       const host = urlObj.hostname;
       const port = parseInt(urlObj.port, 10);
 
-      await this.connect(host, port, clientId, nickname, password, true);
-    } catch (err) {
+      await this.connect(host, port, { clientId, publicKey }, nickname, password, true);
+    } catch {
       console.warn(`[NetworkClient] Reconnection attempt ${this.reconnectAttempt} failed.`);
     }
   }
@@ -375,31 +408,33 @@ export class NetworkClient {
     }
   }
 
-  /**
-   * Starts an application-level heartbeat. Browser/Electron WebSockets do not
-   * detect a silently dropped connection (e.g. Wi-Fi turned off) quickly, so we
-   * actively ping the server and, if no PONG arrives within the timeout, treat
-   * the socket as dead and force the reconnection flow. This makes both the
-   * local "reconnecting" overlay and the auto-reconnect trigger promptly (#44).
-   */
+  private clearPendingAuth(): Error | null {
+    if (!this.pendingAuth) return null;
+    clearTimeout(this.pendingAuth.timer);
+    this.pendingAuth = null;
+    return null;
+  }
+
+  private rejectPendingAuth(error: Error): void {
+    if (!this.pendingAuth) return;
+    const pending = this.pendingAuth;
+    clearTimeout(pending.timer);
+    this.pendingAuth = null;
+    pending.reject(error);
+  }
+
   private startHeartbeat(): void {
     this.stopHeartbeat();
     this.lastPongAt = Date.now();
     this.heartbeatInterval = setInterval(() => {
       if (!this.ws || this.ws.readyState !== WebSocket.OPEN) return;
 
-      // No PONG for too long: the connection is dead. Force close so onclose
-      // runs handleSocketClosed -> scheduleReconnect.
       if (Date.now() - this.lastPongAt > NetworkClient.HEARTBEAT_TIMEOUT_MS) {
         console.warn('[NetworkClient] Heartbeat timeout, connection considered dead. Forcing reconnect.');
         this.stopHeartbeat();
         try {
           this.ws.close();
-        } catch {
-          /* ignore */
-        }
-        // In case the close event does not fire (dead socket), drive the
-        // reconnection flow manually.
+        } catch {}
         if (this.ws) {
           this.ws.onclose = null;
           this.ws = null;
@@ -410,9 +445,7 @@ export class NetworkClient {
 
       try {
         this.ws.send(JSON.stringify({ type: MessageType.PING, payload: { timestamp: Date.now() } }));
-      } catch {
-        /* ignore */
-      }
+      } catch {}
     }, NetworkClient.HEARTBEAT_INTERVAL_MS);
   }
 

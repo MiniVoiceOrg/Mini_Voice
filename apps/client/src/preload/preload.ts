@@ -16,7 +16,12 @@ export interface ElectronApi {
     version: string;
   }) => void) => void;
   setLanguage: (language: string) => Promise<void>;
+  hasIdentity: () => Promise<boolean>;
+  getIdentity: () => Promise<{ publicKey: string; clientId: string }>;
   getClientId: () => Promise<string>;
+  signChallenge: (nonceHex: string) => Promise<string>;
+  exportIdentity: (password: string) => Promise<string>;
+  importIdentity: (exportedIdentity: string, password: string) => Promise<{ publicKey: string; clientId: string }>;
   maximizeWindow: () => Promise<void>;
   hostServerStart: (options: {
     port: number;
@@ -98,7 +103,12 @@ const api: ElectronApi = {
   onLanDiscoveryFound: (cb) => ipcRenderer.on('lan-discovery:found', (_e, server) => cb(server)),
   onLanDiscoveryLost: (cb) => ipcRenderer.on('lan-discovery:lost', (_e, server) => cb(server)),
   setLanguage: (language) => ipcRenderer.invoke('app-set-language', language),
+  hasIdentity: () => ipcRenderer.invoke('has-identity'),
+  getIdentity: () => ipcRenderer.invoke('get-identity'),
   getClientId: () => ipcRenderer.invoke('get-client-id'),
+  signChallenge: (nonceHex) => ipcRenderer.invoke('sign-challenge', nonceHex),
+  exportIdentity: (password) => ipcRenderer.invoke('export-identity', password),
+  importIdentity: (exportedIdentity, password) => ipcRenderer.invoke('import-identity', exportedIdentity, password),
   maximizeWindow: () => ipcRenderer.invoke('window:maximize'),
   hostServerStart: (options) => ipcRenderer.invoke('host-server-start', options),
   hostServerStop: () => ipcRenderer.invoke('host-server-stop'),
