@@ -4,6 +4,8 @@ export class VoiceStore {
   public currentVoiceChannelId: string | null = null;
   public isMuted: boolean = false;
   public isDeafened: boolean = false;
+  public serverMuted: boolean = false;
+  public serverDeafened: boolean = false;
   private micMutedBeforeDeafen: boolean = false;
   public isSpeaking: boolean = false;
   public isCameraOn: boolean = false;
@@ -39,6 +41,24 @@ export class VoiceStore {
     appEvents.emit('voice.state_updated');
   }
 
+  public setServerMuted(muted: boolean): void {
+    this.serverMuted = muted;
+    appEvents.emit('voice.state_updated');
+  }
+
+  public setServerDeafened(deafened: boolean): void {
+    this.serverDeafened = deafened;
+    appEvents.emit('voice.state_updated');
+  }
+
+  public getEffectiveMuted(): boolean {
+    return this.isMuted || this.serverMuted;
+  }
+
+  public getEffectiveDeafened(): boolean {
+    return this.isDeafened || this.serverDeafened;
+  }
+
   public setSpeaking(speaking: boolean): void {
     if (this.isSpeaking !== speaking) {
       this.isSpeaking = speaking;
@@ -61,6 +81,8 @@ export class VoiceStore {
     this.currentVoiceChannelId = null;
     this.isMuted = false;
     this.isDeafened = false;
+    this.serverMuted = false;
+    this.serverDeafened = false;
     this.micMutedBeforeDeafen = false;
     this.isSpeaking = false;
     this.isCameraOn = false;

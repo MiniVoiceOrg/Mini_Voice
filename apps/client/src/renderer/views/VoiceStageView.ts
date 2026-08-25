@@ -144,11 +144,11 @@ export class VoiceStageView {
 
         <!-- Stage Bottom Controls Bar -->
         <div class="stage-call-controls">
-          <button id="stage-btn-mic" class="btn btn-icon ${voiceStore.isMuted ? 'danger-active' : ''}" title="${voiceStore.isMuted ? t('stage.unmuteMic') : t('stage.muteMic')}">
-            <span class="material-symbols-outlined">${voiceStore.isMuted ? 'mic_off' : 'mic'}</span>
+          <button id="stage-btn-mic" class="btn btn-icon ${voiceStore.getEffectiveMuted() ? 'danger-active' : ''}" title="${voiceStore.getEffectiveMuted() ? t('stage.unmuteMic') : t('stage.muteMic')}">
+            <span class="material-symbols-outlined">${voiceStore.getEffectiveMuted() ? 'mic_off' : 'mic'}</span>
           </button>
-          <button id="stage-btn-deafen" class="btn btn-icon ${voiceStore.isDeafened ? 'danger-active' : ''}" title="${voiceStore.isDeafened ? t('stage.undeafen') : t('stage.deafen')}">
-            <span class="material-symbols-outlined">${voiceStore.isDeafened ? 'headset_off' : 'headphones'}</span>
+          <button id="stage-btn-deafen" class="btn btn-icon ${voiceStore.getEffectiveDeafened() ? 'danger-active' : ''}" title="${voiceStore.getEffectiveDeafened() ? t('stage.undeafen') : t('stage.deafen')}">
+            <span class="material-symbols-outlined">${voiceStore.getEffectiveDeafened() ? 'headset_off' : 'headphones'}</span>
           </button>
           <button id="stage-btn-camera" class="btn btn-icon ${voiceStore.isCameraOn ? 'broadcasting-pulse active' : ''}" title="${voiceStore.isCameraOn ? t('stage.cameraOff') : t('stage.cameraOn')}">
             <span class="material-symbols-outlined">${voiceStore.isCameraOn ? 'videocam_off' : 'videocam'}</span>
@@ -177,16 +177,16 @@ export class VoiceStageView {
   public updateControlsUI(): void {
     const btnMic = document.getElementById('stage-btn-mic');
     if (btnMic) {
-      btnMic.className = `btn btn-icon ${voiceStore.isMuted ? 'danger-active' : ''}`;
-      btnMic.title = voiceStore.isMuted ? t('stage.unmuteMic') : t('stage.muteMic');
-      btnMic.innerHTML = `<span class="material-symbols-outlined">${voiceStore.isMuted ? 'mic_off' : 'mic'}</span>`;
+      btnMic.className = `btn btn-icon ${voiceStore.getEffectiveMuted() ? 'danger-active' : ''}`;
+      btnMic.title = voiceStore.getEffectiveMuted() ? t('stage.unmuteMic') : t('stage.muteMic');
+      btnMic.innerHTML = `<span class="material-symbols-outlined">${voiceStore.getEffectiveMuted() ? 'mic_off' : 'mic'}</span>`;
     }
 
     const btnDeafen = document.getElementById('stage-btn-deafen');
     if (btnDeafen) {
-      btnDeafen.className = `btn btn-icon ${voiceStore.isDeafened ? 'danger-active' : ''}`;
-      btnDeafen.title = voiceStore.isDeafened ? t('stage.undeafen') : t('stage.deafen');
-      btnDeafen.innerHTML = `<span class="material-symbols-outlined">${voiceStore.isDeafened ? 'headset_off' : 'headphones'}</span>`;
+      btnDeafen.className = `btn btn-icon ${voiceStore.getEffectiveDeafened() ? 'danger-active' : ''}`;
+      btnDeafen.title = voiceStore.getEffectiveDeafened() ? t('stage.undeafen') : t('stage.deafen');
+      btnDeafen.innerHTML = `<span class="material-symbols-outlined">${voiceStore.getEffectiveDeafened() ? 'headset_off' : 'headphones'}</span>`;
     }
 
     const btnCam = document.getElementById('stage-btn-camera');
@@ -603,6 +603,8 @@ export class VoiceStageView {
     const isScreenOn = isLocal ? voiceStore.isScreenSharing : (p.voiceState?.isScreenSharing ?? false);
     const isMuted = isLocal ? voiceStore.isMuted : (p.voiceState?.isMuted ?? false);
     const isDeafened = isLocal ? voiceStore.isDeafened : (p.voiceState?.isDeafened ?? false);
+    const isServerMuted = isLocal ? voiceStore.serverMuted : (p.voiceState?.serverMuted ?? false);
+    const isServerDeafened = isLocal ? voiceStore.serverDeafened : (p.voiceState?.serverDeafened ?? false);
     const avatarSrc = getAvatarUrl(p.user.avatarUrl);
 
     const isVideoTile = tile.kind === 'camera' || tile.kind === 'screen';
@@ -672,6 +674,8 @@ export class VoiceStageView {
 
       <div class="stage-badges-overlay">
         <span>${label}</span>
+        ${isServerMuted ? `<span class="material-symbols-outlined md-14" style="color: #f0b232;" title="${t('permissions.serverMuted')}">admin_panel_settings</span>` : ''}
+        ${isServerDeafened ? `<span class="material-symbols-outlined md-14" style="color: #f0b232;" title="${t('permissions.serverDeafened')}">hearing_disabled</span>` : ''}
         ${isMuted ? '<span class="material-symbols-outlined md-14" style="color: var(--danger);">mic_off</span>' : ''}
         ${isDeafened ? '<span class="material-symbols-outlined md-14" style="color: var(--danger);">headset_off</span>' : ''}
         ${isCamOn ? '<span class="material-symbols-outlined md-14" style="color: var(--accent-primary);">videocam</span>' : ''}
@@ -1157,15 +1161,15 @@ export class VoiceStageView {
     btnMic?.addEventListener('click', () => {
       const newMuted = !voiceStore.isMuted;
       voiceStore.setMuted(newMuted);
-      audioProcessor.setMuted(newMuted);
+      audioProcessor.setMuted(voiceStore.getEffectiveMuted());
       soundEffects.play(newMuted ? 'mic_mute' : 'mic_unmute');
       // Unmuting the mic while deafened doesn't make sense (you'd talk but not
       // hear): also undeafen the audio output in that case (#62).
       let undeafened = false;
       if (!newMuted && voiceStore.isDeafened) {
         voiceStore.setDeafened(false);
-        audioProcessor.setDeafened(false);
-        webRtcManager.setDeafened(false);
+        audioProcessor.setDeafened(voiceStore.getEffectiveDeafened());
+        webRtcManager.setDeafened(voiceStore.getEffectiveDeafened());
         undeafened = true;
       }
       networkClient.send(MessageType.VOICE_STATE_UPDATE, {
@@ -1179,10 +1183,10 @@ export class VoiceStageView {
     btnDeafen?.addEventListener('click', () => {
       const newDeafened = !voiceStore.isDeafened;
       voiceStore.setDeafened(newDeafened);
-      audioProcessor.setDeafened(newDeafened);
+      audioProcessor.setDeafened(voiceStore.getEffectiveDeafened());
       // Restore the mic track to its (possibly restored) pre-deafen state (#74).
-      audioProcessor.setMuted(voiceStore.isMuted);
-      webRtcManager.setDeafened(newDeafened);
+      audioProcessor.setMuted(voiceStore.getEffectiveMuted());
+      webRtcManager.setDeafened(voiceStore.getEffectiveDeafened());
       soundEffects.play(newDeafened ? 'deafen' : 'undeafen');
       networkClient.send(MessageType.VOICE_STATE_UPDATE, { isDeafened: newDeafened, isMuted: voiceStore.isMuted });
       this.updateControlsUI();

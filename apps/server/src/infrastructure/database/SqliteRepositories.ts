@@ -1,6 +1,6 @@
 import { IDatabaseDriver } from './SqliteWrapper';
-import { ChannelRecord, MentionRecord, MessageRecord, ServerRecord, UserRecord, AttachmentRecord } from '../../domain/entities';
-import { IAttachmentRepository, IChannelRepository, IMentionRepository, IMessageRepository, IServerRepository, IUserRepository } from '../../domain/repositories';
+import { AttachmentRecord, ChannelRecord, MentionRecord, MessageRecord, RoleRecord, ServerRecord, UserRecord, UserRoleRecord } from '../../domain/entities';
+import { IAttachmentRepository, IChannelRepository, IMentionRepository, IMessageRepository, IRoleRepository, IServerRepository, IUserRepository } from '../../domain/repositories';
 
 /**
  * Note: all repository methods are declared `async` even though the underlying
@@ -15,7 +15,7 @@ export class SqliteServerRepository implements IServerRepository {
   constructor(private db: IDatabaseDriver) {}
 
   async getServer(): Promise<ServerRecord | null> {
-    const row = this.db.prepare('SELECT id, name, password_hash as passwordHash, created_at as createdAt, max_users as maxUsers, allow_soundboard as allowSoundboard, icon_path as iconPath, max_attachment_file_bytes as maxAttachmentFileBytes, max_attachment_storage_bytes as maxAttachmentStorageBytes FROM server_meta LIMIT 1').get() as any;
+    const row = this.db.prepare('SELECT id, name, password_hash as passwordHash, created_at as createdAt, max_users as maxUsers, owner_user_id as ownerUserId, allow_soundboard as allowSoundboard, icon_path as iconPath, max_attachment_file_bytes as maxAttachmentFileBytes, max_attachment_storage_bytes as maxAttachmentStorageBytes FROM server_meta LIMIT 1').get() as any;
     if (!row) return null;
     return {
       id: row.id,
@@ -23,6 +23,7 @@ export class SqliteServerRepository implements IServerRepository {
       passwordHash: row.passwordHash,
       createdAt: row.createdAt,
       maxUsers: row.maxUsers,
+      ownerUserId: row.ownerUserId ?? null,
       allowSoundboard: row.allowSoundboard !== undefined ? Boolean(row.allowSoundboard) : true,
       iconPath: row.iconPath || null,
       maxAttachmentFileBytes: row.maxAttachmentFileBytes ?? null,
@@ -32,8 +33,17 @@ export class SqliteServerRepository implements IServerRepository {
 
   async createServer(server: ServerRecord): Promise<void> {
     this.db.prepare(
-      'INSERT INTO server_meta (id, name, password_hash, created_at, max_users, allow_soundboard, icon_path) VALUES (?, ?, ?, ?, ?, ?, ?)'
-    ).run(server.id, server.name, server.passwordHash, server.createdAt, server.maxUsers, server.allowSoundboard !== false ? 1 : 0, server.iconPath || null);
+      'INSERT INTO server_meta (id, name, password_hash, created_at, max_users, owner_user_id, allow_soundboard, icon_path) VALUES (?, ?, ?, ?, ?, ?, ?, ?)'
+    ).run(
+      server.id,
+      server.name,
+      server.passwordHash,
+      server.createdAt,
+      server.maxUsers,
+      server.ownerUserId ?? null,
+      server.allowSoundboard !== false ? 1 : 0,
+      server.iconPath || null
+    );
   }
 
   async updateServer(server: Partial<ServerRecord>): Promise<void> {
@@ -51,6 +61,10 @@ export class SqliteServerRepository implements IServerRepository {
     if (server.maxUsers !== undefined) {
       fields.push('max_users = ?');
       values.push(server.maxUsers);
+    }
+    if (server.ownerUserId !== undefined) {
+      fields.push('owner_user_id = ?');
+      values.push(server.ownerUserId);
     }
     if (server.allowSoundboard !== undefined) {
       fields.push('allow_soundboard = ?');
@@ -389,5 +403,120 @@ export class SqliteAttachmentRepository implements IAttachmentRepository {
       .prepare("SELECT filename FROM message_attachments WHERE evicted = 0 AND filename != ''")
       .all() as { filename: string }[];
     return rows.map((r) => r.filename);
+  }
+}
+
+interface SqliteRoleRow {
+  id: string;
+  name: string;
+  color: string | null;
+  position: number;
+  permissions: number;
+  isDefault: number;
+  createdAt: number;
+}
+
+export class SqliteRoleRepository implements IRoleRepository {
+  constructor(private db: IDatabaseDriver) {}
+
+  private static readonly SELECT =
+    'SELECT id, name, color, position, permissions, is_default as isDefault, created_at as createdAt FROM roles';
+
+  private mapRole(row: SqliteRoleRow): RoleRecord {
+    return {
+      id: row.id,
+      name: row.name,
+      color: row.color,
+      position: row.position,
+      permissions: row.permissions,
+      isDefault: Boolean(row.isDefault),
+      createdAt: row.createdAt,
+    };
+  }
+
+  async findById(id: string): Promise<RoleRecord | null> {
+    const row = this.db.prepare(`${SqliteRoleRepository.SELECT} WHERE id = ?`).get(id) as SqliteRoleRow | undefined;
+    return row ? this.mapRole(row) : null;
+  }
+
+  async findByName(name: string): Promise<RoleRecord | null> {
+    const row = this.db.prepare(`${SqliteRoleRepository.SELECT} WHERE name = ? COLLATE NOCASE`).get(name) as SqliteRoleRow | undefined;
+    return row ? this.mapRole(row) : null;
+  }
+
+  async listAll(): Promise<RoleRecord[]> {
+    const rows = this.db.prepare(`${SqliteRoleRepository.SELECT} ORDER BY position DESC, created_at ASC`).all() as SqliteRoleRow[];
+    return rows.map((row) => this.mapRole(row));
+  }
+
+  async listRolesForUser(userId: string): Promise<RoleRecord[]> {
+    const rows = this.db.prepare(
+      `SELECT roles.id, roles.name, roles.color, roles.position, roles.permissions, roles.is_default as isDefault, roles.created_at as createdAt
+       FROM roles
+       INNER JOIN user_roles ON user_roles.role_id = roles.id
+       WHERE user_roles.user_id = ?
+       ORDER BY position DESC, created_at ASC`
+    ).all(userId) as SqliteRoleRow[];
+    return rows.map((row) => this.mapRole(row));
+  }
+
+  async listUserRoles(): Promise<UserRoleRecord[]> {
+    return this.db.prepare('SELECT user_id as userId, role_id as roleId FROM user_roles ORDER BY user_id ASC').all() as UserRoleRecord[];
+  }
+
+  async getDefaultRoles(): Promise<RoleRecord[]> {
+    const rows = this.db.prepare(`${SqliteRoleRepository.SELECT} WHERE is_default = 1 ORDER BY position DESC, created_at ASC`).all() as SqliteRoleRow[];
+    return rows.map((row) => this.mapRole(row));
+  }
+
+  async create(role: RoleRecord): Promise<void> {
+    this.db.prepare(
+      'INSERT INTO roles (id, name, color, position, permissions, is_default, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)'
+    ).run(role.id, role.name, role.color, role.position, role.permissions, role.isDefault ? 1 : 0, role.createdAt);
+  }
+
+  async update(roleId: string, updates: Partial<RoleRecord>): Promise<void> {
+    const fields: string[] = [];
+    const values: any[] = [];
+    if (updates.name !== undefined) {
+      fields.push('name = ?');
+      values.push(updates.name);
+    }
+    if (updates.color !== undefined) {
+      fields.push('color = ?');
+      values.push(updates.color);
+    }
+    if (updates.position !== undefined) {
+      fields.push('position = ?');
+      values.push(updates.position);
+    }
+    if (updates.permissions !== undefined) {
+      fields.push('permissions = ?');
+      values.push(updates.permissions);
+    }
+    if (updates.isDefault !== undefined) {
+      fields.push('is_default = ?');
+      values.push(updates.isDefault ? 1 : 0);
+    }
+    if (fields.length === 0) return;
+    values.push(roleId);
+    this.db.prepare(`UPDATE roles SET ${fields.join(', ')} WHERE id = ?`).run(...values);
+  }
+
+  async delete(roleId: string): Promise<void> {
+    this.db.prepare('DELETE FROM roles WHERE id = ?').run(roleId);
+  }
+
+  async assignRole(userId: string, roleId: string): Promise<void> {
+    this.db.prepare('INSERT OR IGNORE INTO user_roles (user_id, role_id) VALUES (?, ?)').run(userId, roleId);
+  }
+
+  async unassignRole(userId: string, roleId: string): Promise<void> {
+    this.db.prepare('DELETE FROM user_roles WHERE user_id = ? AND role_id = ?').run(userId, roleId);
+  }
+
+  async hasRole(userId: string, roleId: string): Promise<boolean> {
+    const row = this.db.prepare('SELECT 1 as found FROM user_roles WHERE user_id = ? AND role_id = ? LIMIT 1').get(userId, roleId) as { found?: number } | undefined;
+    return Boolean(row?.found);
   }
 }

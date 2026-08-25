@@ -1,4 +1,4 @@
-import { ChannelRecord, MentionRecord, MessageRecord, ServerRecord, UserRecord, AttachmentRecord } from './entities';
+import { AttachmentRecord, ChannelRecord, MentionRecord, MessageRecord, RoleRecord, ServerRecord, UserRecord, UserRoleRecord } from './entities';
 
 export interface IServerRepository {
   getServer(): Promise<ServerRecord | null>;
@@ -57,4 +57,19 @@ export interface IAttachmentRepository {
   deleteById(id: string): Promise<void>;
   /** All on-disk filenames still referenced by non-evicted rows (reconciliation). */
   listActiveFilenames(): Promise<string[]>;
+}
+
+export interface IRoleRepository {
+  findById(id: string): Promise<RoleRecord | null>;
+  findByName(name: string): Promise<RoleRecord | null>;
+  listAll(): Promise<RoleRecord[]>;
+  listRolesForUser(userId: string): Promise<RoleRecord[]>;
+  listUserRoles(): Promise<UserRoleRecord[]>;
+  getDefaultRoles(): Promise<RoleRecord[]>;
+  create(role: RoleRecord): Promise<void>;
+  update(roleId: string, updates: Partial<RoleRecord>): Promise<void>;
+  delete(roleId: string): Promise<void>;
+  assignRole(userId: string, roleId: string): Promise<void>;
+  unassignRole(userId: string, roleId: string): Promise<void>;
+  hasRole(userId: string, roleId: string): Promise<boolean>;
 }

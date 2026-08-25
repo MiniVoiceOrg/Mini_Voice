@@ -1,9 +1,13 @@
 import {
+  ADMIN_PERMISSIONS,
+  DEFAULT_PERMISSIONS,
   isValidMessageContent,
   isValidNickname,
+  Permission,
   LIMITS,
   QUALITY_PRESETS,
   PROTOCOL_VERSION,
+  hasPermission,
 } from '../src/index.js';
 
 console.log('=== Início dos Testes Unitários de @monky/shared ===');
@@ -31,7 +35,12 @@ console.assert(QUALITY_PRESETS.GAMING.name === 'Gaming Mode', 'Preset Gaming Mod
 console.log('✔ Presets de Qualidade verificados');
 
 // Test Protocol Version
-console.assert(PROTOCOL_VERSION === 1, 'Versão do protocolo deve ser 1');
+console.assert(PROTOCOL_VERSION === 2, 'Versão do protocolo deve ser 2');
 console.log('✔ Versão do protocolo verificada');
+
+console.assert(hasPermission(DEFAULT_PERMISSIONS, Permission.SPEAK) === true, 'Cargo padrão deve poder falar');
+console.assert(hasPermission(DEFAULT_PERMISSIONS, Permission.MANAGE_SERVER) === false, 'Cargo padrão não administra servidor');
+console.assert(hasPermission(ADMIN_PERMISSIONS, Permission.MOVE_MEMBERS) === true, 'Admin deve ter todas permissões');
+console.log('✔ Permissões verificadas');
 
 console.log('=== Todos os testes unitários passaram com sucesso! ===');

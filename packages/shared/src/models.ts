@@ -65,11 +65,27 @@ export interface ChatMessage {
   attachments?: AttachmentMeta[];
 }
 
+export interface Role {
+  id: string;
+  name: string;
+  color: string | null;
+  position: number;
+  permissions: number;
+  isDefault: boolean;
+}
+
+export interface UserRoleSummary {
+  userId: string;
+  roleIds: string[];
+}
+
 export interface VoiceParticipantState {
   userId: string;
   channelId: string;
   isMuted: boolean;
   isDeafened: boolean;
+  serverMuted: boolean;
+  serverDeafened: boolean;
   isSpeaking: boolean;
   isCameraOn: boolean;
   isScreenSharing: boolean;
@@ -94,6 +110,10 @@ export interface ServerDetails {
   // mentioned while offline sees the red @ badge when they reconnect (#14).
   mentionedChannelIds?: string[];
   voiceStates: Record<string, VoiceParticipantState>; // key = userId
+  roles?: Role[];
+  userRoles?: UserRoleSummary[];
+  ownerId?: string | null;
+  myPermissions?: number;
   // Attachment-storage limits + current usage for the settings UI (#11).
   attachmentStorage?: AttachmentStorageInfo;
 }

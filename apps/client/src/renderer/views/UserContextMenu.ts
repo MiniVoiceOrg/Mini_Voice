@@ -1,4 +1,4 @@
-import { UserSummary } from '@monky/shared';
+import { MessageType, Permission, UserSummary } from '@monky/shared';
 import { escapeHtml } from '../utils/html';
 import { getAvatarUrl } from '../utils/avatar';
 import { settingsStore } from '../stores/settingsStore';
@@ -6,6 +6,9 @@ import { serverStore } from '../stores/serverStore';
 import { connectionStore } from '../stores/connectionStore';
 import { webRtcManager } from '../core/WebRtcManager';
 import { appEvents } from '../core/EventBus';
+import { participantManager } from '../core/ParticipantManager';
+import { networkClient } from '../core/NetworkClient';
+import { showAlert } from './Dialog';
 import { t } from '../i18n';
 
 export class UserContextMenu {
@@ -13,13 +16,11 @@ export class UserContextMenu {
   private unbindGlobalListeners: Array<() => void> = [];
 
   constructor() {
-    // Dismiss on network disconnect or server changes
     appEvents.on('network.disconnected', () => this.close());
     appEvents.on('voice.channel_changed', () => this.close());
   }
 
   public open(x: number, y: number, user: UserSummary): void {
-    // Do not open for self
     if (
       user.id === serverStore.currentUser?.id ||
       user.clientId === connectionStore.clientId ||
@@ -32,6 +33,17 @@ export class UserContextMenu {
 
     const currentVol = settingsStore.getUserVolume(user.clientId);
     const avatarSrc = getAvatarUrl(user.avatarUrl);
+    const targetState = participantManager.get(user.id)?.voiceState;
+    const voiceChannels = (serverStore.serverDetails?.channels ?? []).filter((channel) => channel.type === 'VOICE');
+    const roleIds = new Set(serverStore.getUserRoleIds(user.id));
+    const manageableRoles = serverStore.roles.filter((role) => !role.isDefault).sort((a, b) => b.position - a.position);
+
+    const canMuteMembers = !!targetState && serverStore.hasPermission(Permission.MUTE_MEMBERS);
+    const canDeafenMembers = !!targetState && serverStore.hasPermission(Permission.DEAFEN_MEMBERS);
+    const canKickMembers = !!targetState && serverStore.hasPermission(Permission.KICK_MEMBERS);
+    const canMoveMembers = !!targetState && serverStore.hasPermission(Permission.MOVE_MEMBERS) && voiceChannels.length > 0;
+    const canManageRoles = serverStore.hasPermission(Permission.MANAGE_ROLES) && manageableRoles.length > 0;
+    const showAdminSection = canMuteMembers || canDeafenMembers || canKickMembers || canMoveMembers || canManageRoles;
 
     this.menuEl = document.createElement('div');
     this.menuEl.className = 'user-context-menu';
@@ -75,25 +87,54 @@ export class UserContextMenu {
           <button id="ctx-vol-100" class="btn-ctx-quick active" title="${t('userMenu.restoreVolume')}">100%</button>
         </div>
       </div>
+
+      ${showAdminSection ? `
+      <div class="context-menu-divider"></div>
+      <div style="display: flex; flex-direction: column; gap: 8px;">
+        <div style="font-size: 11px; font-weight: 700; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.6px;">
+          ${t('userMenu.adminActions')}
+        </div>
+        ${canMuteMembers ? `<button type="button" class="btn btn-secondary" data-action="server-mute">${targetState?.serverMuted ? t('userMenu.serverUnmute') : t('userMenu.serverMute')}</button>` : ''}
+        ${canDeafenMembers ? `<button type="button" class="btn btn-secondary" data-action="server-deafen">${targetState?.serverDeafened ? t('userMenu.serverUndeafen') : t('userMenu.serverDeafen')}</button>` : ''}
+        ${canKickMembers ? `<button type="button" class="btn btn-secondary" data-action="kick-voice">${t('userMenu.kickFromVoice')}</button>` : ''}
+        ${canMoveMembers ? `
+          <div style="display: flex; flex-direction: column; gap: 6px;">
+            <span style="font-size: 12px; color: var(--text-secondary);">${t('userMenu.moveToChannel')}</span>
+            ${voiceChannels.map((channel) => `
+              <button type="button" class="btn btn-secondary" data-action="move-user" data-channel-id="${channel.id}">
+                ${escapeHtml(channel.name)}
+              </button>
+            `).join('')}
+          </div>
+        ` : ''}
+        ${canManageRoles ? `
+          <div style="display: flex; flex-direction: column; gap: 6px;">
+            <span style="font-size: 12px; color: var(--text-secondary);">${t('userMenu.manageRoles')}</span>
+            ${manageableRoles.map((role) => `
+              <button type="button" class="btn btn-secondary" data-action="toggle-role" data-role-id="${role.id}">
+                <span style="display: inline-flex; align-items: center; gap: 8px;">
+                  <span class="material-symbols-outlined md-16">${roleIds.has(role.id) ? 'check_box' : 'check_box_outline_blank'}</span>
+                  <span style="${role.color ? `color: ${role.color};` : ''}">${escapeHtml(role.name)}</span>
+                </span>
+              </button>
+            `).join('')}
+          </div>
+        ` : ''}
+      </div>
+      ` : ''}
     `;
 
     document.body.appendChild(this.menuEl);
 
-    // Update initial slider background gradient fill
     this.updateSliderTrackFill(currentVol);
     this.updateActiveQuickButton(currentVol);
 
-    // Calculate smart positioning within window boundaries
     const rect = this.menuEl.getBoundingClientRect();
     let posX = x;
     let posY = y;
 
-    if (posX + rect.width > window.innerWidth - 12) {
-      posX = window.innerWidth - rect.width - 12;
-    }
-    if (posY + rect.height > window.innerHeight - 12) {
-      posY = window.innerHeight - rect.height - 12;
-    }
+    if (posX + rect.width > window.innerWidth - 12) posX = window.innerWidth - rect.width - 12;
+    if (posY + rect.height > window.innerHeight - 12) posY = window.innerHeight - rect.height - 12;
     if (posX < 12) posX = 12;
     if (posY < 12) posY = 12;
 
@@ -110,7 +151,7 @@ export class UserContextMenu {
   }
 
   private updateSliderTrackFill(volume: number): void {
-    const slider = this.menuEl?.querySelector('#ctx-volume-slider') as HTMLInputElement;
+    const slider = this.menuEl?.querySelector('#ctx-volume-slider') as HTMLInputElement | null;
     if (slider) {
       const percentage = Math.max(0, Math.min(100, volume));
       slider.style.setProperty('--slider-fill', `${percentage}%`);
@@ -122,20 +163,16 @@ export class UserContextMenu {
     const btns = this.menuEl.querySelectorAll('.btn-ctx-quick');
     btns.forEach((b) => b.classList.remove('active'));
 
-    if (volume === 0) {
-      this.menuEl.querySelector('#ctx-vol-0')?.classList.add('active');
-    } else if (volume === 50) {
-      this.menuEl.querySelector('#ctx-vol-50')?.classList.add('active');
-    } else if (volume === 100) {
-      this.menuEl.querySelector('#ctx-vol-100')?.classList.add('active');
-    }
+    if (volume === 0) this.menuEl.querySelector('#ctx-vol-0')?.classList.add('active');
+    else if (volume === 50) this.menuEl.querySelector('#ctx-vol-50')?.classList.add('active');
+    else if (volume === 100) this.menuEl.querySelector('#ctx-vol-100')?.classList.add('active');
   }
 
   private applyVolume(user: UserSummary, volume: number): void {
     const clamped = Math.max(0, Math.min(100, Math.round(volume)));
     const badge = this.menuEl?.querySelector('#ctx-volume-badge');
     const icon = this.menuEl?.querySelector('#ctx-volume-icon');
-    const slider = this.menuEl?.querySelector('#ctx-volume-slider') as HTMLInputElement;
+    const slider = this.menuEl?.querySelector('#ctx-volume-slider') as HTMLInputElement | null;
 
     if (badge) badge.textContent = `${clamped}%`;
     if (icon) icon.textContent = this.getVolumeIcon(clamped);
@@ -150,49 +187,79 @@ export class UserContextMenu {
     webRtcManager.setPeerVolumeByClientId(user.clientId, clamped);
   }
 
+  private async runAdminAction(action: () => Promise<void>): Promise<void> {
+    try {
+      await action();
+      this.close();
+    } catch (err: any) {
+      await showAlert({
+        title: t('common.error'),
+        message: err?.message || t('userMenu.actionFailed'),
+        variant: 'danger',
+      });
+    }
+  }
+
   private attachEvents(user: UserSummary): void {
     if (!this.menuEl) return;
 
-    const slider = this.menuEl.querySelector('#ctx-volume-slider') as HTMLInputElement;
-    const btn0 = this.menuEl.querySelector('#ctx-vol-0');
-    const btn50 = this.menuEl.querySelector('#ctx-vol-50');
-    const btn100 = this.menuEl.querySelector('#ctx-vol-100');
+    const slider = this.menuEl.querySelector('#ctx-volume-slider') as HTMLInputElement | null;
+    slider?.addEventListener('input', () => this.applyVolume(user, parseInt(slider.value, 10)));
+    this.menuEl.querySelector('#ctx-vol-0')?.addEventListener('click', () => this.applyVolume(user, 0));
+    this.menuEl.querySelector('#ctx-vol-50')?.addEventListener('click', () => this.applyVolume(user, 50));
+    this.menuEl.querySelector('#ctx-vol-100')?.addEventListener('click', () => this.applyVolume(user, 100));
 
-    slider?.addEventListener('input', () => {
-      const val = parseInt(slider.value, 10);
-      this.applyVolume(user, val);
+    this.menuEl.querySelector('[data-action="server-mute"]')?.addEventListener('click', () => {
+      const targetState = participantManager.get(user.id)?.voiceState;
+      void this.runAdminAction(() => networkClient.sendRequest(MessageType.ADMIN_MUTE_USER, {
+        targetUserId: user.id,
+        muted: !(targetState?.serverMuted ?? false),
+      }));
     });
 
-    btn0?.addEventListener('click', () => {
-      this.applyVolume(user, 0);
+    this.menuEl.querySelector('[data-action="server-deafen"]')?.addEventListener('click', () => {
+      const targetState = participantManager.get(user.id)?.voiceState;
+      void this.runAdminAction(() => networkClient.sendRequest(MessageType.ADMIN_DEAFEN_USER, {
+        targetUserId: user.id,
+        deafened: !(targetState?.serverDeafened ?? false),
+      }));
     });
 
-    btn50?.addEventListener('click', () => {
-      this.applyVolume(user, 50);
+    this.menuEl.querySelector('[data-action="kick-voice"]')?.addEventListener('click', () => {
+      void this.runAdminAction(() => networkClient.sendRequest(MessageType.ADMIN_KICK_VOICE, {
+        targetUserId: user.id,
+      }));
     });
 
-    btn100?.addEventListener('click', () => {
-      this.applyVolume(user, 100);
+    this.menuEl.querySelectorAll('[data-action="move-user"]').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        const channelId = btn.getAttribute('data-channel-id');
+        if (!channelId) return;
+        void this.runAdminAction(() => networkClient.sendRequest(MessageType.ADMIN_MOVE_USER, {
+          targetUserId: user.id,
+          channelId,
+        }));
+      });
     });
 
-    // Dismiss listeners
+    this.menuEl.querySelectorAll('[data-action="toggle-role"]').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        const roleId = btn.getAttribute('data-role-id');
+        if (!roleId) return;
+        const hasRole = serverStore.getUserRoleIds(user.id).includes(roleId);
+        void this.runAdminAction(() => networkClient.sendRequest(
+          hasRole ? MessageType.ROLE_UNASSIGN : MessageType.ROLE_ASSIGN,
+          { userId: user.id, roleId }
+        ));
+      });
+    });
+
     const handleOutsideClick = (e: MouseEvent | PointerEvent) => {
-      if (this.menuEl && !this.menuEl.contains(e.target as Node)) {
-        this.close();
-      }
+      if (this.menuEl && !this.menuEl.contains(e.target as Node)) this.close();
     };
+    const handleKeyDown = (e: KeyboardEvent) => { if (e.key === 'Escape') this.close(); };
+    const handleWindowResize = () => this.close();
 
-    const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') {
-        this.close();
-      }
-    };
-
-    const handleWindowResize = () => {
-      this.close();
-    };
-
-    // Use setTimeout to avoid immediate trigger from the opening right click
     setTimeout(() => {
       document.addEventListener('pointerdown', handleOutsideClick, true);
       document.addEventListener('contextmenu', handleOutsideClick, true);
@@ -211,7 +278,6 @@ export class UserContextMenu {
   public close(): void {
     this.unbindGlobalListeners.forEach((u) => u());
     this.unbindGlobalListeners = [];
-
     if (this.menuEl) {
       this.menuEl.remove();
       this.menuEl = null;

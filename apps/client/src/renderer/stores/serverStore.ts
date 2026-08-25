@@ -1,10 +1,14 @@
-import { AttachmentStorageInfo, ChannelSummary, ServerDetails, UserSummary } from '@monky/shared';
+import { AttachmentStorageInfo, ChannelSummary, Permission, Role, ServerDetails, UserRoleSummary, UserSummary, hasPermission } from '@monky/shared';
 import { appEvents } from '../core/EventBus';
 
 export class ServerStore {
   public serverDetails: ServerDetails | null = null;
   public currentUser: UserSummary | null = null;
   public activeTextChannelId: string | null = null;
+  public roles: Role[] = [];
+  public userRoles: UserRoleSummary[] = [];
+  public ownerId: string | null = null;
+  public myPermissions: number = 0;
   // Everyone who has ever connected (keyed by userId), so offline users remain
   // mentionable in chat (#14). Kept separate from the live members list.
   public knownMembers: Map<string, UserSummary> = new Map();
@@ -12,6 +16,10 @@ export class ServerStore {
   public setServerDetails(details: ServerDetails, currentUser: UserSummary): void {
     this.serverDetails = details;
     this.currentUser = currentUser;
+    this.roles = details.roles ?? [];
+    this.userRoles = details.userRoles ?? [];
+    this.ownerId = details.ownerId ?? null;
+    this.myPermissions = details.myPermissions ?? 0;
 
     // Seed the known-members map from the persisted list (falling back to the
     // live members), then make sure the live members and self are present.
@@ -136,10 +144,62 @@ export class ServerStore {
     }
   }
 
+  public updateRoles(roles: Role[], userRoles: UserRoleSummary[]): void {
+    this.roles = roles;
+    this.userRoles = userRoles;
+    if (this.serverDetails) {
+      this.serverDetails.roles = roles;
+      this.serverDetails.userRoles = userRoles;
+    }
+    this.recalculateMyPermissions();
+    appEvents.emit('server.roles_updated');
+    appEvents.emit('server.updated');
+  }
+
+  public getRole(roleId: string): Role | undefined {
+    return this.roles.find((role) => role.id === roleId);
+  }
+
+  public getUserRoleIds(userId: string): string[] {
+    return this.userRoles.find((entry) => entry.userId === userId)?.roleIds ?? [];
+  }
+
+  public getUserRoles(userId: string): Role[] {
+    const roleIds = new Set(this.getUserRoleIds(userId));
+    return this.roles.filter((role) => roleIds.has(role.id)).sort((a, b) => b.position - a.position);
+  }
+
+  public recalculateMyPermissions(): number {
+    if (!this.currentUser) {
+      this.myPermissions = 0;
+      return this.myPermissions;
+    }
+    if (this.ownerId && this.currentUser.id === this.ownerId) {
+      this.myPermissions = 0xFFFFFFFF;
+      return this.myPermissions;
+    }
+    const roleIds = new Set(this.getUserRoleIds(this.currentUser.id));
+    this.myPermissions = this.roles
+      .filter((role) => roleIds.has(role.id))
+      .reduce((bits, role) => bits | role.permissions, 0);
+    if (this.serverDetails) {
+      this.serverDetails.myPermissions = this.myPermissions;
+    }
+    return this.myPermissions;
+  }
+
+  public hasPermission(permission: Permission): boolean {
+    return hasPermission(this.myPermissions, permission);
+  }
+
   public clear(): void {
     this.serverDetails = null;
     this.currentUser = null;
     this.activeTextChannelId = null;
+    this.roles = [];
+    this.userRoles = [];
+    this.ownerId = null;
+    this.myPermissions = 0;
     this.knownMembers = new Map();
     appEvents.emit('server.updated');
   }

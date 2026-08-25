@@ -1,6 +1,10 @@
 import http from 'http';
 import { WebSocket, WebSocketServer as WSServer } from 'ws';
 import {
+  AdminDeafenUserPayload,
+  AdminKickVoicePayload,
+  AdminMoveUserPayload,
+  AdminMuteUserPayload,
   AuthConnectPayload,
   AuthChallengePayload,
   AuthChallengeResponsePayload,
@@ -19,8 +23,14 @@ import {
   ChatUploadTokenPayload,
   LIMITS,
   MessageType,
+  Permission,
   ProtocolErrorCode,
   ProtocolMessage,
+  RoleAssignPayload,
+  RoleCreatePayload,
+  RoleDeletePayload,
+  RoleUpdatePayload,
+  RolesListPayload,
   ServerErrorPayload,
   ServerInviteInfoPayload,
   ServerNetworkInterface,
@@ -47,6 +57,8 @@ import { AuthService } from '../../application/services/AuthService';
 import { AttachmentService } from '../../application/services/AttachmentService';
 import { ChannelService } from '../../application/services/ChannelService';
 import { ChatService } from '../../application/services/ChatService';
+import { PermissionService } from '../../application/services/PermissionService';
+import { RoleService } from '../../application/services/RoleService';
 import { SignalingService } from '../../application/services/SignalingService';
 import { UserService } from '../../application/services/UserService';
 import { IServerRepository } from '../../domain/repositories';
@@ -80,7 +92,9 @@ export class WebSocketServer {
     private chatService: ChatService,
     private signalingService: SignalingService,
     private serverRepo: IServerRepository,
-    private attachmentService: AttachmentService
+    private attachmentService: AttachmentService,
+    private permissionService: PermissionService,
+    private roleService: RoleService
   ) {
     this.wss = new WSServer({ server: this.server });
     this.setupWss();
@@ -164,6 +178,7 @@ export class WebSocketServer {
 
     switch (type) {
       case MessageType.CHAT_SEND:
+        if (!(await this.requirePermission(session, Permission.SEND_MESSAGES, requestId))) return;
         await this.handleChatSend(session, payload as ChatSendPayload, requestId);
         break;
 
@@ -176,14 +191,17 @@ export class WebSocketServer {
         break;
 
       case MessageType.CHAT_REQUEST_UPLOAD_TOKEN:
+        if (!(await this.requirePermission(session, Permission.ATTACH_FILES, requestId))) return;
         this.handleRequestUploadToken(session, payload as ChatRequestUploadTokenPayload, requestId);
         break;
 
       case MessageType.CHANNEL_CREATE:
+        if (!(await this.requirePermission(session, Permission.MANAGE_CHANNELS, requestId))) return;
         await this.handleChannelCreate(session, payload as ChannelCreatePayload, requestId);
         break;
 
       case MessageType.CHANNEL_DELETE:
+        if (!(await this.requirePermission(session, Permission.MANAGE_CHANNELS, requestId))) return;
         await this.handleChannelDelete(session, payload as ChannelDeletePayload, requestId);
         break;
 
@@ -196,10 +214,32 @@ export class WebSocketServer {
         break;
 
       case MessageType.SERVER_UPDATE_SETTINGS:
+        if (!(await this.requirePermission(session, Permission.MANAGE_SERVER, requestId))) return;
         await this.handleServerUpdateSettings(session, payload as ServerUpdateSettingsPayload, requestId);
         break;
 
+      case MessageType.ROLE_CREATE:
+        await this.handleRoleCreate(session, payload as RoleCreatePayload, requestId);
+        break;
+
+      case MessageType.ROLE_UPDATE:
+        await this.handleRoleUpdate(session, payload as RoleUpdatePayload, requestId);
+        break;
+
+      case MessageType.ROLE_DELETE:
+        await this.handleRoleDelete(session, payload as RoleDeletePayload, requestId);
+        break;
+
+      case MessageType.ROLE_ASSIGN:
+        await this.handleRoleAssign(session, payload as RoleAssignPayload, requestId);
+        break;
+
+      case MessageType.ROLE_UNASSIGN:
+        await this.handleRoleUnassign(session, payload as RoleAssignPayload, requestId);
+        break;
+
       case MessageType.VOICE_JOIN:
+        if (!(await this.requirePermission(session, Permission.SPEAK, requestId))) return;
         await this.handleVoiceJoin(session, payload as VoiceJoinPayload, requestId);
         break;
 
@@ -216,7 +256,28 @@ export class WebSocketServer {
         break;
 
       case MessageType.SOUNDBOARD_PLAY:
+        if (!(await this.requirePermission(session, Permission.SPEAK, requestId))) return;
         await this.handleSoundboardPlay(session, payload as SoundboardPlayPayload, requestId);
+        break;
+
+      case MessageType.ADMIN_MUTE_USER:
+        if (!(await this.requirePermission(session, Permission.MUTE_MEMBERS, requestId))) return;
+        await this.handleAdminMuteUser(session, payload as AdminMuteUserPayload, requestId);
+        break;
+
+      case MessageType.ADMIN_DEAFEN_USER:
+        if (!(await this.requirePermission(session, Permission.DEAFEN_MEMBERS, requestId))) return;
+        await this.handleAdminDeafenUser(session, payload as AdminDeafenUserPayload, requestId);
+        break;
+
+      case MessageType.ADMIN_KICK_VOICE:
+        if (!(await this.requirePermission(session, Permission.KICK_MEMBERS, requestId))) return;
+        await this.handleAdminKickVoice(session, payload as AdminKickVoicePayload, requestId);
+        break;
+
+      case MessageType.ADMIN_MOVE_USER:
+        if (!(await this.requirePermission(session, Permission.MOVE_MEMBERS, requestId))) return;
+        await this.handleAdminMoveUser(session, payload as AdminMoveUserPayload, requestId);
         break;
 
       case MessageType.SERVER_GET_INVITE_INFO:
@@ -334,6 +395,10 @@ export class WebSocketServer {
     const successPayload: AuthSuccessPayload = {
       server: result.serverDetails,
       currentUser: result.user,
+      roles: result.serverDetails.roles,
+      userRoles: result.serverDetails.userRoles,
+      ownerId: result.serverDetails.ownerId,
+      myPermissions: result.serverDetails.myPermissions,
     };
 
     this.send(session.ws, {
@@ -348,6 +413,8 @@ export class WebSocketServer {
       type: MessageType.USER_JOINED,
       payload: userJoinedPayload,
     }, session.ws);
+
+    await this.broadcastRolesState(requestId);
 
     Logger.info('NETWORK', `User ${result.user.nickname} (${result.user.id}) joined the server.`);
   }
@@ -724,7 +791,13 @@ export class WebSocketServer {
   ): Promise<void> {
     if (!session.user) return;
 
-    const updated = this.signalingService.updateVoiceState(session.user.id, payload);
+    const current = this.signalingService.getVoiceState(session.user.id);
+    const effectivePayload: VoiceStateUpdatePayload = { ...payload };
+    if (current?.serverMuted) {
+      effectivePayload.isSpeaking = false;
+    }
+
+    const updated = this.signalingService.updateVoiceState(session.user.id, effectivePayload);
     if (updated) {
       const changedPayload: VoiceStateChangedPayload = { voiceState: updated };
       this.broadcast({
@@ -758,6 +831,153 @@ export class WebSocketServer {
         payload,
       });
     }
+  }
+
+  private async requirePermission(
+    session: ClientSession,
+    permission: Permission,
+    requestId?: string
+  ): Promise<boolean> {
+    if (!session.user) return false;
+    const allowed = await this.permissionService.checkPermission(session.user.id, permission);
+    if (allowed) return true;
+    this.sendError(session.ws, ProtocolErrorCode.PERMISSION_DENIED, 'Você não tem permissão para executar esta ação.', requestId);
+    return false;
+  }
+
+  private async broadcastRolesState(requestId?: string): Promise<void> {
+    const state = await this.roleService.getRoleState();
+    const payload: RolesListPayload = {
+      roles: state.roles,
+      userRoles: state.userRoles,
+    };
+    this.broadcast({
+      type: MessageType.ROLES_LIST,
+      requestId,
+      payload,
+    });
+  }
+
+  private async handleRoleCreate(session: ClientSession, payload: RoleCreatePayload, requestId?: string): Promise<void> {
+    if (!session.user) return;
+    const result = await this.roleService.createRole(session.user.id, payload);
+    if (!result.success) {
+      this.sendError(session.ws, result.errorCode || ProtocolErrorCode.BAD_REQUEST, result.errorMessage || 'Erro ao criar cargo.', requestId);
+      return;
+    }
+    await this.broadcastRolesState(requestId);
+  }
+
+  private async handleRoleUpdate(session: ClientSession, payload: RoleUpdatePayload, requestId?: string): Promise<void> {
+    if (!session.user) return;
+    const result = await this.roleService.updateRole(session.user.id, payload);
+    if (!result.success) {
+      this.sendError(session.ws, result.errorCode || ProtocolErrorCode.BAD_REQUEST, result.errorMessage || 'Erro ao atualizar cargo.', requestId);
+      return;
+    }
+    await this.broadcastRolesState(requestId);
+  }
+
+  private async handleRoleDelete(session: ClientSession, payload: RoleDeletePayload, requestId?: string): Promise<void> {
+    if (!session.user) return;
+    const result = await this.roleService.deleteRole(session.user.id, payload.roleId);
+    if (!result.success) {
+      this.sendError(session.ws, result.errorCode || ProtocolErrorCode.BAD_REQUEST, result.errorMessage || 'Erro ao excluir cargo.', requestId);
+      return;
+    }
+    await this.broadcastRolesState(requestId);
+  }
+
+  private async handleRoleAssign(session: ClientSession, payload: RoleAssignPayload, requestId?: string): Promise<void> {
+    if (!session.user) return;
+    const result = await this.roleService.assignRole(session.user.id, payload);
+    if (!result.success) {
+      this.sendError(session.ws, result.errorCode || ProtocolErrorCode.BAD_REQUEST, result.errorMessage || 'Erro ao atribuir cargo.', requestId);
+      return;
+    }
+    await this.broadcastRolesState(requestId);
+  }
+
+  private async handleRoleUnassign(session: ClientSession, payload: RoleAssignPayload, requestId?: string): Promise<void> {
+    if (!session.user) return;
+    const result = await this.roleService.unassignRole(session.user.id, payload);
+    if (!result.success) {
+      this.sendError(session.ws, result.errorCode || ProtocolErrorCode.BAD_REQUEST, result.errorMessage || 'Erro ao remover cargo.', requestId);
+      return;
+    }
+    await this.broadcastRolesState(requestId);
+  }
+
+  private async handleAdminMuteUser(session: ClientSession, payload: AdminMuteUserPayload, requestId?: string): Promise<void> {
+    const state = this.signalingService.getVoiceState(payload.targetUserId);
+    if (!state) {
+      this.sendError(session.ws, ProtocolErrorCode.BAD_REQUEST, 'Usuário não está em um canal de voz.', requestId);
+      return;
+    }
+    const updated = this.signalingService.updateVoiceState(payload.targetUserId, { serverMuted: payload.muted, isSpeaking: false });
+    if (!updated) return;
+    this.broadcast({ type: MessageType.ADMIN_MUTE_USER, requestId, payload });
+    this.broadcast({ type: MessageType.VOICE_STATE_CHANGED, requestId, payload: { voiceState: updated } });
+  }
+
+  private async handleAdminDeafenUser(session: ClientSession, payload: AdminDeafenUserPayload, requestId?: string): Promise<void> {
+    const state = this.signalingService.getVoiceState(payload.targetUserId);
+    if (!state) {
+      this.sendError(session.ws, ProtocolErrorCode.BAD_REQUEST, 'Usuário não está em um canal de voz.', requestId);
+      return;
+    }
+    const updated = this.signalingService.updateVoiceState(payload.targetUserId, { serverDeafened: payload.deafened, isSpeaking: false });
+    if (!updated) return;
+    this.broadcast({ type: MessageType.ADMIN_DEAFEN_USER, requestId, payload });
+    this.broadcast({ type: MessageType.VOICE_STATE_CHANGED, requestId, payload: { voiceState: updated } });
+  }
+
+  private async handleAdminKickVoice(session: ClientSession, payload: AdminKickVoicePayload, requestId?: string): Promise<void> {
+    const previous = this.signalingService.leaveVoiceChannel(payload.targetUserId);
+    if (!previous) {
+      this.sendError(session.ws, ProtocolErrorCode.BAD_REQUEST, 'Usuário não está em um canal de voz.', requestId);
+      return;
+    }
+
+    this.broadcast({ type: MessageType.ADMIN_KICK_VOICE, requestId, payload });
+    this.broadcast({
+      type: MessageType.VOICE_USER_LEFT,
+      requestId,
+      payload: { channelId: previous.channelId, userId: payload.targetUserId },
+    });
+  }
+
+  private async handleAdminMoveUser(session: ClientSession, payload: AdminMoveUserPayload, requestId?: string): Promise<void> {
+    const previous = this.signalingService.getVoiceState(payload.targetUserId);
+    if (!previous) {
+      this.sendError(session.ws, ProtocolErrorCode.BAD_REQUEST, 'Usuário não está em um canal de voz.', requestId);
+      return;
+    }
+    if (previous.channelId === payload.channelId) {
+      return;
+    }
+
+    const joinResult = await this.signalingService.joinVoiceChannel(payload.targetUserId, payload.channelId);
+    if (!joinResult.success || !joinResult.voiceState) {
+      this.sendError(session.ws, joinResult.errorCode || ProtocolErrorCode.BAD_REQUEST, joinResult.errorMessage || 'Não foi possível mover o usuário.', requestId);
+      return;
+    }
+
+    this.broadcast({ type: MessageType.ADMIN_MOVE_USER, requestId, payload });
+    this.broadcast({
+      type: MessageType.VOICE_USER_LEFT,
+      requestId,
+      payload: { channelId: previous.channelId, userId: payload.targetUserId },
+    });
+    this.broadcast({
+      type: MessageType.VOICE_USER_JOINED,
+      requestId,
+      payload: {
+        channelId: payload.channelId,
+        userId: payload.targetUserId,
+        voiceState: joinResult.voiceState,
+      },
+    });
   }
 
   private handleDisconnect(session: ClientSession): void {

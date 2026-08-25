@@ -56,6 +56,46 @@ export const channelCreateSchema = z.object({
   maxParticipants: z.number().int().min(1).max(50).optional().default(LIMITS.MAX_PARTICIPANTS_PER_CHANNEL_DEFAULT),
 });
 
+export const roleNameSchema = z
+  .string()
+  .min(1, 'Nome do cargo é obrigatório')
+  .max(32, 'Nome do cargo não pode exceder 32 caracteres')
+  .transform((val) => val.trim());
+
+export const roleColorSchema = z
+  .string()
+  .regex(/^#([0-9a-fA-F]{6})$/, 'Cor do cargo inválida')
+  .nullable()
+  .optional();
+
+export const permissionBitsSchema = z
+  .number()
+  .int()
+  .min(0, 'Permissões inválidas')
+  .max(0xFFFFFFFF, 'Permissões inválidas');
+
+export const roleCreateSchema = z.object({
+  name: roleNameSchema,
+  color: roleColorSchema.default(null),
+  permissions: permissionBitsSchema,
+  position: z.number().int().min(0).optional(),
+  isDefault: z.boolean().optional().default(false),
+});
+
+export const roleUpdateSchema = z.object({
+  roleId: z.string().min(1, 'Cargo inválido'),
+  name: roleNameSchema.optional(),
+  color: roleColorSchema,
+  permissions: permissionBitsSchema.optional(),
+  position: z.number().int().min(0).optional(),
+  isDefault: z.boolean().optional(),
+});
+
+export const roleAssignmentSchema = z.object({
+  userId: z.string().min(1, 'Usuário inválido'),
+  roleId: z.string().min(1, 'Cargo inválido'),
+});
+
 export function isValidNickname(nickname: string): boolean {
   return nicknameSchema.safeParse(nickname).success;
 }
