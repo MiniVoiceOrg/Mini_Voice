@@ -122,7 +122,7 @@ export class ChatView {
               <span class="material-symbols-outlined md-22">add_circle</span>
             </button>
             <input id="chat-file-input" type="file" multiple style="display: none;">
-            <textarea id="chat-message-input" class="chat-input-field" rows="1" placeholder="${t('chat.inputPlaceholder', { channel: escapeHtml(channelName) })}" maxlength="${LIMITS.MAX_MESSAGE_LENGTH}" ${canSendMessages ? '' : 'disabled'}></textarea>
+            <textarea id="chat-message-input" class="chat-input-field" rows="1" placeholder="${t('chat.inputPlaceholder', { channel: escapeHtml(channelName) })}" maxlength="${LIMITS.MAX_MESSAGE_LENGTH}"></textarea>
             <span id="chat-char-counter" class="chat-char-count">0/${LIMITS.MAX_MESSAGE_LENGTH}</span>
             <button id="btn-send-message" class="btn btn-primary" style="padding: 6px 14px; font-size: 13px;" ${canSendMessages ? '' : 'disabled'}>
               <span class="material-symbols-outlined md-16" style="margin-right: 4px;">send</span>
@@ -247,7 +247,7 @@ export class ChatView {
   private focusChatInput(options?: { defer?: boolean }): void {
     const applyFocus = () => {
       const input = this.container.querySelector('#chat-message-input') as HTMLTextAreaElement | null;
-      if (!input || input.disabled) return;
+      if (!input) return;
       input.focus({ preventScroll: true });
       const caret = input.value.length;
       input.setSelectionRange(caret, caret);
@@ -944,7 +944,7 @@ export class ChatView {
 
     const focusFromInputShell = (e: MouseEvent) => {
       const target = e.target as HTMLElement | null;
-      if (!input || input.disabled) return;
+      if (!input) return;
       if (this.isEditableTarget(target)) return;
       if (target?.closest('button, .mention-dropup, #chat-attachment-tray')) return;
       requestAnimationFrame(() => this.focusChatInput());
@@ -961,7 +961,7 @@ export class ChatView {
     });
 
     const handleSend = () => {
-      if (!input || !this.currentChannelId || !canSendMessages) return;
+      if (!input || !this.currentChannelId || !serverStore.hasPermission(Permission.SEND_MESSAGES)) return;
       const text = input.value.trim();
 
       // Block sending until every staged upload has finished (#11).
@@ -1661,6 +1661,11 @@ export class ChatView {
         const startTime = inlineVideo && Number.isFinite(inlineVideo.currentTime) ? inlineVideo.currentTime : 0;
         const shouldResumePlayback = !!inlineVideo && !inlineVideo.paused && !inlineVideo.ended;
         inlineVideo?.pause();
+        // Sync volume from inline player to lightbox (#188)
+        if (inlineVideo) {
+          video.volume = inlineVideo.volume;
+          video.muted = inlineVideo.muted;
+        }
         player.appendChild(video);
         frame.appendChild(player);
         this.initializeCustomVideoPlayers(frame);
