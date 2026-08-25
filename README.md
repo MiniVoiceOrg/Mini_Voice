@@ -25,6 +25,7 @@
 - [Usando o app no dia a dia](#-usando-o-app-no-dia-a-dia)
 - [Configurações que valem a pena ajustar](#️-configurações-que-valem-a-pena-ajustar)
 - [Hospedar num VPS (ou Linux/Docker)](#-hospedar-num-vps-ou-linuxdocker)
+- [Administração via CLI](#-administração-via-cli)
 - [Problemas comuns](#-problemas-comuns)
 - [Recursos em resumo](#-recursos-em-resumo)
 - [Roadmap & Votação](#️-roadmap--votação)
@@ -257,6 +258,17 @@ Abra pelo ícone de engrenagem (na tela de conexão ou na barra inferior).
 
 Se você quer o servidor no ar 24/7, rode só o servidor (sem interface gráfica)
 numa máquina Linux. Requer **Node.js 20 ou superior** (a CI do projeto usa a 22):
+
+## 💻 Administração via CLI
+
+Para administrar um servidor Monky em VPS sem abrir o cliente gráfico, use o
+`monky-cli`. Ele acessa diretamente o mesmo `server.db` do servidor para listar
+membros, promover/remover admins, ajustar configurações e fazer o bootstrap do
+owner inicial.
+
+➡️ Veja a documentação completa em [docs/CLI.md](docs/CLI.md)
+
+Continuando o fluxo manual de VPS:
 
 ```bash
 git clone https://github.com/MonkyOrg/Monky.git
