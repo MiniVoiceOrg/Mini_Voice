@@ -2,6 +2,7 @@ import { app, BrowserWindow, ipcMain, shell } from 'electron';
 import fs from 'fs';
 import https from 'https';
 import path from 'path';
+import { mt } from './i18n';
 
 const GITHUB_REPO = 'MiniVoiceOrg/Mini_Voice';
 
@@ -240,7 +241,7 @@ function downloadToFile(
 
 async function downloadMacDmg(mainWindow: BrowserWindow): Promise<CheckResult> {
   if (!pendingMacAsset) {
-    return { ok: false, error: 'Nenhuma atualização pendente' };
+    return { ok: false, error: mt('error.noPendingUpdate') };
   }
   try {
     const destPath = path.join(app.getPath('temp'), pendingMacAsset.name);
@@ -318,10 +319,10 @@ export function setupUpdater(mainWindow: BrowserWindow): void {
     }
     const updater = loadAutoUpdater();
     if (!updater) {
-      return { ok: false, error: 'Updater indisponível' };
+      return { ok: false, error: mt('error.updaterUnavailable') };
     }
     if (!app.isPackaged) {
-      return { ok: false, error: 'Atualização automática indisponível em modo de desenvolvimento' };
+      return { ok: false, error: mt('error.updaterDevMode') };
     }
     try {
       // Match the chosen pre-release eligibility. Do NOT set `updater.channel`
@@ -345,7 +346,7 @@ export function setupUpdater(mainWindow: BrowserWindow): void {
     }
     const updater = loadAutoUpdater();
     if (!updater) {
-      return { ok: false, error: 'Updater indisponível' };
+      return { ok: false, error: mt('error.updaterUnavailable') };
     }
     // Defer so the IPC reply is delivered before the app quits to install.
     setImmediate(() => updater.quitAndInstall(true, true));

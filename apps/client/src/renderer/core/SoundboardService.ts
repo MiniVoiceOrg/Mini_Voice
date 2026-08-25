@@ -4,6 +4,7 @@ import { networkClient } from './NetworkClient';
 import { settingsStore } from '../stores/settingsStore';
 import { voiceStore } from '../stores/voiceStore';
 import { serverStore } from '../stores/serverStore';
+import { t } from '../i18n';
 
 export interface SoundItem {
   name: string;
@@ -311,7 +312,7 @@ export class SoundboardService {
         (audio as any).setSinkId(this.sinkId).catch(() => {});
       }
 
-      this.playAudioForUser(audio, 'local', 'Você', soundData.soundName);
+      this.playAudioForUser(audio, 'local', t('common.you'), soundData.soundName);
     } catch (err) {
       console.warn('[SoundboardService] Local preview failed:', err);
     }

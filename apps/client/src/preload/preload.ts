@@ -15,6 +15,7 @@ export interface ElectronApi {
     serverName: string;
     version: string;
   }) => void) => void;
+  setLanguage: (language: string) => Promise<void>;
   getClientId: () => Promise<string>;
   maximizeWindow: () => Promise<void>;
   hostServerStart: (options: {
@@ -95,6 +96,7 @@ const api: ElectronApi = {
   stopLanDiscovery: () => ipcRenderer.invoke('lan-discovery-stop'),
   onLanDiscoveryFound: (cb) => ipcRenderer.on('lan-discovery:found', (_e, server) => cb(server)),
   onLanDiscoveryLost: (cb) => ipcRenderer.on('lan-discovery:lost', (_e, server) => cb(server)),
+  setLanguage: (language) => ipcRenderer.invoke('app-set-language', language),
   getClientId: () => ipcRenderer.invoke('get-client-id'),
   maximizeWindow: () => ipcRenderer.invoke('window:maximize'),
   hostServerStart: (options) => ipcRenderer.invoke('host-server-start', options),
