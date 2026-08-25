@@ -92,8 +92,6 @@ export class ChatView {
 
     const channel = serverStore.serverDetails.channels.find((c) => c.id === this.currentChannelId);
     const channelName = channel ? channel.name : 'geral';
-    const canSendMessages = serverStore.hasPermission(Permission.SEND_MESSAGES);
-    const canAttachFiles = serverStore.hasPermission(Permission.ATTACH_FILES);
 
     this.container.innerHTML = `
       <div class="chat-container">
@@ -118,13 +116,13 @@ export class ChatView {
           <div id="mention-dropup" class="mention-dropup" style="display: none;"></div>
           <div id="chat-attachment-tray" class="chat-attachment-tray" style="display: none;"></div>
           <div class="chat-input-wrapper">
-            <button id="btn-attach" type="button" class="chat-attach-btn" title="${t('chat.attachFile')}" ${canAttachFiles ? '' : 'disabled'}>
+            <button id="btn-attach" type="button" class="chat-attach-btn" title="${t('chat.attachFile')}">
               <span class="material-symbols-outlined md-22">add_circle</span>
             </button>
             <input id="chat-file-input" type="file" multiple style="display: none;">
             <textarea id="chat-message-input" class="chat-input-field" rows="1" placeholder="${t('chat.inputPlaceholder', { channel: escapeHtml(channelName) })}" maxlength="${LIMITS.MAX_MESSAGE_LENGTH}"></textarea>
             <span id="chat-char-counter" class="chat-char-count">0/${LIMITS.MAX_MESSAGE_LENGTH}</span>
-            <button id="btn-send-message" class="btn btn-primary" style="padding: 6px 14px; font-size: 13px;" ${canSendMessages ? '' : 'disabled'}>
+            <button id="btn-send-message" class="btn btn-primary" style="padding: 6px 14px; font-size: 13px;">
               <span class="material-symbols-outlined md-16" style="margin-right: 4px;">send</span>
               ${t('chat.send')}
             </button>
@@ -933,8 +931,6 @@ export class ChatView {
     const inputWrapper = this.container.querySelector('.chat-input-wrapper') as HTMLElement | null;
     const charCounter = document.getElementById('chat-char-counter');
     const btnSend = document.getElementById('btn-send-message');
-    const canSendMessages = serverStore.hasPermission(Permission.SEND_MESSAGES);
-    const canAttachFiles = serverStore.hasPermission(Permission.ATTACH_FILES);
 
     const autoResize = () => {
       if (!input) return;
@@ -993,12 +989,12 @@ export class ChatView {
     const fileInput = document.getElementById('chat-file-input') as HTMLInputElement | null;
 
     btnAttach?.addEventListener('click', () => {
-      if (!canAttachFiles) return;
+      if (!serverStore.hasPermission(Permission.ATTACH_FILES)) return;
       fileInput?.click();
     });
     fileInput?.addEventListener('change', () => {
       if (fileInput.files && fileInput.files.length > 0) {
-        if (!canAttachFiles) return;
+        if (!serverStore.hasPermission(Permission.ATTACH_FILES)) return;
         this.addFiles(fileInput.files);
       }
       fileInput.value = '';
@@ -1008,7 +1004,7 @@ export class ChatView {
     input?.addEventListener('paste', (e: ClipboardEvent) => {
       const files = e.clipboardData?.files;
       if (files && files.length > 0) {
-        if (!canAttachFiles) return;
+        if (!serverStore.hasPermission(Permission.ATTACH_FILES)) return;
         e.preventDefault();
         this.addFiles(files);
       }
@@ -1024,7 +1020,7 @@ export class ChatView {
       if (!this.currentChannelId) return;
       const files = ce.clipboardData?.files;
       if (files && files.length > 0) {
-        if (!canAttachFiles) return;
+        if (!serverStore.hasPermission(Permission.ATTACH_FILES)) return;
         e.preventDefault();
         this.addFiles(files);
         // Focus the input so the user can add a message to accompany the file.
