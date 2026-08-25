@@ -41,6 +41,83 @@ export interface ServerConfig {
   initialTextChannel?: string;
 }
 
+type ServerSeedConfig = Pick<
+  ServerConfig,
+  'serverName' | 'password' | 'maxUsers' | 'initialVoiceChannel' | 'initialTextChannel'
+>;
+
+export async function ensureServerSeedData(
+  config: ServerSeedConfig,
+  serverRepo: SqliteServerRepository,
+  channelRepo: SqliteChannelRepository,
+  roleRepo: SqliteRoleRepository
+): Promise<void> {
+  const server = await serverRepo.getServer();
+  const now = Date.now();
+  if (!server) {
+    const serverId = uuidv4();
+    const passwordHash = config.password ? PasswordService.hashPassword(config.password) : '';
+
+    await serverRepo.createServer({
+      id: serverId,
+      name: config.serverName || 'Monky Server',
+      passwordHash,
+      createdAt: now,
+      maxUsers: config.maxUsers || LIMITS.MAX_USERS_DEFAULT,
+      ownerUserId: null,
+      allowSoundboard: true,
+    });
+
+    await channelRepo.create({
+      id: uuidv4(),
+      serverId,
+      name: config.initialTextChannel || 'geral',
+      type: 'TEXT',
+      position: 0,
+      createdAt: now,
+      maxParticipants: 50,
+    });
+
+    await channelRepo.create({
+      id: uuidv4(),
+      serverId,
+      name: config.initialVoiceChannel || 'Geral',
+      type: 'VOICE',
+      position: 1,
+      createdAt: now,
+      maxParticipants: LIMITS.MAX_PARTICIPANTS_PER_CHANNEL_DEFAULT,
+    });
+
+    Logger.info('DATABASE', 'Server seeded successfully with default channels.');
+  }
+
+  const adminRole = await roleRepo.findByName('Admin');
+  if (!adminRole) {
+    await roleRepo.create({
+      id: uuidv4(),
+      name: 'Admin',
+      color: '#ed4245',
+      position: 100,
+      permissions: ADMIN_PERMISSIONS,
+      isDefault: false,
+      createdAt: now,
+    });
+  }
+
+  const memberRole = await roleRepo.findByName('Membro');
+  if (!memberRole) {
+    await roleRepo.create({
+      id: uuidv4(),
+      name: 'Membro',
+      color: '#5865f2',
+      position: 0,
+      permissions: DEFAULT_PERMISSIONS,
+      isDefault: true,
+      createdAt: now,
+    });
+  }
+}
+
 export class MonkyServer {
   private dbConn: DatabaseConnection;
   private httpServer: http.Server;
@@ -123,7 +200,7 @@ export class MonkyServer {
     );
 
     // Seed server and default channels if new database
-    await MonkyServer.seedServer(config, serverRepo, channelRepo, roleRepo);
+    await ensureServerSeedData(config, serverRepo, channelRepo, roleRepo);
 
     const httpServer = http.createServer((req, res) => {
       if (req.method === 'OPTIONS') {
@@ -394,80 +471,6 @@ export class MonkyServer {
       return;
     }
     fs.createReadStream(filePath).pipe(res);
-  }
-
-  private static async seedServer(
-    config: ServerConfig,
-    serverRepo: SqliteServerRepository,
-    channelRepo: SqliteChannelRepository,
-    roleRepo: SqliteRoleRepository
-  ): Promise<void> {
-    const server = await serverRepo.getServer();
-    const now = Date.now();
-    if (!server) {
-      const serverId = uuidv4();
-      const passwordHash = config.password ? PasswordService.hashPassword(config.password) : '';
-
-      await serverRepo.createServer({
-        id: serverId,
-        name: config.serverName || 'Monky Server',
-        passwordHash,
-        createdAt: now,
-        maxUsers: config.maxUsers || LIMITS.MAX_USERS_DEFAULT,
-        ownerUserId: null,
-        allowSoundboard: true,
-      });
-
-      // Create default text channel
-      await channelRepo.create({
-        id: uuidv4(),
-        serverId,
-        name: config.initialTextChannel || 'geral',
-        type: 'TEXT',
-        position: 0,
-        createdAt: now,
-        maxParticipants: 50,
-      });
-
-      // Create default voice channel
-      await channelRepo.create({
-        id: uuidv4(),
-        serverId,
-        name: config.initialVoiceChannel || 'Geral',
-        type: 'VOICE',
-        position: 1,
-        createdAt: now,
-        maxParticipants: LIMITS.MAX_PARTICIPANTS_PER_CHANNEL_DEFAULT,
-      });
-
-      Logger.info('DATABASE', `Server seeded successfully with default channels.`);
-    }
-
-    const adminRole = await roleRepo.findByName('Admin');
-    if (!adminRole) {
-      await roleRepo.create({
-        id: uuidv4(),
-        name: 'Admin',
-        color: '#ed4245',
-        position: 100,
-        permissions: ADMIN_PERMISSIONS,
-        isDefault: false,
-        createdAt: now,
-      });
-    }
-
-    const memberRole = await roleRepo.findByName('Membro');
-    if (!memberRole) {
-      await roleRepo.create({
-        id: uuidv4(),
-        name: 'Membro',
-        color: '#5865f2',
-        position: 0,
-        permissions: DEFAULT_PERMISSIONS,
-        isDefault: true,
-        createdAt: now,
-      });
-    }
   }
 
   public async start(): Promise<void> {
