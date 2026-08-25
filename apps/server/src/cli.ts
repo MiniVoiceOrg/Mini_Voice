@@ -24,11 +24,13 @@ const DEFAULT_DATA_INPUT = './data';
 const DEFAULT_DATA_DIR = path.resolve(process.cwd(), 'data');
 const DEFAULT_OWNER_NICKNAME = 'Owner';
 const DEFAULT_SERVER_NAME = 'Servidor dos Amigos';
-const DEFAULT_BOOTSTRAP_PORT = 3001;
+const DEFAULT_BOOTSTRAP_PORT = 3000;
 const SERVER_DB_NAME = 'server.db';
 const CONFIG_KEYS = [
   'name',
   'password',
+  'port',
+  'icon',
   'maxUsers',
   'allowSoundboard',
   'maxAttachmentFileBytes',
@@ -113,6 +115,7 @@ Uso:
   monky config set [k] [v] Altera uma configuração (interativo se sem args)
   monky update             Atualiza o servidor para a última versão
   monky update --check     Apenas verifica se há atualização
+  monky destroy            Apaga todos os dados do servidor (irreversível)
 
 Opções globais:
   --data <pasta>   Caminho dos dados (padrão: ./data)
@@ -149,6 +152,28 @@ function parseGlobalArgs(argv: string[]): GlobalArgs {
 
 function dataDbPath(dataDir: string): string {
   return path.join(dataDir, SERVER_DB_NAME);
+}
+
+function dataConfigPath(dataDir: string): string {
+  return path.join(dataDir, 'monky.json');
+}
+
+interface LocalConfig {
+  port?: number;
+}
+
+function readLocalConfig(dataDir: string): LocalConfig {
+  const configPath = dataConfigPath(dataDir);
+  if (!fs.existsSync(configPath)) return {};
+  try {
+    return JSON.parse(fs.readFileSync(configPath, 'utf8'));
+  } catch {
+    return {};
+  }
+}
+
+function writeLocalConfig(dataDir: string, config: LocalConfig): void {
+  fs.writeFileSync(dataConfigPath(dataDir), JSON.stringify(config, null, 2), 'utf8');
 }
 
 function formatDataDirForPrompt(dataDir: string): string {
@@ -870,11 +895,13 @@ async function showConfig(ctx: CliContext): Promise<void> {
     throw new Error('Servidor não encontrado.');
   }
 
+  const localConfig = readLocalConfig(ctx.dataDir);
   const owner = server.ownerUserId ? await ctx.userRepo.findById(server.ownerUserId) : null;
   console.log(color('Configuração do servidor', ANSI.bold));
   console.log(`dataDir: ${ctx.dataDir}`);
   console.log(`id: ${server.id}`);
   console.log(`name: ${server.name}`);
+  console.log(`port: ${localConfig.port || LIMITS.DEFAULT_PORT}`);
   console.log(`hasPassword: ${formatBool(Boolean(server.passwordHash))}`);
   console.log(`maxUsers: ${server.maxUsers}`);
   console.log(`ownerUserId: ${server.ownerUserId ?? '-'}`);
@@ -901,9 +928,13 @@ async function setConfig(ctx: CliContext, key: string, value?: string): Promise<
     throw new Error('Servidor não encontrado.');
   }
 
+  const localConfig = readLocalConfig(ctx.dataDir);
+
   const currentValues: Record<ConfigKey, string> = {
     name: server.name,
     password: '',
+    port: String(localConfig.port || LIMITS.DEFAULT_PORT),
+    icon: server.iconPath ?? '',
     maxUsers: String(server.maxUsers),
     allowSoundboard: String(server.allowSoundboard !== false),
     maxAttachmentFileBytes: String(server.maxAttachmentFileBytes ?? ''),
@@ -919,6 +950,12 @@ async function setConfig(ctx: CliContext, key: string, value?: string): Promise<
         break;
       case 'password':
         nextValue = await promptPassword('Senha do servidor (deixe vazio para remover): ');
+        break;
+      case 'port':
+        nextValue = await ask('Porta do servidor', currentValues.port);
+        break;
+      case 'icon':
+        nextValue = await ask('Caminho da imagem do servidor (deixe vazio para remover)');
         break;
       case 'allowSoundboard':
         nextValue = await askChoice('Permitir soundboard?', ['true', 'false']);
@@ -951,6 +988,33 @@ async function setConfig(ctx: CliContext, key: string, value?: string): Promise<
       await ctx.serverRepo.updateServer({
         passwordHash: shouldClear ? '' : PasswordService.hashPassword(nextValue),
       });
+      break;
+    }
+    case 'port': {
+      const portNum = parsePositiveInt('port', nextValue);
+      const config = readLocalConfig(ctx.dataDir);
+      config.port = portNum;
+      writeLocalConfig(ctx.dataDir, config);
+      console.log(color('A nova porta será usada no próximo "monky start".', ANSI.dim));
+      break;
+    }
+    case 'icon': {
+      const iconValue = nextValue.trim();
+      if (!iconValue || ['clear', 'none', 'remove'].includes(iconValue.toLowerCase())) {
+        await ctx.serverRepo.updateServer({ iconPath: null });
+        console.log(color('Ícone removido.', ANSI.dim));
+      } else {
+        const resolvedPath = path.resolve(iconValue);
+        if (!fs.existsSync(resolvedPath)) {
+          throw new Error(`Arquivo não encontrado: ${resolvedPath}`);
+        }
+        const destDir = path.join(ctx.dataDir, 'icons');
+        await fs.promises.mkdir(destDir, { recursive: true });
+        const ext = path.extname(resolvedPath);
+        const destPath = path.join(destDir, `server-icon${ext}`);
+        await fs.promises.copyFile(resolvedPath, destPath);
+        await ctx.serverRepo.updateServer({ iconPath: destPath });
+      }
       break;
     }
     case 'maxUsers':
@@ -1153,6 +1217,11 @@ async function bootstrapCommand(globalArgs: GlobalArgs, args: string[]): Promise
     await setConfig(ctx, 'password', serverPassword);
   });
 
+  // Save port in local config
+  const config = readLocalConfig(dataDir);
+  config.port = port;
+  writeLocalConfig(dataDir, config);
+
   if (await confirm('Deseja iniciar o servidor agora?', true)) {
     await startServerCommand({ ...globalArgs, dataDir }, ['--port', String(port), '--name', serverName]);
   }
@@ -1167,6 +1236,7 @@ async function loadStoredServer(dataDir: string): Promise<Awaited<ReturnType<Sql
 
 async function buildStartConfig(dataDir: string, args: string[]): Promise<ServerConfig> {
   const storedServer = await loadStoredServer(dataDir);
+  const localConfig = readLocalConfig(dataDir);
   const port = parseOption(args, '--port');
   const name = parseOption(args, '--name');
   const password = parseOption(args, '--password');
@@ -1175,7 +1245,7 @@ async function buildStartConfig(dataDir: string, args: string[]): Promise<Server
   const initialTextChannel = parseOption(args, '--text-channel');
 
   return {
-    port: port ? parsePositiveInt('port', port) : LIMITS.DEFAULT_PORT,
+    port: port ? parsePositiveInt('port', port) : (localConfig.port || LIMITS.DEFAULT_PORT),
     dataDir,
     serverName: name || storedServer?.name || DEFAULT_SERVER_NAME,
     password: storedServer ? '' : (password || ''),
@@ -1601,6 +1671,50 @@ async function disableAutoUpdate(): Promise<void> {
   console.log(color('Auto-update desabilitado.', ANSI.green));
 }
 
+async function destroyCommand(globalArgs: GlobalArgs): Promise<void> {
+  const dataDir = globalArgs.dataDirSpecified
+    ? globalArgs.dataDir
+    : resolveInputPath(await ask('Caminho dos dados do servidor a destruir', DEFAULT_DATA_INPUT));
+
+  if (!fs.existsSync(dataDir)) {
+    console.log(color(`Pasta não encontrada: ${dataDir}`, ANSI.yellow));
+    return;
+  }
+
+  console.log(color('⚠️  ATENÇÃO: Esta ação é IRREVERSÍVEL!', ANSI.red));
+  console.log(color(`Todos os dados do servidor em "${dataDir}" serão apagados:`, ANSI.red));
+  console.log(`  - Banco de dados (mensagens, membros, cargos)`);
+  console.log(`  - Arquivos anexados`);
+  console.log(`  - Avatares`);
+  console.log(`  - Configurações`);
+  console.log();
+
+  const confirmText = await ask(`Digite "DESTRUIR" para confirmar`);
+  if (confirmText !== 'DESTRUIR') {
+    console.log(color('Operação cancelada.', ANSI.yellow));
+    return;
+  }
+
+  const doubleConfirm = await confirm('Tem certeza absoluta? Isso não pode ser desfeito.', false);
+  if (!doubleConfirm) {
+    console.log(color('Operação cancelada.', ANSI.yellow));
+    return;
+  }
+
+  // Stop server if running
+  if (isPm2Available()) {
+    spawnSync('pm2', ['stop', PM2_PROCESS_NAME], { stdio: 'ignore', shell: true });
+    spawnSync('pm2', ['delete', PM2_PROCESS_NAME], { stdio: 'ignore', shell: true });
+    spawnSync('pm2', ['delete', UPDATER_PROCESS_NAME], { stdio: 'ignore', shell: true });
+    spawnSync('pm2', ['save'], { stdio: 'ignore', shell: true });
+  }
+
+  // Delete data directory
+  await fs.promises.rm(dataDir, { recursive: true, force: true });
+
+  console.log(color('Servidor destruído com sucesso. Todos os dados foram apagados.', ANSI.green));
+}
+
 async function runDataCommand(
   globalArgs: GlobalArgs,
   fn: (dataDir: string) => Promise<void>
@@ -1649,6 +1763,11 @@ async function runCommand(globalArgs: GlobalArgs): Promise<void> {
 
   if (section === 'update') {
     await updateCommand([action, ...rest].filter(Boolean));
+    return;
+  }
+
+  if (section === 'destroy') {
+    await destroyCommand(globalArgs);
     return;
   }
 
