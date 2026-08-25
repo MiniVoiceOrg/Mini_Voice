@@ -1,6 +1,6 @@
 # Monky CLI
 
-O `monky-cli` é a ferramenta de administração do servidor Monky para cenários
+O `monky` é a ferramenta de administração do servidor Monky para cenários
 de VPS, Docker ou qualquer ambiente sem cliente gráfico. Ele abre o mesmo banco
 `server.db` usado pelo servidor e executa alterações diretamente no SQLite.
 
@@ -143,3 +143,4 @@ O CLI irá:
 
 Depois disso, ao entrar no servidor com essa mesma identidade, você já terá
 controle administrativo completo.
+
