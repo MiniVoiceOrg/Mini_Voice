@@ -15,11 +15,15 @@ let screenAudio = null;
 try {
     screenAudio = require('@mini-voice/screen-audio');
 }
-catch {
+catch (e) {
+    console.warn('[ScreenAudio:Main] Native module not available:', e.message);
     screenAudio = null;
 }
-function setupIpcHandlers(mainWindow, serverManager) {
+function setupIpcHandlers(mainWindow, serverManager, trayManager) {
     const lanDiscovery = new lanDiscovery_1.LanDiscovery(mainWindow);
+    electron_1.ipcMain.handle('tray:update-voice-status', (_, status) => {
+        trayManager?.updateVoiceStatus(status);
+    });
     electron_1.ipcMain.handle('window:maximize', () => {
         if (!mainWindow || mainWindow.isDestroyed())
             return;
@@ -108,6 +112,24 @@ function setupIpcHandlers(mainWindow, serverManager) {
             base64: `data:${mime};base64,${base64}`,
         };
     });
+    // Custom sound file selection (#7)
+    electron_1.ipcMain.handle('dialog-select-sound-file', async () => {
+        const result = await electron_1.dialog.showOpenDialog(mainWindow, {
+            title: 'Selecionar Arquivo de Som',
+            filters: [
+                { name: 'Áudio (WAV, MP3, OGG)', extensions: ['wav', 'mp3', 'ogg', 'webm'] },
+            ],
+            properties: ['openFile'],
+        });
+        if (result.canceled || result.filePaths.length === 0)
+            return null;
+        const filePath = result.filePaths[0];
+        const buffer = fs_1.default.readFileSync(filePath);
+        const ext = path_1.default.extname(filePath).toLowerCase().replace('.', '');
+        const mime = ext === 'mp3' ? 'audio/mpeg' : ext === 'ogg' ? 'audio/ogg' : ext === 'webm' ? 'audio/webm' : 'audio/wav';
+        const base64 = buffer.toString('base64');
+        return `data:${mime};base64,${base64}`;
+    });
     // Soundboard Folder Selection
     electron_1.ipcMain.handle('dialog-select-soundboard-folder', async () => {
         const result = await electron_1.dialog.showOpenDialog(mainWindow, {
@@ -188,6 +210,33 @@ function setupIpcHandlers(mainWindow, serverManager) {
             return null;
         }
     });
+    // Soundboard Global Shortcuts Registration
+    electron_1.ipcMain.handle('soundboard-register-shortcuts', (_, shortcuts) => {
+        try {
+            electron_1.globalShortcut.unregisterAll();
+            if (!Array.isArray(shortcuts))
+                return true;
+            for (const item of shortcuts) {
+                if (!item.accelerator || !item.soundName)
+                    continue;
+                try {
+                    electron_1.globalShortcut.register(item.accelerator, () => {
+                        if (mainWindow && !mainWindow.isDestroyed()) {
+                            mainWindow.webContents.send('soundboard-shortcut-triggered', item.soundName);
+                        }
+                    });
+                }
+                catch (err) {
+                    console.warn(`[main] Failed to register global shortcut "${item.accelerator}" for "${item.soundName}":`, err);
+                }
+            }
+            return true;
+        }
+        catch (e) {
+            console.warn('[main] Error in soundboard-register-shortcuts:', e);
+            return false;
+        }
+    });
     // Window Controls
     electron_1.ipcMain.handle('window-minimize', () => {
         mainWindow.minimize();
@@ -254,16 +303,42 @@ function setupIpcHandlers(mainWindow, serverManager) {
     electron_1.ipcMain.handle('screen-audio-supported', () => {
         return screenAudio ? screenAudio.isSupported() : false;
     });
-    electron_1.ipcMain.handle('screen-audio-start', () => {
+    electron_1.ipcMain.handle('screen-audio-diagnose', () => {
+        const os = require('os');
+        const release = os.release();
+        return {
+            nativeModuleLoaded: screenAudio !== null,
+            platformSupported: screenAudio ? screenAudio.isSupported() : false,
+            osVersion: `${os.platform()} ${release}`,
+            pid: process.pid,
+            captureStatus: screenAudio ? screenAudio.getStatus() : -1,
+            lastError: screenAudio ? screenAudio.getLastError() : 'Module not loaded',
+        };
+    });
+    electron_1.ipcMain.handle('screen-audio-start', (_event, sourceId) => {
         if (!screenAudio || !screenAudio.isSupported()) {
             return { success: false, error: 'Not supported on this platform' };
         }
         const excludePid = process.pid;
-        const result = screenAudio.start({ excludePid, sampleRate: 48000, channels: 2 }, (buffer) => {
+        // Electron encodes a window source id as `window:<HWND>:<n>`. When the user
+        // shares a single application window, capture only that app's audio
+        // (INCLUDE its process tree) instead of the whole PC.
+        let includeHwnd = 0;
+        if (sourceId && sourceId.startsWith('window:')) {
+            const parsed = Number.parseInt(sourceId.split(':')[1] ?? '', 10);
+            if (Number.isFinite(parsed) && parsed > 0)
+                includeHwnd = parsed;
+        }
+        const opts = { excludePid, sampleRate: 48000, channels: 2 };
+        if (includeHwnd)
+            opts.includeHwnd = includeHwnd;
+        console.log(`[ScreenAudio:Main] Starting capture (excludePid=${excludePid}, includeHwnd=${includeHwnd || 'none'}, source=${sourceId ?? 'screen'})`);
+        const result = screenAudio.start(opts, (buffer) => {
             if (!mainWindow.isDestroyed()) {
                 mainWindow.webContents.send('screen-audio:frame', buffer);
             }
         });
+        console.log(`[ScreenAudio:Main] start() result:`, result);
         return result;
     });
     electron_1.ipcMain.handle('screen-audio-stop', () => {

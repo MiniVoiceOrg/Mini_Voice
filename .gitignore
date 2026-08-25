@@ -1,14 +1,79 @@
+# Dependências
 node_modules/
+.pnp
+.pnp.js
+
+# Builds e Distribuição
 dist/
-build/
+dist-electron/
+/build/
+!apps/client/build/**
 out/
-data/
 release/
+artifacts/
+*.tsbuildinfo
+
+# Módulos Nativos compilados (C/C++)
+*.node
+*.pdb
+*.obj
+*.lib
+*.exp
+*.o
+apps/client/native/screen-audio/build/
+
+# Variáveis de Ambiente e Segredos
+.env
+.env.*
+*.env
+*.local
+.secrets
+*.secret
+*credentials*.json
+*service-account*.json
+client-id.json
+
+# Chaves Privadas, Certificados e Code Signing
+*.pem
+*.key
+*.pfx
+*.p12
+*.cer
+*.crt
+*.csr
+*.keystore
+*.jks
+
+# Bancos de Dados e Dados Persistentes
+data/
+storage/
+avatars/
+uploads/
+*.db
+*.db-*
+*.sqlite
+*.sqlite3
+*.sqlite-*
+
+# Logs e Dumps
 *.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+*.dump
+crash.dump
+
+# Configurações de IDE e SO
 .DS_Store
 Thumbs.db
-*.local
-*.env
-client-id.json
-mini_voice.db
-mini_voice.db*
+.vscode/*
+!.vscode/extensions.json
+!.vscode/settings.json
+.idea/
+*.code-workspace
+
+# Preload transpilado no diretório src (se gerado localmente)
+apps/client/src/preload/*.js
+apps/client/src/preload/*.d.ts
+apps/client/src/preload/*.map

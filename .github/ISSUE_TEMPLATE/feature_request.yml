@@ -1,0 +1,67 @@
+name: ✨ Feature aprovada (vinda das Ideias)
+description: Transformar uma ideia já discutida e votada em um card pronto para o board.
+labels: ['enhancement']
+body:
+  - type: markdown
+    attributes:
+      value: |
+        ### Este template é o **segundo passo**, não o primeiro
+
+        Ideias novas nascem em
+        [Discussions › Ideias](https://github.com/MiniVoiceOrg/Mini_Voice/discussions/categories/ideias),
+        onde a comunidade vota. Quando uma ideia é selecionada para um ciclo, ela vira
+        uma issue com este template — com escopo e critérios de aceite fechados, porque
+        é assim que ela entra no [board](https://github.com/orgs/MiniVoiceOrg/projects/1).
+
+        Se você quer **propor** algo, use as Discussions. Se você quer **implementar**
+        algo já aprovado, este é o lugar.
+
+  - type: input
+    id: origem
+    attributes:
+      label: Ideia de origem
+      description: Link da discussão que originou esta feature (e quantos votos ela teve).
+      placeholder: https://github.com/MiniVoiceOrg/Mini_Voice/discussions/123 — 18 votos
+    validations:
+      required: false
+
+  - type: textarea
+    id: problema
+    attributes:
+      label: Problema
+      description: Que dor isso resolve, para quem? Descreva a situação, não a solução.
+      placeholder: |
+        Quem hospeda um servidor para o grupo não tem como saber quem entrou enquanto
+        estava fora — o histórico de entradas e saídas some ao fechar o app.
+    validations:
+      required: true
+
+  - type: textarea
+    id: solucao
+    attributes:
+      label: Solução proposta
+      description: O que exatamente será construído. Inclua o comportamento de UI, se houver.
+    validations:
+      required: true
+
+  - type: textarea
+    id: criterios
+    attributes:
+      label: Critérios de aceite
+      description: |
+        Lista objetiva do que precisa ser verdade para o QA aprovar. Uma issue sem
+        critérios claros é devolvida antes de entrar em `In progress`.
+      value: |
+        - [ ] 
+        - [ ] 
+        - [ ] 
+    validations:
+      required: true
+
+  - type: textarea
+    id: fora-de-escopo
+    attributes:
+      label: Fora de escopo
+      description: O que deliberadamente **não** entra nesta issue (evita o escopo crescer sozinho).
+    validations:
+      required: false

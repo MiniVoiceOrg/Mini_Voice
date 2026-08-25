@@ -1,4 +1,5 @@
 import { escapeHtml } from '../utils/html';
+import { settingsStore } from '../stores/settingsStore';
 
 const DISMISSED_KEY = 'mini_voice_dismissed_update';
 const CHECK_INTERVAL_MS = 60 * 60 * 1000; // 1 hour
@@ -30,6 +31,14 @@ class UpdateService {
   public async init(): Promise<void> {
     if (!window.api?.checkForUpdates) {
       return;
+    }
+
+    // Tell the main process which channel (stable/beta) to use before the first
+    // check runs, so detection and downloads honour the user's preference.
+    try {
+      await window.api.setUpdateChannel?.(settingsStore.updateBetaChannel);
+    } catch {
+      // Non-fatal: defaults to the stable channel.
     }
 
     this.bindUpdateEvents();

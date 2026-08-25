@@ -14,6 +14,13 @@ export const messageContentSchema = z
   .max(LIMITS.MAX_MESSAGE_LENGTH, `Mensagem não pode exceder ${LIMITS.MAX_MESSAGE_LENGTH} caracteres`)
   .transform((val) => val.trim());
 
+// Optional caption for an attachment message (#11). Unlike messageContentSchema
+// it allows an empty string, because an attachments-only message carries no text.
+export const attachmentCaptionSchema = z
+  .string()
+  .max(LIMITS.MAX_MESSAGE_LENGTH, `Mensagem não pode exceder ${LIMITS.MAX_MESSAGE_LENGTH} caracteres`)
+  .transform((val) => val.trim());
+
 export const channelNameSchema = z
   .string()
   .min(LIMITS.MIN_CHANNEL_NAME_LENGTH, `Nome do canal deve ter pelo menos ${LIMITS.MIN_CHANNEL_NAME_LENGTH} caracteres`)

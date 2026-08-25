@@ -13,11 +13,13 @@ export interface PeerSession {
   peerUserId: string;
   pc: RTCPeerConnection;
   remoteStream: MediaStream;
+  remoteScreenStream: MediaStream;
   isPolite: boolean;
   makingOffer: boolean;
   candidateQueue: RTCIceCandidateInit[];
   audioSender?: RTCRtpSender | null;
   videoSender?: RTCRtpSender | null;
+  screenVideoSender?: RTCRtpSender | null;
   screenAudioSender?: RTCRtpSender | null;
 }
 
@@ -34,12 +36,20 @@ export class WebRtcManager {
   private audioElements: Map<string, HTMLAudioElement> = new Map();
   private screenAudioElements: Map<string, HTMLAudioElement> = new Map();
   private screenAudioStreamIds: Set<string> = new Set();
+  private screenVideoStreamIds: Set<string> = new Set();
+  // Tracks received before screen-audio-meta arrived, keyed by streamId
+  private pendingScreenAudioTracks: Map<string, { track: MediaStreamTrack; peerUserId: string }> = new Map();
+  // Screen video tracks received before screen-video-meta arrived, keyed by streamId
+  private pendingScreenVideoTracks: Map<string, { track: MediaStreamTrack; peerUserId: string }> = new Map();
   private remoteAudioVads: Map<string, { ctx: AudioContext; interval: any }> = new Map();
   private localAudioTrack: MediaStreamTrack | null = null;
   private localCameraTrack: MediaStreamTrack | null = null;
   private localScreenTrack: MediaStreamTrack | null = null;
   private localScreenAudioTrack: MediaStreamTrack | null = null;
+  private screenAudioStream: MediaStream | null = null;
   private screenAudioStreamId: string | null = null;
+  private screenVideoStream: MediaStream | null = null;
+  private screenVideoStreamId: string | null = null;
   private currentPreset: QualityPresetType = 'NORMAL';
   private currentUserId: string = '';
 
@@ -81,6 +91,125 @@ export class WebRtcManager {
     });
   }
 
+  /**
+   * Route a screen audio track to a dedicated <audio> element for a peer.
+   */
+  private routeScreenAudioTrack(peerUserId: string, track: MediaStreamTrack): void {
+    let screenAudioEl = this.screenAudioElements.get(peerUserId);
+    if (!screenAudioEl) {
+      screenAudioEl = document.createElement('audio');
+      screenAudioEl.autoplay = true;
+      // #150: start silent — screen audio is gated behind "Assistir transmissão"
+      // in the stage view, which unmutes this element when the viewer opts in.
+      screenAudioEl.muted = true;
+      screenAudioEl.setAttribute('data-screen-audio-user', peerUserId);
+      document.body.appendChild(screenAudioEl);
+      this.screenAudioElements.set(peerUserId, screenAudioEl);
+    }
+    const screenStream = new MediaStream([track]);
+    screenAudioEl.srcObject = screenStream;
+    const participant = participantManager.get(peerUserId);
+    const clientId = participant?.user.clientId;
+    const volume = clientId ? settingsStore.getScreenAudioVolume(clientId) : 100;
+    screenAudioEl.volume = volume / 100;
+    this.applySinkToElement(screenAudioEl).finally(() => {
+      screenAudioEl!.play().catch((e) => console.warn('[WebRTC] Screen audio play error:', e));
+    });
+    track.onended = () => {
+      if (screenAudioEl) {
+        screenAudioEl.srcObject = null;
+      }
+    };
+  }
+
+  /**
+   * Route a screen video track into the peer's dedicated screen MediaStream so
+   * the stage can render it as a separate tile from the camera (#26).
+   */
+  private routeScreenVideoTrack(peerUserId: string, track: MediaStreamTrack): void {
+    const session = this.peers.get(peerUserId);
+    if (!session) return;
+
+    // If it was provisionally added to the camera stream (meta arrived late),
+    // move it out so it doesn't render as the camera.
+    if (session.remoteStream.getTrackById(track.id)) {
+      session.remoteStream.removeTrack(track);
+      participantManager.setRemoteStream(peerUserId, session.remoteStream);
+    }
+
+    // Replace any previous screen video track with this one.
+    session.remoteScreenStream.getVideoTracks().forEach((old) => {
+      if (old.id !== track.id) session.remoteScreenStream.removeTrack(old);
+    });
+    if (!session.remoteScreenStream.getTrackById(track.id)) {
+      session.remoteScreenStream.addTrack(track);
+    }
+    participantManager.setRemoteScreenStream(peerUserId, session.remoteScreenStream);
+
+    const attach = (el: HTMLVideoElement | null) => {
+      if (el) {
+        el.muted = true;
+        if (el.srcObject !== session.remoteScreenStream) {
+          el.srcObject = session.remoteScreenStream;
+        }
+        el.play().catch(() => {});
+      }
+    };
+    attach(document.getElementById(`video-${peerUserId}-screen`) as HTMLVideoElement | null);
+    attach(document.getElementById(`video-mini-${peerUserId}-screen`) as HTMLVideoElement | null);
+
+    track.onended = () => {
+      session.remoteScreenStream.removeTrack(track);
+      participantManager.setRemoteScreenStream(peerUserId, session.remoteScreenStream);
+    };
+  }
+
+  /**
+   * Wait for a peer connection's signaling state to become 'stable'.
+   * Returns immediately if already stable, otherwise waits up to timeoutMs.
+   */
+  private waitForStable(pc: RTCPeerConnection, timeoutMs = 5000): Promise<void> {
+    if (pc.signalingState === 'stable') return Promise.resolve();
+    return new Promise<void>((resolve) => {
+      const onStateChange = () => {
+        if (pc.signalingState === 'stable') {
+          pc.removeEventListener('signalingstatechange', onStateChange);
+          clearTimeout(timer);
+          resolve();
+        }
+      };
+      const timer = setTimeout(() => {
+        pc.removeEventListener('signalingstatechange', onStateChange);
+        resolve(); // resolve anyway to avoid blocking forever
+      }, timeoutMs);
+      pc.addEventListener('signalingstatechange', onStateChange);
+    });
+  }
+
+  /**
+   * True if any local sender track sits on a transceiver that has never been
+   * negotiated (mid === null). This happens when an offer that would have
+   * negotiated the track was discarded by an offer-collision rollback — leaving
+   * e.g. the screen-audio track added locally but never sent over the wire.
+   */
+  private hasUnnegotiatedSenders(pc: RTCPeerConnection): boolean {
+    return pc.getTransceivers().some((t) => !!t.sender.track && t.mid === null);
+  }
+
+  /**
+   * Re-send an offer when the connection is stable but still has a local track
+   * that was never negotiated (see hasUnnegotiatedSenders). This recovers the
+   * screen-audio track after a glare/rollback during screen sharing, where the
+   * video and audio renegotiations collide and the audio offer is dropped.
+   */
+  private async renegotiateIfNeeded(session: PeerSession): Promise<void> {
+    const pc = session.pc;
+    if (pc.signalingState === 'stable' && !session.makingOffer && this.hasUnnegotiatedSenders(pc)) {
+      console.log(`[WebRTC] Re-negotiating dropped track(s) for ${session.peerUserId}`);
+      await this.sendOffer(session);
+    }
+  }
+
   public async connectToPeer(peerUserId: string, isInitiator: boolean): Promise<void> {
     if (this.peers.has(peerUserId)) {
       return;
@@ -94,6 +223,7 @@ export class WebRtcManager {
       peerUserId,
       pc,
       remoteStream,
+      remoteScreenStream: new MediaStream(),
       isPolite,
       makingOffer: false,
       candidateQueue: [],
@@ -107,16 +237,30 @@ export class WebRtcManager {
       pc.addTransceiver('audio', { direction: 'sendrecv' });
     }
 
-    // Setup Video Transceiver (Camera or Screen)
-    const activeVideoTrack = this.localScreenTrack || this.localCameraTrack;
-    if (activeVideoTrack) {
-      session.videoSender = pc.addTrack(activeVideoTrack, new MediaStream([activeVideoTrack]));
+    // Setup Video Transceiver (Camera on the primary video m-line). Screen
+    // share now rides its own second sender (see below) so camera + screen can
+    // be sent simultaneously as two independent tiles (#26).
+    if (this.localCameraTrack) {
+      session.videoSender = pc.addTrack(this.localCameraTrack, new MediaStream([this.localCameraTrack]));
     } else {
       pc.addTransceiver('video', { direction: 'sendrecv' });
     }
 
+    // Setup Screen Video Track as a dedicated second sender (if currently
+    // sharing). Announce the stream ID first so the receiver can tell it apart
+    // from the camera track (mirrors the screen-audio-meta mechanism).
+    if (this.localScreenTrack && this.screenVideoStream) {
+      networkClient.send(MessageType.RTC_SIGNAL, {
+        targetUserId: peerUserId,
+        fromUserId: this.currentUserId,
+        signalType: 'screen-video-meta',
+        streamId: this.screenVideoStreamId,
+      });
+      session.screenVideoSender = pc.addTrack(this.localScreenTrack, this.screenVideoStream);
+    }
+
     // Setup Screen Audio Track (if currently sharing)
-    if (this.localScreenAudioTrack && this.screenAudioStreamId) {
+    if (this.localScreenAudioTrack && this.screenAudioStream) {
       // Announce stream ID before adding track
       networkClient.send(MessageType.RTC_SIGNAL, {
         targetUserId: peerUserId,
@@ -124,8 +268,7 @@ export class WebRtcManager {
         signalType: 'screen-audio-meta',
         streamId: this.screenAudioStreamId,
       });
-      const screenAudioStream = new MediaStream([this.localScreenAudioTrack]);
-      session.screenAudioSender = pc.addTrack(this.localScreenAudioTrack, screenAudioStream);
+      session.screenAudioSender = pc.addTrack(this.localScreenAudioTrack, this.screenAudioStream);
     }
 
     // ICE Candidate handler
@@ -144,33 +287,39 @@ export class WebRtcManager {
     pc.ontrack = (event) => {
       console.log(`[WebRTC] Received remote track (${event.track.kind}) from ${peerUserId}`);
 
-      // Check if this is a screen audio track
+      // Check if this is a screen audio track — either by known stream ID
+      // or by detecting it as a 2nd audio track (the first is the mic).
       const incomingStreamId = event.streams?.[0]?.id;
-      if (event.track.kind === 'audio' && incomingStreamId && this.screenAudioStreamIds.has(incomingStreamId)) {
-        // Screen audio track — route to dedicated element with per-user volume (#75)
-        let screenAudioEl = this.screenAudioElements.get(peerUserId);
-        if (!screenAudioEl) {
-          screenAudioEl = document.createElement('audio');
-          screenAudioEl.autoplay = true;
-          screenAudioEl.setAttribute('data-screen-audio-user', peerUserId);
-          document.body.appendChild(screenAudioEl);
-          this.screenAudioElements.set(peerUserId, screenAudioEl);
-        }
-        const screenStream = new MediaStream([event.track]);
-        screenAudioEl.srcObject = screenStream;
-        const participant = participantManager.get(peerUserId);
-        const clientId = participant?.user.clientId;
-        const volume = clientId ? settingsStore.getScreenAudioVolume(clientId) : 100;
-        screenAudioEl.volume = volume / 100;
-        this.applySinkToElement(screenAudioEl).finally(() => {
-          screenAudioEl!.play().catch((e) => console.warn('[WebRTC] Screen audio play error:', e));
-        });
+      const isKnownScreenAudio = event.track.kind === 'audio' && incomingStreamId && this.screenAudioStreamIds.has(incomingStreamId);
+      const existingMicAudio = remoteStream.getAudioTracks().length > 0;
+      const isExtraAudioTrack = event.track.kind === 'audio' && existingMicAudio && incomingStreamId && !remoteStream.getTrackById(event.track.id);
 
-        event.track.onended = () => {
-          if (screenAudioEl) {
-            screenAudioEl.srcObject = null;
-          }
-        };
+      if (isKnownScreenAudio || isExtraAudioTrack) {
+        console.log(`[WebRTC] Routing screen audio track from ${peerUserId} (known=${isKnownScreenAudio}, extra=${isExtraAudioTrack}, streamId=${incomingStreamId})`);
+        // If meta hasn't arrived yet, store for potential reclassification
+        if (!isKnownScreenAudio && incomingStreamId) {
+          this.pendingScreenAudioTracks.set(incomingStreamId, { track: event.track, peerUserId });
+        }
+        this.routeScreenAudioTrack(peerUserId, event.track);
+        return;
+      }
+
+      // Check if this is a screen VIDEO track — either by known stream ID or by
+      // detecting it as a 2nd video track (the first is the camera). Screen
+      // video is announced via screen-video-meta before the track arrives, so
+      // isKnownScreenVideo is reliable even when the peer has no camera (#26).
+      const isKnownScreenVideo =
+        event.track.kind === 'video' && !!incomingStreamId && this.screenVideoStreamIds.has(incomingStreamId);
+      const existingCameraVideo = remoteStream.getVideoTracks().length > 0;
+      const isExtraVideoTrack =
+        event.track.kind === 'video' && existingCameraVideo && !!incomingStreamId && !remoteStream.getTrackById(event.track.id);
+
+      if (isKnownScreenVideo || isExtraVideoTrack) {
+        console.log(`[WebRTC] Routing screen video track from ${peerUserId} (known=${isKnownScreenVideo}, extra=${isExtraVideoTrack}, streamId=${incomingStreamId})`);
+        if (!isKnownScreenVideo && incomingStreamId) {
+          this.pendingScreenVideoTracks.set(incomingStreamId, { track: event.track, peerUserId });
+        }
+        this.routeScreenVideoTrack(peerUserId, event.track);
         return;
       }
 
@@ -210,7 +359,7 @@ export class WebRtcManager {
       }
 
       if (event.track.kind === 'video') {
-        const videoEl = document.getElementById(`video-${peerUserId}`) as HTMLVideoElement;
+        const videoEl = document.getElementById(`video-${peerUserId}-camera`) as HTMLVideoElement;
         if (videoEl) {
           // Audio is routed exclusively through the dedicated <audio> element so
           // it can honour per-user volume, deafen and speaker selection. Keep
@@ -220,7 +369,7 @@ export class WebRtcManager {
           videoEl.srcObject = remoteStream;
           videoEl.play().catch((e) => console.warn('[WebRTC] Video play error:', e));
         }
-        const miniVideoEl = document.getElementById(`video-mini-${peerUserId}`) as HTMLVideoElement;
+        const miniVideoEl = document.getElementById(`video-mini-${peerUserId}-camera`) as HTMLVideoElement;
         if (miniVideoEl) {
           miniVideoEl.muted = true;
           miniVideoEl.srcObject = remoteStream;
@@ -251,13 +400,13 @@ export class WebRtcManager {
             });
           }
         } else if (event.track.kind === 'video') {
-          const videoEl = document.getElementById(`video-${peerUserId}`) as HTMLVideoElement;
+          const videoEl = document.getElementById(`video-${peerUserId}-camera`) as HTMLVideoElement;
           if (videoEl) {
             videoEl.muted = true;
             videoEl.srcObject = remoteStream;
             videoEl.play().catch(() => {});
           }
-          const miniVideoEl = document.getElementById(`video-mini-${peerUserId}`) as HTMLVideoElement;
+          const miniVideoEl = document.getElementById(`video-mini-${peerUserId}-camera`) as HTMLVideoElement;
           if (miniVideoEl) {
             miniVideoEl.muted = true;
             miniVideoEl.srcObject = remoteStream;
@@ -312,6 +461,28 @@ export class WebRtcManager {
     if (signalType === 'screen-audio-meta') {
       if (streamId) {
         this.screenAudioStreamIds.add(streamId);
+        // If ontrack already fired before this meta arrived, reclassify the pending track
+        const pending = this.pendingScreenAudioTracks.get(streamId);
+        if (pending) {
+          console.log(`[WebRTC] Reclassifying pending track as screen audio for ${pending.peerUserId}`);
+          this.pendingScreenAudioTracks.delete(streamId);
+          // Already routed by ontrack — no further action needed
+        }
+      }
+      return;
+    }
+
+    // Handle screen-video-meta: register the stream ID so ontrack can route it
+    // to the dedicated screen tile instead of the camera tile (#26).
+    if (signalType === 'screen-video-meta') {
+      if (streamId) {
+        this.screenVideoStreamIds.add(streamId);
+        const pending = this.pendingScreenVideoTracks.get(streamId);
+        if (pending) {
+          console.log(`[WebRTC] Reclassifying pending track as screen video for ${pending.peerUserId}`);
+          this.pendingScreenVideoTracks.delete(streamId);
+          this.routeScreenVideoTrack(pending.peerUserId, pending.track);
+        }
       }
       return;
     }
@@ -367,17 +538,24 @@ export class WebRtcManager {
           }
         }
 
-        // 2. Ensure active local video track (camera or screen) is attached in the answer
-        const activeVideoTrack = this.localScreenTrack || this.localCameraTrack;
+        // 2. Ensure the primary (camera) local video track is attached in the
+        //    answer. The camera m-line is always created first, so the first
+        //    video transceiver that isn't the screen sender is the camera one.
+        //    Screen share rides its own second sender and is negotiated
+        //    separately (via screen-video-meta + renegotiateIfNeeded).
+        const cameraTrack = this.localCameraTrack;
         const transceivers = session.pc.getTransceivers();
         const videoTransceiver = transceivers.find(
-          (t) => t.receiver.track.kind === 'video' || t.sender.track?.kind === 'video'
+          (t) =>
+            (t.receiver.track.kind === 'video' || t.sender.track?.kind === 'video') &&
+            t.sender !== session.screenVideoSender
         );
         if (videoTransceiver) {
-          videoTransceiver.direction = activeVideoTrack ? 'sendrecv' : 'recvonly';
-          await videoTransceiver.sender.replaceTrack(activeVideoTrack);
-        } else if (activeVideoTrack) {
-          session.videoSender = session.pc.addTrack(activeVideoTrack, new MediaStream([activeVideoTrack]));
+          videoTransceiver.direction = cameraTrack ? 'sendrecv' : 'recvonly';
+          await videoTransceiver.sender.replaceTrack(cameraTrack);
+          session.videoSender = videoTransceiver.sender;
+        } else if (cameraTrack) {
+          session.videoSender = session.pc.addTrack(cameraTrack, new MediaStream([cameraTrack]));
         }
 
         const answer = await session.pc.createAnswer();
@@ -391,6 +569,10 @@ export class WebRtcManager {
         });
 
         this.applyBitrateConstraints();
+        // After answering a remote offer the connection is stable again; if a
+        // local track (e.g. screen audio) was left un-negotiated by a prior
+        // offer collision, re-offer it now.
+        await this.renegotiateIfNeeded(session);
       } else if (signalType === 'answer' && sdp) {
         if (session.pc.signalingState === 'have-local-offer') {
           await session.pc.setRemoteDescription(new RTCSessionDescription(sdp));
@@ -404,6 +586,9 @@ export class WebRtcManager {
           }
 
           this.applyBitrateConstraints();
+          // Connection is stable after applying the answer; re-offer any track
+          // that is still un-negotiated (recovers dropped screen-audio track).
+          await this.renegotiateIfNeeded(session);
         }
       } else if (signalType === 'candidate' && candidate) {
         if (session.pc.remoteDescription && session.pc.remoteDescription.type) {
@@ -451,14 +636,72 @@ export class WebRtcManager {
 
   public async setLocalCameraTrack(track: MediaStreamTrack | null): Promise<void> {
     this.localCameraTrack = track;
-    const activeVideoTrack = this.localScreenTrack || this.localCameraTrack;
-    await this.updateVideoTrackAcrossPeers(activeVideoTrack);
+    // Camera rides the primary video sender only; screen share has its own
+    // dedicated sender so both can be sent at once (#26).
+    await this.updateVideoTrackAcrossPeers(track);
   }
 
+  /**
+   * Set the local screen video track and add it to all peers as a dedicated
+   * second video sender (mirrors setLocalScreenAudioTrack). Announces the
+   * stream ID via screen-video-meta before adding the track so receivers render
+   * it as a separate tile from the camera (#26).
+   */
   public async setLocalScreenTrack(track: MediaStreamTrack | null): Promise<void> {
     this.localScreenTrack = track;
-    const activeVideoTrack = this.localScreenTrack || this.localCameraTrack;
-    await this.updateVideoTrackAcrossPeers(activeVideoTrack);
+
+    if (track) {
+      // Wrap in a dedicated MediaStream so receivers can identify it.
+      const stream = new MediaStream([track]);
+      this.screenVideoStream = stream;
+      this.screenVideoStreamId = stream.id;
+
+      // Announce stream ID to all peers BEFORE adding the track.
+      for (const session of this.peers.values()) {
+        networkClient.send(MessageType.RTC_SIGNAL, {
+          targetUserId: session.peerUserId,
+          fromUserId: this.currentUserId,
+          signalType: 'screen-video-meta',
+          streamId: this.screenVideoStreamId,
+        });
+      }
+
+      // Add track to all peers — wait for stable signaling state before
+      // renegotiating, since a camera change may have just triggered an offer.
+      for (const session of this.peers.values()) {
+        try {
+          await this.waitForStable(session.pc);
+          if (session.screenVideoSender) {
+            await session.screenVideoSender.replaceTrack(track);
+          } else {
+            session.screenVideoSender = session.pc.addTrack(track, stream);
+          }
+          await this.sendOffer(session);
+          // Wait for the answer, then verify the track was actually negotiated.
+          await this.waitForStable(session.pc);
+          await this.renegotiateIfNeeded(session);
+        } catch (err) {
+          console.warn(`[WebRTC] Error adding screen video track for ${session.peerUserId}:`, err);
+        }
+      }
+      this.applyBitrateConstraints();
+    } else {
+      // Remove screen video track from all peers.
+      for (const session of this.peers.values()) {
+        if (session.screenVideoSender) {
+          try {
+            await this.waitForStable(session.pc);
+            session.pc.removeTrack(session.screenVideoSender);
+            session.screenVideoSender = null;
+            await this.sendOffer(session);
+          } catch (err) {
+            console.warn(`[WebRTC] Error removing screen video track for ${session.peerUserId}:`, err);
+          }
+        }
+      }
+      this.screenVideoStream = null;
+      this.screenVideoStreamId = null;
+    }
   }
 
   /**
@@ -469,8 +712,10 @@ export class WebRtcManager {
     this.localScreenAudioTrack = track;
 
     if (track) {
-      // Wrap in a dedicated MediaStream so receivers can identify it
+      // Wrap in a dedicated MediaStream so receivers can identify it.
+      // Store the stream so late-joining peers reuse the same ID.
       const stream = new MediaStream([track]);
+      this.screenAudioStream = stream;
       this.screenAudioStreamId = stream.id;
 
       // Announce stream ID to all peers BEFORE adding the track
@@ -483,13 +728,17 @@ export class WebRtcManager {
         });
       }
 
-      // Add track to all peers
+      // Add track to all peers — wait for stable signaling state before
+      // renegotiating, since screen video may have just triggered an offer.
       for (const session of this.peers.values()) {
         try {
+          await this.waitForStable(session.pc);
           session.screenAudioSender = session.pc.addTrack(track, stream);
-          if (session.pc.signalingState === 'stable') {
-            await this.sendOffer(session);
-          }
+          await this.sendOffer(session);
+          // Wait for the answer, then verify the track was actually negotiated.
+          // If a glare/rollback dropped the offer, re-send it now.
+          await this.waitForStable(session.pc);
+          await this.renegotiateIfNeeded(session);
         } catch (err) {
           console.warn(`[WebRTC] Error adding screen audio track for ${session.peerUserId}:`, err);
         }
@@ -499,16 +748,16 @@ export class WebRtcManager {
       for (const session of this.peers.values()) {
         if (session.screenAudioSender) {
           try {
+            await this.waitForStable(session.pc);
             session.pc.removeTrack(session.screenAudioSender);
             session.screenAudioSender = null;
-            if (session.pc.signalingState === 'stable') {
-              await this.sendOffer(session);
-            }
+            await this.sendOffer(session);
           } catch (err) {
             console.warn(`[WebRTC] Error removing screen audio track for ${session.peerUserId}:`, err);
           }
         }
       }
+      this.screenAudioStream = null;
       this.screenAudioStreamId = null;
     }
   }
@@ -517,8 +766,11 @@ export class WebRtcManager {
     for (const session of this.peers.values()) {
       try {
         const transceivers = session.pc.getTransceivers();
+        // Find the primary (camera) video transceiver, never the screen sender.
         const videoTransceiver = transceivers.find(
-          (t) => t.receiver.track.kind === 'video' || t.sender.track?.kind === 'video'
+          (t) =>
+            (t.receiver.track.kind === 'video' || t.sender.track?.kind === 'video') &&
+            t.sender !== session.screenVideoSender
         );
 
         if (videoTransceiver) {
@@ -528,7 +780,6 @@ export class WebRtcManager {
           session.videoSender = session.pc.addTrack(track, new MediaStream([track]));
         }
 
-        // Renegotiate if signaling state is stable
         if (session.pc.signalingState === 'stable') {
           await this.sendOffer(session);
         }

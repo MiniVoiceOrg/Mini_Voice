@@ -9,13 +9,18 @@ import {
   ChannelDeletedPayload,
   ChatHistoryPayload,
   ChatLoadHistoryPayload,
+  ChatMentionsReadPayload,
   ChatMessage,
+  ChatRequestUploadTokenPayload,
   ChatSendPayload,
+  ChatUploadTokenPayload,
   LIMITS,
   MessageType,
   ProtocolErrorCode,
   ProtocolMessage,
   ServerErrorPayload,
+  ServerInviteInfoPayload,
+  ServerNetworkInterface,
   ServerSettingsUpdatedPayload,
   ServerUpdateSettingsPayload,
   SoundboardPlayPayload,
@@ -36,11 +41,13 @@ import {
   WebRtcSignalPayload,
 } from '@mini-voice/shared';
 import { AuthService } from '../../application/services/AuthService';
+import { AttachmentService } from '../../application/services/AttachmentService';
 import { ChannelService } from '../../application/services/ChannelService';
 import { ChatService } from '../../application/services/ChatService';
 import { SignalingService } from '../../application/services/SignalingService';
 import { UserService } from '../../application/services/UserService';
 import { IServerRepository } from '../../domain/repositories';
+import { scanServerNetworkInterfaces } from '../discovery/ServerIpScanner';
 import { Logger } from '../logger/Logger';
 
 interface ClientSession {
@@ -69,7 +76,8 @@ export class WebSocketServer {
     private channelService: ChannelService,
     private chatService: ChatService,
     private signalingService: SignalingService,
-    private serverRepo: IServerRepository
+    private serverRepo: IServerRepository,
+    private attachmentService: AttachmentService
   ) {
     this.wss = new WSServer({ server: this.server });
     this.setupWss();
@@ -155,6 +163,14 @@ export class WebSocketServer {
         await this.handleChatLoadHistory(session, payload as ChatLoadHistoryPayload, requestId);
         break;
 
+      case MessageType.CHAT_MENTIONS_READ:
+        await this.handleChatMentionsRead(session, payload as ChatMentionsReadPayload);
+        break;
+
+      case MessageType.CHAT_REQUEST_UPLOAD_TOKEN:
+        this.handleRequestUploadToken(session, payload as ChatRequestUploadTokenPayload, requestId);
+        break;
+
       case MessageType.CHANNEL_CREATE:
         await this.handleChannelCreate(session, payload as ChannelCreatePayload, requestId);
         break;
@@ -193,6 +209,10 @@ export class WebSocketServer {
 
       case MessageType.SOUNDBOARD_PLAY:
         await this.handleSoundboardPlay(session, payload as SoundboardPlayPayload, requestId);
+        break;
+
+      case MessageType.SERVER_GET_INVITE_INFO:
+        await this.handleGetServerInviteInfo(session, requestId);
         break;
 
       case MessageType.USER_LOGOUT:
@@ -296,7 +316,12 @@ export class WebSocketServer {
   ): Promise<void> {
     if (!session.user) return;
 
-    const result = await this.chatService.sendMessage(session.user.id, payload.channelId, payload.content);
+    const result = await this.chatService.sendMessage(
+      session.user.id,
+      payload.channelId,
+      payload.content,
+      payload.attachmentIds
+    );
     if (!result.success || !result.message) {
       this.sendError(
         session.ws,
@@ -335,6 +360,38 @@ export class WebSocketServer {
       type: MessageType.CHAT_HISTORY,
       requestId,
       payload: historyPayload,
+    });
+  }
+
+  private async handleChatMentionsRead(
+    session: ClientSession,
+    payload: ChatMentionsReadPayload
+  ): Promise<void> {
+    if (!session.user) return;
+    await this.chatService.markMentionsRead(session.user.id, payload.channelId);
+  }
+
+  private handleRequestUploadToken(
+    session: ClientSession,
+    payload: ChatRequestUploadTokenPayload,
+    requestId?: string
+  ): void {
+    if (!session.user) return;
+    const issued = this.attachmentService.issueUploadToken(session.user.id, payload.channelId);
+    if (!issued) {
+      this.sendError(
+        session.ws,
+        ProtocolErrorCode.RATE_LIMITED,
+        'Muitos envios em pouco tempo. Aguarde alguns segundos.',
+        requestId
+      );
+      return;
+    }
+    const tokenPayload: ChatUploadTokenPayload = { token: issued.token, expiresAt: issued.expiresAt };
+    this.send(session.ws, {
+      type: MessageType.CHAT_UPLOAD_TOKEN,
+      requestId,
+      payload: tokenPayload,
     });
   }
 
@@ -479,6 +536,8 @@ export class WebSocketServer {
       name: result.name!,
       hasPassword: result.hasPassword!,
       allowSoundboard: result.allowSoundboard,
+      iconUrl: result.iconUrl,
+      attachmentStorage: result.attachmentStorage,
     };
 
     // Broadcast updated server settings to all clients
@@ -768,6 +827,33 @@ export class WebSocketServer {
       if (ws !== ignoreWs && ws.readyState === WebSocket.OPEN && session.user) {
         ws.send(raw);
       }
+    }
+  }
+
+  private async handleGetServerInviteInfo(session: ClientSession, requestId?: string): Promise<void> {
+    try {
+      const server = await this.serverRepo.getServer();
+      const addr = this.server.address();
+      const port = addr && typeof addr === 'object' ? addr.port : LIMITS.DEFAULT_PORT;
+      const networkInterfaces = await scanServerNetworkInterfaces();
+
+      this.send(session.ws, {
+        type: MessageType.SERVER_INVITE_INFO,
+        requestId,
+        payload: {
+          port,
+          serverName: server?.name || 'Mini Voice Server',
+          networkInterfaces,
+        },
+      });
+    } catch (err: any) {
+      Logger.error('NETWORK', 'Error generating server invite info', err);
+      this.sendError(
+        session.ws,
+        ProtocolErrorCode.INTERNAL_ERROR,
+        'Erro ao obter informações de convite do servidor',
+        requestId
+      );
     }
   }
 

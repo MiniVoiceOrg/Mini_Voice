@@ -5,6 +5,8 @@ import { networkClient } from '../core/NetworkClient';
 import { participantManager } from '../core/ParticipantManager';
 import { serverStore } from '../stores/serverStore';
 import { voiceStore } from '../stores/voiceStore';
+import { chatStore } from '../stores/chatStore';
+import { settingsStore, ChatSoundMode } from '../stores/settingsStore';
 import { connectionStore, SavedServer } from '../stores/connectionStore';
 import { audioProcessor } from '../core/AudioProcessor';
 import { webRtcManager } from '../core/WebRtcManager';
@@ -14,6 +16,7 @@ import { createChannelModal } from './CreateChannelModal';
 import { settingsModal } from './SettingsModal';
 import { serverSettingsModal } from './ServerSettingsModal';
 import { inviteModal } from './InviteModal';
+import { contextMenu, ContextMenuItem } from './ContextMenu';
 import { showConfirm, showAlert } from './Dialog';
 import { setButtonLoading, withButtonLoading } from '../utils/buttonLoading';
 import { checkServerOnline } from '../utils/serverStatus';
@@ -53,7 +56,7 @@ export class MainView {
           <div class="channels-resizer" id="channels-resizer" title="Arraste para redimensionar"></div>
           <div class="server-header">
             <button id="server-dropdown-toggle" class="server-dropdown-toggle" title="Opções do servidor">
-              <img src="${logoUrl}" alt="Mini Voice" style="width: 22px; height: 22px; object-fit: contain; border-radius: 4px; flex-shrink: 0;">
+              <img id="server-header-icon" src="${s.iconUrl ? getAvatarUrl(s.iconUrl) : logoUrl}" alt="Ícone do Servidor" style="width: 22px; height: 22px; object-fit: cover; border-radius: 4px; flex-shrink: 0;">
               <span id="server-name-title" style="white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-weight: 700;">${escapeHtml(s.name)}</span>
               <span class="material-symbols-outlined md-18 server-dropdown-caret">expand_more</span>
             </button>
@@ -191,11 +194,29 @@ export class MainView {
           </div>
           <span class="voice-conn-ping" id="sidebar-voice-ping" title="Latência média">-- ms</span>
         </div>
-        <button id="sidebar-btn-leave-voice" class="btn btn-icon voice-conn-leave" title="Sair da chamada">
-          <span class="material-symbols-outlined md-18">call_end</span>
-        </button>
+        <div class="voice-conn-actions">
+          <button id="sidebar-btn-rnnoise" class="btn btn-icon voice-conn-rnnoise ${settingsStore.noiseSuppressionEnabled ? 'rnnoise-active' : ''}" title="${settingsStore.noiseSuppressionEnabled ? 'Supressão de Ruído (RNNoise): Ativada (Clique para desativar)' : 'Supressão de Ruído (RNNoise): Desativada (Clique para ativar)'}">
+            <span class="material-symbols-outlined md-18">graphic_eq</span>
+          </button>
+          <button id="sidebar-btn-leave-voice" class="btn btn-icon voice-conn-leave" title="Sair da chamada">
+            <span class="material-symbols-outlined md-18">call_end</span>
+          </button>
+        </div>
       </div>
     `;
+
+    const btnRnnoise = document.getElementById('sidebar-btn-rnnoise');
+    btnRnnoise?.addEventListener('click', async () => {
+      const enabled = !settingsStore.noiseSuppressionEnabled;
+      settingsStore.noiseSuppressionEnabled = enabled;
+      settingsStore.save();
+      await audioProcessor.setNoiseSuppression(enabled);
+
+      if (btnRnnoise) {
+        btnRnnoise.className = `btn btn-icon voice-conn-rnnoise ${enabled ? 'rnnoise-active' : ''}`;
+        btnRnnoise.setAttribute('title', enabled ? 'Supressão de Ruído (RNNoise): Ativada (Clique para desativar)' : 'Supressão de Ruído (RNNoise): Desativada (Clique para ativar)');
+      }
+    });
 
     document.getElementById('sidebar-btn-leave-voice')?.addEventListener('click', () => {
       this.voiceStageView?.leaveVoice();
@@ -258,9 +279,10 @@ export class MainView {
       const url = `ws://${srv.host.trim().replace(/^wss?:\/\//, '')}:${srv.port}`;
       const isCurrent = url === currentUrl;
       const initial = (srv.name || srv.host || '?').trim().charAt(0).toUpperCase();
+      const iconUrl = isCurrent && serverStore.serverDetails?.iconUrl ? serverStore.serverDetails.iconUrl : (srv as any).iconUrl;
       return `
-        <button class="server-rail-avatar ${isCurrent ? 'active' : ''}" data-host="${escapeHtml(srv.host)}" data-port="${srv.port}" title="${escapeHtml(srv.name || `${srv.host}:${srv.port}`)}">
-          <span>${escapeHtml(initial)}</span>
+        <button class="server-rail-avatar ${isCurrent ? 'active' : ''}" data-host="${escapeHtml(srv.host)}" data-port="${srv.port}" title="${escapeHtml(srv.name || `${srv.host}:${srv.port}`)}" style="overflow: hidden; padding: 0;">
+          ${iconUrl ? `<img src="${getAvatarUrl(iconUrl)}" style="width: 100%; height: 100%; object-fit: cover; border-radius: inherit;">` : `<span>${escapeHtml(initial)}</span>`}
           <span class="server-rail-status-dot" data-status="${isCurrent ? 'online' : 'checking'}"></span>
         </button>
       `;
@@ -432,8 +454,9 @@ export class MainView {
         <div class="channel-item ${c.id === serverStore.activeTextChannelId && this.activeContentView === 'chat' ? 'active' : ''}" data-channel-id="${c.id}" data-channel-type="TEXT">
           <span class="material-symbols-outlined md-16 channel-icon" style="color: var(--text-muted);">tag</span>
           <span class="channel-name">${escapeHtml(c.name)}</span>
-          <button class="channel-delete-btn" data-del-channel="${c.id}" title="Apagar canal">
-            <span class="material-symbols-outlined md-14">delete</span>
+          ${chatStore.hasMention(c.id) ? '<span class="channel-mention-badge" title="Você foi mencionado">@</span>' : ''}
+          <button class="channel-menu-btn" data-menu-channel="${c.id}" title="Mais opções">
+            <span class="material-symbols-outlined md-16">more_vert</span>
           </button>
         </div>
       `).join('');
@@ -450,8 +473,8 @@ export class MainView {
               <span class="material-symbols-outlined md-16 channel-icon" style="color: ${isActive ? 'var(--success)' : 'var(--text-muted)'};">volume_up</span>
               <span class="channel-name">${escapeHtml(c.name)}</span>
               ${isActive ? '<span style="font-size: 11px; color: var(--success); font-weight: 600; margin-left: auto;">(Você)</span>' : ''}
-              <button class="channel-delete-btn" data-del-channel="${c.id}" title="Apagar canal">
-                <span class="material-symbols-outlined md-14">delete</span>
+              <button class="channel-menu-btn" data-menu-channel="${c.id}" title="Mais opções">
+                <span class="material-symbols-outlined md-16">more_vert</span>
               </button>
             </div>
 
@@ -499,7 +522,7 @@ export class MainView {
     // Attach click listeners to channel items
     this.container.querySelectorAll('.channel-item').forEach((item) => {
       item.addEventListener('click', async (e) => {
-        if ((e.target as HTMLElement).closest('.channel-delete-btn')) return;
+        if ((e.target as HTMLElement).closest('.channel-menu-btn')) return;
         const channelId = item.getAttribute('data-channel-id')!;
         const type = item.getAttribute('data-channel-type')!;
 
@@ -527,15 +550,71 @@ export class MainView {
       });
     });
 
-    // Attach delete listeners
-    this.container.querySelectorAll('.channel-delete-btn').forEach((btn) => {
-      btn.addEventListener('click', async (e) => {
-        e.stopPropagation();
-        const channelId = btn.getAttribute('data-del-channel');
+    // Right-clicking a channel opens the same options menu as the ⋮ button (#151).
+    this.container.querySelectorAll('.channel-item').forEach((item) => {
+      item.addEventListener('contextmenu', (e) => {
+        const mouseEvent = e as MouseEvent;
+        mouseEvent.preventDefault();
+        const channelId = item.getAttribute('data-channel-id');
         if (!channelId) return;
-        await this.handleDeleteChannel(channelId);
+        this.openChannelMenu(channelId, mouseEvent.clientX, mouseEvent.clientY);
       });
     });
+
+    // Attach "more options" menu listeners (#151). Delete now lives inside a
+    // dropdown so more per-channel actions can be added later, and the same menu
+    // is also reachable by right-clicking the channel above.
+    this.container.querySelectorAll('.channel-menu-btn').forEach((btn) => {
+      btn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        const channelId = btn.getAttribute('data-menu-channel');
+        if (!channelId) return;
+        const rect = (btn as HTMLElement).getBoundingClientRect();
+        this.openChannelMenu(channelId, rect.left, rect.bottom + 4);
+      });
+    });
+  }
+
+  /** Opens the per-channel options menu at the given screen coordinates (#151). */
+  private openChannelMenu(channelId: string, x: number, y: number): void {
+    const channel = serverStore.serverDetails?.channels.find((c) => c.id === channelId);
+    const items: ContextMenuItem[] = [];
+
+    // Chat-sound notifications only apply to text channels (#153).
+    if (channel?.type === 'TEXT') {
+      items.push({
+        label: 'Notificações de mensagem',
+        icon: 'notifications',
+        onClick: () => this.openChannelNotificationMenu(channelId, x, y),
+      });
+    }
+
+    items.push({
+      label: 'Apagar canal',
+      icon: 'delete',
+      danger: true,
+      onClick: () => {
+        void this.handleDeleteChannel(channelId);
+      },
+    });
+
+    contextMenu.open(x, y, items);
+  }
+
+  /** Submenu to pick the per-channel chat-sound mode, overriding server/global (#153). */
+  private openChannelNotificationMenu(channelId: string, x: number, y: number): void {
+    const current = settingsStore.getChannelChatSoundOverride(channelId);
+    const item = (mode: ChatSoundMode, label: string) => ({
+      label,
+      icon: current === mode ? 'check' : undefined,
+      onClick: () => settingsStore.setChannelChatSoundOverride(channelId, mode),
+    });
+    contextMenu.open(x, y, [
+      item('inherit', 'Padrão (seguir servidor/geral)'),
+      item('all', 'Todas as mensagens'),
+      item('mentions', 'Apenas menções'),
+      item('none', 'Silenciar'),
+    ]);
   }
 
   private async handleJoinVoiceChannel(channelId: string, silent: boolean = false): Promise<void> {
@@ -890,9 +969,12 @@ export class MainView {
     });
 
     const u7 = appEvents.on(`message.${MessageType.SERVER_SETTINGS_UPDATED}`, (payload: any) => {
-      serverStore.updateServerMeta(payload.name, payload.hasPassword);
+      serverStore.updateServerMeta(payload.name, payload.hasPassword, payload.allowSoundboard, payload.iconUrl, payload.attachmentStorage);
       const titleEl = document.getElementById('server-name-title');
       if (titleEl) titleEl.innerText = payload.name;
+      const iconEl = document.getElementById('server-header-icon') as HTMLImageElement;
+      if (iconEl) iconEl.src = payload.iconUrl ? getAvatarUrl(payload.iconUrl) : logoUrl;
+      this.renderServerRail();
     });
 
     const u8 = appEvents.on(`message.${MessageType.CHANNEL_DELETED}`, () => {
@@ -917,7 +999,34 @@ export class MainView {
       this.renderChannels();
     });
 
-    this.unbindEvents.push(u1, u2, u3, u4, u5, u6, u7, u8, u9);
+    const u10 = appEvents.on('settings.updated', () => {
+      const btnRnnoise = document.getElementById('sidebar-btn-rnnoise');
+      if (btnRnnoise) {
+        const enabled = settingsStore.noiseSuppressionEnabled;
+        btnRnnoise.className = `btn btn-icon voice-conn-rnnoise ${enabled ? 'rnnoise-active' : ''}`;
+        btnRnnoise.setAttribute('title', enabled ? 'Supressão de Ruído (RNNoise): Ativada (Clique para desativar)' : 'Supressão de Ruído (RNNoise): Desativada (Clique para ativar)');
+      }
+    });
+
+    const u11 = appEvents.on('server.members_updated', () => {
+      this.renderMembers();
+    });
+
+    // Re-render the channel list when an @-mention arrives or is cleared so the
+    // red indicator on the text channel appears/disappears immediately (#14).
+    const u12 = appEvents.on('chat.mentions_updated', () => {
+      this.renderChannels();
+    });
+
+    this.unbindEvents.push(u1, u2, u3, u4, u5, u6, u7, u8, u9, u10, u11, u12);
+  }
+
+  /** True when the given text channel is the one currently visible on screen (#14). */
+  public isViewingTextChannel(channelId: string): boolean {
+    return (
+      this.activeContentView === 'chat' &&
+      serverStore.activeTextChannelId === channelId
+    );
   }
 
   public destroy(): void {

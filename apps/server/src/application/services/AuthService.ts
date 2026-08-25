@@ -1,5 +1,6 @@
 import { v4 as uuidv4 } from 'uuid';
 import {
+  AttachmentStorageInfo,
   AuthConnectPayload,
   LIMITS,
   ProtocolErrorCode,
@@ -8,10 +9,11 @@ import {
   authConnectSchema,
 } from '@mini-voice/shared';
 import { ServerRecord } from '../../domain/entities';
-import { IChannelRepository, IServerRepository, IUserRepository } from '../../domain/repositories';
+import { IChannelRepository, IMentionRepository, IServerRepository, IUserRepository } from '../../domain/repositories';
 import { AvatarStorageService } from '../../infrastructure/security/AvatarStorageService';
 import { PasswordService } from '../../infrastructure/security/PasswordService';
 import { Logger } from '../../infrastructure/logger/Logger';
+import { AttachmentService } from './AttachmentService';
 
 export interface AuthResult {
   success: boolean;
@@ -26,8 +28,10 @@ export class AuthService {
     private serverRepo: IServerRepository,
     private userRepo: IUserRepository,
     private channelRepo: IChannelRepository,
+    private mentionRepo: IMentionRepository,
     private avatarStorage: AvatarStorageService,
-    private getActiveOnlineUsers: () => Map<string, { user: UserSummary }>
+    private getActiveOnlineUsers: () => Map<string, { user: UserSummary }>,
+    private attachmentService: AttachmentService
   ) {}
 
   public async authenticate(payload: AuthConnectPayload): Promise<AuthResult> {
@@ -132,6 +136,30 @@ export class AuthService {
       members.push(userSummary);
     }
 
+    // Build the full known-members list (everyone who ever connected) so offline
+    // users can still be mentioned (#14). Online users keep their live summary;
+    // offline users are marked DISCONNECTED.
+    const allUsers = await this.userRepo.listAll();
+    const knownMembers: UserSummary[] = allUsers.map((u) => {
+      const online = onlineMap.get(u.id);
+      if (online) return online.user;
+      return {
+        id: u.id,
+        clientId: u.clientId,
+        nickname: u.nickname,
+        avatarUrl: this.avatarStorage.getPublicUrl(u.avatarPath),
+        status: 'DISCONNECTED',
+        joinedAt: u.lastSeenAt,
+      };
+    });
+    if (!knownMembers.some((m) => m.id === userSummary.id)) {
+      knownMembers.push(userSummary);
+    }
+
+    // Channels where this user has unread @-mentions, so the red @ badge shows
+    // even for mentions received while they were offline (#14).
+    const mentionedChannelIds = await this.mentionRepo.listChannelIdsForUser(userRecord.id);
+
     const serverDetails: ServerDetails = {
       id: server.id,
       name: server.name,
@@ -139,6 +167,7 @@ export class AuthService {
       maxUsers: server.maxUsers,
       hasPassword: !!(server.passwordHash && server.passwordHash.length > 0),
       allowSoundboard: server.allowSoundboard !== false,
+      iconUrl: this.avatarStorage.getPublicUrl(server.iconPath),
       channels: channels.map((c) => ({
         id: c.id,
         serverId: c.serverId,
@@ -149,7 +178,10 @@ export class AuthService {
         maxParticipants: c.maxParticipants,
       })),
       members,
+      knownMembers,
+      mentionedChannelIds,
       voiceStates: {},
+      attachmentStorage: await this.attachmentService.getStorageInfo(),
     };
 
     return {
@@ -163,11 +195,16 @@ export class AuthService {
     name?: string;
     password?: string | null;
     allowSoundboard?: boolean;
+    iconBase64?: string | null;
+    maxAttachmentFileBytes?: number;
+    maxAttachmentStorageBytes?: number;
   }): Promise<{
     success: boolean;
     name?: string;
     hasPassword?: boolean;
     allowSoundboard?: boolean;
+    iconUrl?: string | null;
+    attachmentStorage?: AttachmentStorageInfo;
     errorMessage?: string;
   }> {
     const server = await this.serverRepo.getServer();
@@ -179,6 +216,22 @@ export class AuthService {
 
     if (payload.name && payload.name.trim().length >= 2) {
       updates.name = payload.name.trim();
+    }
+
+    // Attachment storage limits (#11): validate positive and file <= total.
+    if (payload.maxAttachmentFileBytes !== undefined || payload.maxAttachmentStorageBytes !== undefined) {
+      const currentFile = server.maxAttachmentFileBytes ?? LIMITS.MAX_ATTACHMENT_FILE_SIZE_DEFAULT;
+      const currentTotal = server.maxAttachmentStorageBytes ?? LIMITS.MAX_ATTACHMENT_STORAGE_TOTAL_DEFAULT;
+      const nextFile = payload.maxAttachmentFileBytes ?? currentFile;
+      const nextTotal = payload.maxAttachmentStorageBytes ?? currentTotal;
+      if (!Number.isFinite(nextFile) || !Number.isFinite(nextTotal) || nextFile < 1 || nextTotal < 1) {
+        return { success: false, errorMessage: 'Os limites de armazenamento devem ser positivos.' };
+      }
+      if (nextFile > nextTotal) {
+        return { success: false, errorMessage: 'O limite por arquivo não pode exceder o total do servidor.' };
+      }
+      if (payload.maxAttachmentFileBytes !== undefined) updates.maxAttachmentFileBytes = Math.floor(nextFile);
+      if (payload.maxAttachmentStorageBytes !== undefined) updates.maxAttachmentStorageBytes = Math.floor(nextTotal);
     }
 
     if (payload.password !== undefined) {
@@ -193,6 +246,35 @@ export class AuthService {
       updates.allowSoundboard = Boolean(payload.allowSoundboard);
     }
 
+    if (payload.iconBase64 !== undefined) {
+      if (!payload.iconBase64 || payload.iconBase64.trim() === '') {
+        // Remove server icon
+        if (server.iconPath) {
+          this.avatarStorage.deleteAvatar(server.iconPath);
+        }
+        updates.iconPath = null;
+      } else {
+        // Save new server icon
+        let rawBase64 = payload.iconBase64;
+        if (payload.iconBase64.includes(',')) {
+          rawBase64 = payload.iconBase64.split(',')[1];
+        }
+        const buffer = Buffer.from(rawBase64, 'base64');
+        const validation = this.avatarStorage.validateAvatarBuffer(buffer);
+        if (!validation.isValid || !validation.extension) {
+          return {
+            success: false,
+            errorMessage: validation.error || 'Formato de imagem inválido para o ícone do servidor.',
+          };
+        }
+        if (server.iconPath) {
+          this.avatarStorage.deleteAvatar(server.iconPath);
+        }
+        const newFilename = await this.avatarStorage.saveAvatar(buffer, validation.extension);
+        updates.iconPath = newFilename;
+      }
+    }
+
     await this.serverRepo.updateServer(updates);
     const updatedServer = await this.serverRepo.getServer();
 
@@ -201,6 +283,8 @@ export class AuthService {
       name: updatedServer?.name || server.name,
       hasPassword: !!(updatedServer?.passwordHash && updatedServer.passwordHash.length > 0),
       allowSoundboard: updatedServer?.allowSoundboard !== false,
+      iconUrl: this.avatarStorage.getPublicUrl(updatedServer?.iconPath),
+      attachmentStorage: await this.attachmentService.getStorageInfo(),
     };
   }
 }

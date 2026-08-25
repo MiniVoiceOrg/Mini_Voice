@@ -6,6 +6,8 @@
   --bg-card-hover: #242c38;
   --bg-input: #0d1117;
   --bg-active: #2f3846;
+  --bg-secondary: #161b22;
+  --bg-tertiary: #242c38;
 
   --accent-primary: #5865f2;
   --accent-hover: #4752c4;
@@ -227,7 +229,7 @@ input, textarea, button, select {
   border: none;
 }
 
-input, textarea, select {
+input:not([type="range"]):not([type="checkbox"]), textarea, select {
   user-select: text;
   background-color: var(--bg-input);
   color: var(--text-primary);
@@ -235,6 +237,12 @@ input, textarea, select {
   border-radius: var(--radius-md);
   padding: 10px 14px;
   transition: border-color 0.15s ease;
+}
+
+input[type="range"] {
+  padding: 0;
+  border: none;
+  background: transparent;
 }
 
 input:focus, textarea:focus, select:focus {
@@ -287,6 +295,7 @@ input:focus, textarea:focus, select:focus {
 }
 
 .btn-icon {
+  position: relative;
   width: 38px;
   height: 38px;
   padding: 0;
@@ -817,6 +826,24 @@ input:focus, textarea:focus, select:focus {
   text-overflow: ellipsis;
 }
 
+/* Red @ shown on a text channel when the user was mentioned and hasn't opened it yet (#14). */
+.channel-mention-badge {
+  flex-shrink: 0;
+  margin-left: auto;
+  min-width: 18px;
+  height: 18px;
+  padding: 0 5px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 9px;
+  background-color: var(--danger, #ed4245);
+  color: #fff;
+  font-size: 12px;
+  font-weight: 700;
+  line-height: 1;
+}
+
 .channel-delete-btn {
   display: none;
   align-items: center;
@@ -839,6 +866,54 @@ input:focus, textarea:focus, select:focus {
 .channel-delete-btn:hover {
   color: var(--danger);
   background: rgba(242, 63, 67, 0.12);
+}
+
+.channel-menu-btn {
+  display: none;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  width: 20px;
+  height: 20px;
+  padding: 0;
+  border: none;
+  background: transparent;
+  color: var(--text-muted);
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+}
+
+.channel-item:hover .channel-menu-btn {
+  display: inline-flex;
+}
+
+.channel-menu-btn:hover {
+  color: var(--text-normal);
+  background: rgba(255, 255, 255, 0.08);
+}
+
+/* Floating menu anchored at a click position (channel options, #151). */
+.floating-context-menu {
+  position: fixed;
+  min-width: 190px;
+  background-color: var(--bg-panel);
+  border: 1px solid var(--border-color);
+  border-radius: 8px;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5);
+  z-index: 10000;
+  display: flex;
+  flex-direction: column;
+  padding: 6px;
+  gap: 2px;
+}
+
+.floating-context-menu .server-dropdown-item.danger {
+  color: var(--danger);
+}
+
+.floating-context-menu .server-dropdown-item.danger:hover {
+  background-color: var(--danger);
+  color: #fff;
 }
 
 /* Voice Channel Connected Participants nested under channel */
@@ -963,9 +1038,52 @@ input:focus, textarea:focus, select:focus {
   margin-left: auto;
 }
 
+.voice-conn-actions {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  flex-shrink: 0;
+  margin-left: 6px;
+}
+
+.voice-conn-rnnoise {
+  color: var(--text-muted);
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.15s ease;
+}
+
+.voice-conn-rnnoise:hover {
+  color: var(--text-primary);
+  background-color: var(--bg-card-hover);
+}
+
+.voice-conn-rnnoise.rnnoise-active {
+  color: var(--accent-primary);
+  background-color: rgba(88, 101, 242, 0.15);
+  border-color: rgba(88, 101, 242, 0.45);
+}
+
+.voice-conn-rnnoise.rnnoise-active:hover {
+  color: var(--accent-hover);
+  background-color: rgba(88, 101, 242, 0.25);
+  border-color: var(--accent-primary);
+}
+
 .voice-conn-leave {
   color: var(--danger);
   flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.15s ease;
+}
+
+.voice-conn-leave:hover {
+  background-color: rgba(237, 66, 69, 0.15);
+  border-color: rgba(237, 66, 69, 0.45);
 }
 
 .user-control-main {
@@ -1085,6 +1203,7 @@ input:focus, textarea:focus, select:focus {
   min-height: 0;
   user-select: text;
   -webkit-user-select: text;
+  position: relative;
 }
 
 .chat-messages-feed {
@@ -1168,6 +1287,15 @@ input:focus, textarea:focus, select:focus {
   user-select: text;
   -webkit-user-select: text;
   cursor: text;
+}
+
+/* The global `* { user-select: none }` also hits the elements that renderMarkdown
+   generates inside a message (<p class="md-p">, <strong>, <a>, <code>, <li>, ...),
+   which made message text unselectable. Re-enable selection for all of them (#148). */
+.chat-message-text,
+.chat-message-text * {
+  user-select: text;
+  -webkit-user-select: text;
 }
 
 /* Markdown formatting inside chat messages */
@@ -1265,6 +1393,75 @@ input:focus, textarea:focus, select:focus {
   padding: 16px 20px;
   background-color: var(--bg-panel);
   border-top: 1px solid var(--border-color);
+  position: relative;
+}
+
+/* @-mention autocomplete dropup (#14) */
+.mention-dropup {
+  position: absolute;
+  left: 20px;
+  right: 20px;
+  bottom: 100%;
+  margin-bottom: 6px;
+  max-height: 240px;
+  overflow-y: auto;
+  background-color: var(--bg-panel);
+  border: 1px solid var(--border-color);
+  border-radius: 8px;
+  box-shadow: 0 -8px 26px rgba(0, 0, 0, 0.45);
+  z-index: 60;
+  padding: 6px;
+}
+
+.mention-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 7px 10px;
+  border-radius: 6px;
+  cursor: pointer;
+}
+
+.mention-item.active,
+.mention-item:hover {
+  background-color: var(--primary, #5865f2);
+}
+
+.mention-avatar {
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  object-fit: cover;
+  flex-shrink: 0;
+}
+
+.mention-nick {
+  flex: 1;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--text-normal);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.mention-item.active .mention-nick {
+  color: #fff;
+}
+
+.mention-status-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.mention-status-dot.online {
+  background-color: var(--success);
+}
+
+.mention-status-dot.offline {
+  background-color: var(--text-muted);
 }
 
 .chat-input-wrapper {
@@ -1305,6 +1502,350 @@ input:focus, textarea:focus, select:focus {
   margin-right: 8px;
   align-self: flex-end;
   margin-bottom: 10px;
+}
+
+/* Per-day divider line in the chat feed (#11) */
+.chat-date-divider {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin: 18px 10px 10px;
+}
+
+.chat-date-divider::before,
+.chat-date-divider::after {
+  content: '';
+  flex: 1;
+  height: 1px;
+  background: var(--border-color);
+}
+
+.chat-date-divider-label {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-muted);
+  white-space: nowrap;
+  letter-spacing: 0.3px;
+}
+
+/* --- Chat attachments (#11) --- */
+.chat-attach-btn {
+  background: transparent;
+  border: none;
+  color: var(--text-muted);
+  cursor: pointer;
+  padding: 4px;
+  align-self: flex-end;
+  margin-bottom: 4px;
+  display: flex;
+  align-items: center;
+  border-radius: 6px;
+  transition: color 0.15s, background 0.15s;
+}
+
+.chat-attach-btn:hover {
+  color: var(--accent-primary);
+  background: var(--bg-tertiary);
+}
+
+/* Staged-uploads tray above the input box */
+.chat-attachment-tray {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 10px;
+}
+
+.tray-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border-color);
+  border-radius: 8px;
+  padding: 6px 8px;
+  width: 220px;
+  max-width: 100%;
+}
+
+.tray-item.is-error {
+  border-color: rgba(237, 66, 69, 0.5);
+}
+
+.tray-thumb {
+  width: 34px;
+  height: 34px;
+  border-radius: 6px;
+  object-fit: cover;
+  flex-shrink: 0;
+}
+
+.tray-thumb-icon {
+  width: 34px;
+  height: 34px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--text-secondary);
+  flex-shrink: 0;
+}
+
+.tray-info {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.tray-name {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-primary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.tray-sub {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.tray-size {
+  font-size: 10px;
+  color: var(--text-muted);
+  flex-shrink: 0;
+}
+
+.tray-progress {
+  flex: 1;
+  height: 4px;
+  background: var(--bg-input);
+  border-radius: 999px;
+  overflow: hidden;
+}
+
+.tray-progress-bar {
+  height: 100%;
+  background: var(--accent-primary);
+  border-radius: 999px;
+  transition: width 0.15s;
+}
+
+.tray-status {
+  font-size: 10px;
+  color: var(--text-muted);
+  flex-shrink: 0;
+}
+
+.tray-status.tray-done {
+  color: var(--success);
+}
+
+.tray-status.tray-error {
+  color: var(--danger);
+}
+
+.tray-remove {
+  background: transparent;
+  border: none;
+  color: var(--text-muted);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  padding: 2px;
+  border-radius: 4px;
+  flex-shrink: 0;
+}
+
+.tray-remove:hover {
+  color: var(--danger);
+  background: var(--bg-input);
+}
+
+.tray-notice {
+  width: 100%;
+  font-size: 11px;
+  color: var(--danger);
+  padding: 2px 2px 0;
+}
+
+/* Drag & drop affordance */
+.chat-container.chat-drag-over {
+  outline: 2px dashed var(--accent-primary);
+  outline-offset: -6px;
+  background: rgba(88, 101, 242, 0.05);
+}
+
+/* Friendly full-panel overlay shown while dragging files over the chat (#11). */
+.chat-drop-overlay {
+  position: absolute;
+  inset: 0;
+  z-index: 40;
+  display: none;
+  align-items: center;
+  justify-content: center;
+  background: rgba(88, 101, 242, 0.12);
+  pointer-events: none;
+  border-radius: 8px;
+}
+
+.chat-container.chat-drag-over .chat-drop-overlay {
+  display: flex;
+}
+
+.chat-drop-overlay .drop-inner {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  color: var(--accent-primary);
+  border: 2px dashed var(--accent-primary);
+  border-radius: 14px;
+  padding: 28px 46px;
+  background: var(--bg-panel);
+  box-shadow: 0 10px 40px rgba(0, 0, 0, 0.35);
+}
+
+.chat-drop-overlay .drop-title {
+  font-size: 17px;
+  font-weight: 700;
+  color: var(--text-primary);
+}
+
+.chat-drop-overlay .drop-sub {
+  font-size: 12px;
+  color: var(--text-muted);
+}
+
+/* Rendered attachments inside a message */
+.chat-attachments {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 6px;
+}
+
+.chat-attachment-image {
+  max-width: 320px;
+  max-height: 260px;
+  border-radius: 8px;
+  cursor: zoom-in;
+  object-fit: cover;
+  border: 1px solid var(--border-color);
+}
+
+.chat-attachment-video {
+  max-width: 400px;
+  max-height: 300px;
+  border-radius: 8px;
+  background: #000;
+  border: 1px solid var(--border-color);
+}
+
+.chat-attachment-file {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border-color);
+  border-radius: 8px;
+  padding: 8px 12px;
+  cursor: pointer;
+  width: 280px;
+  max-width: 100%;
+  text-align: left;
+  transition: background 0.15s, border-color 0.15s;
+}
+
+.chat-attachment-file:hover {
+  background: var(--bg-input);
+  border-color: var(--border-focus);
+}
+
+.chat-attachment-file .af-icon {
+  color: var(--accent-primary);
+  flex-shrink: 0;
+}
+
+.chat-attachment-file .af-meta {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.chat-attachment-file .af-name {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-primary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.chat-attachment-file .af-size {
+  font-size: 11px;
+  color: var(--text-muted);
+}
+
+.chat-attachment-file .af-dl {
+  color: var(--text-muted);
+  flex-shrink: 0;
+}
+
+.attachment-evicted {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+  color: var(--text-muted);
+  background: var(--bg-tertiary);
+  border: 1px dashed var(--border-color);
+  border-radius: 8px;
+  padding: 8px 12px;
+  font-style: italic;
+}
+
+/* Full-size image lightbox */
+.attachment-lightbox {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.85);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 10050;
+  cursor: zoom-out;
+}
+
+.attachment-lightbox img {
+  max-width: 92vw;
+  max-height: 92vh;
+  border-radius: 6px;
+  box-shadow: 0 10px 40px rgba(0, 0, 0, 0.6);
+}
+
+.attachment-lightbox .lightbox-close {
+  position: absolute;
+  top: 20px;
+  right: 24px;
+  background: rgba(0, 0, 0, 0.5);
+  border: none;
+  color: #fff;
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.attachment-lightbox .lightbox-close:hover {
+  background: rgba(0, 0, 0, 0.8);
 }
 
 /* Voice & Video Stage Layout */
@@ -1596,6 +2137,87 @@ input:focus, textarea:focus, select:focus {
   background-color: #000000;
 }
 
+/* #150 — remote screen share gated behind an explicit "Assistir transmissão".
+   The preview is shown blurred and silent until the viewer opts in. */
+.stage-video-element.screen-locked {
+  filter: blur(22px) brightness(0.5);
+  transform: scale(1.08);
+}
+
+.stage-watch-overlay {
+  position: absolute;
+  inset: 0;
+  z-index: 5;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  padding: 16px;
+  text-align: center;
+  pointer-events: none;
+}
+
+.stage-watch-btn {
+  pointer-events: auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 12px 22px;
+  border: none;
+  border-radius: var(--radius-md);
+  background-color: var(--accent-primary);
+  color: #fff;
+  font-size: 15px;
+  font-weight: 600;
+  cursor: pointer;
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.45);
+  transition: background-color 0.15s ease, transform 0.1s ease;
+}
+
+.stage-watch-btn:hover {
+  background-color: var(--accent-hover);
+  transform: translateY(-1px);
+}
+
+.stage-watch-btn .material-symbols-outlined {
+  font-size: 22px;
+}
+
+.stage-watch-caption {
+  pointer-events: none;
+  color: #fff;
+  font-size: 13px;
+  font-weight: 500;
+  text-shadow: 0 1px 4px rgba(0, 0, 0, 0.8);
+  background-color: rgba(0, 0, 0, 0.45);
+  padding: 4px 12px;
+  border-radius: var(--radius-sm);
+  backdrop-filter: blur(4px);
+}
+
+/* "Parar de assistir" — mirrors the fullscreen button styling. */
+.stage-stopwatch-btn {
+  position: relative;
+  z-index: 3;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  border: none;
+  border-radius: var(--radius-sm);
+  background-color: rgba(0, 0, 0, 0.55);
+  color: #fff;
+  cursor: pointer;
+  transition: background-color 0.15s ease;
+  backdrop-filter: blur(4px);
+}
+
+.stage-stopwatch-btn:hover {
+  background-color: rgba(0, 0, 0, 0.85);
+}
+
 /* Loading overlay shown while a camera/screen stream is buffering (#48) */
 .stage-loading-overlay {
   position: absolute;
@@ -1674,7 +2296,10 @@ input:focus, textarea:focus, select:focus {
   top: 48px;
 }
 
-.stage-controls-bar {
+.stage-card-controls,
+.stage-card .stage-controls-bar,
+.stage-focused-main .stage-controls-bar,
+.stage-mini-card .stage-controls-bar {
   position: absolute;
   bottom: 10px;
   right: 10px;
@@ -1684,28 +2309,91 @@ input:focus, textarea:focus, select:focus {
   gap: 6px;
   opacity: 0.7;
   transition: opacity 0.15s ease;
+  height: auto;
+  background: transparent;
+  border: none;
+  padding: 0;
 }
 
+.stage-card:hover .stage-card-controls,
+.stage-focused-main:hover .stage-card-controls,
+.stage-mini-card:hover .stage-card-controls,
 .stage-card:hover .stage-controls-bar,
 .stage-focused-main:hover .stage-controls-bar,
 .stage-mini-card:hover .stage-controls-bar {
   opacity: 1;
 }
 
-.stage-volume-control {
+/* Vertical volume popup — appears on hover over the volume button */
+.stage-volume-wrapper {
+  position: relative;
   display: flex;
   align-items: center;
-  gap: 4px;
-  padding: 4px 8px;
-  background-color: rgba(0, 0, 0, 0.55);
+}
+
+.stage-volume-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  border: none;
   border-radius: var(--radius-sm);
-  backdrop-filter: blur(4px);
+  background-color: rgba(0, 0, 0, 0.55);
   color: #fff;
+  cursor: pointer;
+  transition: background-color 0.15s ease;
+  backdrop-filter: blur(4px);
+}
+
+.stage-volume-btn:hover {
+  background-color: rgba(0, 0, 0, 0.85);
+}
+
+.stage-volume-popup {
+  display: none;
+  position: absolute;
+  bottom: 100%;
+  left: 50%;
+  transform: translateX(-50%);
+  min-width: 40px;
+  padding: 12px 8px 16px;
+  background-color: rgba(0, 0, 0, 0.75);
+  border-radius: var(--radius-md);
+  backdrop-filter: blur(8px);
+  z-index: 10;
+}
+
+/* Invisible bridge so moving the mouse from the button up to the slider never
+   crosses a non-hovered gap that would hide the popup (#75). */
+.stage-volume-popup::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: -8px;
+  height: 8px;
+}
+
+.stage-volume-wrapper:hover .stage-volume-popup,
+.stage-volume-wrapper.dragging .stage-volume-popup {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+/* When the screen audio is muted, keep the slider popup hidden (even on hover)
+   so it doesn't linger on top of the video. It returns on unmute (#159). */
+.stage-volume-wrapper.screen-audio-muted:hover .stage-volume-popup {
+  display: none;
 }
 
 .stage-screen-volume-slider {
-  width: 70px;
-  height: 4px;
+  writing-mode: vertical-lr;
+  direction: rtl;
+  appearance: slider-vertical;
+  width: 22px;
+  height: 96px;
   cursor: pointer;
   accent-color: var(--accent-primary);
 }
@@ -1739,6 +2427,35 @@ input:focus, textarea:focus, select:focus {
   background-color: rgba(0, 0, 0, 0.85);
 }
 
+/* Fullscreen a stage card (#68/#75): the <div> card — not the bare <video> —
+   is promoted to fullscreen so the real volume/mute controls stay usable and
+   Chromium's native (and out-of-sync) video controls never appear. */
+.stage-card:fullscreen,
+.stage-focused-main:fullscreen,
+.stage-mini-card:fullscreen {
+  width: 100vw;
+  height: 100vh;
+  margin: 0;
+  border-radius: 0;
+  background: #000;
+}
+
+.stage-card:fullscreen .stage-video-element,
+.stage-focused-main:fullscreen .stage-video-element,
+.stage-mini-card:fullscreen .stage-video-element {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+}
+
+.stage-card:fullscreen .stage-card-controls,
+.stage-focused-main:fullscreen .stage-card-controls,
+.stage-mini-card:fullscreen .stage-card-controls {
+  opacity: 1;
+  bottom: 24px;
+  right: 24px;
+}
+
 .stage-badge-icon {
   font-size: 14px;
 }
@@ -1761,7 +2478,10 @@ input:focus, textarea:focus, select:focus {
 }
 
 /* Voice Call Bottom Control Bar (inside Stage) */
-.stage-controls-bar {
+.stage-call-controls {
+  position: relative;
+  bottom: auto;
+  right: auto;
   height: 64px;
   background-color: var(--bg-panel);
   border: 1px solid var(--border-color);
@@ -1771,6 +2491,9 @@ input:focus, textarea:focus, select:focus {
   justify-content: center;
   gap: 12px;
   padding: 0 20px;
+  align-self: center;
+  margin: 0 auto;
+  opacity: 1;
 }
 
 /* Members Sidebar (Right) */
@@ -2147,6 +2870,91 @@ button[data-loading="1"]::after {
   gap: 18px;
 }
 
+/* User Settings Modal with Sidebar (#163) */
+.settings-modal-card {
+  max-width: 780px !important;
+  width: 90vw !important;
+  height: 580px !important;
+  max-height: 88vh !important;
+  display: flex !important;
+  flex-direction: row !important;
+  padding: 0 !important;
+  overflow: hidden !important;
+  gap: 0 !important;
+}
+
+.settings-sidebar {
+  width: 210px;
+  min-width: 210px;
+  background: var(--bg-secondary);
+  border-right: 1px solid var(--border-color);
+  display: flex;
+  flex-direction: column;
+  padding: 16px 10px;
+  gap: 4px;
+  user-select: none;
+}
+
+.settings-tab-btn {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 12px;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--text-secondary);
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  border: none;
+  text-align: left;
+  transition: all 0.15s ease;
+  width: 100%;
+}
+
+.settings-tab-btn:hover {
+  background: rgba(255, 255, 255, 0.05);
+  color: var(--text-primary);
+}
+
+.settings-tab-btn.active {
+  background: var(--accent-primary);
+  color: #ffffff;
+  font-weight: 600;
+}
+
+.settings-tab-btn.active .material-symbols-outlined {
+  color: #ffffff !important;
+}
+
+.settings-main-container {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  background: var(--bg-panel);
+}
+
+.settings-content-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 14px 24px;
+  border-bottom: 1px solid var(--border-color);
+}
+
+.settings-content-body {
+  flex: 1;
+  padding: 20px 24px;
+  overflow-y: auto;
+}
+
+.settings-tab-panel {
+  display: flex;
+  flex-direction: column;
+  animation: fadeIn 0.15s ease;
+}
+
 .modal-header {
   display: flex;
   align-items: center;
@@ -2190,10 +2998,11 @@ button[data-loading="1"]::after {
 /* Screen Sharing Source Selector */
 .screen-sources-grid {
   display: grid;
-  grid-template-columns: repeat(2, 1fr);
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 12px;
   max-height: 320px;
   overflow-y: auto;
+  overflow-x: hidden;
   padding: 4px;
 }
 
@@ -2206,6 +3015,7 @@ button[data-loading="1"]::after {
   border: 2px solid var(--border-color);
   background-color: var(--bg-card);
   cursor: pointer;
+  min-width: 0;
 }
 
 .source-item:hover {
@@ -2481,6 +3291,85 @@ button[data-loading="1"]::after {
   font-weight: 600;
 }
 
+/* Custom Sliders */
+.sb-slider {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 100%;
+  height: 6px;
+  background: linear-gradient(
+    to right,
+    var(--accent-primary) 0%,
+    var(--accent-primary) var(--slider-progress, 50%),
+    rgba(255, 255, 255, 0.2) var(--slider-progress, 50%),
+    rgba(255, 255, 255, 0.2) 100%
+  ) !important;
+  border-radius: 3px;
+  outline: none;
+  padding: 0;
+  margin: 0;
+  cursor: pointer;
+  accent-color: var(--accent-primary);
+}
+
+.sb-slider::-webkit-slider-runnable-track {
+  width: 100%;
+  height: 6px;
+  cursor: pointer;
+  background: transparent !important;
+  border-radius: 3px;
+  border: none;
+}
+
+.sb-slider::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  height: 14px;
+  width: 14px;
+  border-radius: 50%;
+  background: var(--accent-primary);
+  cursor: pointer;
+  margin-top: -4px;
+  box-shadow: 0 1px 5px rgba(0, 0, 0, 0.5);
+  border: 2px solid #ffffff;
+  transition: transform 0.1s ease, background-color 0.15s ease;
+}
+
+.sb-slider::-webkit-slider-thumb:hover {
+  transform: scale(1.2);
+  background: var(--accent-hover);
+}
+
+.sb-slider::-webkit-slider-thumb:active {
+  transform: scale(1.1);
+  background: var(--accent-hover);
+}
+
+.sb-slider::-moz-range-track {
+  width: 100%;
+  height: 6px;
+  cursor: pointer;
+  background: rgba(255, 255, 255, 0.2) !important;
+  border-radius: 3px;
+  border: none;
+}
+
+.sb-slider::-moz-range-progress {
+  height: 6px;
+  background: var(--accent-primary);
+  border-radius: 3px 0 0 3px;
+}
+
+.sb-slider::-moz-range-thumb {
+  height: 14px;
+  width: 14px;
+  border-radius: 50%;
+  background: var(--accent-primary);
+  cursor: pointer;
+  border: 2px solid #ffffff;
+  box-shadow: 0 1px 5px rgba(0, 0, 0, 0.5);
+}
+
 /* Soundboard Styles */
 .sb-sound-btn {
   position: relative;
@@ -2495,11 +3384,24 @@ button[data-loading="1"]::after {
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.25);
 }
 
-.sb-sound-btn:active,
-.sb-sound-btn.playing {
-  transform: scale(0.96) !important;
+.sb-sound-btn:active {
+  transform: scale(0.96);
+}
+
+.sb-sound-btn.is-playing {
   border-color: var(--accent-primary) !important;
   background: rgba(88, 101, 242, 0.2) !important;
+  box-shadow: 0 0 0 2px rgba(88, 101, 242, 0.4);
+}
+
+.sb-sound-btn.is-playing .sb-sound-icon {
+  color: var(--accent-primary);
+  animation: sbIconBounce 0.8s infinite alternate ease-in-out;
+}
+
+@keyframes sbIconBounce {
+  from { transform: scale(1); }
+  to { transform: scale(1.25); }
 }
 
 .sb-sound-btn.playing-pulse {
@@ -2518,4 +3420,210 @@ button[data-loading="1"]::after {
   100% {
     box-shadow: 0 0 0 0 rgba(88, 101, 242, 0);
   }
+}
+
+/* Soundboard Mini Player Bar */
+.sb-player-bar {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 16px;
+  background: linear-gradient(135deg, rgba(88, 101, 242, 0.15) 0%, rgba(35, 39, 42, 0.9) 100%);
+  border: 1px solid rgba(88, 101, 242, 0.35);
+  border-radius: var(--radius-md);
+  margin: 10px 20px 0;
+  animation: sbSlideDown 0.2s ease-out;
+}
+
+@keyframes sbSlideDown {
+  from {
+    opacity: 0;
+    transform: translateY(-8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.sb-player-info {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  max-width: 180px;
+}
+
+.sb-player-icon {
+  color: var(--accent-primary);
+  font-size: 20px;
+  animation: sbPulseIcon 1.2s infinite ease-in-out;
+}
+
+@keyframes sbPulseIcon {
+  0% { transform: scale(1); opacity: 0.85; }
+  50% { transform: scale(1.2); opacity: 1; }
+  100% { transform: scale(1); opacity: 0.85; }
+}
+
+.sb-player-name {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-primary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.sb-player-progress-container {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  flex: 1;
+  min-width: 120px;
+}
+
+.sb-player-progress-track {
+  width: 100%;
+  height: 6px;
+  background: rgba(255, 255, 255, 0.12);
+  border-radius: 3px;
+  overflow: hidden;
+  position: relative;
+}
+
+.sb-player-progress-fill {
+  height: 100%;
+  width: 0%;
+  background: linear-gradient(90deg, #5865f2, #7289da);
+  border-radius: 3px;
+  transition: width 0.08s linear;
+}
+
+.sb-player-time {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: var(--text-muted);
+  display: flex;
+  justify-content: space-between;
+}
+
+.sb-player-stop-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 5px 12px;
+  font-size: 11px;
+  font-weight: 600;
+  background: rgba(237, 66, 69, 0.18);
+  border: 1px solid rgba(237, 66, 69, 0.4);
+  color: var(--danger);
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  transition: all 0.15s ease;
+  white-space: nowrap;
+}
+
+.sb-player-stop-btn:hover {
+  background: var(--danger);
+  color: #ffffff;
+  border-color: var(--danger);
+  box-shadow: 0 2px 8px rgba(237, 66, 69, 0.3);
+}
+
+.sb-player-stop-btn:active {
+  transform: scale(0.95);
+}
+
+/* Tooltip & Formats Help */
+.sb-help-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--text-muted);
+  cursor: help;
+  transition: color 0.15s ease;
+}
+
+.sb-help-badge:hover {
+  color: var(--accent-primary);
+}
+
+/* Soundboard Cards and Shortcut Badges */
+.sb-sound-card {
+  user-select: none;
+}
+
+.sb-sound-card:hover {
+  background: var(--bg-card-hover) !important;
+  border-color: var(--border-focus) !important;
+  transform: translateY(-2px);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.25);
+}
+
+.sb-sound-card.is-playing {
+  border-color: var(--accent-primary) !important;
+  box-shadow: 0 0 0 2px rgba(88, 101, 242, 0.35);
+}
+
+.sb-btn-add-shortcut:hover {
+  border-color: var(--accent-primary) !important;
+  color: var(--text-primary) !important;
+  background: rgba(88, 101, 242, 0.12) !important;
+}
+
+.sb-shortcut-badge:hover {
+  border-color: var(--accent-primary) !important;
+  background: rgba(88, 101, 242, 0.28) !important;
+}
+
+.sb-btn-remove-shortcut:hover {
+  color: var(--danger) !important;
+}
+
+/* Settings Profile Avatar with Hover Overlay (#71) */
+.settings-avatar-wrapper {
+  position: relative;
+  width: 54px;
+  height: 54px;
+  border-radius: 50%;
+  overflow: hidden;
+  cursor: pointer;
+  flex-shrink: 0;
+  border: 2px solid var(--border-color);
+  transition: border-color 0.2s ease, transform 0.15s ease, box-shadow 0.2s ease;
+}
+
+.settings-avatar-wrapper:hover {
+  border-color: var(--accent-primary);
+  transform: scale(1.04);
+  box-shadow: 0 0 10px rgba(88, 101, 242, 0.35);
+}
+
+.settings-avatar-img {
+  width: 100%;
+  height: 100%;
+  border-radius: 50%;
+  object-fit: cover;
+  display: block;
+}
+
+.settings-avatar-overlay {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background: rgba(0, 0, 0, 0.55);
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #ffffff;
+  opacity: 0;
+  transition: opacity 0.2s ease;
+}
+
+.settings-avatar-wrapper:hover .settings-avatar-overlay {
+  opacity: 1;
 }
