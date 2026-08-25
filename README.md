@@ -273,12 +273,12 @@ faça o bootstrap para definir o dono/admin inicial do servidor:
 
 ```bash
 # Bootstrap: define o owner usando seu código de identidade exportado
-npx ts-node apps/server/src/cli.ts bootstrap --identity "MONKY-ID:1:..." --data ./data
+npx monky bootstrap --identity "MONKY-ID:1:..." --data ./data
 
 # Configurar o servidor
-npx ts-node apps/server/src/cli.ts config set name "Servidor dos Amigos" --data ./data
-npx ts-node apps/server/src/cli.ts config set port 3000 --data ./data
-npx ts-node apps/server/src/cli.ts config set password "minhasenha" --data ./data
+npx monky config set name "Servidor dos Amigos" --data ./data
+npx monky config set port 3000 --data ./data
+npx monky config set password "minhasenha" --data ./data
 ```
 
 ### Iniciar o servidor
@@ -296,13 +296,13 @@ cliente gráfico:
 
 ```bash
 # Listar membros
-npx ts-node apps/server/src/cli.ts members list --data ./data
+npx monky members list --data ./data
 
 # Promover alguém a admin
-npx ts-node apps/server/src/cli.ts admin add "NicknameDoUsuario" --data ./data
+npx monky admin add "NicknameDoUsuario" --data ./data
 
 # Ver todas as opções
-npx ts-node apps/server/src/cli.ts --help
+npx monky --help
 ```
 
 ➡️ Documentação completa do CLI: [docs/CLI.md](docs/CLI.md)
@@ -469,3 +469,4 @@ Quer mandar uma mudança? Veja [Como colaborar](#-como-colaborar).
 ## 📄 Licença
 
 [MIT](LICENSE) — use, modifique e hospede à vontade.
+

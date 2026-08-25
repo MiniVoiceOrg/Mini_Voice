@@ -5,7 +5,7 @@
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
   "bin": {
-    "monky-cli": "./dist/cli.js"
+    "monky": "./dist/cli.js"
   },
   "scripts": {
     "build": "tsc",

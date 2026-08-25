@@ -67,14 +67,14 @@ function printUsage(): void {
 ${color('Monky CLI', ANSI.bold)}
 
 Uso:
-  monky-cli [--data <pasta>] members list
-  monky-cli [--data <pasta>] members info <nickname|clientId>
-  monky-cli [--data <pasta>] admin add <nickname|clientId>
-  monky-cli [--data <pasta>] admin remove <nickname|clientId>
-  monky-cli [--data <pasta>] roles list
-  monky-cli [--data <pasta>] config show
-  monky-cli [--data <pasta>] config set <chave> <valor>
-  monky-cli [--data <pasta>] bootstrap --identity <codigo> [--nickname <apelido>]
+  monky [--data <pasta>] members list
+  monky [--data <pasta>] members info <nickname|clientId>
+  monky [--data <pasta>] admin add <nickname|clientId>
+  monky [--data <pasta>] admin remove <nickname|clientId>
+  monky [--data <pasta>] roles list
+  monky [--data <pasta>] config show
+  monky [--data <pasta>] config set <chave> <valor>
+  monky [--data <pasta>] bootstrap --identity <codigo> [--nickname <apelido>]
 
 Configurações suportadas:
   name
@@ -617,3 +617,4 @@ if (require.main === module) {
     process.exit(1);
   });
 }
+
