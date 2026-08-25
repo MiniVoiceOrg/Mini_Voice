@@ -1,0 +1,19 @@
+{
+  "name": "@monky/server-gui",
+  "version": "2.0.0-beta.19",
+  "private": true,
+  "main": "dist/main/main.js",
+  "scripts": {
+    "dev": "electron .",
+    "build": "tsc"
+  },
+  "description": "Monky Server GUI - desktop host application",
+  "dependencies": {
+    "@monky/server": "*",
+    "@monky/shared": "*"
+  },
+  "devDependencies": {
+    "electron": "^34.3.0",
+    "typescript": "^5.5.0"
+  }
+}
