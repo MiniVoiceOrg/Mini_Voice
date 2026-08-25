@@ -8,10 +8,10 @@ body:
         ### Este template é o **segundo passo**, não o primeiro
 
         Ideias novas nascem em
-        [Discussions › Ideias](https://github.com/MiniVoiceOrg/Mini_Voice/discussions/categories/ideias),
+        [Discussions › Ideias](https://github.com/MonkyOrg/Monky/discussions/categories/ideias),
         onde a comunidade vota. Quando uma ideia é selecionada para um ciclo, ela vira
         uma issue com este template — com escopo e critérios de aceite fechados, porque
-        é assim que ela entra no [board](https://github.com/orgs/MiniVoiceOrg/projects/1).
+        é assim que ela entra no [board](https://github.com/orgs/MonkyOrg/projects/1).
 
         Se você quer **propor** algo, use as Discussions. Se você quer **implementar**
         algo já aprovado, este é o lugar.
@@ -21,7 +21,7 @@ body:
     attributes:
       label: Ideia de origem
       description: Link da discussão que originou esta feature (e quantos votos ela teve).
-      placeholder: https://github.com/MiniVoiceOrg/Mini_Voice/discussions/123 — 18 votos
+      placeholder: https://github.com/MonkyOrg/Monky/discussions/123 — 18 votos
     validations:
       required: false
 

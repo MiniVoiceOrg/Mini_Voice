@@ -8,7 +8,7 @@ import {
   PROTOCOL_VERSION,
   RECONNECT_DELAYS_MS,
   ServerErrorPayload,
-} from '@mini-voice/shared';
+} from '@monky/shared';
 import { appEvents } from './EventBus';
 import { t } from '../i18n';
 import { translateProtocolError } from '../i18n/protocolErrors';
@@ -75,8 +75,8 @@ export class NetworkClient {
       switch (result.reason) {
         case 'online':
           // The TCP port accepted the connection but the WebSocket handshake
-          // still failed — likely an incompatible/non-MiniVoice service.
-          return new Error(t('network.notMiniVoiceServer', { host, port }));
+          // still failed — likely an incompatible/non-Monky service.
+          return new Error(t('network.notMonkyServer', { host, port }));
         case 'refused':
           return new Error(t('network.portClosed', { host, port }));
         case 'unreachable':

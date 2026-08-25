@@ -1,4 +1,4 @@
-import { ChatMessage } from '@mini-voice/shared';
+import { ChatMessage } from '@monky/shared';
 import { appEvents } from '../core/EventBus';
 
 export class ChatStore {

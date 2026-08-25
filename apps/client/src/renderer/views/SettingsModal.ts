@@ -1,4 +1,4 @@
-import { MessageType, QUALITY_PRESETS, QualityPresetType, DEFAULT_CUSTOM_PROFILE, QualityProfile } from '@mini-voice/shared';
+import { MessageType, QUALITY_PRESETS, QualityPresetType, DEFAULT_CUSTOM_PROFILE, QualityProfile } from '@monky/shared';
 import { appEvents } from '../core/EventBus';
 import { networkClient } from '../core/NetworkClient';
 import { enableBackdropClose } from '../utils/modal';
@@ -15,9 +15,9 @@ import { updateService } from '../core/UpdateService';
 import { soundboardService } from '../core/SoundboardService';
 import { getLanguage, setLanguage, SUPPORTED_LANGUAGES, t, tCount, type SupportedLanguage } from '../i18n';
 
-const IDEAS_URL = 'https://github.com/MiniVoiceOrg/Mini_Voice/discussions/categories/ideias';
-const NEW_IDEA_URL = 'https://github.com/MiniVoiceOrg/Mini_Voice/discussions/new?category=ideias';
-const NEW_ISSUE_URL = 'https://github.com/MiniVoiceOrg/Mini_Voice/issues/new/choose';
+const IDEAS_URL = 'https://github.com/MonkyOrg/Monky/discussions/categories/ideias';
+const NEW_IDEA_URL = 'https://github.com/MonkyOrg/Monky/discussions/new?category=ideias';
+const NEW_ISSUE_URL = 'https://github.com/MonkyOrg/Monky/issues/new/choose';
 
 export class SettingsModal {
   private modalEl: HTMLElement | null = null;

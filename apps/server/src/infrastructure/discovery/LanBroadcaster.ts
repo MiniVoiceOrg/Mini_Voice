@@ -4,7 +4,7 @@ import { Logger } from '../logger/Logger';
 const DEFAULT_DISCOVERY_PORT = 41234;
 const DEFAULT_BROADCAST_INTERVAL_MS = 3000;
 const DISCOVERY_VERSION = '1.0';
-const DISCOVERY_TYPE = 'mini-voice-announce';
+const DISCOVERY_TYPE = 'monky-announce';
 const BROADCAST_ADDRESS = '255.255.255.255';
 
 interface LanBroadcasterOptions {

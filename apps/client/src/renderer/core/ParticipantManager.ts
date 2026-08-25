@@ -1,4 +1,4 @@
-import { UserSummary, VoiceParticipantState } from '@mini-voice/shared';
+import { UserSummary, VoiceParticipantState } from '@monky/shared';
 import { appEvents } from './EventBus';
 
 export interface ParticipantViewModel {

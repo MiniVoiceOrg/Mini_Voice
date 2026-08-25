@@ -15,7 +15,7 @@ export default defineConfig({
   },
   resolve: {
     alias: {
-      '@mini-voice/shared': path.resolve(__dirname, '../../packages/shared/src/index.ts'),
+      '@monky/shared': path.resolve(__dirname, '../../packages/shared/src/index.ts'),
     },
   },
 });

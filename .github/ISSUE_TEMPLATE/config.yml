@@ -1,11 +1,11 @@
 blank_issues_enabled: false
 contact_links:
   - name: 💡 Sugerir uma ideia ou melhoria
-    url: https://github.com/MiniVoiceOrg/Mini_Voice/discussions/new?category=ideias
+    url: https://github.com/MonkyOrg/Monky/discussions/new?category=ideias
     about: Ideias de features vão para Discussions, onde a comunidade vota. As mais votadas viram issues no board.
   - name: 🗳️ Ver e votar nas ideias existentes
-    url: https://github.com/MiniVoiceOrg/Mini_Voice/discussions/categories/ideias
+    url: https://github.com/MonkyOrg/Monky/discussions/categories/ideias
     about: Antes de sugerir, veja se alguém já pediu o mesmo — e vote na ideia em vez de abrir uma duplicada.
   - name: ❓ Dúvidas e ajuda
-    url: https://github.com/MiniVoiceOrg/Mini_Voice/discussions/categories/q-a
+    url: https://github.com/MonkyOrg/Monky/discussions/categories/q-a
     about: Dúvidas de instalação, configuração do servidor self-hosted ou uso do app.

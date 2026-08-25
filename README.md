@@ -1,4 +1,4 @@
-# Mini Voice 🎙️
+# Monky 🎙️
 
 Aplicativo desktop desenvolvido com **Electron**, **TypeScript**, **WebRTC P2P Mesh**, **WebSocket** e **SQLite** para comunicação simples, privada e autônoma entre amigos através de servidor self-hosted.
 
@@ -28,7 +28,7 @@ Aplicativo desktop desenvolvido com **Electron**, **TypeScript**, **WebRTC P2P M
 ## 📁 Estrutura do Projeto
 
 ```text
-Mini_Voice/
+Monky/
 ├── packages/
 │   └── shared/                 # Protocolo, modelos, constantes e validadores
 ├── apps/
@@ -63,7 +63,7 @@ npm start
 ```bash
 npm run package
 ```
-*(Gera a pasta portátil e o arquivo `Mini-Voice-Windows.zip` na pasta `release/`)*
+*(Gera a pasta portátil e o arquivo `Monky-Windows.zip` na pasta `release/`)*
 
 ### 5. Executar Servidor Standalone (Opcional para VPS/Linux/Docker)
 ```bash
@@ -77,10 +77,10 @@ node apps/server/dist/index.js --port 3000 --data ./data --name "Servidor dos Am
 O que entra nas próximas versões é decidido pela comunidade — e você **não
 precisa saber programar** para participar.
 
-- 💡 **[Sugerir uma ideia](https://github.com/MiniVoiceOrg/Mini_Voice/discussions/new?category=ideias)** — uma proposta por discussão
-- ⬆️ **[Ver e votar nas ideias](https://github.com/MiniVoiceOrg/Mini_Voice/discussions/categories/ideias)** — antes de sugerir, veja se alguém já pediu o mesmo
-- 📋 **[Board do projeto](https://github.com/orgs/MiniVoiceOrg/projects/1)** — o que está em desenvolvimento, em QA e concluído
-- 🐛 **[Reportar um bug](https://github.com/MiniVoiceOrg/Mini_Voice/issues/new/choose)** — bugs vão direto para Issues, sem votação
+- 💡 **[Sugerir uma ideia](https://github.com/MonkyOrg/Monky/discussions/new?category=ideias)** — uma proposta por discussão
+- ⬆️ **[Ver e votar nas ideias](https://github.com/MonkyOrg/Monky/discussions/categories/ideias)** — antes de sugerir, veja se alguém já pediu o mesmo
+- 📋 **[Board do projeto](https://github.com/orgs/MonkyOrg/projects/1)** — o que está em desenvolvimento, em QA e concluído
+- 🐛 **[Reportar um bug](https://github.com/MonkyOrg/Monky/issues/new/choose)** — bugs vão direto para Issues, sem votação
 
 Na primeira semana de cada mês, as três ideias mais votadas (com no mínimo 5
 votos) viram issues no board e entram no fluxo de desenvolvimento. O status volta

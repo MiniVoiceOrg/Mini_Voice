@@ -83,7 +83,7 @@ export class TrayManager {
   private createTray(): void {
     const initialIcon = this.appLogoImage || this.micIdleImage;
     this.tray = new Tray(initialIcon);
-    this.tray.setToolTip('Mini Voice');
+    this.tray.setToolTip('Monky');
 
     // Single click / double click to restore window
     this.tray.on('click', () => {

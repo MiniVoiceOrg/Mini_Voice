@@ -1,5 +1,5 @@
 {
-  "name": "@mini-voice/screen-audio",
+  "name": "@monky/screen-audio",
   "version": "1.0.0",
   "description": "Native screen audio capture (WASAPI loopback on Windows, ScreenCaptureKit on macOS)",
   "main": "index.js",

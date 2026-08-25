@@ -2,7 +2,7 @@ import {
   ProtocolErrorCode,
   UserSummary,
   nicknameSchema,
-} from '@mini-voice/shared';
+} from '@monky/shared';
 import { IUserRepository } from '../../domain/repositories';
 import { AvatarStorageService } from '../../infrastructure/security/AvatarStorageService';
 import { Logger } from '../../infrastructure/logger/Logger';

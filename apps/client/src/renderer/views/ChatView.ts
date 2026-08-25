@@ -1,5 +1,5 @@
-import { ChatMessage, LIMITS, MessageType } from '@mini-voice/shared';
-import type { AttachmentMeta, UserSummary } from '@mini-voice/shared';
+import { ChatMessage, LIMITS, MessageType } from '@monky/shared';
+import type { AttachmentMeta, UserSummary } from '@monky/shared';
 import { escapeHtml } from '../utils/html';
 import { appEvents } from '../core/EventBus';
 import { networkClient } from '../core/NetworkClient';

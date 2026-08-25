@@ -7,7 +7,7 @@ import {
   ServerDetails,
   UserSummary,
   authConnectSchema,
-} from '@mini-voice/shared';
+} from '@monky/shared';
 import { ServerRecord } from '../../domain/entities';
 import { IChannelRepository, IMentionRepository, IServerRepository, IUserRepository } from '../../domain/repositories';
 import { AvatarStorageService } from '../../infrastructure/security/AvatarStorageService';

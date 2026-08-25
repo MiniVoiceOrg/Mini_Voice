@@ -2,9 +2,9 @@ import { escapeHtml } from '../utils/html';
 import { t } from '../i18n';
 import { settingsStore } from '../stores/settingsStore';
 
-const DISMISSED_KEY = 'mini_voice_dismissed_update';
+const DISMISSED_KEY = 'monky_dismissed_update';
 const CHECK_INTERVAL_MS = 60 * 60 * 1000; // 1 hour
-const RELEASES_URL = 'https://github.com/MiniVoiceOrg/Mini_Voice/releases/latest';
+const RELEASES_URL = 'https://github.com/MonkyOrg/Monky/releases/latest';
 
 interface BannerAction {
   label: string;
