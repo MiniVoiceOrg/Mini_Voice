@@ -1,8 +1,11 @@
 blank_issues_enabled: true
 contact_links:
+  - name: 💡 Sugerir uma ideia
+    url: https://github.com/MiniVoiceOrg/Mini_Voice/discussions/new?category=ideias
+    about: Ideias de funcionalidades vão para Discussions, onde a comunidade vota nas próximas.
   - name: 🗳️ Votar nas ideias existentes
     url: https://github.com/MiniVoiceOrg/Mini_Voice/discussions/categories/ideias
-    about: As ideias mais votadas pela comunidade entram nos próximos ciclos.
+    about: Antes de sugerir, veja se alguém já pediu o mesmo — e vote em vez de duplicar.
   - name: ❓ Dúvidas e ajuda
     url: https://github.com/MiniVoiceOrg/Mini_Voice/discussions/categories/q-a
     about: Dúvidas de instalação, configuração do servidor ou uso do app.
