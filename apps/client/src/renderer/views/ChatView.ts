@@ -54,6 +54,8 @@ export class ChatView {
     networkClient.send(MessageType.CHAT_MENTIONS_READ, { channelId });
     this.render();
     this.loadHistory();
+    // Auto-focus the message input when opening a channel (#181).
+    (document.getElementById('chat-message-input') as HTMLElement | null)?.focus();
   }
 
   public render(): void {
