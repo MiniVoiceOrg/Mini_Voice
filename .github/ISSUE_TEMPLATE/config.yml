@@ -1,10 +1,10 @@
 blank_issues_enabled: true
 contact_links:
   - name: 💡 Sugerir uma ideia
-    url: https://github.com/MonkyOrg/Monky/discussions/new?category=ideias
+    url: https://github.com/MonkyOrg/Monky/discussions/new?category=ideas
     about: Ideias de funcionalidades vão para Discussions, onde a comunidade vota nas próximas.
   - name: 🗳️ Votar nas ideias existentes
-    url: https://github.com/MonkyOrg/Monky/discussions/categories/ideias
+    url: https://github.com/MonkyOrg/Monky/discussions/categories/ideas
     about: Antes de sugerir, veja se alguém já pediu o mesmo — e vote em vez de duplicar.
   - name: ❓ Dúvidas e ajuda
     url: https://github.com/MonkyOrg/Monky/discussions/categories/q-a
