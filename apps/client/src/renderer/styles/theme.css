@@ -3455,6 +3455,25 @@ button[data-loading="1"]::after {
   flex-shrink: 0;
 }
 
+.member-role-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 3px;
+  margin-top: 1px;
+}
+
+.member-role-tag {
+  --role-color: var(--accent-primary);
+  font-size: 10px;
+  font-weight: 600;
+  color: var(--role-color);
+  background-color: color-mix(in srgb, var(--role-color) 15%, transparent);
+  padding: 1px 6px;
+  border-radius: var(--radius-sm);
+  white-space: nowrap;
+  line-height: 1.4;
+}
+
 /* LIVE (screen share) badge + camera icon next to a user's name */
 .member-live-badge {
   font-size: 9px;
