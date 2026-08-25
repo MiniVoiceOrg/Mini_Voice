@@ -842,7 +842,7 @@ export class WebSocketServer {
         requestId,
         payload: {
           port,
-          serverName: server?.name || 'Mini Voice Server',
+          serverName: server?.name || 'Monky Server',
           networkInterfaces,
         },
       });
