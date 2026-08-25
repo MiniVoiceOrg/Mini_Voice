@@ -854,7 +854,11 @@ export class MainView {
                 ${voiceState?.serverMuted ? `<span class="material-symbols-outlined md-14 member-cam-icon" title="${t('permissions.serverMuted')}">admin_panel_settings</span>` : ''}
                 ${voiceState?.serverDeafened ? `<span class="material-symbols-outlined md-14 member-cam-icon" title="${t('permissions.serverDeafened')}">hearing_disabled</span>` : ''}
               </div>
-              <span class="member-subtext">${isReconnecting ? t('main.reconnecting') : (inVoice ? t('main.inVoiceChannel') : t('main.statusOnline'))}${serverStore.getUserRoles(m.id).length ? ` • ${escapeHtml(serverStore.getUserRoles(m.id).map((role) => role.name).join(', '))}` : ''}</span>
+              ${(() => {
+                const userRoles = serverStore.getUserRoles(m.id).filter((r) => !r.isDefault);
+                return userRoles.length ? `<div class="member-role-tags">${userRoles.map((role) => `<span class="member-role-tag" style="${role.color ? `--role-color: ${role.color}` : ''}">${escapeHtml(role.name)}</span>`).join('')}</div>` : '';
+              })()}
+              <span class="member-subtext">${isReconnecting ? t('main.reconnecting') : (inVoice ? t('main.inVoiceChannel') : t('main.statusOnline'))}</span>
             </div>
           </div>
         `;
