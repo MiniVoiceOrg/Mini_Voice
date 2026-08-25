@@ -246,7 +246,7 @@ export class ChatView {
 
   private focusChatInput(options?: { defer?: boolean }): void {
     const applyFocus = () => {
-      const input = document.getElementById('chat-message-input') as HTMLTextAreaElement | null;
+      const input = this.container.querySelector('#chat-message-input') as HTMLTextAreaElement | null;
       if (!input || input.disabled) return;
       input.focus({ preventScroll: true });
       const caret = input.value.length;
@@ -675,11 +675,12 @@ export class ChatView {
         <div class="chat-video-progress-shell">
           <input
             type="range"
-            class="chat-video-progress"
+            class="sb-slider chat-video-seek"
             min="0"
             max="100"
             step="0.1"
             value="0"
+            style="--slider-progress: 0%;"
             aria-label="${t('chat.videoSeek')}"
             title="${t('chat.videoSeek')}"
           >
@@ -720,14 +721,16 @@ export class ChatView {
       const muteIcon = muteButton?.querySelector('.material-symbols-outlined') as HTMLElement | null;
       const fullscreenButton = controls.querySelector('[data-action="fullscreen"]') as HTMLButtonElement | null;
       const fullscreenIcon = fullscreenButton?.querySelector('.material-symbols-outlined') as HTMLElement | null;
-      const progress = controls.querySelector('.chat-video-progress') as HTMLInputElement | null;
+      const progress = controls.querySelector('.chat-video-seek') as HTMLInputElement | null;
       const volume = controls.querySelector('.chat-video-volume') as HTMLInputElement | null;
       const volumeWrapper = controls.querySelector('.chat-video-volume-wrapper') as HTMLElement | null;
       const timeDisplay = controls.querySelector('.chat-video-time') as HTMLElement | null;
       let lastVolume = video.volume || 0.8;
 
       const syncRangeFill = (input: HTMLInputElement, ratio: number) => {
-        input.style.setProperty('--value', `${Math.max(0, Math.min(ratio * 100, 100))}%`);
+        const percent = `${Math.max(0, Math.min(ratio * 100, 100))}%`;
+        input.style.setProperty('--slider-progress', percent);
+        input.style.setProperty('--value', percent);
       };
 
       const getVolumeIcon = (level: number) => {
@@ -925,7 +928,7 @@ export class ChatView {
     this.unbindEvents.forEach((u) => u());
     this.unbindEvents = [];
 
-    const input = document.getElementById('chat-message-input') as HTMLTextAreaElement;
+    const input = this.container.querySelector('#chat-message-input') as HTMLTextAreaElement | null;
     const inputContainer = this.container.querySelector('.chat-input-container') as HTMLElement | null;
     const inputWrapper = this.container.querySelector('.chat-input-wrapper') as HTMLElement | null;
     const charCounter = document.getElementById('chat-char-counter');
@@ -942,10 +945,9 @@ export class ChatView {
     const focusFromInputShell = (e: MouseEvent) => {
       const target = e.target as HTMLElement | null;
       if (!input || input.disabled) return;
-      if (!target || target === input) return;
-      if (target.closest('button, input, .mention-dropup, #chat-attachment-tray')) return;
-      e.preventDefault();
-      this.focusChatInput();
+      if (this.isEditableTarget(target)) return;
+      if (target?.closest('button, .mention-dropup, #chat-attachment-tray')) return;
+      requestAnimationFrame(() => this.focusChatInput());
     };
     inputContainer?.addEventListener('mousedown', focusFromInputShell);
     inputWrapper?.addEventListener('mousedown', focusFromInputShell);
@@ -1434,6 +1436,9 @@ export class ChatView {
     let startPanX = 0;
     let startPanY = 0;
     let currentImage: HTMLImageElement | null = null;
+    let currentLightboxVideo: HTMLVideoElement | null = null;
+    let currentInlineVideo: HTMLVideoElement | null = null;
+    let resumeInlineVideoOnClose = false;
 
     const overlay = document.createElement('div');
     overlay.className = 'attachment-lightbox';
@@ -1532,6 +1537,22 @@ export class ChatView {
       updateImageTransform();
     };
 
+    const syncCurrentVideoBackToInline = (options?: { resume?: boolean }) => {
+      if (!currentLightboxVideo || !currentInlineVideo) return;
+      currentLightboxVideo.pause();
+      if (Number.isFinite(currentLightboxVideo.currentTime)) {
+        const nextTime = Math.max(0, currentLightboxVideo.currentTime);
+        currentInlineVideo.currentTime = nextTime;
+      }
+      currentInlineVideo.pause();
+      if (options?.resume && resumeInlineVideoOnClose) {
+        void currentInlineVideo.play().catch(() => undefined);
+      }
+      currentLightboxVideo = null;
+      currentInlineVideo = null;
+      resumeInlineVideoOnClose = false;
+    };
+
     const getActualScale = () => {
       if (!currentImage) return 1;
       const fittedWidth = currentImage.clientWidth || currentImage.naturalWidth || 1;
@@ -1565,6 +1586,7 @@ export class ChatView {
     };
 
     const renderCurrent = () => {
+      syncCurrentVideoBackToInline();
       releaseDrag();
       resetZoom();
       frame.innerHTML = '';
@@ -1635,10 +1657,35 @@ export class ChatView {
         video.src = item.url;
         video.preload = 'metadata';
         video.playsInline = true;
+        const inlineVideo = item.source.querySelector('video') as HTMLVideoElement | null;
+        const startTime = inlineVideo && Number.isFinite(inlineVideo.currentTime) ? inlineVideo.currentTime : 0;
+        const shouldResumePlayback = !!inlineVideo && !inlineVideo.paused && !inlineVideo.ended;
+        inlineVideo?.pause();
         player.appendChild(video);
         frame.appendChild(player);
         this.initializeCustomVideoPlayers(frame);
-        void video.play().catch(() => undefined);
+        currentLightboxVideo = video;
+        currentInlineVideo = inlineVideo;
+        resumeInlineVideoOnClose = shouldResumePlayback;
+        const applyStartTime = () => {
+          const duration = Number.isFinite(video.duration) ? video.duration : 0;
+          const nextTime = duration > 0 ? Math.min(startTime, Math.max(duration - 0.05, 0)) : startTime;
+          if (nextTime > 0) {
+            try {
+              video.currentTime = nextTime;
+            } catch {
+              // Ignore seek failures until metadata becomes available.
+            }
+          }
+          if (shouldResumePlayback) {
+            void video.play().catch(() => undefined);
+          }
+        };
+        if (video.readyState >= 1) {
+          applyStartTime();
+        } else {
+          video.addEventListener('loadedmetadata', applyStartTime, { once: true });
+        }
       }
     };
 
@@ -1662,6 +1709,7 @@ export class ChatView {
     };
 
     const close = () => {
+      syncCurrentVideoBackToInline({ resume: true });
       releaseDrag();
       if (document.fullscreenElement && overlay.contains(document.fullscreenElement)) {
         void document.exitFullscreen().catch(() => undefined);
