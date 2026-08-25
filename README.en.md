@@ -262,27 +262,28 @@ git clone https://github.com/MonkyOrg/Monky.git
 cd Monky
 npm install
 npm run build
+npm install -g ./apps/server
 ```
 
 ### Initial setup with the CLI
 
-All VPS server administration is done through the **Monky CLI**. First,
-bootstrap to set the initial owner/admin:
+All VPS server administration is done through the **Monky CLI**. After
+`npm install -g ./apps/server`, use the `monky` command. First, bootstrap to
+set the initial owner/admin:
 
 ```bash
 # Bootstrap: set the owner using your exported identity code
-npx monky bootstrap --identity "MONKY-ID:1:..." --data ./data
+monky bootstrap --identity "MONKY-ID:1:..." --data ./data
 
 # Configure the server
-npx monky config set name "Friends Server" --data ./data
-npx monky config set port 3000 --data ./data
-npx monky config set password "mypassword" --data ./data
+monky config set name "Friends Server" --data ./data
+monky config set password "mypassword" --data ./data
 ```
 
 ### Starting the server
 
 ```bash
-node apps/server/dist/index.js --data ./data
+monky start --data ./data --port 3001
 ```
 
 After that, your friends join normally using the **VPS IP** and the port.
@@ -294,13 +295,13 @@ client:
 
 ```bash
 # List members
-npx monky members list --data ./data
+monky members --data ./data
 
 # Promote someone to admin
-npx monky admin add "Username" --data ./data
+monky admin add "Username" --data ./data
 
 # See all options
-npx monky --help
+monky --help
 ```
 
 ➡️ Full CLI documentation: [docs/CLI.md](docs/CLI.md)
@@ -470,4 +471,3 @@ Want to send a change? See [How to contribute](#-how-to-contribute).
 ## 📄 License
 
 [MIT](LICENSE) — use it, modify it and host it freely.
-
