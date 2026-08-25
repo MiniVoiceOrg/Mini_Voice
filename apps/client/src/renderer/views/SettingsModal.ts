@@ -1,4 +1,4 @@
-import { MessageType, QUALITY_PRESETS, QualityPresetType, DEFAULT_CUSTOM_PROFILE, QualityProfile } from '@mini-voice/shared';
+import { MessageType, QUALITY_PRESETS, QualityPresetType, DEFAULT_CUSTOM_PROFILE, QualityProfile } from '@monky/shared';
 import { appEvents } from '../core/EventBus';
 import { networkClient } from '../core/NetworkClient';
 import { enableBackdropClose } from '../utils/modal';
@@ -14,9 +14,9 @@ import { getAvatarUrl } from '../utils/avatar';
 import { updateService } from '../core/UpdateService';
 import { soundboardService } from '../core/SoundboardService';
 
-const IDEAS_URL = 'https://github.com/MiniVoiceOrg/Mini_Voice/discussions/categories/ideias';
-const NEW_IDEA_URL = 'https://github.com/MiniVoiceOrg/Mini_Voice/discussions/new?category=ideias';
-const NEW_ISSUE_URL = 'https://github.com/MiniVoiceOrg/Mini_Voice/issues/new/choose';
+const IDEAS_URL = 'https://github.com/MonkyOrg/Monky/discussions/categories/ideias';
+const NEW_IDEA_URL = 'https://github.com/MonkyOrg/Monky/discussions/new?category=ideias';
+const NEW_ISSUE_URL = 'https://github.com/MonkyOrg/Monky/issues/new/choose';
 
 export class SettingsModal {
   private modalEl: HTMLElement | null = null;
@@ -353,7 +353,7 @@ export class SettingsModal {
             Comunidade
           </label>
           <small style="display: block; margin-bottom: 8px; color: var(--text-muted); font-size: 11px;">
-            O Mini Voice é open source. As ideias mais votadas pela comunidade viram as próximas features.
+            O Monky é open source. As ideias mais votadas pela comunidade viram as próximas features.
           </small>
           <div style="display: flex; gap: 8px; flex-wrap: wrap;">
             <button id="btn-suggest-idea" class="btn btn-secondary" style="font-size: 12px; padding: 6px 12px;">

@@ -8,7 +8,7 @@ import {
   PROTOCOL_VERSION,
   RECONNECT_DELAYS_MS,
   ServerErrorPayload,
-} from '@mini-voice/shared';
+} from '@monky/shared';
 import { appEvents } from './EventBus';
 
 export type ConnectionStatus = 'DISCONNECTED' | 'CONNECTING' | 'CONNECTED' | 'RECONNECTING';
@@ -75,13 +75,13 @@ export class NetworkClient {
       switch (result.reason) {
         case 'online':
           // The TCP port accepted the connection but the WebSocket handshake
-          // still failed — likely an incompatible/non-MiniVoice service.
+          // still failed — likely an incompatible/non-Monky service.
           return new Error(
-            `O endereço ${host}:${port} respondeu, mas não é um servidor Mini Voice válido. Verifique a porta.`
+            `O endereço ${host}:${port} respondeu, mas não é um servidor Monky válido. Verifique a porta.`
           );
         case 'refused':
           return new Error(
-            `O computador ${host} está online, mas nenhum servidor Mini Voice está ativo na porta ${port}. Verifique se o servidor foi iniciado.`
+            `O computador ${host} está online, mas nenhum servidor Monky está ativo na porta ${port}. Verifique se o servidor foi iniciado.`
           );
         case 'unreachable':
           return new Error(

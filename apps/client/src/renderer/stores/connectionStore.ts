@@ -36,8 +36,8 @@ export class ConnectionStore {
 
   public loadUserProfile(): void {
     try {
-      this.savedNickname = localStorage.getItem('mini_voice_nickname') || '';
-      this.savedAvatarBase64 = localStorage.getItem('mini_voice_avatar') || '';
+      this.savedNickname = localStorage.getItem('monky_nickname') || '';
+      this.savedAvatarBase64 = localStorage.getItem('monky_avatar') || '';
     } catch (e) {
       this.savedNickname = '';
       this.savedAvatarBase64 = '';
@@ -48,16 +48,16 @@ export class ConnectionStore {
     if (nickname) {
       this.savedNickname = nickname;
       try {
-        localStorage.setItem('mini_voice_nickname', nickname);
+        localStorage.setItem('monky_nickname', nickname);
       } catch (e) {}
     }
     if (avatarBase64 !== undefined) {
       this.savedAvatarBase64 = avatarBase64 || '';
       try {
         if (avatarBase64) {
-          localStorage.setItem('mini_voice_avatar', avatarBase64);
+          localStorage.setItem('monky_avatar', avatarBase64);
         } else {
-          localStorage.removeItem('mini_voice_avatar');
+          localStorage.removeItem('monky_avatar');
         }
       } catch (e) {}
     }
@@ -65,7 +65,7 @@ export class ConnectionStore {
 
   public loadSavedServers(): void {
     try {
-      const raw = localStorage.getItem('mini_voice_saved_servers');
+      const raw = localStorage.getItem('monky_saved_servers');
       if (raw) {
         this.savedServers = JSON.parse(raw);
       }
@@ -92,20 +92,20 @@ export class ConnectionStore {
     // Keep max 15
     this.savedServers = this.savedServers.slice(0, 15);
     try {
-      localStorage.setItem('mini_voice_saved_servers', JSON.stringify(this.savedServers));
+      localStorage.setItem('monky_saved_servers', JSON.stringify(this.savedServers));
     } catch (e) {}
   }
 
   public removeSavedServer(host: string, port: number): void {
     this.savedServers = this.savedServers.filter((s) => !(s.host === host && s.port === port));
     try {
-      localStorage.setItem('mini_voice_saved_servers', JSON.stringify(this.savedServers));
+      localStorage.setItem('monky_saved_servers', JSON.stringify(this.savedServers));
     } catch (e) {}
   }
 
   public loadCreatedServers(): void {
     try {
-      const raw = localStorage.getItem('mini_voice_created_servers');
+      const raw = localStorage.getItem('monky_created_servers');
       if (!raw) {
         this.createdServers = [];
         return;
@@ -152,14 +152,14 @@ export class ConnectionStore {
     this.createdServers = this.createdServers.slice(0, 10);
 
     try {
-      localStorage.setItem('mini_voice_created_servers', JSON.stringify(this.createdServers));
+      localStorage.setItem('monky_created_servers', JSON.stringify(this.createdServers));
     } catch (e) {}
   }
 
   public removeCreatedServer(id: string): void {
     this.createdServers = this.createdServers.filter((s) => s.id !== id);
     try {
-      localStorage.setItem('mini_voice_created_servers', JSON.stringify(this.createdServers));
+      localStorage.setItem('monky_created_servers', JSON.stringify(this.createdServers));
     } catch (e) {}
   }
 }

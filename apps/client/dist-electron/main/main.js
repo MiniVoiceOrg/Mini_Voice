@@ -50,7 +50,7 @@ function createWindow() {
         frame: isMac,
         titleBarStyle: isMac ? 'hidden' : 'default',
         trafficLightPosition: isMac ? { x: 14, y: 12 } : undefined,
-        title: 'Mini Voice',
+        title: 'Monky',
         icon: iconPath,
         webPreferences: {
             preload: path_1.default.join(__dirname, '../preload/preload.js'),

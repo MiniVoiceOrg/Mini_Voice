@@ -1,4 +1,4 @@
-import { MessageType, SoundboardPlayedPayload } from '@mini-voice/shared';
+import { MessageType, SoundboardPlayedPayload } from '@monky/shared';
 import { appEvents } from './EventBus';
 import { networkClient } from './NetworkClient';
 import { settingsStore } from '../stores/settingsStore';

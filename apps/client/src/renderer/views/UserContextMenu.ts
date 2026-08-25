@@ -1,4 +1,4 @@
-import { UserSummary } from '@mini-voice/shared';
+import { UserSummary } from '@monky/shared';
 import { escapeHtml } from '../utils/html';
 import { getAvatarUrl } from '../utils/avatar';
 import { settingsStore } from '../stores/settingsStore';

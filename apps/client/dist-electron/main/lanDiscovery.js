@@ -6,7 +6,7 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.LanDiscovery = void 0;
 const dgram_1 = __importDefault(require("dgram"));
 const DEFAULT_DISCOVERY_PORT = 41234;
-const ANNOUNCEMENT_TYPE = 'mini-voice-announce';
+const ANNOUNCEMENT_TYPE = 'monky-announce';
 const SERVER_TTL_MS = 10000;
 const PRUNE_INTERVAL_MS = 1000;
 class LanDiscovery {

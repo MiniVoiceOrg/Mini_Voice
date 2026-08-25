@@ -1,4 +1,4 @@
-import { MessageType } from '@mini-voice/shared';
+import { MessageType } from '@monky/shared';
 import { escapeHtml } from '../utils/html';
 import { appEvents } from '../core/EventBus';
 import { enableBackdropClose } from '../utils/modal';

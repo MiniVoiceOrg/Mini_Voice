@@ -1,4 +1,4 @@
-import { LIMITS } from '@mini-voice/shared';
+import { LIMITS } from '@monky/shared';
 
 export class RateLimiter {
   private userMessageTimestamps: Map<string, number[]> = new Map();

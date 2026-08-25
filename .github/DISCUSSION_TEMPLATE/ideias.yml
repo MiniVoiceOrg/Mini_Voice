@@ -37,7 +37,7 @@ body:
   - type: dropdown
     id: area
     attributes:
-      label: Que parte do Mini Voice isso afeta?
+      label: Que parte do Monky isso afeta?
       options:
         - Voz / áudio
         - Vídeo / câmera

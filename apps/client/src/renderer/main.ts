@@ -12,7 +12,7 @@ import {
   VoiceStateChangedPayload,
   VoiceUserJoinedPayload,
   VoiceUserLeftPayload,
-} from '@mini-voice/shared';
+} from '@monky/shared';
 import { audioProcessor } from './core/AudioProcessor';
 import { appEvents } from './core/EventBus';
 import { networkClient } from './core/NetworkClient';

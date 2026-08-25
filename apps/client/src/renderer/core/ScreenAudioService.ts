@@ -15,7 +15,7 @@
 import { appEvents } from './EventBus';
 import { webRtcManager } from './WebRtcManager';
 import { networkClient } from './NetworkClient';
-import { MessageType } from '@mini-voice/shared';
+import { MessageType } from '@monky/shared';
 
 // Ring-buffer based AudioWorklet processor (inlined as a string so it can be
 // loaded via Blob URL without a separate file).

@@ -1,4 +1,4 @@
-import { AttachmentStorageInfo, ChannelSummary, ServerDetails, UserSummary } from '@mini-voice/shared';
+import { AttachmentStorageInfo, ChannelSummary, ServerDetails, UserSummary } from '@monky/shared';
 import { appEvents } from '../core/EventBus';
 
 export class ServerStore {

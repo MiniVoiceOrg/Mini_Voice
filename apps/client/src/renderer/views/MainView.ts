@@ -1,4 +1,4 @@
-import { MessageType } from '@mini-voice/shared';
+import { MessageType } from '@monky/shared';
 import { escapeHtml } from '../utils/html';
 import { appEvents } from '../core/EventBus';
 import { networkClient } from '../core/NetworkClient';
@@ -397,7 +397,7 @@ export class MainView {
 
     // Restore a previously persisted width.
     try {
-      const saved = localStorage.getItem('mini_voice_channels_width');
+      const saved = localStorage.getItem('monky_channels_width');
       if (saved) {
         const w = parseInt(saved, 10);
         if (!isNaN(w)) sidebar.style.width = `${this.clampSidebarWidth(w)}px`;
@@ -419,7 +419,7 @@ export class MainView {
       document.body.style.cursor = '';
       document.body.style.userSelect = '';
       try {
-        localStorage.setItem('mini_voice_channels_width', String(parseInt(sidebar.style.width, 10)));
+        localStorage.setItem('monky_channels_width', String(parseInt(sidebar.style.width, 10)));
       } catch (e) {}
     };
 

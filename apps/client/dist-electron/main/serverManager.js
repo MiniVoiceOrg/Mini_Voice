@@ -7,7 +7,7 @@ exports.ServerManager = void 0;
 const path_1 = __importDefault(require("path"));
 const fs_1 = __importDefault(require("fs"));
 const electron_1 = require("electron");
-const server_js_1 = require("@mini-voice/server/dist/server.js");
+const server_js_1 = require("@monky/server/dist/server.js");
 class ServerManager {
     serverInstance = null;
     isRunning = false;
@@ -22,13 +22,13 @@ class ServerManager {
         const config = {
             port: options.port,
             dataDir,
-            serverName: options.serverName || 'Mini Voice Server',
+            serverName: options.serverName || 'Monky Server',
             password: options.password || '',
             initialVoiceChannel: options.initialVoiceChannel || 'Geral',
             initialTextChannel: options.initialTextChannel || 'geral',
         };
         try {
-            const server = await server_js_1.MiniVoiceServer.create(config);
+            const server = await server_js_1.MonkyServer.create(config);
             await server.start();
             this.serverInstance = server;
             this.isRunning = true;

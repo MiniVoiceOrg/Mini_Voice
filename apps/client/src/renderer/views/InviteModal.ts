@@ -27,7 +27,7 @@ export class InviteModal {
         <div style="background: var(--bg-card); border: 1px solid var(--border-color); border-radius: var(--radius-md); padding: 14px; display: flex; flex-direction: column; gap: 10px;">
           <div style="display: flex; justify-content: space-between; font-size: 13px;">
             <span style="color: var(--text-muted);">Servidor:</span>
-            <span style="font-weight: 600;">${serverStore.serverDetails?.name || 'Mini Voice'}</span>
+            <span style="font-weight: 600;">${serverStore.serverDetails?.name || 'Monky'}</span>
           </div>
 
           <div style="display: flex; justify-content: space-between; font-size: 13px;">
@@ -93,8 +93,8 @@ export class InviteModal {
     enableBackdropClose(this.modalEl, () => this.close());
 
     btnCopy?.addEventListener('click', async () => {
-      const textToCopy = `Convite para o Mini Voice!
-Servidor: ${serverStore.serverDetails?.name || 'Mini Voice'}
+      const textToCopy = `Convite para o Monky!
+Servidor: ${serverStore.serverDetails?.name || 'Monky'}
 IP / Host: ${this.publicIp}
 Porta: 3000
 

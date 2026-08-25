@@ -1,9 +1,9 @@
 import { escapeHtml } from '../utils/html';
 import { settingsStore } from '../stores/settingsStore';
 
-const DISMISSED_KEY = 'mini_voice_dismissed_update';
+const DISMISSED_KEY = 'monky_dismissed_update';
 const CHECK_INTERVAL_MS = 60 * 60 * 1000; // 1 hour
-const RELEASES_URL = 'https://github.com/MiniVoiceOrg/Mini_Voice/releases/latest';
+const RELEASES_URL = 'https://github.com/MonkyOrg/Monky/releases/latest';
 
 interface BannerAction {
   label: string;
@@ -57,7 +57,7 @@ class UpdateService {
 
     window.api.onUpdateDownloaded((info) => {
       if (info.manual) {
-        this.setText('Instalador aberto — arraste o Mini Voice para a pasta Aplicativos e reabra.');
+        this.setText('Instalador aberto — arraste o Monky para a pasta Aplicativos e reabra.');
         this.setActions([{ label: '×', dismiss: true, onClick: () => this.dismiss() }]);
       } else {
         // Windows: the main process installs silently and relaunches on its own.

@@ -16,7 +16,7 @@ let screenAudio: {
   getStatus: () => number;
 } | null = null;
 try {
-  screenAudio = require('@mini-voice/screen-audio');
+  screenAudio = require('@monky/screen-audio');
 } catch (e) {
   console.warn('[ScreenAudio:Main] Native module not available:', (e as Error).message);
   screenAudio = null;

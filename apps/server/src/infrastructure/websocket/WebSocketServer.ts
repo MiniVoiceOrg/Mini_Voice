@@ -37,7 +37,7 @@ import {
   VoiceUserJoinedPayload,
   VoiceUserLeftPayload,
   WebRtcSignalPayload,
-} from '@mini-voice/shared';
+} from '@monky/shared';
 import { AuthService } from '../../application/services/AuthService';
 import { AttachmentService } from '../../application/services/AttachmentService';
 import { ChannelService } from '../../application/services/ChannelService';

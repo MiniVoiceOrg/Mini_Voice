@@ -8,7 +8,7 @@ const electron_1 = require("electron");
 const fs_1 = __importDefault(require("fs"));
 const https_1 = __importDefault(require("https"));
 const path_1 = __importDefault(require("path"));
-const GITHUB_REPO = 'MiniVoiceOrg/Mini_Voice';
+const GITHUB_REPO = 'MonkyOrg/Monky';
 let autoUpdater = null;
 // Whether the user opted into the beta channel (set from the renderer via the
 // `update-set-channel` IPC). When true, update detection also considers GitHub
@@ -106,7 +106,7 @@ let downloadedMacPath = null;
  * so a newer beta, or the final stable that supersedes it, is always chosen.
  */
 async function fetchTargetRelease() {
-    const headers = { Accept: 'application/vnd.github+json', 'User-Agent': 'MiniVoice-App' };
+    const headers = { Accept: 'application/vnd.github+json', 'User-Agent': 'Monky-App' };
     if (betaChannel) {
         const res = await fetch(`https://api.github.com/repos/${GITHUB_REPO}/releases?per_page=30`, {
             headers,
@@ -169,7 +169,7 @@ function downloadToFile(url, destPath, onProgress) {
                 return;
             }
             https_1.default
-                .get(currentUrl, { headers: { 'User-Agent': 'MiniVoice-App' } }, (response) => {
+                .get(currentUrl, { headers: { 'User-Agent': 'Monky-App' } }, (response) => {
                 const status = response.statusCode ?? 0;
                 if (status >= 300 && status < 400 && response.headers.location) {
                     response.resume();
@@ -252,12 +252,16 @@ function setupUpdater(mainWindow) {
     }
     electron_1.ipcMain.handle('update-set-channel', async (_e, allowBeta) => {
         betaChannel = !!allowBeta;
-        // Keep electron-updater aligned with the chosen channel for the download
-        // step. We always publish `latest.yml` (detectUpdateChannel:false), so the
-        // channel stays "latest"; only pre-release eligibility changes.
+        // Only toggle pre-release eligibility — do NOT force `updater.channel`.
+        // On a prerelease-versioned build (e.g. `1.9.0-beta.1`) with
+        // allowPrerelease, electron-updater's GitHubProvider uses `updater.channel`
+        // as the "current channel" and rejects every release whose channel differs
+        // (a forced "latest" matches nothing), throwing
+        // ERR_UPDATER_NO_PUBLISHED_VERSIONS. Left unset, the channel is derived from
+        // the running version and the manifest read falls back to `latest.yml` (the
+        // only file we publish, thanks to detectUpdateChannel:false at build time).
         const updater = loadAutoUpdater();
         if (updater) {
-            updater.channel = 'latest';
             updater.allowPrerelease = betaChannel;
         }
         return { ok: true };
@@ -278,8 +282,8 @@ function setupUpdater(mainWindow) {
             return { ok: false, error: 'Atualização automática indisponível em modo de desenvolvimento' };
         }
         try {
-            // Ensure the updater targets the right channel/pre-release eligibility.
-            updater.channel = 'latest';
+            // Match the chosen pre-release eligibility. Do NOT set `updater.channel`
+            // here (see `update-set-channel`): forcing it breaks prerelease builds.
             updater.allowPrerelease = betaChannel;
             // electron-updater requires its own check before it can download.
             await updater.checkForUpdates();

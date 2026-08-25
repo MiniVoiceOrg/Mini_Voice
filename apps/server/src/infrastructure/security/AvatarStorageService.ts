@@ -1,7 +1,7 @@
 import fs from 'fs';
 import path from 'path';
 import { v4 as uuidv4 } from 'uuid';
-import { LIMITS } from '@mini-voice/shared';
+import { LIMITS } from '@monky/shared';
 import { Logger } from '../logger/Logger';
 
 export interface AvatarValidationResult {

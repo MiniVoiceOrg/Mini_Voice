@@ -1,4 +1,4 @@
-import { LIMITS, MessageType, ServerUpdateSettingsPayload } from '@mini-voice/shared';
+import { LIMITS, MessageType, ServerUpdateSettingsPayload } from '@monky/shared';
 import logoUrl from '../assets/Logo.png';
 import { escapeHtml } from '../utils/html';
 import { enableBackdropClose } from '../utils/modal';

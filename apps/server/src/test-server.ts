@@ -7,8 +7,8 @@ import {
   ProtocolErrorCode,
   ProtocolMessage,
   PROTOCOL_VERSION,
-} from '@mini-voice/shared';
-import { MiniVoiceServer } from './server';
+} from '@monky/shared';
+import { MonkyServer } from './server';
 
 /** Rejects if the given promise does not settle within `ms`, preventing a hung test from blocking forever. */
 function withTimeout<T>(promise: Promise<T>, ms: number, label: string): Promise<T> {
@@ -21,13 +21,13 @@ function withTimeout<T>(promise: Promise<T>, ms: number, label: string): Promise
 }
 
 async function runTests() {
-  console.log('=== Início dos Testes do Servidor Mini Voice ===');
+  console.log('=== Início dos Testes do Servidor Monky ===');
   const testDataDir = path.join(__dirname, '../../test-data');
   if (fs.existsSync(testDataDir)) {
     fs.rmSync(testDataDir, { recursive: true, force: true });
   }
 
-  const server = await MiniVoiceServer.create({
+  const server = await MonkyServer.create({
     port: 3999,
     dataDir: testDataDir,
     serverName: 'Servidor de Testes',
@@ -135,13 +135,13 @@ async function runTests() {
         requestId: 'req-4',
         payload: {
           channelId: textChannelId,
-          content: 'Olá mundo do Mini Voice!',
+          content: 'Olá mundo do Monky!',
         },
       };
 
       const handler = (data: any) => {
         const res = JSON.parse(data.toString());
-        if (res.type === MessageType.CHAT_MESSAGE && res.payload.content === 'Olá mundo do Mini Voice!') {
+        if (res.type === MessageType.CHAT_MESSAGE && res.payload.content === 'Olá mundo do Monky!') {
           console.log('✔ Teste 4 passou: Mensagem de chat enviada e recebida com sucesso!');
           ws2.off('message', handler);
           resolve();

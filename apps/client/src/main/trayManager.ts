@@ -82,7 +82,7 @@ export class TrayManager {
   private createTray(): void {
     const initialIcon = this.appLogoImage || this.micIdleImage;
     this.tray = new Tray(initialIcon);
-    this.tray.setToolTip('Mini Voice');
+    this.tray.setToolTip('Monky');
 
     // Single click / double click to restore window
     this.tray.on('click', () => {
@@ -120,19 +120,19 @@ export class TrayManager {
 
     if (!this.voiceStatus.inCall) {
       currentIcon = this.appLogoImage || this.micIdleImage;
-      tooltip = 'Mini Voice';
+      tooltip = 'Monky';
     } else if (this.voiceStatus.isDeafened) {
       currentIcon = this.deafenedImage;
-      tooltip = 'Mini Voice (Áudio Mutado / Ensurdecido)';
+      tooltip = 'Monky (Áudio Mutado / Ensurdecido)';
     } else if (this.voiceStatus.isMuted) {
       currentIcon = this.micMutedImage;
-      tooltip = 'Mini Voice (Microfone Mutado)';
+      tooltip = 'Monky (Microfone Mutado)';
     } else if (this.voiceStatus.isSpeaking) {
       currentIcon = this.micSpeakingImage;
-      tooltip = 'Mini Voice (Microfone Ativo — Falando)';
+      tooltip = 'Monky (Microfone Ativo — Falando)';
     } else {
       currentIcon = this.micIdleImage;
-      tooltip = 'Mini Voice (Em Chamada)';
+      tooltip = 'Monky (Em Chamada)';
     }
 
     this.tray.setImage(currentIcon);
@@ -141,7 +141,7 @@ export class TrayManager {
     // 2. Build context menu
     const menuTemplate: Electron.MenuItemConstructorOptions[] = [
       {
-        label: 'Abrir Mini Voice',
+        label: 'Abrir Monky',
         click: () => this.showWindow(),
       },
     ];
@@ -174,7 +174,7 @@ export class TrayManager {
 
     menuTemplate.push({ type: 'separator' });
     menuTemplate.push({
-      label: 'Fechar Mini Voice',
+      label: 'Fechar Monky',
       click: () => {
         this.onQuitApp();
       },
