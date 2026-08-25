@@ -92,8 +92,6 @@ export class ChatView {
 
     const channel = serverStore.serverDetails.channels.find((c) => c.id === this.currentChannelId);
     const channelName = channel ? channel.name : 'geral';
-    const canSendMessages = serverStore.hasPermission(Permission.SEND_MESSAGES);
-    const canAttachFiles = serverStore.hasPermission(Permission.ATTACH_FILES);
 
     this.container.innerHTML = `
       <div class="chat-container">
@@ -117,14 +115,16 @@ export class ChatView {
         <div class="chat-input-container">
           <div id="mention-dropup" class="mention-dropup" style="display: none;"></div>
           <div id="chat-attachment-tray" class="chat-attachment-tray" style="display: none;"></div>
+          <div id="chat-compose-link-preview" class="chat-compose-link-preview" style="display: none;"></div>
+          <div id="chat-send-permission-banner" class="chat-permission-banner" style="display: none;"></div>
           <div class="chat-input-wrapper">
-            <button id="btn-attach" type="button" class="chat-attach-btn" title="${t('chat.attachFile')}" ${canAttachFiles ? '' : 'disabled'}>
+            <button id="btn-attach" type="button" class="chat-attach-btn" title="${t('chat.attachFile')}">
               <span class="material-symbols-outlined md-22">add_circle</span>
             </button>
             <input id="chat-file-input" type="file" multiple style="display: none;">
             <textarea id="chat-message-input" class="chat-input-field" rows="1" placeholder="${t('chat.inputPlaceholder', { channel: escapeHtml(channelName) })}" maxlength="${LIMITS.MAX_MESSAGE_LENGTH}"></textarea>
             <span id="chat-char-counter" class="chat-char-count">0/${LIMITS.MAX_MESSAGE_LENGTH}</span>
-            <button id="btn-send-message" class="btn btn-primary" style="padding: 6px 14px; font-size: 13px;" ${canSendMessages ? '' : 'disabled'}>
+            <button id="btn-send-message" class="btn btn-primary" style="padding: 6px 14px; font-size: 13px;">
               <span class="material-symbols-outlined md-16" style="margin-right: 4px;">send</span>
               ${t('chat.send')}
             </button>
@@ -259,6 +259,52 @@ export class ChatView {
     }
 
     applyFocus();
+  }
+
+  private arePermissionsResolved(): boolean {
+    return serverStore.myPermissions > 0 || serverStore.ownerId !== null;
+  }
+
+  private syncComposerPermissionState(): void {
+    const input = this.container.querySelector('#chat-message-input') as HTMLTextAreaElement | null;
+    const inputWrapper = this.container.querySelector('.chat-input-wrapper') as HTMLElement | null;
+    const permissionBanner = this.container.querySelector('#chat-send-permission-banner') as HTMLElement | null;
+    const btnSend = this.container.querySelector('#btn-send-message') as HTMLButtonElement | null;
+    const btnAttach = this.container.querySelector('#btn-attach') as HTMLButtonElement | null;
+    if (!input || !inputWrapper) return;
+
+    const channelName = serverStore.serverDetails?.channels.find((c) => c.id === this.currentChannelId)?.name || 'geral';
+    const permissionsResolved = this.arePermissionsResolved();
+    const canSendMessages = !permissionsResolved || serverStore.hasPermission(Permission.SEND_MESSAGES);
+    const canAttachFiles = canSendMessages && (!permissionsResolved || serverStore.hasPermission(Permission.ATTACH_FILES));
+    const locked = permissionsResolved && !canSendMessages;
+
+    input.readOnly = locked;
+    input.placeholder = locked
+      ? t('chat.sendPermissionDenied')
+      : t('chat.inputPlaceholder', { channel: escapeHtml(channelName) });
+    input.setAttribute('aria-readonly', locked ? 'true' : 'false');
+    inputWrapper.classList.toggle('chat-input-wrapper--disabled', locked);
+    input.classList.toggle('chat-input-field--readonly', locked);
+
+    if (permissionBanner) {
+      permissionBanner.textContent = locked ? t('chat.sendPermissionDenied') : '';
+      permissionBanner.style.display = locked ? 'flex' : 'none';
+    }
+
+    if (btnSend) {
+      btnSend.hidden = locked;
+      btnSend.disabled = locked || this.pending.some((p) => p.status === 'uploading');
+    }
+
+    if (btnAttach) {
+      btnAttach.disabled = !canAttachFiles;
+      btnAttach.setAttribute('aria-disabled', btnAttach.disabled ? 'true' : 'false');
+    }
+
+    if (locked) {
+      this.closeMentionDropup();
+    }
   }
 
   private isEditableTarget(target: EventTarget | null): boolean {
@@ -933,8 +979,6 @@ export class ChatView {
     const inputWrapper = this.container.querySelector('.chat-input-wrapper') as HTMLElement | null;
     const charCounter = document.getElementById('chat-char-counter');
     const btnSend = document.getElementById('btn-send-message');
-    const canSendMessages = serverStore.hasPermission(Permission.SEND_MESSAGES);
-    const canAttachFiles = serverStore.hasPermission(Permission.ATTACH_FILES);
 
     const autoResize = () => {
       if (!input) return;
@@ -952,12 +996,73 @@ export class ChatView {
     inputContainer?.addEventListener('mousedown', focusFromInputShell);
     inputWrapper?.addEventListener('mousedown', focusFromInputShell);
 
+    let composeLinkTimer: ReturnType<typeof setTimeout> | null = null;
+    let lastComposeUrl = '';
+    const composeLinkPreviewEl = this.container.querySelector('#chat-compose-link-preview') as HTMLElement | null;
+
+    const updateComposeLinkPreview = () => {
+      if (!input || !composeLinkPreviewEl) return;
+      const urlMatch = input.value.match(/(https?:\/\/[^\s<]+)/);
+      const url = urlMatch ? urlMatch[1] : '';
+      if (url === lastComposeUrl) return;
+      lastComposeUrl = url;
+      if (!url) {
+        composeLinkPreviewEl.style.display = 'none';
+        composeLinkPreviewEl.innerHTML = '';
+        return;
+      }
+      this.fetchLinkPreview(url).then((data) => {
+        if (!data || lastComposeUrl !== url) return;
+        composeLinkPreviewEl.style.display = 'block';
+        const imgHtml = data.image ? `<img class="compose-link-preview-img" src="${escapeHtml(data.image)}" alt="">` : '';
+        composeLinkPreviewEl.innerHTML = `
+          <div class="compose-link-preview-card" data-external-link="${escapeHtml(url)}" role="button" tabindex="0">
+            <div class="compose-link-preview-text">
+              <div class="compose-link-preview-site">${escapeHtml(data.siteName || new URL(url).hostname)}</div>
+              <div class="compose-link-preview-title">${escapeHtml(data.title || url)}</div>
+              ${data.description ? `<div class="compose-link-preview-desc">${escapeHtml(data.description)}</div>` : ''}
+            </div>
+            ${imgHtml}
+            <button type="button" class="compose-link-preview-dismiss" title="${t('common.close')}">
+              <span class="material-symbols-outlined md-16">close</span>
+            </button>
+          </div>
+        `;
+        const openPreviewLink = () => {
+          if (window.api?.openExternal) {
+            window.api.openExternal(url);
+          }
+        };
+        composeLinkPreviewEl.querySelector('.compose-link-preview-card')?.addEventListener('click', openPreviewLink);
+        composeLinkPreviewEl.querySelector('.compose-link-preview-card')?.addEventListener('keydown', (event) => {
+          const keyEvent = event as KeyboardEvent;
+          if (keyEvent.key === 'Enter' || keyEvent.key === ' ') {
+            keyEvent.preventDefault();
+            openPreviewLink();
+          }
+        });
+        composeLinkPreviewEl.querySelector('.compose-link-preview-dismiss')?.addEventListener('click', (event) => {
+          event.stopPropagation();
+          composeLinkPreviewEl.style.display = 'none';
+          composeLinkPreviewEl.innerHTML = '';
+          lastComposeUrl = '__dismissed__';
+        });
+      }).catch(() => { /* silent */ });
+    };
+
     input?.addEventListener('input', () => {
       if (charCounter) {
         charCounter.innerText = `${input.value.length}/${LIMITS.MAX_MESSAGE_LENGTH}`;
       }
       autoResize();
       this.updateMentionDropup(input);
+      if (composeLinkTimer) clearTimeout(composeLinkTimer);
+      composeLinkTimer = setTimeout(updateComposeLinkPreview, 500);
+    });
+
+    // Also detect URL on paste immediately
+    input?.addEventListener('paste', () => {
+      setTimeout(updateComposeLinkPreview, 100);
     });
 
     const handleSend = () => {
@@ -986,6 +1091,12 @@ export class ChatView {
         charCounter.innerText = `0/${LIMITS.MAX_MESSAGE_LENGTH}`;
       }
       this.closeMentionDropup();
+      // Clear compose link preview
+      if (composeLinkPreviewEl) {
+        composeLinkPreviewEl.style.display = 'none';
+        composeLinkPreviewEl.innerHTML = '';
+        lastComposeUrl = '';
+      }
     };
 
     // --- Attachment upload wiring (#11) ---
@@ -993,12 +1104,12 @@ export class ChatView {
     const fileInput = document.getElementById('chat-file-input') as HTMLInputElement | null;
 
     btnAttach?.addEventListener('click', () => {
-      if (!canAttachFiles) return;
+      if (!serverStore.hasPermission(Permission.ATTACH_FILES)) return;
       fileInput?.click();
     });
     fileInput?.addEventListener('change', () => {
       if (fileInput.files && fileInput.files.length > 0) {
-        if (!canAttachFiles) return;
+        if (!serverStore.hasPermission(Permission.ATTACH_FILES)) return;
         this.addFiles(fileInput.files);
       }
       fileInput.value = '';
@@ -1008,7 +1119,7 @@ export class ChatView {
     input?.addEventListener('paste', (e: ClipboardEvent) => {
       const files = e.clipboardData?.files;
       if (files && files.length > 0) {
-        if (!canAttachFiles) return;
+        if (!serverStore.hasPermission(Permission.ATTACH_FILES)) return;
         e.preventDefault();
         this.addFiles(files);
       }
@@ -1024,7 +1135,7 @@ export class ChatView {
       if (!this.currentChannelId) return;
       const files = ce.clipboardData?.files;
       if (files && files.length > 0) {
-        if (!canAttachFiles) return;
+        if (!serverStore.hasPermission(Permission.ATTACH_FILES)) return;
         e.preventDefault();
         this.addFiles(files);
         // Focus the input so the user can add a message to accompany the file.
@@ -1074,6 +1185,7 @@ export class ChatView {
 
     // Re-render the tray for any files staged before this (re)render.
     this.renderTray();
+    this.syncComposerPermissionState();
 
     input?.addEventListener('keydown', (e) => {
       // While the mention dropup is open, arrows/enter/tab/esc drive it (#14).
@@ -1119,19 +1231,21 @@ export class ChatView {
     });
 
     // Listen for new messages
-    const u1 = appEvents.on('chat.message_added', (msg: ChatMessage) => {
+    const u1 = appEvents.on('server.updated', () => this.syncComposerPermissionState());
+    const u2 = appEvents.on('server.roles_updated', () => this.syncComposerPermissionState());
+    const u3 = appEvents.on('chat.message_added', (msg: ChatMessage) => {
       if (msg.channelId === this.currentChannelId) {
         this.renderMessages();
       }
     });
 
-    const u2 = appEvents.on('chat.history_loaded', (data: { channelId: string }) => {
+    const u4 = appEvents.on('chat.history_loaded', (data: { channelId: string }) => {
       if (data.channelId === this.currentChannelId) {
         this.renderMessages();
       }
     });
 
-    this.unbindEvents.push(u1, u2);
+    this.unbindEvents.push(u1, u2, u3, u4);
   }
 
   private scrollToBottom(): void {
@@ -1244,6 +1358,9 @@ export class ChatView {
 
   private addFiles(fileList: FileList): void {
     if (!this.currentChannelId) return;
+    if (this.arePermissionsResolved() && (!serverStore.hasPermission(Permission.SEND_MESSAGES) || !serverStore.hasPermission(Permission.ATTACH_FILES))) {
+      return;
+    }
     const channelId = this.currentChannelId;
     const maxFile =
       serverStore.serverDetails?.attachmentStorage?.maxFileBytes ??
@@ -1374,7 +1491,8 @@ export class ChatView {
     const btnSend = document.getElementById('btn-send-message') as HTMLButtonElement | null;
     if (!btnSend) return;
     const uploading = this.pending.some((p) => p.status === 'uploading');
-    btnSend.disabled = uploading;
+    const permissionLocked = this.arePermissionsResolved() && !serverStore.hasPermission(Permission.SEND_MESSAGES);
+    btnSend.disabled = uploading || permissionLocked;
     btnSend.style.opacity = uploading ? '0.6' : '';
     btnSend.style.cursor = uploading ? 'not-allowed' : '';
   }

@@ -814,6 +814,15 @@ input:focus, textarea:focus, select:focus {
   color: #ffffff;
 }
 
+.channel-item.restricted {
+  opacity: 0.72;
+}
+
+.channel-item.restricted-feedback {
+  background: rgba(240, 178, 50, 0.12);
+  outline: 1px solid rgba(240, 178, 50, 0.45);
+}
+
 .channel-item.drag-hover {
   background-color: rgba(88, 101, 242, 0.18);
   color: var(--text-primary);
@@ -830,6 +839,11 @@ input:focus, textarea:focus, select:focus {
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+}
+
+.channel-restricted-icon {
+  color: var(--warning);
+  flex-shrink: 0;
 }
 
 /* Red @ shown on a text channel when the user was mentioned and hasn't opened it yet (#14). */
@@ -1637,6 +1651,20 @@ input:focus, textarea:focus, select:focus {
   position: relative;
 }
 
+.chat-permission-banner {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 10px;
+  padding: 10px 12px;
+  border-radius: var(--radius-md);
+  border: 1px solid rgba(240, 178, 50, 0.35);
+  background: rgba(240, 178, 50, 0.08);
+  color: #ffd37a;
+  font-size: 12px;
+  font-weight: 600;
+}
+
 /* @-mention autocomplete dropup (#14) */
 .mention-dropup {
   position: absolute;
@@ -1718,6 +1746,11 @@ input:focus, textarea:focus, select:focus {
   border-color: var(--border-focus);
 }
 
+.chat-input-wrapper--disabled {
+  background: rgba(255, 255, 255, 0.03);
+  border-color: rgba(240, 178, 50, 0.35);
+}
+
 .chat-input-field {
   flex: 1;
   background: transparent;
@@ -1734,6 +1767,11 @@ input:focus, textarea:focus, select:focus {
 
 .chat-input-field:focus {
   outline: none;
+}
+
+.chat-input-field--readonly {
+  color: var(--text-muted);
+  cursor: not-allowed;
 }
 
 .chat-char-count {
@@ -1787,6 +1825,120 @@ input:focus, textarea:focus, select:focus {
 .chat-attach-btn:hover {
   color: var(--accent-primary);
   background: var(--bg-tertiary);
+}
+
+.chat-attach-btn:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.chat-attach-btn:disabled:hover {
+  color: var(--text-muted);
+  background: transparent;
+}
+
+.chat-compose-link-preview {
+  margin-bottom: 10px;
+}
+
+.compose-link-preview-card {
+  position: relative;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 10px;
+  align-items: start;
+  padding: 10px 40px 10px 12px;
+  border-radius: 10px;
+  border: 1px solid var(--border-color);
+  background: linear-gradient(180deg, rgba(28, 35, 45, 0.98) 0%, rgba(22, 27, 34, 0.98) 100%);
+  cursor: pointer;
+  transition: border-color 0.15s ease, background-color 0.15s ease, transform 0.15s ease;
+}
+
+.compose-link-preview-card:hover {
+  border-color: rgba(88, 101, 242, 0.55);
+  background: linear-gradient(180deg, rgba(36, 44, 56, 0.98) 0%, rgba(22, 27, 34, 0.98) 100%);
+  transform: translateY(-1px);
+}
+
+.compose-link-preview-card:focus-visible {
+  outline: 2px solid var(--accent-primary);
+  outline-offset: 2px;
+}
+
+.compose-link-preview-text {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.compose-link-preview-site,
+.compose-link-preview-title,
+.compose-link-preview-desc {
+  min-width: 0;
+  word-break: break-word;
+}
+
+.compose-link-preview-site {
+  color: var(--text-secondary);
+  font-size: 11px;
+  font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.compose-link-preview-title {
+  color: var(--text-primary);
+  font-size: 13px;
+  font-weight: 700;
+  line-height: 1.35;
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  overflow: hidden;
+}
+
+.compose-link-preview-desc {
+  color: var(--text-secondary);
+  font-size: 12px;
+  line-height: 1.4;
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  overflow: hidden;
+}
+
+.compose-link-preview-img {
+  width: 64px;
+  min-width: 64px;
+  height: 64px;
+  border-radius: 8px;
+  object-fit: cover;
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  background: var(--bg-panel);
+}
+
+.compose-link-preview-dismiss {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  width: 26px;
+  height: 26px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: none;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--text-muted);
+  cursor: pointer;
+}
+
+.compose-link-preview-dismiss:hover {
+  background: rgba(255, 255, 255, 0.08);
+  color: var(--text-primary);
 }
 
 /* Staged-uploads tray above the input box */

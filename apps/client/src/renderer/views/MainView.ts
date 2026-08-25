@@ -480,6 +480,26 @@ export class MainView {
     this.textChannelDragHoverId = null;
   }
 
+  private arePermissionsResolved(): boolean {
+    return serverStore.myPermissions > 0 || serverStore.ownerId !== null;
+  }
+
+  private canReadTextChannels(): boolean {
+    return !this.arePermissionsResolved() || serverStore.hasPermission(Permission.READ_MESSAGES);
+  }
+
+  private canSpeakInVoiceChannels(): boolean {
+    return !this.arePermissionsResolved() || serverStore.hasPermission(Permission.SPEAK);
+  }
+
+  private showVoicePermissionDenied(): void {
+    void showAlert({
+      title: t('main.voicePermissionDeniedTitle'),
+      message: t('main.voicePermissionDeniedMessage'),
+      variant: 'warning',
+    });
+  }
+
   private scheduleTextChannelAutoSwitch(item: HTMLElement, channelId: string): void {
     if (this.textChannelDragHoverId !== channelId) {
       this.clearTextChannelDragHover();
@@ -502,8 +522,13 @@ export class MainView {
 
     const textListEl = document.getElementById('text-channels-list');
     const voiceListEl = document.getElementById('voice-channels-list');
+    const canReadTextChannels = this.canReadTextChannels();
+    const canSpeakInVoiceChannels = this.canSpeakInVoiceChannels();
+    const permissionsResolved = this.arePermissionsResolved();
 
-    const textChannels = serverStore.serverDetails.channels.filter((c) => c.type === 'TEXT');
+    const textChannels = canReadTextChannels
+      ? serverStore.serverDetails.channels.filter((c) => c.type === 'TEXT')
+      : [];
     const voiceChannels = serverStore.serverDetails.channels.filter((c) => c.type === 'VOICE');
 
     if (textListEl) {
@@ -523,12 +548,15 @@ export class MainView {
       voiceListEl.innerHTML = voiceChannels.map((c) => {
         const inVoice = participantManager.getInVoiceChannel(c.id);
         const isActive = c.id === voiceStore.currentVoiceChannelId;
+        const showRestrictedIcon = permissionsResolved && !canSpeakInVoiceChannels;
+        const isRestricted = showRestrictedIcon && !isActive;
 
         return `
           <div style="display: flex; flex-direction: column;">
-            <div class="channel-item ${isActive ? 'active' : ''}" data-channel-id="${c.id}" data-channel-type="VOICE">
+            <div class="channel-item ${isActive ? 'active' : ''} ${isRestricted ? 'restricted' : ''}" data-channel-id="${c.id}" data-channel-type="VOICE">
               <span class="material-symbols-outlined md-16 channel-icon" style="color: ${isActive ? 'var(--success)' : 'var(--text-muted)'};">volume_up</span>
               <span class="channel-name">${escapeHtml(c.name)}</span>
+              ${showRestrictedIcon ? `<span class="material-symbols-outlined md-16 channel-restricted-icon" title="${t('main.voiceChannelRestricted')}">lock</span>` : ''}
               ${isActive ? `<span style="font-size: 11px; color: var(--success); font-weight: 600; margin-left: auto;">(${t('common.you')})</span>` : ''}
               <button class="channel-menu-btn" data-menu-channel="${c.id}" title="${t('common.moreOptions')}">
                 <span class="material-symbols-outlined md-16">more_vert</span>
@@ -588,6 +616,12 @@ export class MainView {
         if (type === 'TEXT') {
           this.activateTextChannel(channelId);
         } else if (type === 'VOICE') {
+          if (channelId !== voiceStore.currentVoiceChannelId && this.arePermissionsResolved() && !serverStore.hasPermission(Permission.SPEAK)) {
+            item.classList.add('restricted-feedback');
+            window.setTimeout(() => item.classList.remove('restricted-feedback'), 600);
+            this.showVoicePermissionDenied();
+            return;
+          }
           // Show a loading spinner on the channel while the voice join happens (#48).
           const iconEl = item.querySelector('.channel-icon');
           if (iconEl) {
@@ -707,6 +741,11 @@ export class MainView {
       // Already in this channel, just switch view to stage
       this.activeContentView = 'stage';
       this.voiceStageView?.setChannel(channelId);
+      return;
+    }
+
+    if (this.arePermissionsResolved() && !serverStore.hasPermission(Permission.SPEAK)) {
+      if (!silent) this.showVoicePermissionDenied();
       return;
     }
 

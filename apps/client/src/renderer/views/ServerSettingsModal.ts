@@ -422,17 +422,24 @@ export class ServerSettingsModal {
         <div style="display: flex; flex-direction: column; gap: 12px;">
           <div style="background: var(--bg-card); border: 1px solid var(--border-color); border-radius: var(--radius-md); padding: 14px;">
             <div style="font-size: 13px; font-weight: 700; margin-bottom: 10px;">${t('roles.rolesList')}</div>
+            <div style="font-size: 11px; color: var(--text-muted); margin-bottom: 10px;">${t('roles.autoAssignHint')}</div>
             <div id="roles-list" style="display: flex; flex-direction: column; gap: 8px;">
               ${roles.map((role) => `
-                <button type="button" class="btn btn-secondary role-item-btn" data-role-id="${role.id}" draggable="true" style="justify-content: space-between; ${role.color ? `border-left: 4px solid ${role.color};` : ''}">
-                  <span style="display: inline-flex; align-items: center; gap: 8px;">
-                    <span class="material-symbols-outlined md-16">drag_indicator</span>
-                    <span>${escapeHtml(role.name)}</span>
-                    ${role.isDefault ? `<span class="member-badge-you">${t('roles.defaultBadge')}</span>` : ''}
-                    ${role.name === 'Admin' ? `<span class="member-badge-you">${t('roles.adminBadge')}</span>` : ''}
-                  </span>
-                  <span style="font-size: 12px; color: var(--text-muted);">${this.describeRolePermissions(role)}</span>
-                </button>
+                <div style="display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 8px; align-items: center;">
+                  <button type="button" class="btn btn-secondary role-item-btn" data-role-id="${role.id}" draggable="true" style="justify-content: space-between; min-width: 0; ${role.color ? `border-left: 4px solid ${role.color};` : ''}">
+                    <span style="display: inline-flex; align-items: center; gap: 8px; min-width: 0;">
+                      <span class="material-symbols-outlined md-16">drag_indicator</span>
+                      <span style="min-width: 0; overflow: hidden; text-overflow: ellipsis;">${escapeHtml(role.name)}</span>
+                      ${role.isDefault ? `<span class="member-badge-you">${t('roles.defaultBadge')}</span>` : ''}
+                      ${role.name === 'Admin' ? `<span class="member-badge-you">${t('roles.adminBadge')}</span>` : ''}
+                    </span>
+                    <span style="font-size: 12px; color: var(--text-muted); margin-left: 8px;">${this.describeRolePermissions(role)}</span>
+                  </button>
+                  <label style="display: inline-flex; align-items: center; gap: 6px; font-size: 11px; color: var(--text-secondary); cursor: pointer; white-space: nowrap;">
+                    <input type="checkbox" class="role-default-toggle" data-role-id="${role.id}" ${role.isDefault ? 'checked' : ''}>
+                    <span>${t('roles.autoAssign')}</span>
+                  </label>
+                </div>
               `).join('')}
             </div>
           </div>
@@ -633,6 +640,20 @@ export class ServerSettingsModal {
         if (!userId || !roleId) return;
         const assigned = serverStore.getUserRoleIds(userId).includes(roleId);
         await networkClient.sendRequest(assigned ? MessageType.ROLE_UNASSIGN : MessageType.ROLE_ASSIGN, { userId, roleId });
+        this.close();
+        this.open();
+      });
+    });
+
+    this.modalEl.querySelectorAll('.role-default-toggle').forEach((toggle) => {
+      toggle.addEventListener('change', async () => {
+        const input = toggle as HTMLInputElement;
+        const roleId = input.getAttribute('data-role-id');
+        if (!roleId) return;
+        await networkClient.sendRequest(MessageType.ROLE_UPDATE, {
+          roleId,
+          isDefault: input.checked,
+        });
         this.close();
         this.open();
       });
