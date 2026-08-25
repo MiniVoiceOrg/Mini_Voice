@@ -15,7 +15,8 @@ export type SoundEffectType =
   | 'join_voice'
   | 'leave_voice'
   | 'screen_share_start'
-  | 'screen_share_stop';
+  | 'screen_share_stop'
+  | 'chat_message';
 
 const DEFAULT_URLS: Record<string, string> = {
   mic_unmute: micUnmuteUrl,
@@ -139,6 +140,44 @@ export class SoundEffectManager {
     }
   }
 
+  /**
+   * Synthesizes a soft, quick two-note "pop" used to signal an incoming chat
+   * message (#152). Kept lighter and shorter than the screen-share cue so the
+   * two are easy to tell apart.
+   */
+  private playChatCue(): void {
+    try {
+      if (!this.toneCtx) {
+        const Ctor = window.AudioContext || (window as any).webkitAudioContext;
+        this.toneCtx = new Ctor();
+        if (settingsStore.selectedSpeakerId && typeof (this.toneCtx as any).setSinkId === 'function') {
+          (this.toneCtx as any).setSinkId(settingsStore.selectedSpeakerId).catch(() => {});
+        }
+      }
+      const ctx = this.toneCtx!;
+      if (ctx.state === 'suspended') ctx.resume().catch(() => {});
+
+      const now = ctx.currentTime;
+      const freqs = [659.25, 987.77]; // E5 -> B5, a light ascending blip
+      const gain = ctx.createGain();
+      gain.gain.setValueAtTime(0.0001, now);
+      gain.gain.exponentialRampToValueAtTime(0.18, now + 0.015);
+      gain.gain.exponentialRampToValueAtTime(0.0001, now + 0.2);
+      gain.connect(ctx.destination);
+
+      freqs.forEach((freq, i) => {
+        const osc = ctx.createOscillator();
+        osc.type = 'sine';
+        osc.frequency.setValueAtTime(freq, now + i * 0.07);
+        osc.connect(gain);
+        osc.start(now + i * 0.07);
+        osc.stop(now + i * 0.07 + 0.1);
+      });
+    } catch (e) {
+      console.debug('[SoundEffects] Chat cue synthesis failed:', e);
+    }
+  }
+
   public play(key: SoundEffectType): void {
     if (key === 'screen_share_start') {
       this.playTone(true);
@@ -146,6 +185,10 @@ export class SoundEffectManager {
     }
     if (key === 'screen_share_stop') {
       this.playTone(false);
+      return;
+    }
+    if (key === 'chat_message') {
+      this.playChatCue();
       return;
     }
     try {

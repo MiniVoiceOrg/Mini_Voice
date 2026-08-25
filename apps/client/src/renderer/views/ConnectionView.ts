@@ -927,7 +927,7 @@ export class ConnectionView {
       } finally {
         if (btn.isConnected) {
           btn.disabled = false;
-          btn.innerHTML = `<span class="material-symbols-outlined md-18" style="margin-right: 6px;">add_circle</span> Criar e Iniciar Servidor`;
+          btn.innerHTML = `<span class="material-symbols-outlined md-18" style="margin-right: 6px;">add_circle</span> ${t('connection.createServerButton')}`;
         }
       }
     });

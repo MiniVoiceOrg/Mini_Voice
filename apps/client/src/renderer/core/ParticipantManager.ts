@@ -5,6 +5,7 @@ export interface ParticipantViewModel {
   user: UserSummary;
   voiceState?: VoiceParticipantState;
   remoteStream?: MediaStream;
+  remoteScreenStream?: MediaStream;
   isSpeaking: boolean;
   isReconnecting?: boolean;
 }
@@ -92,6 +93,14 @@ export class ParticipantManager {
     const participant = this.participants.get(userId);
     if (participant) {
       participant.remoteStream = stream;
+      this.scheduleUpdate();
+    }
+  }
+
+  public setRemoteScreenStream(userId: string, stream: MediaStream): void {
+    const participant = this.participants.get(userId);
+    if (participant) {
+      participant.remoteScreenStream = stream;
       this.scheduleUpdate();
     }
   }

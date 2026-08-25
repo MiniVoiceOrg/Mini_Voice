@@ -22,6 +22,9 @@ const ERROR_KEYS: Record<ProtocolErrorCode, TranslationKey> = {
   [ProtocolErrorCode.INTERNAL_ERROR]: 'protocolError.internalError',
   [ProtocolErrorCode.UNAUTHORIZED]: 'protocolError.unauthorized',
   [ProtocolErrorCode.BAD_REQUEST]: 'protocolError.badRequest',
+  [ProtocolErrorCode.ATTACHMENT_TOO_LARGE]: 'protocolError.attachmentTooLarge',
+  [ProtocolErrorCode.ATTACHMENT_INVALID_TYPE]: 'protocolError.attachmentInvalidType',
+  [ProtocolErrorCode.STORAGE_FULL]: 'protocolError.storageFull',
 };
 
 export function translateProtocolError(code: string | undefined, serverMessage?: string): string {

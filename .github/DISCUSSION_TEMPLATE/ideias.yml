@@ -1,0 +1,59 @@
+title: '[Ideia]: '
+labels: ['ideia']
+body:
+  - type: markdown
+    attributes:
+      value: |
+        ### Antes de postar
+
+        **Procure se alguém já pediu isso.** Se já existe, dê 👍 na ideia existente em vez
+        de abrir outra — duas ideias iguais dividem os votos e as duas perdem.
+
+        **Uma ideia por discussão.** Uma lista com cinco pedidos não dá para votar:
+        ninguém consegue dizer que concorda com o item 3 e discorda do 5.
+
+  - type: textarea
+    id: problema
+    attributes:
+      label: Qual problema você quer resolver?
+      description: |
+        Descreva a situação real que te incomoda, não a solução que você imaginou.
+        Isso importa: às vezes existe uma solução melhor do que a que você tinha em mente,
+        e ela só aparece quando o problema está claro.
+      placeholder: |
+        Quando alguém entra na call e eu estou jogando em tela cheia, não percebo —
+        só vejo a mensagem quando saio do jogo.
+    validations:
+      required: true
+
+  - type: textarea
+    id: solucao
+    attributes:
+      label: Como você imagina a solução?
+      description: Opcional. Se você já tem uma ideia de como resolveria, conte aqui.
+    validations:
+      required: false
+
+  - type: dropdown
+    id: area
+    attributes:
+      label: Que parte do Mini Voice isso afeta?
+      options:
+        - Voz / áudio
+        - Vídeo / câmera
+        - Compartilhamento de tela
+        - Chat
+        - Servidor self-hosted
+        - Interface / usabilidade
+        - Desempenho
+        - Outro / não sei
+    validations:
+      required: true
+
+  - type: checkboxes
+    id: duplicada
+    attributes:
+      label: Confirmação
+      options:
+        - label: Procurei nas ideias existentes e não achei essa mesma proposta.
+          required: true

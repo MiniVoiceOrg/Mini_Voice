@@ -1,6 +1,7 @@
 import { MessageType, QUALITY_PRESETS, QualityPresetType, DEFAULT_CUSTOM_PROFILE, QualityProfile } from '@mini-voice/shared';
 import { appEvents } from '../core/EventBus';
 import { networkClient } from '../core/NetworkClient';
+import { enableBackdropClose } from '../utils/modal';
 import { audioProcessor } from '../core/AudioProcessor';
 import { serverStore } from '../stores/serverStore';
 import { settingsStore } from '../stores/settingsStore';
@@ -13,6 +14,10 @@ import { getAvatarUrl } from '../utils/avatar';
 import { updateService } from '../core/UpdateService';
 import { soundboardService } from '../core/SoundboardService';
 import { getLanguage, setLanguage, SUPPORTED_LANGUAGES, t, tCount, type SupportedLanguage } from '../i18n';
+
+const IDEAS_URL = 'https://github.com/MiniVoiceOrg/Mini_Voice/discussions/categories/ideias';
+const NEW_IDEA_URL = 'https://github.com/MiniVoiceOrg/Mini_Voice/discussions/new?category=ideias';
+const NEW_ISSUE_URL = 'https://github.com/MiniVoiceOrg/Mini_Voice/issues/new/choose';
 
 export class SettingsModal {
   private modalEl: HTMLElement | null = null;
@@ -29,287 +34,421 @@ export class SettingsModal {
     this.modalEl = document.createElement('div');
     this.modalEl.className = 'modal-backdrop';
     this.modalEl.innerHTML = `
-      <div class="modal-card" style="max-width: 580px; max-height: 90vh; overflow-y: auto;">
-        <div class="modal-header">
-          <div class="modal-title" style="display: flex; align-items: center; gap: 8px;">
-            <span class="material-symbols-outlined" style="color: var(--accent-primary);">settings</span>
-            <span>${t('connection.settingsTitle')}</span>
+      <div class="modal-card settings-modal-card">
+        <!-- Sidebar Navigation -->
+        <div class="settings-sidebar">
+          <div style="font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.6px; color: var(--text-muted); padding: 4px 10px 8px;">
+            ${t('connection.settingsTitle')}
           </div>
-          <button id="modal-close" class="modal-close-btn">&times;</button>
-        </div>
-
-        <div id="settings-error-banner" class="error-banner"></div>
-
-        <!-- Nickname & Profile -->
-        <div style="display: flex; gap: 16px; align-items: center; padding: 12px; background: var(--bg-card); border-radius: var(--radius-md); margin-bottom: 16px; border: 1px solid var(--border-color);">
-          <img id="settings-avatar-preview" style="width: 52px; height: 52px; border-radius: 50%; object-fit: cover;" src="${serverStore.currentUser?.avatarUrl ? getAvatarUrl(serverStore.currentUser.avatarUrl) : (connectionStore.savedAvatarBase64 || getAvatarUrl(null))}">
-          <div style="flex: 1;">
-            <div class="form-group" style="margin-bottom: 0;">
-              <label>${t('connection.nicknameLabel')}</label>
-              <div style="display: flex; gap: 8px; margin-top: 4px;">
-                <input id="settings-nickname-input" type="text" value="${serverStore.currentUser?.nickname || connectionStore.savedNickname || ''}" style="flex: 1;" maxlength="32">
-                <button id="btn-save-nickname" class="btn btn-secondary" style="font-size: 12px; padding: 6px 12px;">${t('common.save')}</button>
-              </div>
-            </div>
-          </div>
-          <button id="btn-change-avatar" class="btn btn-secondary" style="font-size: 12px; padding: 6px 12px;">
-            <span class="material-symbols-outlined md-16" style="margin-right: 4px;">photo_camera</span>
-            ${t('settings.photo')}
+          <button type="button" class="settings-tab-btn active" data-tab="account">
+            <span class="material-symbols-outlined md-18">person</span>
+            <span>${t('settings.tabAccount')}</span>
+          </button>
+          <button type="button" class="settings-tab-btn" data-tab="voice_video">
+            <span class="material-symbols-outlined md-18">mic</span>
+            <span>${t('settings.tabVoiceVideo')}</span>
+          </button>
+          <button type="button" class="settings-tab-btn" data-tab="soundboard">
+            <span class="material-symbols-outlined md-18">music_note</span>
+            <span>${t('settings.tabSoundboard')}</span>
+          </button>
+          <button type="button" class="settings-tab-btn" data-tab="notifications">
+            <span class="material-symbols-outlined md-18">notifications</span>
+            <span>${t('settings.tabNotifications')}</span>
+          </button>
+          <button type="button" class="settings-tab-btn" data-tab="quality">
+            <span class="material-symbols-outlined md-18">speed</span>
+            <span>${t('settings.tabQuality')}</span>
+          </button>
+          <div style="height: 1px; background: var(--border-color); margin: 6px 4px;"></div>
+          <button type="button" class="settings-tab-btn" data-tab="about">
+            <span class="material-symbols-outlined md-18">info</span>
+            <span>${t('settings.tabAbout')}</span>
           </button>
         </div>
 
-        <!-- Device Header with Refresh Button -->
-        <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 10px; border-top: 1px solid var(--border-color); padding-top: 14px;">
-          <span style="font-size: 13px; font-weight: 700; color: var(--text-primary); text-transform: uppercase; letter-spacing: 0.5px;">
-            ${t('settings.devicesSection')}
-          </span>
-          <button id="btn-refresh-devices" class="btn btn-secondary" style="font-size: 11px; padding: 3px 8px; height: 26px;" title="${t('settings.refreshDevicesTitle')}">
-            <span class="material-symbols-outlined md-14" style="margin-right: 4px;">refresh</span>
-            ${t('settings.refreshDevices')}
-          </button>
-        </div>
-
-        <!-- Audio Inputs -->
-        <div class="form-group">
-          <label style="display: flex; align-items: center; gap: 6px;">
-            <span class="material-symbols-outlined md-16" style="color: var(--accent-primary);">mic</span>
-            ${t('settings.microphone')}
-          </label>
-          <select id="select-mic">
-            <option value="">${t('settings.loadingMics')}</option>
-          </select>
-        </div>
-
-        <div class="form-group">
-          <label style="display: flex; align-items: center; gap: 6px;">
-            <span class="material-symbols-outlined md-16" style="color: var(--accent-primary);">tune</span>
-            ${t('settings.vadLabel')}
-          </label>
-          <div style="display: flex; align-items: center; gap: 12px;">
-            <input id="slider-vad" type="range" min="5" max="80" value="${settingsStore.vadSensitivity}" style="flex: 1;">
-            <span id="vad-val" style="font-family: var(--font-mono); font-size: 12px; min-width: 30px;">${settingsStore.vadSensitivity}</span>
+        <!-- Main Content Area -->
+        <div class="settings-main-container">
+          <!-- Top Header -->
+          <div class="settings-content-header">
+            <div id="settings-current-tab-title" style="font-size: 16px; font-weight: 700; color: var(--text-primary); display: flex; align-items: center; gap: 8px;">
+              <span class="material-symbols-outlined" style="color: var(--accent-primary);">person</span>
+              <span>${t('settings.tabAccount')}</span>
+            </div>
+            <button id="modal-close" class="modal-close-btn" title="${t('common.close')}">&times;</button>
           </div>
-          <div id="vad-meter" class="vad-meter" title="${t('settings.vadMeterTitle')}">
-            <div id="vad-meter-fill" class="vad-meter-fill"></div>
-            <div id="vad-meter-threshold" class="vad-meter-threshold"></div>
-          </div>
-          <div style="font-size: 11px; color: var(--text-muted); margin-top: 2px;">${t('settings.vadHint')}</div>
-        </div>
 
-        <!-- RNNoise Noise Suppression -->
-        <div class="form-group" style="padding: 10px 12px; background: var(--bg-card); border: 1px solid var(--border-color); border-radius: var(--radius-md);">
-          <div style="display: flex; align-items: center; justify-content: space-between; gap: 12px;">
-            <div>
-              <label style="display: flex; align-items: center; gap: 6px; margin-bottom: 2px; cursor: pointer; font-weight: 600;" for="checkbox-rnnoise">
-                <span class="material-symbols-outlined md-16" style="color: var(--accent-primary);">graphic_eq</span>
-                ${t('settings.rnnoiseLabel')}
-              </label>
-              <div style="font-size: 11px; color: var(--text-muted);">
-                ${t('settings.rnnoiseDesc')}
+          <!-- Body Scroll Container -->
+          <div class="settings-content-body">
+            <div id="settings-error-banner" class="error-banner"></div>
+
+            <!-- Tab: account -->
+            <div class="settings-tab-panel" id="tab-panel-account">
+              <div style="font-size: 12px; color: var(--text-muted); margin-bottom: 12px;">
+                ${t('settings.accountIntro')}
               </div>
-            </div>
-            <input id="checkbox-rnnoise" type="checkbox" ${settingsStore.noiseSuppressionEnabled ? 'checked' : ''} style="width: 18px; height: 18px; cursor: pointer; accent-color: var(--accent-primary);">
-          </div>
-        </div>
-
-        <!-- Audio Outputs -->
-        <div class="form-group" id="group-speaker">
-          <label style="display: flex; align-items: center; gap: 6px;">
-            <span class="material-symbols-outlined md-16" style="color: var(--accent-primary);">headphones</span>
-            ${t('settings.outputDevice')}
-          </label>
-          <select id="select-speaker">
-            <option value="">${t('settings.loadingOutputs')}</option>
-          </select>
-        </div>
-
-        <!-- Soundboard Section -->
-        <div style="border-top: 1px solid var(--border-color); padding-top: 14px; margin-top: 14px;">
-          <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 10px;">
-            <span style="font-size: 13px; font-weight: 700; color: var(--text-primary); text-transform: uppercase; letter-spacing: 0.5px; display: flex; align-items: center; gap: 6px;">
-              <span class="material-symbols-outlined md-16" style="color: var(--accent-primary);">music_note</span>
-              ${t('settings.soundboardSection')}
-            </span>
-          </div>
-
-          <div class="form-group" style="margin-bottom: 12px;">
-            <label>${t('settings.soundFolder')}</label>
-            <div style="display: flex; gap: 8px; align-items: center;">
-              <input id="input-soundboard-path" type="text" readonly value="${settingsStore.soundboardFolderPath || ''}" placeholder="${t('settings.noFolderPlaceholder')}" style="flex: 1; font-size: 12px; cursor: pointer;">
-              <button type="button" id="btn-select-soundboard-folder" class="btn btn-secondary" style="font-size: 12px; padding: 6px 12px; white-space: nowrap;">
-                <span class="material-symbols-outlined md-14" style="margin-right: 4px;">folder_open</span>
-                ${t('soundboard.chooseFolder')}
-              </button>
-            </div>
-            <div id="soundboard-folder-info" style="font-size: 11px; color: var(--text-muted); margin-top: 4px;">
-              ${settingsStore.soundboardFolderPath ? tCount('settings.soundsFound', soundboardService.getSounds().length) : t('settings.pickFolderHint')}
-            </div>
-          </div>
-
-          <div class="form-group" style="margin-bottom: 12px;">
-            <label style="display: flex; align-items: center; justify-content: space-between;">
-              <span>${t('settings.soundboardVolume')}</span>
-              <span id="soundboard-vol-val" style="font-family: var(--font-mono); font-size: 12px;">${settingsStore.soundboardVolume}%</span>
-            </label>
-            <input id="slider-soundboard-vol" type="range" min="0" max="100" value="${settingsStore.soundboardVolume}" style="width: 100%;">
-            <div style="font-size: 11px; color: var(--text-muted); margin-top: 2px;">
-              ${t('settings.soundboardVolumeDesc')}
-            </div>
-          </div>
-
-          <div class="form-group" style="padding: 10px 12px; background: var(--bg-card); border: 1px solid var(--border-color); border-radius: var(--radius-md);">
-            <div style="display: flex; align-items: center; justify-content: space-between; gap: 12px;">
-              <div>
-                <label style="display: flex; align-items: center; gap: 6px; margin-bottom: 2px; cursor: pointer; font-weight: 600;" for="checkbox-soundboard-mute">
-                  <span class="material-symbols-outlined md-16" style="color: var(--accent-primary);">volume_off</span>
-                  ${t('settings.soundboardMute')}
-                </label>
-                <div style="font-size: 11px; color: var(--text-muted);">
-                  ${t('settings.soundboardMuteDesc')}
+              <!-- Nickname & Profile -->
+              <div style="display: flex; gap: 16px; align-items: center; padding: 14px; background: var(--bg-card); border-radius: var(--radius-md); margin-bottom: 16px; border: 1px solid var(--border-color);">
+                <div id="settings-avatar-wrapper" class="settings-avatar-wrapper" title="${t('settings.avatarTitle')}">
+                  <img id="settings-avatar-preview" class="settings-avatar-img" src="${serverStore.currentUser?.avatarUrl ? getAvatarUrl(serverStore.currentUser.avatarUrl) : (connectionStore.savedAvatarBase64 || getAvatarUrl(null))}" alt="Avatar">
+                  <div class="settings-avatar-overlay">
+                    <span class="material-symbols-outlined md-20">photo_camera</span>
+                  </div>
+                </div>
+                <div style="flex: 1;">
+                  <div class="form-group" style="margin-bottom: 0;">
+                    <label>${t('connection.nicknameLabel')}</label>
+                    <div style="display: flex; gap: 8px; margin-top: 6px;">
+                      <input id="settings-nickname-input" type="text" value="${serverStore.currentUser?.nickname || connectionStore.savedNickname || ''}" style="flex: 1;" maxlength="32">
+                      <button id="btn-save-nickname" class="btn btn-secondary" style="font-size: 12px; padding: 6px 12px;">${t('common.save')}</button>
+                    </div>
+                  </div>
                 </div>
               </div>
-              <input id="checkbox-soundboard-mute" type="checkbox" ${settingsStore.soundboardMuted ? 'checked' : ''} style="width: 18px; height: 18px; cursor: pointer; accent-color: var(--accent-primary);">
-            </div>
-          </div>
-        </div>
 
-        <!-- Camera Inputs -->
-        <div class="form-group" id="group-camera" style="border-top: 1px solid var(--border-color); padding-top: 14px; margin-top: 14px;">
-          <label style="display: flex; align-items: center; gap: 6px;">
-            <span class="material-symbols-outlined md-16" style="color: var(--accent-primary);">videocam</span>
-            ${t('settings.camera')}
-          </label>
-          <select id="select-cam">
-            <option value="">${t('settings.loadingCameras')}</option>
-          </select>
-          <div style="margin-top: 8px;">
-            <button id="btn-toggle-cam-preview" class="btn btn-secondary" style="font-size: 12px; padding: 6px 12px;">
-              <span class="material-symbols-outlined md-16" style="margin-right: 4px;">visibility</span>
-              ${t('settings.previewCamera')}
-            </button>
-          </div>
-          <video id="settings-cam-preview" class="settings-cam-preview" autoplay playsinline muted style="display: none;"></video>
-        </div>
-
-        <!-- Screen Share -->
-        <div style="border-top: 1px solid var(--border-color); padding-top: 14px; margin-top: 14px;">
-          <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 10px;">
-            <span style="font-size: 13px; font-weight: 700; color: var(--text-primary); text-transform: uppercase; letter-spacing: 0.5px; display: flex; align-items: center; gap: 6px;">
-              <span class="material-symbols-outlined md-16" style="color: var(--accent-primary);">screen_share</span>
-              ${t('settings.screenShareSection')}
-            </span>
-          </div>
-
-          <div class="form-group" style="padding: 10px 12px; background: var(--bg-card); border: 1px solid var(--border-color); border-radius: var(--radius-md); margin-bottom: 12px;">
-            <div style="display: flex; align-items: center; justify-content: space-between; gap: 12px;">
-              <div>
-                <label style="display: flex; align-items: center; gap: 6px; margin-bottom: 2px; cursor: pointer; font-weight: 600;" for="checkbox-screen-telemetry">
-                  <span class="material-symbols-outlined md-16" style="color: var(--accent-primary);">monitoring</span>
-                  ${t('settings.telemetryLabel')}
+              <!-- Language (#16) -->
+              <div class="form-group" style="border-top: 1px solid var(--border-color); padding-top: 14px; margin-top: 14px;">
+                <label style="display: flex; align-items: center; gap: 6px;" for="select-language">
+                  <span class="material-symbols-outlined md-16" style="color: var(--accent-primary);">language</span>
+                  ${t('settings.languageSection')}
                 </label>
-                <div style="font-size: 11px; color: var(--text-muted);">
-                  ${t('settings.telemetryDesc')}
+                <select id="select-language">
+                  ${SUPPORTED_LANGUAGES.map(
+                    (lang) =>
+                      `<option value="${lang.code}" ${lang.code === getLanguage() ? 'selected' : ''}>${lang.label}</option>`
+                  ).join('')}
+                </select>
+                <small style="display: block; margin-top: 6px; color: var(--text-muted); font-size: 11px;">
+                  ${t('settings.languageHint')}
+                </small>
+              </div>
+            </div>
+
+            <!-- Tab: voice_video -->
+            <div class="settings-tab-panel" id="tab-panel-voice_video" style="display: none;">
+              <!-- Device Header with Refresh Button -->
+              <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px;">
+                <span style="font-size: 13px; font-weight: 700; color: var(--text-primary); text-transform: uppercase; letter-spacing: 0.5px;">
+                  ${t('settings.devicesSection')}
+                </span>
+                <button id="btn-refresh-devices" class="btn btn-secondary" style="font-size: 11px; padding: 3px 8px; height: 26px;" title="${t('settings.refreshDevicesTitle')}">
+                  <span class="material-symbols-outlined md-14" style="margin-right: 4px;">refresh</span>
+                  ${t('settings.refreshDevices')}
+                </button>
+              </div>
+
+              <!-- Audio Inputs -->
+              <div class="form-group">
+                <label style="display: flex; align-items: center; gap: 6px;">
+                  <span class="material-symbols-outlined md-16" style="color: var(--accent-primary);">mic</span>
+                  ${t('settings.microphone')}
+                </label>
+                <select id="select-mic">
+                  <option value="">${t('settings.loadingMics')}</option>
+                </select>
+              </div>
+
+              <div class="form-group">
+                <label style="display: flex; align-items: center; gap: 6px;">
+                  <span class="material-symbols-outlined md-16" style="color: var(--accent-primary);">tune</span>
+                  ${t('settings.vadLabel')}
+                </label>
+                <div style="display: flex; align-items: center; gap: 12px;">
+                  <input id="slider-vad" class="sb-slider" type="range" min="0" max="160" value="${settingsStore.vadSensitivity}" style="--slider-progress: ${(Math.min(160, Math.max(0, settingsStore.vadSensitivity)) / 160) * 100}%; flex: 1;">
+                </div>
+                <div id="vad-meter" class="vad-meter" title="${t('settings.vadMeterTitle')}">
+                  <div id="vad-meter-fill" class="vad-meter-fill"></div>
+                  <div id="vad-meter-threshold" class="vad-meter-threshold"></div>
+                </div>
+                <div style="font-size: 11px; color: var(--text-muted); margin-top: 2px;">${t('settings.vadHint')}</div>
+              </div>
+
+              <!-- RNNoise Noise Suppression -->
+              <div class="form-group" style="padding: 10px 12px; background: var(--bg-card); border: 1px solid var(--border-color); border-radius: var(--radius-md);">
+                <div style="display: flex; align-items: center; justify-content: space-between; gap: 12px;">
+                  <div>
+                    <label style="display: flex; align-items: center; gap: 6px; margin-bottom: 2px; cursor: pointer; font-weight: 600;" for="checkbox-rnnoise">
+                      <span class="material-symbols-outlined md-16" style="color: var(--accent-primary);">graphic_eq</span>
+                      ${t('settings.rnnoiseLabel')}
+                    </label>
+                    <div style="font-size: 11px; color: var(--text-muted);">
+                      ${t('settings.rnnoiseDesc')}
+                    </div>
+                  </div>
+                  <input id="checkbox-rnnoise" type="checkbox" ${settingsStore.noiseSuppressionEnabled ? 'checked' : ''} style="width: 18px; height: 18px; cursor: pointer; accent-color: var(--accent-primary);">
                 </div>
               </div>
-              <input id="checkbox-screen-telemetry" type="checkbox" ${settingsStore.screenShareTelemetryEnabled ? 'checked' : ''} style="width: 18px; height: 18px; cursor: pointer; accent-color: var(--accent-primary);">
-            </div>
-          </div>
 
-          <div class="form-group" style="margin-bottom: 12px;">
-            <label for="select-screen-telemetry-position">${t('settings.telemetryPosition')}</label>
-            <select id="select-screen-telemetry-position">
-              <option value="top-right" ${settingsStore.screenShareTelemetryPosition === 'top-right' ? 'selected' : ''}>${t('settings.positionTopRight')}</option>
-              <option value="top-left" ${settingsStore.screenShareTelemetryPosition === 'top-left' ? 'selected' : ''}>${t('settings.positionTopLeft')}</option>
-              <option value="bottom-right" ${settingsStore.screenShareTelemetryPosition === 'bottom-right' ? 'selected' : ''}>${t('settings.positionBottomRight')}</option>
-              <option value="bottom-left" ${settingsStore.screenShareTelemetryPosition === 'bottom-left' ? 'selected' : ''}>${t('settings.positionBottomLeft')}</option>
-            </select>
-          </div>
-
-          <div class="form-group" style="margin-bottom: 0;">
-            <label for="select-screen-telemetry-mode">${t('settings.telemetryMode')}</label>
-            <select id="select-screen-telemetry-mode">
-              <option value="simple" ${settingsStore.screenShareTelemetryMode === 'simple' ? 'selected' : ''}>${t('settings.telemetryModeSimple')}</option>
-              <option value="complete" ${settingsStore.screenShareTelemetryMode === 'complete' ? 'selected' : ''}>${t('settings.telemetryModeComplete')}</option>
-            </select>
-          </div>
-        </div>
-
-        <!-- Quality Preset -->
-        <div class="form-group" style="border-top: 1px solid var(--border-color); padding-top: 14px; margin-top: 10px;">
-          <label style="display: flex; align-items: center; gap: 6px;">
-            <span class="material-symbols-outlined md-16" style="color: var(--accent-primary);">speed</span>
-            ${t('settings.qualitySection')}
-            <span class="material-symbols-outlined md-16" style="color: var(--text-muted); cursor: help;" title="${t('settings.qualityHelp')}">help</span>
-          </label>
-          <select id="select-preset">
-            <option value="ECONOMIC" ${settingsStore.qualityPreset === 'ECONOMIC' ? 'selected' : ''}>${t('settings.presetEconomic')}</option>
-            <option value="NORMAL" ${settingsStore.qualityPreset === 'NORMAL' ? 'selected' : ''}>${t('settings.presetNormal')}</option>
-            <option value="HIGH" ${settingsStore.qualityPreset === 'HIGH' ? 'selected' : ''}>${t('settings.presetHigh')}</option>
-            <option value="GAMING" ${settingsStore.qualityPreset === 'GAMING' ? 'selected' : ''}>${t('settings.presetGaming')}</option>
-            <option value="CUSTOM" ${settingsStore.qualityPreset === 'CUSTOM' ? 'selected' : ''}>${t('settings.presetCustom')}</option>
-          </select>
-          <div id="preset-details" style="margin-top: 8px; padding: 10px 12px; background: rgba(255,255,255,0.03); border: 1px solid var(--border-color); border-radius: var(--radius-md);">
-            ${this.getPresetDetailsHtml(settingsStore.qualityPreset)}
-          </div>
-          <small style="display: block; margin-top: 6px; color: var(--text-muted); font-size: 11px;">
-            ${t('settings.qualityFootnote')}
-          </small>
-        </div>
-
-        <!-- Custom Sounds (#7) -->
-        <div class="form-group" style="border-top: 1px solid var(--border-color); padding-top: 14px; margin-top: 10px;">
-          <label style="display: flex; align-items: center; gap: 6px;">
-            <span class="material-symbols-outlined md-16" style="color: var(--accent-primary);">music_note</span>
-            ${t('settings.customSounds')}
-          </label>
-          <div id="custom-sounds-list" style="display: flex; flex-direction: column; gap: 6px; margin-top: 6px;">
-            ${this.getCustomSoundsHtml()}
-          </div>
-          <button id="btn-reset-all-sounds" class="btn btn-secondary" style="margin-top: 8px; font-size: 11px; padding: 4px 10px;">
-            <span class="material-symbols-outlined md-14" style="margin-right: 4px;">restart_alt</span>
-            ${t('settings.resetAllSounds')}
-          </button>
-        </div>
-
-        <!-- Language (#16) -->
-        <div class="form-group" style="border-top: 1px solid var(--border-color); padding-top: 14px; margin-top: 10px;">
-          <label style="display: flex; align-items: center; gap: 6px;" for="select-language">
-            <span class="material-symbols-outlined md-16" style="color: var(--accent-primary);">language</span>
-            ${t('settings.languageSection')}
-          </label>
-          <select id="select-language">
-            ${SUPPORTED_LANGUAGES.map(
-              (lang) =>
-                `<option value="${lang.code}" ${lang.code === getLanguage() ? 'selected' : ''}>${lang.label}</option>`
-            ).join('')}
-          </select>
-          <small style="display: block; margin-top: 6px; color: var(--text-muted); font-size: 11px;">
-            ${t('settings.languageHint')}
-          </small>
-        </div>
-
-        <!-- Updates -->
-        <div class="form-group" style="border-top: 1px solid var(--border-color); padding-top: 14px; margin-top: 10px;">
-          <label style="display: flex; align-items: center; gap: 6px;">
-            <span class="material-symbols-outlined md-16" style="color: var(--accent-primary);">system_update</span>
-            ${t('settings.updatesSection')}
-          </label>
-          <div style="display: flex; align-items: center; justify-content: space-between; gap: 12px;">
-            <div style="flex: 1;">
-              <div style="font-size: 12px; color: var(--text-secondary);">
-                ${t('settings.currentVersion')} <span id="settings-app-version" style="font-family: var(--font-mono);">…</span>
+              <!-- Audio Outputs -->
+              <div class="form-group" id="group-speaker">
+                <label style="display: flex; align-items: center; gap: 6px;">
+                  <span class="material-symbols-outlined md-16" style="color: var(--accent-primary);">headphones</span>
+                  ${t('settings.outputDevice')}
+                </label>
+                <select id="select-speaker">
+                  <option value="">${t('settings.loadingOutputs')}</option>
+                </select>
               </div>
-              <div id="settings-update-status" style="font-size: 11px; color: var(--text-muted); margin-top: 2px;"></div>
-            </div>
-            <button id="btn-check-updates" class="btn btn-secondary" style="font-size: 12px; padding: 6px 12px;">
-              <span class="material-symbols-outlined md-16" style="margin-right: 4px;">refresh</span>
-              ${t('settings.checkUpdates')}
-            </button>
-          </div>
-        </div>
 
-        <div class="modal-footer" style="margin-top: 20px;">
-          <button id="btn-settings-close" class="btn btn-primary">${t('common.done')}</button>
+              <!-- Camera Inputs -->
+              <div class="form-group" id="group-camera" style="border-top: 1px solid var(--border-color); padding-top: 14px; margin-top: 14px;">
+                <label style="display: flex; align-items: center; gap: 6px;">
+                  <span class="material-symbols-outlined md-16" style="color: var(--accent-primary);">videocam</span>
+                  ${t('settings.camera')}
+                </label>
+                <select id="select-cam">
+                  <option value="">${t('settings.loadingCameras')}</option>
+                </select>
+                <div style="margin-top: 8px;">
+                  <button id="btn-toggle-cam-preview" class="btn btn-secondary" style="font-size: 12px; padding: 6px 12px;">
+                    <span class="material-symbols-outlined md-16" style="margin-right: 4px;">visibility</span>
+                    ${t('settings.previewCamera')}
+                  </button>
+                </div>
+                <video id="settings-cam-preview" class="settings-cam-preview" autoplay playsinline muted style="display: none;"></video>
+              </div>
+
+              <!-- Screen Share -->
+              <div style="border-top: 1px solid var(--border-color); padding-top: 14px; margin-top: 14px;">
+                <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 10px;">
+                  <span style="font-size: 13px; font-weight: 700; color: var(--text-primary); text-transform: uppercase; letter-spacing: 0.5px; display: flex; align-items: center; gap: 6px;">
+                    <span class="material-symbols-outlined md-16" style="color: var(--accent-primary);">screen_share</span>
+                    ${t('settings.screenShareSection')}
+                  </span>
+                </div>
+
+                <div class="form-group" style="padding: 10px 12px; background: var(--bg-card); border: 1px solid var(--border-color); border-radius: var(--radius-md); margin-bottom: 12px;">
+                  <div style="display: flex; align-items: center; justify-content: space-between; gap: 12px;">
+                    <div>
+                      <label style="display: flex; align-items: center; gap: 6px; margin-bottom: 2px; cursor: pointer; font-weight: 600;" for="checkbox-screen-telemetry">
+                        <span class="material-symbols-outlined md-16" style="color: var(--accent-primary);">monitoring</span>
+                        ${t('settings.telemetryLabel')}
+                      </label>
+                      <div style="font-size: 11px; color: var(--text-muted);">
+                        ${t('settings.telemetryDesc')}
+                      </div>
+                    </div>
+                    <input id="checkbox-screen-telemetry" type="checkbox" ${settingsStore.screenShareTelemetryEnabled ? 'checked' : ''} style="width: 18px; height: 18px; cursor: pointer; accent-color: var(--accent-primary);">
+                  </div>
+                </div>
+
+                <div class="form-group" style="margin-bottom: 12px;">
+                  <label for="select-screen-telemetry-position">${t('settings.telemetryPosition')}</label>
+                  <select id="select-screen-telemetry-position">
+                    <option value="top-right" ${settingsStore.screenShareTelemetryPosition === 'top-right' ? 'selected' : ''}>${t('settings.positionTopRight')}</option>
+                    <option value="top-left" ${settingsStore.screenShareTelemetryPosition === 'top-left' ? 'selected' : ''}>${t('settings.positionTopLeft')}</option>
+                    <option value="bottom-right" ${settingsStore.screenShareTelemetryPosition === 'bottom-right' ? 'selected' : ''}>${t('settings.positionBottomRight')}</option>
+                    <option value="bottom-left" ${settingsStore.screenShareTelemetryPosition === 'bottom-left' ? 'selected' : ''}>${t('settings.positionBottomLeft')}</option>
+                  </select>
+                </div>
+
+                <div class="form-group" style="margin-bottom: 0;">
+                  <label for="select-screen-telemetry-mode">${t('settings.telemetryMode')}</label>
+                  <select id="select-screen-telemetry-mode">
+                    <option value="simple" ${settingsStore.screenShareTelemetryMode === 'simple' ? 'selected' : ''}>${t('settings.telemetryModeSimple')}</option>
+                    <option value="complete" ${settingsStore.screenShareTelemetryMode === 'complete' ? 'selected' : ''}>${t('settings.telemetryModeComplete')}</option>
+                  </select>
+                </div>
+              </div>
+            </div>
+
+            <!-- Tab: soundboard -->
+            <div class="settings-tab-panel" id="tab-panel-soundboard" style="display: none;">
+              <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px;">
+                <span style="font-size: 13px; font-weight: 700; color: var(--text-primary); text-transform: uppercase; letter-spacing: 0.5px; display: flex; align-items: center; gap: 6px;">
+                  <span class="material-symbols-outlined md-16" style="color: var(--accent-primary);">music_note</span>
+                  ${t('settings.soundboardSection')}
+                </span>
+              </div>
+
+              <div class="form-group" style="margin-bottom: 12px;">
+                <label>${t('settings.soundFolder')}</label>
+                <div style="display: flex; gap: 8px; align-items: center;">
+                  <input id="input-soundboard-path" type="text" readonly value="${settingsStore.soundboardFolderPath || ''}" placeholder="${t('settings.noFolderPlaceholder')}" style="flex: 1; font-size: 12px; cursor: pointer;">
+                  <button type="button" id="btn-select-soundboard-folder" class="btn btn-secondary" style="font-size: 12px; padding: 6px 12px; white-space: nowrap;">
+                    <span class="material-symbols-outlined md-14" style="margin-right: 4px;">folder_open</span>
+                    ${t('soundboard.chooseFolder')}
+                  </button>
+                </div>
+                <div id="soundboard-folder-info" style="font-size: 11px; color: var(--text-muted); margin-top: 4px;">
+                  ${settingsStore.soundboardFolderPath ? tCount('settings.soundsFound', soundboardService.getSounds().length) : t('settings.soundFormatsHint')}
+                </div>
+              </div>
+
+              <div class="form-group" style="margin-bottom: 12px;">
+                <label style="display: flex; align-items: center; justify-content: space-between;">
+                  <span>${t('settings.soundboardVolume')}</span>
+                  <span id="soundboard-vol-val" style="font-family: var(--font-mono); font-size: 12px;">${settingsStore.soundboardVolume}%</span>
+                </label>
+                <input id="slider-soundboard-vol" class="sb-slider" type="range" min="0" max="100" value="${settingsStore.soundboardVolume}" style="--slider-progress: ${settingsStore.soundboardVolume}%; width: 100%;">
+                <div style="font-size: 11px; color: var(--text-muted); margin-top: 2px;">
+                  ${t('settings.soundboardVolumeDesc')}
+                </div>
+              </div>
+
+              <div class="form-group" style="padding: 10px 12px; background: var(--bg-card); border: 1px solid var(--border-color); border-radius: var(--radius-md);">
+                <div style="display: flex; align-items: center; justify-content: space-between; gap: 12px;">
+                  <div>
+                    <label style="display: flex; align-items: center; gap: 6px; margin-bottom: 2px; cursor: pointer; font-weight: 600;" for="checkbox-soundboard-mute">
+                      <span class="material-symbols-outlined md-16" style="color: var(--accent-primary);">volume_off</span>
+                      ${t('settings.soundboardMute')}
+                    </label>
+                    <div style="font-size: 11px; color: var(--text-muted);">
+                      ${t('settings.soundboardMuteDesc')}
+                    </div>
+                  </div>
+                  <input id="checkbox-soundboard-mute" type="checkbox" ${settingsStore.soundboardMuted ? 'checked' : ''} style="width: 18px; height: 18px; cursor: pointer; accent-color: var(--accent-primary);">
+                </div>
+              </div>
+            </div>
+
+            <!-- Tab: notifications -->
+            <div class="settings-tab-panel" id="tab-panel-notifications" style="display: none;">
+              <!-- Chat Notifications -->
+              <div class="form-group" style="margin-bottom: 16px;">
+                <label style="display: flex; align-items: center; gap: 6px;">
+                  <span class="material-symbols-outlined md-16" style="color: var(--accent-primary);">chat</span>
+                  ${t('settings.chatNotifications')}
+                </label>
+                <div style="font-size: 11px; color: var(--text-muted); margin-top: 4px;">
+                  ${t('settings.chatNotificationsDesc')}
+                </div>
+                <div class="form-group" style="padding: 10px 12px; background: var(--bg-card); border: 1px solid var(--border-color); border-radius: var(--radius-md); margin-top: 8px; margin-bottom: 10px;">
+                  <div style="display: flex; align-items: center; justify-content: space-between; gap: 12px;">
+                    <div>
+                      <label style="display: flex; align-items: center; gap: 6px; margin-bottom: 2px; cursor: pointer; font-weight: 600;" for="checkbox-chat-sound">
+                        <span class="material-symbols-outlined md-16" style="color: var(--accent-primary);">notifications_active</span>
+                        Tocar som ao receber mensagens
+                      </label>
+                      <div style="font-size: 11px; color: var(--text-muted);">
+                        Reproduz um breve som quando uma nova mensagem de outra pessoa chega em qualquer canal de texto.
+                      </div>
+                    </div>
+                    <input id="checkbox-chat-sound" type="checkbox" ${settingsStore.chatMessageSoundEnabled ? 'checked' : ''} style="width: 18px; height: 18px; cursor: pointer; accent-color: var(--accent-primary);">
+                  </div>
+                </div>
+                <div class="form-group" style="padding: 10px 12px; background: var(--bg-card); border: 1px solid var(--border-color); border-radius: var(--radius-md); margin-bottom: 0;">
+                  <div style="display: flex; align-items: center; justify-content: space-between; gap: 12px;">
+                    <div>
+                      <label style="display: flex; align-items: center; gap: 6px; margin-bottom: 2px; cursor: pointer; font-weight: 600;" for="checkbox-chat-sound-mentions">
+                        <span class="material-symbols-outlined md-16" style="color: var(--accent-primary);">alternate_email</span>
+                        ${t('settings.chatSoundMentionsOnly')}
+                      </label>
+                      <div style="font-size: 11px; color: var(--text-muted);">
+                        Toca o som somente quando seu apelido for citado na mensagem (ex.: @seu_apelido).
+                      </div>
+                    </div>
+                    <input id="checkbox-chat-sound-mentions" type="checkbox" ${settingsStore.chatMessageSoundMentionsOnly ? 'checked' : ''} style="width: 18px; height: 18px; cursor: pointer; accent-color: var(--accent-primary);">
+                  </div>
+                </div>
+              </div>
+
+              <!-- Custom Sounds -->
+              <div class="form-group" style="border-top: 1px solid var(--border-color); padding-top: 14px;">
+                <label style="display: flex; align-items: center; gap: 6px;">
+                  <span class="material-symbols-outlined md-16" style="color: var(--accent-primary);">music_note</span>
+                  ${t('settings.customSounds')}
+                </label>
+                <div id="custom-sounds-list" style="display: flex; flex-direction: column; gap: 6px; margin-top: 6px;">
+                  ${this.getCustomSoundsHtml()}
+                </div>
+                <button id="btn-reset-all-sounds" class="btn btn-secondary" style="margin-top: 8px; font-size: 11px; padding: 4px 10px;">
+                  <span class="material-symbols-outlined md-14" style="margin-right: 4px;">restart_alt</span>
+                  ${t('settings.resetAllSounds')}
+                </button>
+              </div>
+            </div>
+
+            <!-- Tab: quality -->
+            <div class="settings-tab-panel" id="tab-panel-quality" style="display: none;">
+              <!-- Quality Preset -->
+              <div class="form-group">
+                <label style="display: flex; align-items: center; gap: 6px;">
+                  <span class="material-symbols-outlined md-16" style="color: var(--accent-primary);">speed</span>
+                  ${t('settings.qualitySection')}
+                  <span class="material-symbols-outlined md-16" style="color: var(--text-muted); cursor: help;" title="${t('settings.qualityHelp')}">help</span>
+                </label>
+                <select id="select-preset">
+                  <option value="ECONOMIC" ${settingsStore.qualityPreset === 'ECONOMIC' ? 'selected' : ''}>${t('settings.presetEconomic')}</option>
+                  <option value="NORMAL" ${settingsStore.qualityPreset === 'NORMAL' ? 'selected' : ''}>${t('settings.presetNormal')}</option>
+                  <option value="HIGH" ${settingsStore.qualityPreset === 'HIGH' ? 'selected' : ''}>${t('settings.presetHigh')}</option>
+                  <option value="GAMING" ${settingsStore.qualityPreset === 'GAMING' ? 'selected' : ''}>${t('settings.presetGaming')}</option>
+                  <option value="CUSTOM" ${settingsStore.qualityPreset === 'CUSTOM' ? 'selected' : ''}>${t('settings.presetCustom')}</option>
+                </select>
+                <div id="preset-details" style="margin-top: 8px; padding: 10px 12px; background: rgba(255,255,255,0.03); border: 1px solid var(--border-color); border-radius: var(--radius-md);">
+                  ${this.getPresetDetailsHtml(settingsStore.qualityPreset)}
+                </div>
+                <small style="display: block; margin-top: 6px; color: var(--text-muted); font-size: 11px;">
+                  ${t('settings.qualityFootnote')}
+                </small>
+              </div>
+            </div>
+
+            <!-- Tab: about -->
+            <div class="settings-tab-panel" id="tab-panel-about" style="display: none;">
+              <!-- Updates -->
+              <div class="form-group" style="margin-bottom: 16px;">
+                <label style="display: flex; align-items: center; gap: 6px;">
+                  <span class="material-symbols-outlined md-16" style="color: var(--accent-primary);">system_update</span>
+                  ${t('settings.updatesSection')}
+                </label>
+                <div style="display: flex; align-items: center; justify-content: space-between; gap: 12px;">
+                  <div style="flex: 1;">
+                    <div style="font-size: 12px; color: var(--text-secondary);">
+                      ${t('settings.currentVersion')} <span id="settings-app-version" style="font-family: var(--font-mono);">…</span>
+                    </div>
+                    <div id="settings-update-status" style="font-size: 11px; color: var(--text-muted); margin-top: 2px;"></div>
+                  </div>
+                  <button id="btn-check-updates" class="btn btn-secondary" style="font-size: 12px; padding: 6px 12px;">
+                    <span class="material-symbols-outlined md-16" style="margin-right: 4px;">refresh</span>
+                    ${t('settings.checkUpdates')}
+                  </button>
+                </div>
+                <div style="display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-top: 12px; padding-top: 12px; border-top: 1px dashed var(--border-color);">
+                  <div>
+                    <label style="display: flex; align-items: center; gap: 6px; margin-bottom: 2px; cursor: pointer; font-weight: 600;" for="checkbox-update-beta">
+                      <span class="material-symbols-outlined md-16" style="color: var(--accent-primary);">science</span>
+                      ${t('settings.betaChannel')}
+                    </label>
+                    <div style="font-size: 11px; color: var(--text-muted);">
+                      ${t('settings.betaChannelDesc')}
+                    </div>
+                  </div>
+                  <input id="checkbox-update-beta" type="checkbox" ${settingsStore.updateBetaChannel ? 'checked' : ''} style="width: 18px; height: 18px; cursor: pointer; accent-color: var(--accent-primary);">
+                </div>
+              </div>
+
+              <!-- Community -->
+              <div class="form-group" style="border-top: 1px solid var(--border-color); padding-top: 14px;">
+                <label style="display: flex; align-items: center; gap: 6px;">
+                  <span class="material-symbols-outlined md-16" style="color: var(--accent-primary);">forum</span>
+                  ${t('settings.communitySection')}
+                </label>
+                <small style="display: block; margin-bottom: 8px; color: var(--text-muted); font-size: 11px;">
+                  ${t('settings.communityDesc')}
+                </small>
+                <div style="display: flex; gap: 8px; flex-wrap: wrap;">
+                  <button id="btn-suggest-idea" class="btn btn-secondary" style="font-size: 12px; padding: 6px 12px;">
+                    <span class="material-symbols-outlined md-16" style="margin-right: 4px;">lightbulb</span>
+                    ${t('settings.suggestIdea')}
+                  </button>
+                  <button id="btn-vote-ideas" class="btn btn-secondary" style="font-size: 12px; padding: 6px 12px;">
+                    <span class="material-symbols-outlined md-16" style="margin-right: 4px;">how_to_vote</span>
+                    ${t('settings.voteIdeas')}
+                  </button>
+                  <button id="btn-report-bug" class="btn btn-secondary" style="font-size: 12px; padding: 6px 12px;">
+                    <span class="material-symbols-outlined md-16" style="margin-right: 4px;">bug_report</span>
+                    ${t('settings.reportBug')}
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Footer -->
+          <div class="modal-footer" style="padding: 12px 24px; border-top: 1px solid var(--border-color); margin: 0; background: var(--bg-secondary);">
+            <button id="btn-settings-close" class="btn btn-primary">${t('common.done')}</button>
+          </div>
         </div>
       </div>
     `;
@@ -600,11 +739,49 @@ export class SettingsModal {
   private attachEvents(): void {
     if (!this.modalEl) return;
 
+    // Tab switching navigation (#163)
+    const tabButtons = this.modalEl.querySelectorAll('.settings-tab-btn');
+    const tabPanels = this.modalEl.querySelectorAll('.settings-tab-panel');
+    const tabTitleEl = this.modalEl.querySelector('#settings-current-tab-title');
+
+    const tabTitles: Record<string, { icon: string; label: string }> = {
+      account: { icon: 'person', label: t('settings.tabAccount') },
+      voice_video: { icon: 'mic', label: t('settings.tabVoiceVideo') },
+      soundboard: { icon: 'music_note', label: t('settings.tabSoundboard') },
+      notifications: { icon: 'notifications', label: t('settings.tabNotifications') },
+      quality: { icon: 'speed', label: t('settings.tabQualityLong') },
+      about: { icon: 'info', label: t('settings.tabAboutLong') },
+    };
+
+    tabButtons.forEach((btn) => {
+      btn.addEventListener('click', () => {
+        const tabKey = btn.getAttribute('data-tab');
+        if (!tabKey) return;
+
+        tabButtons.forEach((b) => b.classList.remove('active'));
+        btn.classList.add('active');
+
+        tabPanels.forEach((panel) => {
+          if (panel.id === `tab-panel-${tabKey}`) {
+            (panel as HTMLElement).style.display = 'block';
+          } else {
+            (panel as HTMLElement).style.display = 'none';
+          }
+        });
+
+        if (tabTitleEl && tabTitles[tabKey]) {
+          tabTitleEl.innerHTML = `
+            <span class="material-symbols-outlined" style="color: var(--accent-primary);">${tabTitles[tabKey].icon}</span>
+            <span>${tabTitles[tabKey].label}</span>
+          `;
+        }
+      });
+    });
+
     const btnClose = this.modalEl.querySelector('#modal-close');
     const btnDone = this.modalEl.querySelector('#btn-settings-close');
     const btnRefresh = this.modalEl.querySelector('#btn-refresh-devices');
     const btnSaveNick = this.modalEl.querySelector('#btn-save-nickname');
-    const btnChangeAvatar = this.modalEl.querySelector('#btn-change-avatar');
     const inputNick = this.modalEl.querySelector('#settings-nickname-input') as HTMLInputElement;
     const selectMic = this.modalEl.querySelector('#select-mic') as HTMLSelectElement;
     const selectSpeaker = this.modalEl.querySelector('#select-speaker') as HTMLSelectElement;
@@ -617,10 +794,32 @@ export class SettingsModal {
     const selectScreenTelemetryMode = this.modalEl.querySelector('#select-screen-telemetry-mode') as HTMLSelectElement | null;
 
     btnClose?.addEventListener('click', () => this.close());
+    enableBackdropClose(this.modalEl, () => this.close());
     btnDone?.addEventListener('click', () => this.close());
 
     const btnCheckUpdates = this.modalEl.querySelector('#btn-check-updates');
     btnCheckUpdates?.addEventListener('click', () => this.checkUpdates());
+
+    const checkboxUpdateBeta = this.modalEl.querySelector('#checkbox-update-beta') as HTMLInputElement | null;
+    checkboxUpdateBeta?.addEventListener('change', async () => {
+      settingsStore.updateBetaChannel = checkboxUpdateBeta.checked;
+      settingsStore.save();
+      try {
+        await window.api?.setUpdateChannel?.(settingsStore.updateBetaChannel);
+      } catch {
+        // Non-fatal: the channel is re-applied on next app start.
+      }
+      // Re-check immediately so the user sees the outcome for the new channel.
+      this.checkUpdates();
+    });
+
+    const btnSuggestIdea = this.modalEl.querySelector('#btn-suggest-idea');
+    const btnVoteIdeas = this.modalEl.querySelector('#btn-vote-ideas');
+    const btnReportBug = this.modalEl.querySelector('#btn-report-bug');
+
+    btnSuggestIdea?.addEventListener('click', () => window.api?.openExternal(NEW_IDEA_URL));
+    btnVoteIdeas?.addEventListener('click', () => window.api?.openExternal(IDEAS_URL));
+    btnReportBug?.addEventListener('click', () => window.api?.openExternal(NEW_ISSUE_URL));
 
     // Language switch (#16): persists the choice, re-renders every open view
     // (through `i18n.language_changed`) and reopens this modal already
@@ -645,6 +844,7 @@ export class SettingsModal {
     sliderVad?.addEventListener('input', () => {
       const val = parseInt(sliderVad.value, 10);
       if (vadVal) vadVal.textContent = val.toString();
+      sliderVad.style.setProperty('--slider-progress', `${(val / 160) * 100}%`);
       settingsStore.vadSensitivity = val;
       audioProcessor.setVadThreshold(val);
       settingsStore.save();
@@ -679,6 +879,7 @@ export class SettingsModal {
     sliderSoundboardVol?.addEventListener('input', () => {
       const val = parseInt(sliderSoundboardVol.value, 10);
       if (soundboardVolVal) soundboardVolVal.textContent = `${val}%`;
+      sliderSoundboardVol.style.setProperty('--slider-progress', `${val}%`);
       settingsStore.soundboardVolume = val;
       settingsStore.save();
     });
@@ -714,6 +915,26 @@ export class SettingsModal {
     });
 
     syncScreenTelemetryControls();
+
+    const checkboxChatSound = this.modalEl.querySelector('#checkbox-chat-sound') as HTMLInputElement | null;
+    const checkboxChatSoundMentions = this.modalEl.querySelector('#checkbox-chat-sound-mentions') as HTMLInputElement | null;
+
+    const syncChatSoundControls = () => {
+      if (checkboxChatSoundMentions) checkboxChatSoundMentions.disabled = !checkboxChatSound?.checked;
+    };
+
+    checkboxChatSound?.addEventListener('change', () => {
+      settingsStore.chatMessageSoundEnabled = !!checkboxChatSound.checked;
+      settingsStore.save();
+      syncChatSoundControls();
+    });
+
+    checkboxChatSoundMentions?.addEventListener('change', () => {
+      settingsStore.chatMessageSoundMentionsOnly = !!checkboxChatSoundMentions.checked;
+      settingsStore.save();
+    });
+
+    syncChatSoundControls();
 
     selectPreset?.addEventListener('change', () => {
       const preset = selectPreset.value as QualityPresetType;
@@ -815,31 +1036,124 @@ export class SettingsModal {
       }
     });
 
-    btnChangeAvatar?.addEventListener('click', async () => {
-      if (window.api?.selectImageDialog) {
-        const file = await window.api.selectImageDialog();
-        if (file) {
-          // Offline: store the avatar locally only.
-          if (!serverStore.currentUser) {
-            const preview = document.getElementById('settings-avatar-preview') as HTMLImageElement;
-            if (preview) preview.src = file.base64;
-            connectionStore.saveUserProfile(connectionStore.savedNickname, file.base64);
-            return;
-          }
-          try {
-            await networkClient.sendRequest(MessageType.USER_UPDATE_AVATAR, {
-              avatarBase64: file.base64,
-              mimeType: 'image/png',
-            });
-            const preview = document.getElementById('settings-avatar-preview') as HTMLImageElement;
-            if (preview) preview.src = file.base64;
-            const currentNick = serverStore.currentUser?.nickname || connectionStore.savedNickname;
-            connectionStore.saveUserProfile(currentNick, file.base64);
-          } catch (err: any) {
-            this.showError(err.message || t('settings.avatarError'));
+    const avatarWrapper = this.modalEl.querySelector('#settings-avatar-wrapper');
+    avatarWrapper?.addEventListener('click', async () => {
+      const hasCustomAvatar = !!(serverStore.currentUser?.avatarUrl || connectionStore.savedAvatarBase64);
+      const action = await this.showAvatarActionModal(hasCustomAvatar);
+      if (!action) return;
+
+      if (action === 'change') {
+        if (window.api?.selectImageDialog) {
+          const file = await window.api.selectImageDialog();
+          if (file) {
+            // Offline: store the avatar locally only.
+            if (!serverStore.currentUser) {
+              const preview = document.getElementById('settings-avatar-preview') as HTMLImageElement;
+              if (preview) preview.src = file.base64;
+              connectionStore.saveUserProfile(connectionStore.savedNickname, file.base64);
+              return;
+            }
+            try {
+              await networkClient.sendRequest(MessageType.USER_UPDATE_AVATAR, {
+                avatarBase64: file.base64,
+                mimeType: 'image/png',
+              });
+              const preview = document.getElementById('settings-avatar-preview') as HTMLImageElement;
+              if (preview) preview.src = file.base64;
+              const currentNick = serverStore.currentUser?.nickname || connectionStore.savedNickname;
+              connectionStore.saveUserProfile(currentNick, file.base64);
+            } catch (err: any) {
+              this.showError(err.message || t('settings.avatarError'));
+            }
           }
         }
+      } else if (action === 'remove') {
+        // Offline: clear avatar locally
+        if (!serverStore.currentUser) {
+          const preview = document.getElementById('settings-avatar-preview') as HTMLImageElement;
+          if (preview) preview.src = getAvatarUrl(null);
+          connectionStore.saveUserProfile(connectionStore.savedNickname, null);
+          return;
+        }
+        try {
+          await networkClient.sendRequest(MessageType.USER_UPDATE_AVATAR, {
+            avatarBase64: null,
+          });
+          const preview = document.getElementById('settings-avatar-preview') as HTMLImageElement;
+          if (preview) preview.src = getAvatarUrl(null);
+          if (serverStore.currentUser) serverStore.currentUser.avatarUrl = null;
+          const currentNick = serverStore.currentUser?.nickname || connectionStore.savedNickname;
+          connectionStore.saveUserProfile(currentNick, null);
+        } catch (err: any) {
+          this.showError(err.message || t('settings.avatarRemoveError'));
+        }
       }
+    });
+  }
+
+  private showAvatarActionModal(hasCustomAvatar: boolean): Promise<'change' | 'remove' | null> {
+    return new Promise((resolve) => {
+      const backdrop = document.createElement('div');
+      backdrop.className = 'modal-backdrop';
+      backdrop.style.zIndex = '10001';
+      backdrop.innerHTML = `
+        <div class="modal-card dialog-card" role="dialog" aria-modal="true" style="max-width: 380px;">
+          <div class="modal-header">
+            <div class="modal-title" style="display: flex; align-items: center; gap: 8px;">
+              <span class="material-symbols-outlined" style="color: var(--accent-primary);">photo_camera</span>
+              <span>${t('settings.avatarDialogTitle')}</span>
+            </div>
+            <button class="modal-close-btn" data-action="cancel">&times;</button>
+          </div>
+          <div class="dialog-message" style="margin-bottom: 20px; white-space: normal;">${t('settings.avatarDialogPrompt')}</div>
+          <div style="display: flex; flex-direction: column; gap: 8px;">
+            <button type="button" class="btn btn-primary" data-action="change" style="justify-content: center; gap: 8px; height: 38px;">
+              <span class="material-symbols-outlined md-18">upload</span>
+              <span>${t('settings.avatarChange')}</span>
+            </button>
+            ${
+              hasCustomAvatar
+                ? `
+            <button type="button" class="btn btn-danger" data-action="remove" style="justify-content: center; gap: 8px; height: 38px;">
+              <span class="material-symbols-outlined md-18">delete</span>
+              <span>${t('settings.avatarRemove')}</span>
+            </button>`
+                : ''
+            }
+            <button type="button" class="btn btn-secondary" data-action="cancel" style="justify-content: center; height: 38px;">
+              <span>${t('common.cancel')}</span>
+            </button>
+          </div>
+        </div>
+      `;
+
+      let settled = false;
+      const settle = (action: 'change' | 'remove' | null) => {
+        if (settled) return;
+        settled = true;
+        document.removeEventListener('keydown', onKeyDown, true);
+        backdrop.remove();
+        resolve(action);
+      };
+
+      const onKeyDown = (e: KeyboardEvent) => {
+        if (e.key === 'Escape') {
+          e.preventDefault();
+          settle(null);
+        }
+      };
+
+      backdrop.querySelector('[data-action="change"]')?.addEventListener('click', () => settle('change'));
+      backdrop.querySelector('[data-action="remove"]')?.addEventListener('click', () => settle('remove'));
+      backdrop.querySelectorAll('[data-action="cancel"]').forEach((el) => {
+        el.addEventListener('click', () => settle(null));
+      });
+      backdrop.addEventListener('mousedown', (e) => {
+        if (e.target === backdrop) settle(null);
+      });
+      document.addEventListener('keydown', onKeyDown, true);
+
+      document.body.appendChild(backdrop);
     });
   }
 
@@ -910,8 +1224,10 @@ export class SettingsModal {
     const marker = document.getElementById('vad-meter-threshold') as HTMLElement | null;
     if (!fill) return;
 
+    const MAX_VAD_SCALE = 160;
+
     const positionMarker = () => {
-      if (marker) marker.style.left = `${(settingsStore.vadSensitivity / 80) * 100}%`;
+      if (marker) marker.style.left = `${Math.min(100, (settingsStore.vadSensitivity / MAX_VAD_SCALE) * 100)}%`;
     };
     positionMarker();
 
@@ -926,7 +1242,7 @@ export class SettingsModal {
         for (let i = 0; i < bins; i++) sum += buf[i];
         level = sum / bins;
       }
-      const pct = Math.max(0, Math.min(100, (Math.max(0, level) / 80) * 100));
+      const pct = Math.max(0, Math.min(100, (Math.max(0, level) / MAX_VAD_SCALE) * 100));
       fill.style.width = `${pct}%`;
       // Green while below threshold, accent when it would trigger voice.
       fill.style.background =

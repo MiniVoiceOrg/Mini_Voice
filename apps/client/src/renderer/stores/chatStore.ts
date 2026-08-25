@@ -4,6 +4,8 @@ import { appEvents } from '../core/EventBus';
 export class ChatStore {
   // Map of channelId -> ChatMessage[]
   private messages: Map<string, ChatMessage[]> = new Map();
+  // Text channels with an unread @-mention for the current user (#14).
+  private mentionChannels: Set<string> = new Set();
   // Maximum number of messages kept in memory per channel to bound memory usage.
   private static readonly MAX_MESSAGES_PER_CHANNEL = 500;
 
@@ -34,8 +36,36 @@ export class ChatStore {
     return this.messages.get(channelId) || [];
   }
 
+  /** Flag a text channel as having an unread @-mention (#14). */
+  public markMention(channelId: string): void {
+    if (this.mentionChannels.has(channelId)) return;
+    this.mentionChannels.add(channelId);
+    appEvents.emit('chat.mentions_updated');
+  }
+
+  /**
+   * Replace the whole set of channels with unread @-mentions, e.g. when seeding
+   * from ServerDetails on (re)connect so mentions received while offline show up
+   * (#14).
+   */
+  public setMentions(channelIds: string[]): void {
+    this.mentionChannels = new Set(channelIds);
+    appEvents.emit('chat.mentions_updated');
+  }
+
+  /** Clear the unread @-mention flag for a channel (e.g. when opened). */
+  public clearMention(channelId: string): void {
+    if (!this.mentionChannels.delete(channelId)) return;
+    appEvents.emit('chat.mentions_updated');
+  }
+
+  public hasMention(channelId: string): boolean {
+    return this.mentionChannels.has(channelId);
+  }
+
   public clear(): void {
     this.messages.clear();
+    this.mentionChannels.clear();
     appEvents.emit('chat.cleared');
   }
 }

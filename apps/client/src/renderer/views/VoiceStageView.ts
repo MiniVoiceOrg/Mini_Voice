@@ -3,6 +3,7 @@ import { escapeHtml } from '../utils/html';
 import { appEvents } from '../core/EventBus';
 import { networkClient } from '../core/NetworkClient';
 import { participantManager, ParticipantViewModel } from '../core/ParticipantManager';
+import { screenAudioService } from '../core/ScreenAudioService';
 import { serverStore } from '../stores/serverStore';
 import { settingsStore } from '../stores/settingsStore';
 import { voiceStore } from '../stores/voiceStore';
@@ -37,17 +38,39 @@ interface TelemetryByteSample {
   timestamp: number;
 }
 
+/**
+ * A single renderable tile on the stage. A participant contributes one tile per
+ * active media source, so someone sharing camera + screen at once shows up as
+ * two independent tiles (#26). Participants with no video get a single 'voice'
+ * (avatar) tile.
+ */
+type StageTileKind = 'voice' | 'camera' | 'screen';
+interface StageTile {
+  p: ParticipantViewModel;
+  kind: StageTileKind;
+  key: string; // `${userId}:${kind}` — stable identity for focus/DOM keys
+}
+
 export class VoiceStageView {
   private container: HTMLElement;
   private currentChannelId: string | null = null;
   private unbindEvents: Array<() => void> = [];
-  private focusedUserId: string | null = null;
+  private focusedTileKey: string | null = null;
   private gridExpanded = false;
+  private suppressCardClickUntil = 0;
+  // #150: remote screen shares are gated behind an explicit "Assistir
+  // transmissão". These sets survive innerHTML re-renders (instance state).
+  private watchingUserIds: Set<string> = new Set();
+  private mutedScreenUserIds: Set<string> = new Set();
   private pingInterval: any = null;
   private telemetryInterval: number | null = null;
   private telemetryRefreshInFlight = false;
   private telemetrySnapshots: Map<string, ScreenTelemetrySnapshot> = new Map();
   private telemetryByteSamples: Map<string, TelemetryByteSample> = new Map();
+  // Caches the current live-banner content so updateControlsUI() only rebuilds
+  // it when the broadcast state actually changes, preventing the pulse dot from
+  // flickering on frequent voice.state_updated events (#70).
+  private broadcastBannerSignature: string | null = null;
 
   constructor(container: HTMLElement) {
     this.container = container;
@@ -55,7 +78,7 @@ export class VoiceStageView {
 
   public setChannel(channelId: string | null): void {
     this.currentChannelId = channelId;
-    this.focusedUserId = null;
+    this.focusedTileKey = null;
     if (!channelId) {
       this.stopTelemetryMonitor();
     }
@@ -81,6 +104,9 @@ export class VoiceStageView {
     const channel = serverStore.serverDetails.channels.find((c) => c.id === this.currentChannelId);
     const channelName = channel ? channel.name : 'Geral';
 
+    // Fresh DOM below means the (empty) banner wrapper must be repopulated by
+    // updateControlsUI(), so drop the cached signature (#70).
+    this.broadcastBannerSignature = null;
     this.container.innerHTML = `
       <div class="voice-stage-container">
         <div class="content-header">
@@ -117,7 +143,7 @@ export class VoiceStageView {
         <div id="stage-content-area" style="flex: 1; min-height: 0; display: flex; flex-direction: column;"></div>
 
         <!-- Stage Bottom Controls Bar -->
-        <div class="stage-controls-bar">
+        <div class="stage-call-controls">
           <button id="stage-btn-mic" class="btn btn-icon ${voiceStore.isMuted ? 'danger-active' : ''}" title="${voiceStore.isMuted ? t('stage.unmuteMic') : t('stage.muteMic')}">
             <span class="material-symbols-outlined">${voiceStore.isMuted ? 'mic_off' : 'mic'}</span>
           </button>
@@ -172,36 +198,53 @@ export class VoiceStageView {
 
     const btnScreen = document.getElementById('stage-btn-screen');
     if (btnScreen) {
+      const hasScreenAudio = screenAudioService.getIsCapturing();
       btnScreen.className = `btn btn-icon ${voiceStore.isScreenSharing ? 'broadcasting-pulse active' : ''}`;
-      btnScreen.title = voiceStore.isScreenSharing ? t('stage.stopScreenShare') : t('main.shareScreen');
-      btnScreen.innerHTML = `<span class="material-symbols-outlined">${voiceStore.isScreenSharing ? 'stop_screen_share' : 'screen_share'}</span>`;
+      btnScreen.title = voiceStore.isScreenSharing
+        ? (hasScreenAudio ? t('stage.stopScreenShareWithAudio') : t('stage.stopScreenShare'))
+        : t('main.shareScreen');
+      btnScreen.innerHTML = `
+        <span class="material-symbols-outlined">${voiceStore.isScreenSharing ? 'stop_screen_share' : 'screen_share'}</span>
+        ${hasScreenAudio ? '<span class="material-symbols-outlined screen-audio-badge" style="font-size: 12px; position: absolute; bottom: 2px; right: 2px; color: var(--success);">volume_up</span>' : ''}
+      `;
     }
 
     // Top broadcast banner
     const bannerWrapper = document.getElementById('stage-broadcast-banner-wrapper');
     if (bannerWrapper) {
       const isBroadcasting = voiceStore.isCameraOn || voiceStore.isScreenSharing;
-      if (isBroadcasting) {
-        bannerWrapper.style.display = 'block';
-        bannerWrapper.innerHTML = `
-          <div class="stage-broadcast-banner">
-            <div style="display: flex; align-items: center; gap: 10px;">
-              <span class="live-pulse-dot"></span>
-              <span style="font-weight: 600; font-size: 12px; color: #ffffff;">
-                ${voiceStore.isScreenSharing ? t('stage.bannerScreen') : t('stage.bannerCamera')}
-              </span>
+      const hasScreenAudio = screenAudioService.getIsCapturing();
+      // Only touch the DOM when the banner's content would actually change, so
+      // the live-pulse animation isn't restarted on every state update (#70).
+      const signature = isBroadcasting
+        ? `${voiceStore.isScreenSharing ? 'screen' : 'cam'}:${hasScreenAudio ? 'audio' : 'noaudio'}`
+        : 'off';
+      if (signature !== this.broadcastBannerSignature) {
+        this.broadcastBannerSignature = signature;
+        if (isBroadcasting) {
+          bannerWrapper.style.display = 'block';
+          bannerWrapper.innerHTML = `
+            <div class="stage-broadcast-banner">
+              <div style="display: flex; align-items: center; gap: 10px;">
+                <span class="live-pulse-dot"></span>
+                <span style="font-weight: 600; font-size: 12px; color: #ffffff;">
+                  ${voiceStore.isScreenSharing
+                    ? (hasScreenAudio ? t('stage.bannerScreenWithAudio') : t('stage.bannerScreen'))
+                    : t('stage.bannerCamera')}
+                </span>
+              </div>
+              <button id="btn-stage-quick-stop" class="btn btn-secondary" style="font-size: 11px; padding: 4px 12px; height: 26px; border-color: rgba(242, 63, 67, 0.5); color: #ff7b72;">
+                <span class="material-symbols-outlined md-14" style="margin-right: 4px;">stop_circle</span>
+                ${voiceStore.isScreenSharing ? t('stage.stopScreen') : t('stage.cameraOff')}
+              </button>
             </div>
-            <button id="btn-stage-quick-stop" class="btn btn-secondary" style="font-size: 11px; padding: 4px 12px; height: 26px; border-color: rgba(242, 63, 67, 0.5); color: #ff7b72;">
-              <span class="material-symbols-outlined md-14" style="margin-right: 4px;">stop_circle</span>
-              ${voiceStore.isScreenSharing ? t('stage.stopScreen') : t('stage.cameraOff')}
-            </button>
-          </div>
-        `;
-        const btnQuickStop = document.getElementById('btn-stage-quick-stop');
-        btnQuickStop?.addEventListener('click', () => this.handleStopStreaming());
-      } else {
-        bannerWrapper.style.display = 'none';
-        bannerWrapper.innerHTML = '';
+          `;
+          const btnQuickStop = document.getElementById('btn-stage-quick-stop');
+          btnQuickStop?.addEventListener('click', () => this.handleStopStreaming());
+        } else {
+          bannerWrapper.style.display = 'none';
+          bannerWrapper.innerHTML = '';
+        }
       }
     }
   }
@@ -217,14 +260,41 @@ export class VoiceStageView {
   }
 
   private setCardSpeaking(userId: string, isSpeaking: boolean): void {
-    const card = document.getElementById(`card-${userId}`);
-    if (card) {
+    // Update every non-screen tile for the user (a user may show a voice or
+    // camera tile; the screen tile never pulses on speech — #26).
+    const cards = document.querySelectorAll(`[data-user-id="${userId}"][data-kind]:not([data-kind="screen"])`);
+    cards.forEach((card) => {
       if (isSpeaking) {
         card.classList.add('speaking');
       } else {
         card.classList.remove('speaking');
       }
+    });
+  }
+
+  /**
+   * Expands the flat participant list into renderable tiles. Camera + screen
+   * are independent, so a participant broadcasting both yields two tiles (#26);
+   * participants with no video yield a single avatar ('voice') tile.
+   */
+  private buildStageTiles(participants: ParticipantViewModel[], currentUserId?: string): StageTile[] {
+    const tiles: StageTile[] = [];
+    for (const p of participants) {
+      const isLocal = p.user.id === currentUserId;
+      const isCamOn = isLocal ? voiceStore.isCameraOn : (p.voiceState?.isCameraOn ?? false);
+      const isScreenOn = isLocal ? voiceStore.isScreenSharing : (p.voiceState?.isScreenSharing ?? false);
+      if (isCamOn) tiles.push({ p, kind: 'camera', key: `${p.user.id}:camera` });
+      if (isScreenOn) tiles.push({ p, kind: 'screen', key: `${p.user.id}:screen` });
+      if (!isCamOn && !isScreenOn) tiles.push({ p, kind: 'voice', key: `${p.user.id}:voice` });
     }
+    return tiles;
+  }
+
+  private isTileSpeaking(tile: StageTile): boolean {
+    // The speaking glow reflects the microphone; a pure screen tile shouldn't
+    // pulse when the user talks (their camera/voice tile already does).
+    if (tile.kind === 'screen') return false;
+    return (tile.p.user.id === serverStore.currentUser?.id) ? voiceStore.isSpeaking : tile.p.isSpeaking;
   }
 
   public renderParticipants(): void {
@@ -241,32 +311,49 @@ export class VoiceStageView {
       return;
     }
 
-    if (this.focusedUserId && !participants.some((p) => p.user.id === this.focusedUserId)) {
-      this.focusedUserId = null;
+    const currentUserId = serverStore.currentUser?.id;
+
+    // #150: reset watch-state for anyone who is no longer sharing their screen
+    // so a fresh broadcast is gated behind "Assistir transmissão" again; also
+    // drop their explicit screen-audio mute.
+    for (const watchedId of [...this.watchingUserIds]) {
+      const wp = participants.find((p) => p.user.id === watchedId);
+      const stillSharing = !!wp && wp.user.id !== currentUserId && (wp.voiceState?.isScreenSharing ?? false);
+      if (!stillSharing) {
+        this.watchingUserIds.delete(watchedId);
+        this.mutedScreenUserIds.delete(watchedId);
+      }
     }
 
-    if (this.focusedUserId) {
-      const focusedParticipant = participants.find((p) => p.user.id === this.focusedUserId)!;
-      const otherParticipants = participants.filter((p) => p.user.id !== this.focusedUserId);
-      const isFocusedSpeaking = (focusedParticipant.user.id === serverStore.currentUser?.id) ? voiceStore.isSpeaking : focusedParticipant.isSpeaking;
+    // A participant sharing camera + screen contributes two independent tiles
+    // (#26); focus, speaking and DOM keys are keyed per tile.
+    const tiles = this.buildStageTiles(participants, currentUserId);
+
+    if (this.focusedTileKey && !tiles.some((tile) => tile.key === this.focusedTileKey)) {
+      this.focusedTileKey = null;
+    }
+
+    if (this.focusedTileKey) {
+      const focusedTile = tiles.find((tile) => tile.key === this.focusedTileKey)!;
+      const otherTiles = tiles.filter((tile) => tile.key !== this.focusedTileKey);
+      const isFocusedSpeaking = this.isTileSpeaking(focusedTile);
 
       area.innerHTML = `
         <div class="stage-focused-layout">
-          <div class="stage-focused-main ${isFocusedSpeaking ? 'speaking' : ''}" id="card-${focusedParticipant.user.id}" data-user-id="${focusedParticipant.user.id}">
+          <div class="stage-focused-main ${isFocusedSpeaking ? 'speaking' : ''}" id="card-${focusedTile.p.user.id}-${focusedTile.kind}" data-user-id="${focusedTile.p.user.id}" data-kind="${focusedTile.kind}" data-tile-key="${focusedTile.key}">
             <div class="stage-focus-hint-badge">
               <span class="material-symbols-outlined md-14">zoom_in</span>
               <span>${t('stage.focusMode')}</span>
             </div>
-            ${this.renderCardContent(focusedParticipant, true)}
+            ${this.renderCardContent(focusedTile, true)}
           </div>
 
-          ${otherParticipants.length > 0 ? `
+          ${otherTiles.length > 0 ? `
             <div class="stage-focused-strip">
-              ${otherParticipants.map((p) => {
-                const isOtherSpeaking = (p.user.id === serverStore.currentUser?.id) ? voiceStore.isSpeaking : p.isSpeaking;
+              ${otherTiles.map((tile) => {
                 return `
-                  <div class="stage-mini-card ${isOtherSpeaking ? 'speaking' : ''}" id="card-${p.user.id}" data-user-id="${p.user.id}" title="${t('stage.focusOn', { name: escapeHtml(p.user.nickname) })}">
-                    ${this.renderCardContent(p, false, true)}
+                  <div class="stage-mini-card ${this.isTileSpeaking(tile) ? 'speaking' : ''}" id="card-${tile.p.user.id}-${tile.kind}" data-user-id="${tile.p.user.id}" data-kind="${tile.kind}" data-tile-key="${tile.key}" title="${t('stage.focusOn', { name: escapeHtml(tile.p.user.nickname) })}">
+                    ${this.renderCardContent(tile, false, true)}
                   </div>
                 `;
               }).join('')}
@@ -277,11 +364,10 @@ export class VoiceStageView {
     } else {
       area.innerHTML = `
         <div class="stage-grid ${this.gridExpanded ? 'stage-grid--expanded' : ''}" id="stage-grid">
-          ${participants.map((p) => {
-            const isSpeaking = (p.user.id === serverStore.currentUser?.id) ? voiceStore.isSpeaking : p.isSpeaking;
+          ${tiles.map((tile) => {
             return `
-              <div class="stage-card ${isSpeaking ? 'speaking' : ''}" id="card-${p.user.id}" data-user-id="${p.user.id}" title="${t('stage.focusHint')}">
-                ${this.renderCardContent(p, false, false)}
+              <div class="stage-card ${this.isTileSpeaking(tile) ? 'speaking' : ''}" id="card-${tile.p.user.id}-${tile.kind}" data-user-id="${tile.p.user.id}" data-kind="${tile.kind}" data-tile-key="${tile.key}" title="${t('stage.focusHint')}">
+                ${this.renderCardContent(tile, false, false)}
               </div>
             `;
           }).join('')}
@@ -289,13 +375,29 @@ export class VoiceStageView {
       `;
     }
 
+    // #150: gate remote screen audio behind the "Assistir transmissão" opt-in
+    // while preserving explicit per-user mutes. The <audio> elements are created
+    // by WebRtcManager on document.body and persist across these re-renders.
+    participants.forEach((p) => {
+      if (p.user.id === currentUserId) return;
+      if (!(p.voiceState?.isScreenSharing ?? false)) return;
+      const audioEl = document.querySelector(`audio[data-screen-audio-user="${p.user.id}"]`) as HTMLAudioElement | null;
+      if (!audioEl) return;
+      audioEl.muted = !this.watchingUserIds.has(p.user.id) || this.mutedScreenUserIds.has(p.user.id);
+    });
+
     // Attach click listeners to cards for focus toggle & right-click for volume adjustment
     const allCards = area.querySelectorAll('[data-user-id]');
     allCards.forEach((card) => {
-      card.addEventListener('click', () => {
-        const userId = card.getAttribute('data-user-id');
-        if (userId) {
-          this.focusedUserId = (this.focusedUserId === userId ? null : userId);
+      card.addEventListener('click', (e: Event) => {
+        // Don't toggle focus when the click originates from an interactive
+        // overlay (volume/fullscreen), nor right after a slider drag whose
+        // pointer-up may land outside the controls (#75).
+        if (Date.now() < this.suppressCardClickUntil) return;
+        if ((e.target as HTMLElement).closest('.stage-card-controls')) return;
+        const tileKey = card.getAttribute('data-tile-key');
+        if (tileKey) {
+          this.focusedTileKey = (this.focusedTileKey === tileKey ? null : tileKey);
           this.renderParticipants();
         }
       });
@@ -323,6 +425,35 @@ export class VoiceStageView {
       });
     });
 
+    // #150: "Assistir transmissão" — opt into a gated remote screen share.
+    // Starts video + audio and auto-focuses the broadcaster.
+    const watchBtns = area.querySelectorAll('.stage-watch-btn') as NodeListOf<HTMLButtonElement>;
+    watchBtns.forEach((btn) => {
+      btn.addEventListener('click', (e: Event) => {
+        e.stopPropagation();
+        const userId = btn.getAttribute('data-watch-user');
+        if (!userId) return;
+        this.watchingUserIds.add(userId);
+        this.mutedScreenUserIds.delete(userId);
+        this.focusedTileKey = `${userId}:screen`;
+        this.renderParticipants();
+      });
+    });
+
+    // #150: "Parar de assistir" — re-gate the broadcast (blur + silence) and
+    // drop back to the grid.
+    const stopWatchBtns = area.querySelectorAll('.stage-stopwatch-btn') as NodeListOf<HTMLButtonElement>;
+    stopWatchBtns.forEach((btn) => {
+      btn.addEventListener('click', (e: Event) => {
+        e.stopPropagation();
+        const userId = btn.getAttribute('data-stopwatch-user');
+        if (!userId) return;
+        this.watchingUserIds.delete(userId);
+        if (this.focusedTileKey === `${userId}:screen`) this.focusedTileKey = null;
+        this.renderParticipants();
+      });
+    });
+
     // Screen audio volume sliders (#75)
     const volSliders = area.querySelectorAll('.stage-screen-volume-slider') as NodeListOf<HTMLInputElement>;
     volSliders.forEach((slider) => {
@@ -336,34 +467,96 @@ export class VoiceStageView {
       });
     });
 
-    // Attach media streams to video elements cleanly
-    participants.forEach((p) => {
-      const isLocal = p.user.id === serverStore.currentUser?.id;
-      const isCamOn = isLocal ? voiceStore.isCameraOn : (p.voiceState?.isCameraOn ?? false);
-      const isScreenOn = isLocal ? voiceStore.isScreenSharing : (p.voiceState?.isScreenSharing ?? false);
-
-      if (isCamOn || isScreenOn) {
-        const stream = isLocal
-          ? (isScreenOn ? videoService.getScreenStream() : videoService.getCameraStream())
-          : p.remoteStream;
-
-        if (stream) {
-          const videoEl = document.getElementById(`video-${p.user.id}`) as HTMLVideoElement;
-          if (videoEl && videoEl.srcObject !== stream) {
-            videoEl.muted = true;
-            videoEl.srcObject = stream;
-            this.hideVideoLoadingWhenReady(videoEl, `video-${p.user.id}`);
-            videoEl.play().catch(() => {});
-          }
-          const miniVideoEl = document.getElementById(`video-mini-${p.user.id}`) as HTMLVideoElement;
-          if (miniVideoEl && miniVideoEl.srcObject !== stream) {
-            miniVideoEl.muted = true;
-            miniVideoEl.srcObject = stream;
-            this.hideVideoLoadingWhenReady(miniVideoEl, `video-mini-${p.user.id}`);
-            miniVideoEl.play().catch(() => {});
-          }
-        }
+    // Volume button click → toggle mute screen audio
+    const volButtons = area.querySelectorAll('.stage-volume-btn') as NodeListOf<HTMLButtonElement>;
+    volButtons.forEach((btn) => {
+      // Sync the button icon + popup visibility with the current (possibly
+      // persisted) mute state of the underlying <audio> element on each
+      // render, so a muted share doesn't come back showing "volume_up" (#159).
+      const initWrapper = btn.closest('.stage-volume-wrapper');
+      const initSlider = initWrapper?.querySelector('.stage-screen-volume-slider') as HTMLInputElement | null;
+      const initUserId = initSlider?.getAttribute('data-user-id');
+      if (initUserId && this.mutedScreenUserIds.has(initUserId)) {
+        const initIcon = btn.querySelector('.material-symbols-outlined');
+        if (initIcon) initIcon.textContent = 'volume_off';
+        btn.title = t('stage.screenAudioMuted');
+        initWrapper?.classList.add('screen-audio-muted');
       }
+
+      btn.addEventListener('click', (e: Event) => {
+        e.stopPropagation();
+        const wrapper = btn.closest('.stage-volume-wrapper');
+        const slider = wrapper?.querySelector('.stage-screen-volume-slider') as HTMLInputElement | null;
+        if (!slider) return;
+        const userId = slider.getAttribute('data-user-id');
+        if (!userId) return;
+        const audioEl = document.querySelector(`audio[data-screen-audio-user="${userId}"]`) as HTMLAudioElement | null;
+
+        const icon = btn.querySelector('.material-symbols-outlined');
+        if (this.mutedScreenUserIds.has(userId)) {
+          this.mutedScreenUserIds.delete(userId);
+          if (audioEl) audioEl.muted = false;
+          if (icon) icon.textContent = 'volume_up';
+          btn.title = t('stage.screenAudioVolume');
+          wrapper?.classList.remove('screen-audio-muted');
+        } else {
+          this.mutedScreenUserIds.add(userId);
+          if (audioEl) audioEl.muted = true;
+          if (icon) icon.textContent = 'volume_off';
+          btn.title = t('stage.screenAudioMuted');
+          wrapper?.classList.add('screen-audio-muted');
+        }
+      });
+    });
+
+    // Volume controls must not toggle card focus (which re-renders and drops
+    // fullscreen). Suppress the card click that follows any control interaction,
+    // and keep the slider popup open + tracking the pointer while dragging, even
+    // when the mouse leaves the small popup area (#75).
+    const controlBars = area.querySelectorAll('.stage-card-controls');
+    controlBars.forEach((bar) => {
+      bar.addEventListener('pointerdown', () => {
+        this.suppressCardClickUntil = Date.now() + 800;
+      });
+    });
+
+    const volWrappers = area.querySelectorAll('.stage-volume-wrapper');
+    volWrappers.forEach((wrapper) => {
+      const slider = wrapper.querySelector('.stage-screen-volume-slider') as HTMLInputElement | null;
+      if (!slider) return;
+      slider.addEventListener('pointerdown', (e: Event) => {
+        wrapper.classList.add('dragging');
+        try { slider.setPointerCapture((e as PointerEvent).pointerId); } catch { /* ignore */ }
+      });
+      const endDrag = () => {
+        wrapper.classList.remove('dragging');
+        // Keep suppressing briefly so the trailing click can't reach the card.
+        this.suppressCardClickUntil = Date.now() + 400;
+      };
+      slider.addEventListener('pointerup', endDrag);
+      slider.addEventListener('lostpointercapture', endDrag);
+    });
+
+    // Attach media streams to the per-tile video elements cleanly. Camera rides
+    // remoteStream / cameraStream; screen rides remoteScreenStream / screenStream
+    // so both tiles show independent video (#26).
+    tiles.forEach((tile) => {
+      if (tile.kind === 'voice') return;
+      const isLocal = tile.p.user.id === currentUserId;
+      const stream = isLocal
+        ? (tile.kind === 'screen' ? videoService.getScreenStream() : videoService.getCameraStream())
+        : (tile.kind === 'screen' ? tile.p.remoteScreenStream : tile.p.remoteStream);
+      if (!stream) return;
+      const ids = [`video-${tile.p.user.id}-${tile.kind}`, `video-mini-${tile.p.user.id}-${tile.kind}`];
+      ids.forEach((id) => {
+        const el = document.getElementById(id) as HTMLVideoElement | null;
+        if (el && el.srcObject !== stream) {
+          el.muted = true;
+          el.srcObject = stream;
+          this.hideVideoLoadingWhenReady(el, id);
+          el.play().catch(() => {});
+        }
+      });
     });
 
     this.applyTelemetryOverlayState();
@@ -383,54 +576,91 @@ export class VoiceStageView {
     videoEl.addEventListener('loadeddata', hide, { once: true });
   }
 
-  /** Toggles native fullscreen for a stage video tile (#68). */
+  /** Toggles native fullscreen for a stage video tile (#68).
+   *  Fullscreens the whole card (a <div>), not the bare <video>, so Chromium's
+   *  native video controls don't appear — they act on the muted <video> element
+   *  and can't reach the screen-audio <audio> element. Keeping the card in
+   *  fullscreen preserves the stage's real volume/mute controls (#75). */
   private async toggleVideoFullscreen(videoId: string): Promise<void> {
     const videoEl = document.getElementById(videoId) as HTMLVideoElement | null;
     if (!videoEl) return;
+    const target = (videoEl.closest('.stage-card, .stage-focused-main, .stage-mini-card') as HTMLElement | null) ?? videoEl;
     try {
-      if (document.fullscreenElement === videoEl) {
+      if (document.fullscreenElement === target) {
         await document.exitFullscreen();
       } else {
-        await videoEl.requestFullscreen();
+        await target.requestFullscreen();
       }
     } catch (err) {
       console.warn('[VoiceStageView] Fullscreen request failed:', err);
     }
   }
 
-  private renderCardContent(p: ParticipantViewModel, isFocused: boolean = false, isMini: boolean = false): string {
+  private renderCardContent(tile: StageTile, isFocused: boolean = false, isMini: boolean = false): string {
+    const p = tile.p;
     const isLocal = p.user.id === serverStore.currentUser?.id;
     const isCamOn = isLocal ? voiceStore.isCameraOn : (p.voiceState?.isCameraOn ?? false);
     const isScreenOn = isLocal ? voiceStore.isScreenSharing : (p.voiceState?.isScreenSharing ?? false);
     const isMuted = isLocal ? voiceStore.isMuted : (p.voiceState?.isMuted ?? false);
     const isDeafened = isLocal ? voiceStore.isDeafened : (p.voiceState?.isDeafened ?? false);
     const avatarSrc = getAvatarUrl(p.user.avatarUrl);
-    const videoId = isMini ? `video-mini-${p.user.id}` : `video-${p.user.id}`;
+
+    const isVideoTile = tile.kind === 'camera' || tile.kind === 'screen';
+    const isScreenTile = tile.kind === 'screen';
+    const videoId = isMini ? `video-mini-${p.user.id}-${tile.kind}` : `video-${p.user.id}-${tile.kind}`;
+    const isRemoteScreen = isScreenTile && !isLocal;
+    const isWatching = this.watchingUserIds.has(p.user.id);
+    // #150: a remote screen the local user has not opted into watching is
+    // rendered blurred + silent behind an "Assistir transmissão" CTA. Applies
+    // to screen tiles only — the camera tile always plays normally (#26).
+    const isLocked = isRemoteScreen && !isWatching;
+    // Distinguish the two tiles of a camera + screen sharer with a "· Tela"
+    // suffix on the screen tile label (#26).
+    const label = isScreenTile ? `${escapeHtml(p.user.nickname)} · Tela` : escapeHtml(p.user.nickname);
 
     return `
-      ${(isCamOn || isScreenOn) ? `
-        <video id="${videoId}" class="stage-video-element ${isScreenOn ? 'screen-share' : ''}" autoplay playsinline muted></video>
-        <div class="stage-loading-overlay" id="loading-${videoId}">
-          <div class="reconnect-spinner"></div>
-          <span>${isScreenOn ? t('stage.loadingScreen') : t('stage.loadingCamera')}</span>
-        </div>
-        ${isScreenOn ? `
+      ${isVideoTile ? `
+        <video id="${videoId}" class="stage-video-element ${isScreenTile ? 'screen-share' : ''}${isLocked ? ' screen-locked' : ''}" autoplay playsinline muted></video>
+        ${!isLocked ? `
+          <div class="stage-loading-overlay" id="loading-${videoId}">
+            <div class="reconnect-spinner"></div>
+            <span>${isScreenTile ? t('stage.loadingScreen') : t('stage.loadingCamera')}</span>
+          </div>
+        ` : ''}
+        ${(isScreenTile && !isLocked) ? `
           <div
             class="telemetry-overlay position-${settingsStore.screenShareTelemetryPosition}${settingsStore.screenShareTelemetryEnabled ? '' : ' is-hidden'}"
             data-telemetry-user-id="${p.user.id}"
           >${this.getTelemetryText(p.user.id)}</div>
         ` : ''}
-        <div class="stage-controls-bar">
-          ${(isScreenOn && !isLocal) ? `
-            <div class="stage-volume-control" title="${t('stage.screenAudioVolume')}">
-              <span class="material-symbols-outlined md-16">volume_up</span>
-              <input type="range" class="stage-screen-volume-slider" data-user-id="${p.user.id}" min="0" max="100" value="${settingsStore.getScreenAudioVolume(p.user.id)}" />
-            </div>
-          ` : ''}
-          <button class="stage-fullscreen-btn" data-fullscreen-target="${videoId}" title="${t('stage.fullscreen')}" aria-label="${t('stage.fullscreen')}">
-            <span class="material-symbols-outlined md-18">fullscreen</span>
-          </button>
-        </div>
+        ${isLocked ? `
+          <div class="stage-watch-overlay">
+            <button class="stage-watch-btn" data-watch-user="${p.user.id}">
+              <span class="material-symbols-outlined">smart_display</span>
+              <span>${t('stage.watchBroadcast')}</span>
+            </button>
+            <div class="stage-watch-caption">${t('stage.watchCaption', { name: escapeHtml(p.user.nickname) })}</div>
+          </div>
+        ` : `
+          <div class="stage-card-controls">
+            ${isRemoteScreen ? `
+              <div class="stage-volume-wrapper">
+                <div class="stage-volume-popup">
+                  <input type="range" class="stage-screen-volume-slider" data-user-id="${p.user.id}" min="0" max="100" value="${settingsStore.getScreenAudioVolume(p.user.id)}" />
+                </div>
+                <button class="stage-volume-btn" title="${t('stage.screenAudioVolume')}" aria-label="${t('stage.volumeAria')}">
+                  <span class="material-symbols-outlined md-18">volume_up</span>
+                </button>
+              </div>
+              <button class="stage-stopwatch-btn" data-stopwatch-user="${p.user.id}" title="${t('stage.stopWatching')}" aria-label="${t('stage.stopWatching')}">
+                <span class="material-symbols-outlined md-18">visibility_off</span>
+              </button>
+            ` : ''}
+            <button class="stage-fullscreen-btn" data-fullscreen-target="${videoId}" title="${t('stage.fullscreen')}" aria-label="${t('stage.fullscreen')}">
+              <span class="material-symbols-outlined md-18">fullscreen</span>
+            </button>
+          </div>
+        `}
       ` : `
         <div class="stage-avatar-wrapper">
           <img class="stage-avatar-img" src="${avatarSrc}">
@@ -441,7 +671,7 @@ export class VoiceStageView {
       `}
 
       <div class="stage-badges-overlay">
-        <span>${escapeHtml(p.user.nickname)}</span>
+        <span>${label}</span>
         ${isMuted ? '<span class="material-symbols-outlined md-14" style="color: var(--danger);">mic_off</span>' : ''}
         ${isDeafened ? '<span class="material-symbols-outlined md-14" style="color: var(--danger);">headset_off</span>' : ''}
         ${isCamOn ? '<span class="material-symbols-outlined md-14" style="color: var(--accent-primary);">videocam</span>' : ''}
@@ -882,9 +1112,10 @@ export class VoiceStageView {
 
   /**
    * Toggles the local camera. Extracted so it can be triggered both from the
-   * stage controls and from the sidebar media bar (#29). Handles switching from
-   * an active screen share and cleanly reverts state if the camera fails to
-   * start (e.g. no camera plugged in).
+   * stage controls and from the sidebar media bar (#29). Camera and screen
+   * share are independent (#26): toggling the camera never stops an active
+   * screen share. Cleanly reverts state if the camera fails to start (e.g. no
+   * camera plugged in).
    */
   public async toggleCamera(): Promise<void> {
     if (voiceStore.isCameraOn) {
@@ -893,35 +1124,18 @@ export class VoiceStageView {
       voiceStore.setCameraOn(false);
       networkClient.send(MessageType.VOICE_STATE_UPDATE, { isCameraOn: false });
     } else {
-      const wasScreenSharing = voiceStore.isScreenSharing;
-      if (wasScreenSharing) {
-        const confirmed = await showConfirm({
-          title: t('stage.cameraOn'),
-          message: t('stage.cameraOverScreenMessage'),
-          confirmLabel: t('stage.continue'),
-          variant: 'warning',
-        });
-        if (!confirmed) return;
-        videoService.stopScreenShare();
-        await webRtcManager.setLocalScreenTrack(null);
-        voiceStore.setScreenSharing(false);
-        // Broadcast the stop immediately so others don't keep seeing a stale
-        // screen-share icon / black frame if the camera fails to start below.
-        networkClient.send(MessageType.VOICE_STATE_UPDATE, { isScreenSharing: false });
-      }
       try {
         const stream = await videoService.startCamera();
         const track = stream.getVideoTracks()[0];
         await webRtcManager.setLocalCameraTrack(track);
         voiceStore.setCameraOn(true);
-        networkClient.send(MessageType.VOICE_STATE_UPDATE, { isCameraOn: true, isScreenSharing: false });
+        networkClient.send(MessageType.VOICE_STATE_UPDATE, { isCameraOn: true });
       } catch (err: any) {
-        // Fully revert local state and make sure the server/other clients
-        // reflect that nothing is being broadcast (no camera, no screen).
+        // Fully revert local camera state (screen share, if any, is untouched).
         videoService.stopCamera();
         await webRtcManager.setLocalCameraTrack(null);
         voiceStore.setCameraOn(false);
-        networkClient.send(MessageType.VOICE_STATE_UPDATE, { isCameraOn: false, isScreenSharing: false });
+        networkClient.send(MessageType.VOICE_STATE_UPDATE, { isCameraOn: false });
         await showAlert({
           title: t('stage.cameraErrorTitle'),
           message: t('stage.cameraErrorMessage', { error: err?.message || err }),
@@ -999,7 +1213,7 @@ export class VoiceStageView {
     btnViewMode?.addEventListener('click', () => {
       this.gridExpanded = !this.gridExpanded;
       // The expanded grid is a full equal-split view, so leave focus mode.
-      if (this.gridExpanded) this.focusedUserId = null;
+      if (this.gridExpanded) this.focusedTileKey = null;
       const icon = btnViewMode.querySelector('.material-symbols-outlined');
       if (icon) icon.textContent = this.gridExpanded ? 'view_agenda' : 'grid_view';
       this.renderParticipants();
@@ -1044,7 +1258,10 @@ export class VoiceStageView {
       this.syncTelemetryMonitor();
     });
 
-    this.unbindEvents.push(u1, u2, u3, u4, u5, u6, u7);
+    const u8 = appEvents.on('local.screen_audio_started', () => this.updateControlsUI());
+    const u9 = appEvents.on('local.screen_audio_stopped', () => this.updateControlsUI());
+
+    this.unbindEvents.push(u1, u2, u3, u4, u5, u6, u7, u8, u9);
   }
 
   private unbindListeners(): void {

@@ -70,8 +70,10 @@ bool platform_is_supported() {
   return false;
 }
 
-bool platform_start(uint32_t excludePid, uint32_t sampleRate, uint32_t channels,
+bool platform_start(uint32_t excludePid, uint32_t loopbackMode, uint32_t sampleRate, uint32_t channels,
                     Napi::ThreadSafeFunction tsfn) {
+  (void)excludePid;
+  (void)loopbackMode; // macOS ScreenCaptureKit always excludes the current process
   if (g_captureRunning_mac.load()) return false;
 
   if (@available(macOS 13.0, *)) {
