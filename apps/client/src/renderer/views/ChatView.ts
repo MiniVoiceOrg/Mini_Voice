@@ -375,6 +375,24 @@ export class ChatView {
       }
     });
 
+    // Global paste handler: Ctrl+V anywhere on the page uploads files when a
+    // text channel is open (#181).
+    const onGlobalPaste = (e: Event) => {
+      const ce = e as ClipboardEvent;
+      // Skip if the paste is already targeting the chat input (handled above).
+      if (ce.target === input) return;
+      if (!this.currentChannelId) return;
+      const files = ce.clipboardData?.files;
+      if (files && files.length > 0) {
+        e.preventDefault();
+        this.addFiles(files);
+        // Focus the input so the user can add a message to accompany the file.
+        input?.focus();
+      }
+    };
+    document.addEventListener('paste', onGlobalPaste);
+    this.unbindEvents.push(() => document.removeEventListener('paste', onGlobalPaste));
+
     // Drag & drop onto the chat pane. Listeners live on the persistent container,
     // so they must be unbound on re-render to avoid stacking.
     const onDragOver = (e: Event) => {
