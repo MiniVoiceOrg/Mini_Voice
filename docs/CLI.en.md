@@ -219,14 +219,14 @@ monky admin add lucas
 monky admin add abcd1234efgh5678
 ```
 
-In interactive mode, the CLI shows:
+In interactive mode, the CLI shows a navigable list:
 
 ```
 Membros do servidor:
-  1. Alice (abc123...)
-  2. Bob (def456...)
-  3. Carlos (ghi789...)
-Selecione o membro (número): _
+  Use ↑↓ para navegar, Enter para selecionar
+❯ Alice (abc123...)
+  Bob (def456...)
+  Carlos (ghi789...)
 ```
 
 #### Remove admin
@@ -262,24 +262,25 @@ monky roles create
 monky roles create "Moderator" "#00ff88" MANAGE_CHANNELS,MUTE_MEMBERS
 ```
 
-In interactive mode, permissions are shown as a numbered list:
+In interactive mode, permissions are shown as a navigable multi-select list:
 
 ```
 Permissões do cargo:
-  1. [ ] Administrator (ADMINISTRATOR)
-  2. [ ] Manage Server (MANAGE_SERVER)
-  3. [ ] Manage Channels (MANAGE_CHANNELS)
-  4. [ ] Mute Members (MUTE_MEMBERS)
-  5. [ ] Deafen Members (DEAFEN_MEMBERS)
-  6. [ ] Move Members (MOVE_MEMBERS)
-  7. [ ] Kick Members (KICK_MEMBERS)
-  8. [ ] Speak (SPEAK)
-  9. [ ] Send Messages (SEND_MESSAGES)
-  10. [ ] Read Messages (READ_MESSAGES)
-  11. [ ] Attach Files (ATTACH_FILES)
-Digite os números separados por vírgula. Deixe vazio para nenhuma permissão.
-Permissões: _
+  Use ↑↓ para navegar, Espaço para marcar/desmarcar, Enter para confirmar
+❯   Administrator (ADMINISTRATOR)
+    Manage Server (MANAGE_SERVER)
+    Manage Channels (MANAGE_CHANNELS)
+    Mute Members (MUTE_MEMBERS)
+    Deafen Members (DEAFEN_MEMBERS)
+    Move Members (MOVE_MEMBERS)
+    Kick Members (KICK_MEMBERS)
+  ✔ Speak (SPEAK)
+  ✔ Send Messages (SEND_MESSAGES)
+  ✔ Read Messages (READ_MESSAGES)
+    Attach Files (ATTACH_FILES)
 ```
+
+Use `A` to select/deselect all.
 
 #### Assign role to member
 
@@ -291,8 +292,8 @@ monky roles assign
 monky roles assign lucas Moderator
 ```
 
-In interactive mode, first select the member (numbered list), then the
-role (numbered list).
+In interactive mode, first select the member (navigable list with arrow keys),
+then the role (navigable list with arrow keys).
 
 #### Remove role from member
 
@@ -351,17 +352,17 @@ monky config set maxAttachmentFileBytes 10485760
 monky config set maxAttachmentStorageBytes 1073741824
 ```
 
-In interactive mode without arguments, the CLI shows a menu:
+In interactive mode without arguments, the CLI shows a navigable menu:
 
 ```
 Qual configuração deseja alterar?
-  1. name
-  2. password
-  3. maxUsers
-  4. allowSoundboard
-  5. maxAttachmentFileBytes
-  6. maxAttachmentStorageBytes
-Selecione uma opção: _
+  Use ↑↓ para navegar, Enter para selecionar
+❯ name
+  password
+  maxUsers
+  allowSoundboard
+  maxAttachmentFileBytes
+  maxAttachmentStorageBytes
 ```
 
 Then asks for the new value with the current value as the suggestion.
