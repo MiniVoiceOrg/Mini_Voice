@@ -3,8 +3,8 @@
 Obrigado pelo interesse! Este documento explica como propor ideias, votar no que
 vem primeiro e — se você quiser codar — como abrir um PR que entra sem atrito.
 
-O Mini Voice é MIT e o desenvolvimento acontece todo em público, no
-[board do projeto](https://github.com/orgs/MiniVoiceOrg/projects/1).
+O Mini Voice é MIT e o desenvolvimento acontece todo em público, nas
+[Issues](https://github.com/MiniVoiceOrg/Mini_Voice/issues).
 
 ---
 
@@ -41,16 +41,15 @@ Toda ideia carrega um label que diz em que pé ela está:
 | Label | Significa |
 |---|---|
 | `ideia` | Aberta para votos e discussão |
-| `planejado` | Selecionada — já virou issue no board |
+| `planejado` | Selecionada — já virou issue |
 | `em-andamento` | Alguém está implementando |
 | `entregue` | Está em uma release publicada |
 | `fora-de-escopo` | Não vamos fazer — sempre com o motivo explicado |
 
 **Na primeira semana de cada mês**, as ideias em votação são revisadas. As **três
 mais votadas** que tiverem **pelo menos 5 votos** são selecionadas: viram issues
-com escopo e critérios de aceite, entram no board em `Ready` e recebem o label
-`planejado`. Dali seguem o fluxo normal: `In progress` → PR → release → `QA` →
-`Done`.
+com escopo e critérios de aceite e recebem o label `planejado`. Dali seguem o
+fluxo normal: implementação → PR → release → validação → entrega.
 
 O piso de 5 votos existe para o ciclo não promover ruído em meses parados — se
 nenhuma ideia alcançar o piso, nenhuma é selecionada e todas continuam
@@ -116,8 +115,8 @@ recusado no PR por estar fora do escopo do projeto.
 de aceite vagos ou decisões de design em aberto viram retrabalho garantido.
 Nunca assuma — comente na issue e espere a resposta.
 
-**Não pegue cards em `Blocked`.** Se você acha que um card bloqueado deveria
-andar, peça na issue para alguém com permissão movê-lo.
+**Não pegue issues marcadas como bloqueadas.** Se você acha que uma delas
+deveria andar, comente nela explicando o porquê antes de começar.
 
 ### Abrindo o PR
 
@@ -147,17 +146,16 @@ No PR (ou na issue), inclua duas seções em PT-BR:
   esperado e casos de borda.
 
 Isso não é burocracia: quem valida a mudança testa a partir do **build
-publicado**, não do seu ambiente. Sem o passo a passo, o card fica parado.
+publicado**, não do seu ambiente. Sem o passo a passo, a validação trava.
 
 ### Depois do merge
 
 O push na `main` dispara o workflow **Release** automaticamente, que builda e
-publica `v1.0.<run_number>` com os artefatos de Windows e macOS. O card só vai
-para `QA` **depois que a release estiver publicada** — nunca só após o merge.
+publica a nova versão com os artefatos de Windows e macOS. A validação só
+começa **depois que a release estiver publicada** — nunca só após o merge.
 
 > 🤖 Se você é um agente de IA trabalhando neste repositório, o fluxo completo e
-> obrigatório está em [`AGENTS.md`](AGENTS.md), incluindo os IDs do board e os
-> comandos exatos para mover cards.
+> obrigatório está em [`AGENTS.md`](AGENTS.md).
 
 ---
 

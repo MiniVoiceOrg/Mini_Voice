@@ -329,11 +329,11 @@ precisa saber programar** para participar.
 
 - 💡 **[Sugerir uma ideia](https://github.com/MiniVoiceOrg/Mini_Voice/discussions/new?category=ideias)** — uma proposta por discussão
 - ⬆️ **[Ver e votar nas ideias](https://github.com/MiniVoiceOrg/Mini_Voice/discussions/categories/ideias)** — antes de sugerir, veja se alguém já pediu o mesmo
-- 📋 **[Board do projeto](https://github.com/orgs/MiniVoiceOrg/projects/1)** — o que está em desenvolvimento, em QA e concluído
+- 📋 **[Issues abertas](https://github.com/MiniVoiceOrg/Mini_Voice/issues)** — o que já foi planejado e o que está em andamento
 - 🐛 **[Reportar um bug](https://github.com/MiniVoiceOrg/Mini_Voice/issues/new/choose)** — bugs vão direto para Issues, sem votação
 
 Na primeira semana de cada mês, as três ideias mais votadas (com no mínimo 5
-votos) viram issues no board e entram no fluxo de desenvolvimento. O status volta
+votos) viram issues e entram no fluxo de desenvolvimento. O status volta
 para a discussão original (`planejado`, `em-andamento`, `entregue` ou
 `fora-de-escopo`, sempre com o motivo).
 
@@ -361,9 +361,10 @@ aparece justamente nessa variedade.
 
 ### Com código
 
-1. **Escolha uma issue.** As do [board](https://github.com/orgs/MiniVoiceOrg/projects/1)
-   em `Ready` estão prontas para pegar. Se for algo novo, abra uma issue antes —
-   evita você codar algo que não entra.
+1. **Escolha uma issue.** As [issues abertas](https://github.com/MiniVoiceOrg/Mini_Voice/issues) mostram o que já está
+   planejado; comente na que você quiser pegar, para ninguém trabalhar em
+   duplicado. Se for algo novo, abra uma issue antes — evita você codar algo
+   que não entra.
 2. **Faça um fork** e crie sua branch **a partir da `main` atualizada**:
    ```bash
    git checkout main && git pull
