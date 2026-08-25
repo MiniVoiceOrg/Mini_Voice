@@ -7,7 +7,7 @@
     <a href="https://github.com/MonkyOrg/Monky/releases/latest"><img alt="Release" src="https://img.shields.io/github/v/release/MonkyOrg/Monky?label=download&color=5865f2"></a>
     <a href="LICENSE"><img alt="MIT license" src="https://img.shields.io/badge/license-MIT-green"></a>
     <a href="https://github.com/MonkyOrg/Monky/actions/workflows/ci.yml"><img alt="CI" src="https://github.com/MonkyOrg/Monky/actions/workflows/ci.yml/badge.svg"></a>
-    <a href="https://github.com/MonkyOrg/Monky/discussions/categories/ideias"><img alt="Ideas" src="https://img.shields.io/badge/ideas-vote%20here-orange"></a>
+    <a href="https://github.com/MonkyOrg/Monky/discussions/categories/ideas"><img alt="Ideas" src="https://img.shields.io/badge/ideas-vote%20here-orange"></a>
   </p>
 
   <p><a href="README.md">Português</a> · <b>English</b></p>
@@ -327,8 +327,8 @@ After that, your friends join normally using the **VPS IP** and the port.
 What goes into the next versions is decided by the community — and you **do not
 need to know how to code** to take part.
 
-- 💡 **[Suggest an idea](https://github.com/MonkyOrg/Monky/discussions/new?category=ideias)** — one proposal per discussion
-- ⬆️ **[See and vote on ideas](https://github.com/MonkyOrg/Monky/discussions/categories/ideias)** — before suggesting, check whether someone already asked for the same thing
+- 💡 **[Suggest an idea](https://github.com/MonkyOrg/Monky/discussions/new?category=ideas)** — one proposal per discussion
+- ⬆️ **[See and vote on ideas](https://github.com/MonkyOrg/Monky/discussions/categories/ideas)** — before suggesting, check whether someone already asked for the same thing
 - 📋 **[Open issues](https://github.com/MonkyOrg/Monky/issues)** — what is already planned and what is in progress
 - 🐛 **[Report a bug](https://github.com/MonkyOrg/Monky/issues/new/choose)** — bugs go straight to Issues, no voting
 
@@ -349,8 +349,8 @@ Every bit helps, and most of it **does not require writing code**.
 
 | What to do | Where |
 |---|---|
-| Suggest a feature | [Discussions › Ideias](https://github.com/MonkyOrg/Monky/discussions/new?category=ideias) — one proposal per discussion |
-| Vote on what comes first | [Open ideas](https://github.com/MonkyOrg/Monky/discussions/categories/ideias) — the votes decide the next cycle |
+| Suggest a feature | [Discussions › Ideas](https://github.com/MonkyOrg/Monky/discussions/new?category=ideas) — one proposal per discussion |
+| Vote on what comes first | [Open ideas](https://github.com/MonkyOrg/Monky/discussions/categories/ideas) — the votes decide the next cycle |
 | Report a bug | [New issue](https://github.com/MonkyOrg/Monky/issues/new/choose) — with steps to reproduce |
 | Test a beta build | **Settings › About and Updates › Receive beta versions** |
 | Improve the documentation | A PR straight to this `README.en.md`, to `README.md` or to `CONTRIBUTING.md` |

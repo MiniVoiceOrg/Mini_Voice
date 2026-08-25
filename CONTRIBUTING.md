@@ -18,7 +18,7 @@ entra em cada ciclo é decidido pelos votos da comunidade.
 ### Propor uma ideia
 
 Abra uma discussão em
-**[Discussions › Ideias](https://github.com/MonkyOrg/Monky/discussions/categories/ideias)**.
+**[Discussions › Ideas](https://github.com/MonkyOrg/Monky/discussions/categories/ideas)**.
 
 Duas regras que fazem a votação funcionar:
 

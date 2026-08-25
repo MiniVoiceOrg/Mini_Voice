@@ -7,7 +7,7 @@
     <a href="https://github.com/MonkyOrg/Monky/releases/latest"><img alt="Release" src="https://img.shields.io/github/v/release/MonkyOrg/Monky?label=download&color=5865f2"></a>
     <a href="LICENSE"><img alt="Licença MIT" src="https://img.shields.io/badge/licen%C3%A7a-MIT-green"></a>
     <a href="https://github.com/MonkyOrg/Monky/actions/workflows/ci.yml"><img alt="CI" src="https://github.com/MonkyOrg/Monky/actions/workflows/ci.yml/badge.svg"></a>
-    <a href="https://github.com/MonkyOrg/Monky/discussions/categories/ideias"><img alt="Ideias" src="https://img.shields.io/badge/ideias-vote%20aqui-orange"></a>
+    <a href="https://github.com/MonkyOrg/Monky/discussions/categories/ideas"><img alt="Ideias" src="https://img.shields.io/badge/ideias-vote%20aqui-orange"></a>
   </p>
 
   <p><b>Português</b> · <a href="README.en.md">English</a></p>
@@ -329,8 +329,8 @@ Depois, seus amigos entram normalmente usando o **IP do VPS** e a porta.
 O que entra nas próximas versões é decidido pela comunidade — e você **não
 precisa saber programar** para participar.
 
-- 💡 **[Sugerir uma ideia](https://github.com/MonkyOrg/Monky/discussions/new?category=ideias)** — uma proposta por discussão
-- ⬆️ **[Ver e votar nas ideias](https://github.com/MonkyOrg/Monky/discussions/categories/ideias)** — antes de sugerir, veja se alguém já pediu o mesmo
+- 💡 **[Sugerir uma ideia](https://github.com/MonkyOrg/Monky/discussions/new?category=ideas)** — uma proposta por discussão
+- ⬆️ **[Ver e votar nas ideias](https://github.com/MonkyOrg/Monky/discussions/categories/ideas)** — antes de sugerir, veja se alguém já pediu o mesmo
 - 📋 **[Issues abertas](https://github.com/MonkyOrg/Monky/issues)** — o que já foi planejado e o que está em andamento
 - 🐛 **[Reportar um bug](https://github.com/MonkyOrg/Monky/issues/new/choose)** — bugs vão direto para Issues, sem votação
 
@@ -351,8 +351,8 @@ Toda ajuda conta, e a maior parte dela **não exige escrever código**.
 
 | O que fazer | Onde |
 |---|---|
-| Sugerir uma funcionalidade | [Discussions › Ideias](https://github.com/MonkyOrg/Monky/discussions/new?category=ideias) — uma proposta por discussão |
-| Votar no que vem primeiro | [Ideias abertas](https://github.com/MonkyOrg/Monky/discussions/categories/ideias) — o voto define o próximo ciclo |
+| Sugerir uma funcionalidade | [Discussions › Ideas](https://github.com/MonkyOrg/Monky/discussions/new?category=ideas) — uma proposta por discussão |
+| Votar no que vem primeiro | [Ideias abertas](https://github.com/MonkyOrg/Monky/discussions/categories/ideas) — o voto define o próximo ciclo |
 | Reportar um bug | [Nova issue](https://github.com/MonkyOrg/Monky/issues/new/choose) — com passos para reproduzir |
 | Testar uma versão beta | **Configurações › Sobre e Updates › Receber versões beta** |
 | Melhorar a documentação | PR direto neste `README.md` ou no `CONTRIBUTING.md` |

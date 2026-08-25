@@ -19,7 +19,7 @@ What goes into each cycle is decided by community votes.
 ### Proposing an idea
 
 Open a discussion under
-**[Discussions › Ideias](https://github.com/MonkyOrg/Monky/discussions/categories/ideias)**.
+**[Discussions › Ideas](https://github.com/MonkyOrg/Monky/discussions/categories/ideas)**.
 
 Two rules that make voting work:
 
