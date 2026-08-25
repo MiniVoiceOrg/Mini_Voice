@@ -1,4 +1,4 @@
-import { AttachmentStorageInfo, ChannelSummary, Permission, Role, ServerDetails, UserRoleSummary, UserSummary, hasPermission } from '@monky/shared';
+import { AttachmentStorageInfo, ChannelSummary, DEFAULT_PERMISSIONS, Permission, Role, ServerDetails, UserRoleSummary, UserSummary, hasPermission } from '@monky/shared';
 import { appEvents } from '../core/EventBus';
 
 export class ServerStore {
@@ -176,12 +176,16 @@ export class ServerStore {
     }
     if (this.ownerId && this.currentUser.id === this.ownerId) {
       this.myPermissions = 0xFFFFFFFF;
+      if (this.serverDetails) {
+        this.serverDetails.myPermissions = this.myPermissions;
+      }
       return this.myPermissions;
     }
     const roleIds = new Set(this.getUserRoleIds(this.currentUser.id));
-    this.myPermissions = this.roles
-      .filter((role) => roleIds.has(role.id))
-      .reduce((bits, role) => bits | role.permissions, 0);
+    const roles = this.roles.filter((role) => roleIds.has(role.id));
+    this.myPermissions = roles.length === 0
+      ? DEFAULT_PERMISSIONS
+      : roles.reduce((bits, role) => bits | role.permissions, 0);
     if (this.serverDetails) {
       this.serverDetails.myPermissions = this.myPermissions;
     }

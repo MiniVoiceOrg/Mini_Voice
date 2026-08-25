@@ -1,4 +1,4 @@
-import { ADMIN_PERMISSIONS, Permission, hasPermission } from '@monky/shared';
+import { ADMIN_PERMISSIONS, DEFAULT_PERMISSIONS, Permission, hasPermission } from '@monky/shared';
 import { IRoleRepository, IServerRepository } from '../../domain/repositories';
 
 export class PermissionService {
@@ -18,6 +18,9 @@ export class PermissionService {
     }
 
     const roles = await this.roleRepo.listRolesForUser(userId);
+    if (roles.length === 0) {
+      return DEFAULT_PERMISSIONS;
+    }
     return roles.reduce((bits, role) => bits | role.permissions, 0);
   }
 
