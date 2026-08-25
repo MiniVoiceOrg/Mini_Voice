@@ -19,6 +19,8 @@ import {
   ProtocolErrorCode,
   ProtocolMessage,
   ServerErrorPayload,
+  ServerInviteInfoPayload,
+  ServerNetworkInterface,
   ServerSettingsUpdatedPayload,
   ServerUpdateSettingsPayload,
   SoundboardPlayPayload,
@@ -45,6 +47,7 @@ import { ChatService } from '../../application/services/ChatService';
 import { SignalingService } from '../../application/services/SignalingService';
 import { UserService } from '../../application/services/UserService';
 import { IServerRepository } from '../../domain/repositories';
+import { scanServerNetworkInterfaces } from '../discovery/ServerIpScanner';
 import { Logger } from '../logger/Logger';
 
 interface ClientSession {
@@ -206,6 +209,10 @@ export class WebSocketServer {
 
       case MessageType.SOUNDBOARD_PLAY:
         await this.handleSoundboardPlay(session, payload as SoundboardPlayPayload, requestId);
+        break;
+
+      case MessageType.SERVER_GET_INVITE_INFO:
+        await this.handleGetServerInviteInfo(session, requestId);
         break;
 
       case MessageType.USER_LOGOUT:
@@ -820,6 +827,33 @@ export class WebSocketServer {
       if (ws !== ignoreWs && ws.readyState === WebSocket.OPEN && session.user) {
         ws.send(raw);
       }
+    }
+  }
+
+  private async handleGetServerInviteInfo(session: ClientSession, requestId?: string): Promise<void> {
+    try {
+      const server = await this.serverRepo.getServer();
+      const addr = this.server.address();
+      const port = addr && typeof addr === 'object' ? addr.port : LIMITS.DEFAULT_PORT;
+      const networkInterfaces = await scanServerNetworkInterfaces();
+
+      this.send(session.ws, {
+        type: MessageType.SERVER_INVITE_INFO,
+        requestId,
+        payload: {
+          port,
+          serverName: server?.name || 'Mini Voice Server',
+          networkInterfaces,
+        },
+      });
+    } catch (err: any) {
+      Logger.error('NETWORK', 'Error generating server invite info', err);
+      this.sendError(
+        session.ws,
+        ProtocolErrorCode.INTERNAL_ERROR,
+        'Erro ao obter informações de convite do servidor',
+        requestId
+      );
     }
   }
 
