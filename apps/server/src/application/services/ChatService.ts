@@ -1,29 +1,46 @@
 import { v4 as uuidv4 } from 'uuid';
 import {
+  AttachmentMeta,
   ChatMessage,
   LIMITS,
   ProtocolErrorCode,
+  attachmentCaptionSchema,
   messageContentSchema,
 } from '@mini-voice/shared';
-import { MessageRecord } from '../../domain/entities';
-import { IChannelRepository, IMessageRepository, IUserRepository } from '../../domain/repositories';
+import { MentionRecord, MessageRecord } from '../../domain/entities';
+import {
+  IChannelRepository,
+  IMentionRepository,
+  IMessageRepository,
+  IUserRepository,
+} from '../../domain/repositories';
 import { AvatarStorageService } from '../../infrastructure/security/AvatarStorageService';
 import { RateLimiter } from '../../infrastructure/security/RateLimiter';
+import { AttachmentService } from './AttachmentService';
 
 export class ChatService {
   constructor(
     private messageRepo: IMessageRepository,
     private channelRepo: IChannelRepository,
     private userRepo: IUserRepository,
+    private mentionRepo: IMentionRepository,
     private avatarStorage: AvatarStorageService,
-    private rateLimiter: RateLimiter
+    private rateLimiter: RateLimiter,
+    private attachmentService: AttachmentService
   ) {}
 
   public async sendMessage(
     userId: string,
     channelId: string,
-    content: string
-  ): Promise<{ success: boolean; errorCode?: ProtocolErrorCode; errorMessage?: string; message?: ChatMessage }> {
+    content: string,
+    attachmentIds?: string[]
+  ): Promise<{
+    success: boolean;
+    errorCode?: ProtocolErrorCode;
+    errorMessage?: string;
+    message?: ChatMessage;
+    mentionedUserIds?: string[];
+  }> {
     // Check rate limit
     if (!this.rateLimiter.checkLimit(userId)) {
       return {
@@ -33,8 +50,11 @@ export class ChatService {
       };
     }
 
-    // Validate content
-    const parseResult = messageContentSchema.safeParse(content);
+    // Validate content. Attachment messages may carry an empty caption; plain
+    // text messages must be non-empty (#11).
+    const hasAttachments = !!(attachmentIds && attachmentIds.length > 0);
+    const schema = hasAttachments ? attachmentCaptionSchema : messageContentSchema;
+    const parseResult = schema.safeParse(content ?? '');
     if (!parseResult.success) {
       return {
         success: false,
@@ -74,6 +94,12 @@ export class ChatService {
 
     await this.messageRepo.create(messageRecord);
 
+    const mentionedUserIds = await this.persistMentions(user.id, channelId, messageRecord);
+
+    const attachments = hasAttachments
+      ? await this.attachmentService.linkToMessage(attachmentIds!, messageRecord.id, user.id, channelId)
+      : [];
+
     const chatMessage: ChatMessage = {
       id: messageRecord.id,
       channelId: messageRecord.channelId,
@@ -83,12 +109,57 @@ export class ChatService {
       content: messageRecord.content,
       createdAt: messageRecord.createdAt,
       isSystem: false,
+      attachments: attachments.length > 0 ? attachments : undefined,
     };
 
     return {
       success: true,
       message: chatMessage,
+      mentionedUserIds,
     };
+  }
+
+  /**
+   * Detects @-mentions in a message and persists an unread mention row for every
+   * mentioned user except the author (#14). Matching mirrors the client dropup:
+   * a case-insensitive substring `@<nickname>` (nicknames may contain spaces, so
+   * a token split is not reliable). Returns the list of mentioned user ids so the
+   * caller can notify online users in real time.
+   */
+  private async persistMentions(
+    authorId: string,
+    channelId: string,
+    message: MessageRecord
+  ): Promise<string[]> {
+    const lowerContent = message.content.toLowerCase();
+    if (!lowerContent.includes('@')) return [];
+
+    const allUsers = await this.userRepo.listAll();
+    const mentionedUserIds: string[] = [];
+
+    for (const candidate of allUsers) {
+      if (candidate.id === authorId) continue;
+      const nickname = candidate.nickname.trim().toLowerCase();
+      if (!nickname) continue;
+      if (!lowerContent.includes('@' + nickname)) continue;
+
+      mentionedUserIds.push(candidate.id);
+      const mention: MentionRecord = {
+        id: uuidv4(),
+        userId: candidate.id,
+        channelId,
+        messageId: message.id,
+        createdAt: message.createdAt,
+      };
+      await this.mentionRepo.add(mention);
+    }
+
+    return mentionedUserIds;
+  }
+
+  /** Clears unread mentions for a user in a channel when they open it (#14). */
+  public async markMentionsRead(userId: string, channelId: string): Promise<void> {
+    await this.mentionRepo.clearForUserChannel(userId, channelId);
   }
 
   public async loadHistory(
@@ -101,8 +172,11 @@ export class ChatService {
     const users = await this.userRepo.findByIds(uniqueUserIds);
     const userMap = new Map(users.map((u) => [u.id, u]));
 
+    const attachmentsByMessage = await this.attachmentService.getForMessages(rawMessages.map((m) => m.id));
+
     return rawMessages.map((m) => {
       const user = userMap.get(m.userId);
+      const attachments = attachmentsByMessage.get(m.id);
       return {
         id: m.id,
         channelId: m.channelId,
@@ -112,6 +186,7 @@ export class ChatService {
         content: m.content,
         createdAt: m.createdAt,
         isSystem: m.isSystem,
+        attachments: attachments && attachments.length > 0 ? attachments : undefined,
       };
     });
   }

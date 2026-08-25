@@ -4,17 +4,63 @@ on:
   push:
     branches: [main]
   workflow_dispatch:
+    inputs:
+      promote_tag:
+        description: 'Beta tag to promote to a stable release (e.g. v1.8.0-beta.3). Leave empty to build a beta from the current ref.'
+        required: false
+        default: ''
 
 concurrency:
-  group: release-${{ github.ref }}
+  group: release-${{ github.event.inputs.promote_tag || github.ref }}
   cancel-in-progress: false
 
 permissions:
   contents: write
 
 jobs:
+  version:
+    name: Resolve Version
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.bump.outputs.version }}
+      prev_tag: ${{ steps.bump.outputs.prev_tag }}
+      bump_type: ${{ steps.bump.outputs.bump_type }}
+      channel: ${{ steps.bump.outputs.channel }}
+      prerelease: ${{ steps.bump.outputs.prerelease }}
+      checkout_ref: ${{ steps.ref.outputs.checkout_ref }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      # push to main / manual dispatch (no tag) -> beta prerelease.
+      # manual dispatch with a beta tag -> promote that beta to a clean stable.
+      - name: Calculate Semantic Version
+        id: bump
+        env:
+          PROMOTE_TAG: ${{ github.event.inputs.promote_tag }}
+          RELEASE_CHANNEL: beta
+        run: node scripts/calculate-version.js
+
+      - name: Resolve checkout ref
+        id: ref
+        shell: bash
+        run: |
+          if [ -n "${{ github.event.inputs.promote_tag }}" ]; then
+            echo "checkout_ref=${{ github.event.inputs.promote_tag }}" >> "$GITHUB_OUTPUT"
+          else
+            echo "checkout_ref=${{ github.sha }}" >> "$GITHUB_OUTPUT"
+          fi
+
   build:
     name: Build (${{ matrix.platform }})
+    needs: version
     strategy:
       fail-fast: false
       matrix:
@@ -27,6 +73,8 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.version.outputs.checkout_ref }}
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
@@ -70,7 +118,7 @@ jobs:
       - name: Set build version
         shell: bash
         run: |
-          VERSION="1.0.${{ github.run_number }}"
+          VERSION="${{ needs.version.outputs.version }}"
           node -e "const f='apps/client/package.json';const p=require('./'+f);p.version='${VERSION}';require('fs').writeFileSync(f, JSON.stringify(p, null, 2)+'\n');"
           echo "Packaged version set to ${VERSION}"
 
@@ -96,7 +144,7 @@ jobs:
 
   release:
     name: Publish GitHub Release
-    needs: build
+    needs: [version, build]
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -104,16 +152,13 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
         with:
+          ref: ${{ needs.version.outputs.checkout_ref }}
           fetch-depth: 0
-
-      - name: Resolve version
-        id: meta
-        run: echo "version=1.0.${{ github.run_number }}" >> "$GITHUB_OUTPUT"
 
       - name: Generate changelog
         id: changelog
         run: |
-          PREV_TAG=$(git tag --sort=-creatordate | grep -E '^v[0-9]' | head -n1 || true)
+          PREV_TAG="${{ needs.version.outputs.prev_tag }}"
           echo "Previous tag: ${PREV_TAG:-<none>}"
           if [ -n "$PREV_TAG" ]; then
             RANGE="${PREV_TAG}..HEAD"
@@ -138,7 +183,7 @@ jobs:
             echo "notes<<CHANGELOG_EOF"
             echo "$ITEM_LINES"
             echo ""
-            echo "**Comparação completa**: https://github.com/${GITHUB_REPOSITORY}/compare/${PREV_TAG}...v1.0.${{ github.run_number }}"
+            echo "**Comparação completa**: https://github.com/${GITHUB_REPOSITORY}/compare/${PREV_TAG}...v${{ needs.version.outputs.version }}"
             echo "CHANGELOG_EOF"
           } >> "$GITHUB_OUTPUT"
 
@@ -154,10 +199,12 @@ jobs:
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: v${{ steps.meta.outputs.version }}
-          name: Mini Voice v${{ steps.meta.outputs.version }}
+          tag_name: v${{ needs.version.outputs.version }}
+          name: ${{ needs.version.outputs.channel == 'beta' && format('Mini Voice v{0} (Beta)', needs.version.outputs.version) || format('Mini Voice v{0}', needs.version.outputs.version) }}
           body: |
-            Release automática gerada a partir do commit ${{ github.sha }} na branch `main`.
+            ${{ needs.version.outputs.channel == 'beta' && '> ⚠️ **Versão beta** — em validação. Só recebe automaticamente quem ativou "Receber versões beta" nas Configurações. Após validada, é promovida a estável.' || 'Release estável do Mini Voice.' }}
+
+            Gerada a partir de `${{ needs.version.outputs.checkout_ref }}`.
 
             ### Downloads
             - **Windows**: instalador `.exe` (NSIS) e `.exe` portátil
@@ -166,7 +213,7 @@ jobs:
             ### Changelog
             ${{ steps.changelog.outputs.notes }}
           draft: false
-          prerelease: false
+          prerelease: ${{ needs.version.outputs.prerelease }}
           fail_on_unmatched_files: false
           files: |
             artifacts/**/*.exe

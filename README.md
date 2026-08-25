@@ -2,7 +2,33 @@
   <img src="images/Logo.png" alt="Mini Voice" width="220">
   <h1>Mini Voice 🎙️</h1>
   <p><b>Voz, vídeo, tela e chat entre amigos — no seu próprio servidor, sem cadastro e sem intermediários.</b></p>
+
+  <p>
+    <a href="https://github.com/MiniVoiceOrg/Mini_Voice/releases/latest"><img alt="Release" src="https://img.shields.io/github/v/release/MiniVoiceOrg/Mini_Voice?label=download&color=5865f2"></a>
+    <a href="LICENSE"><img alt="Licença MIT" src="https://img.shields.io/badge/licen%C3%A7a-MIT-green"></a>
+    <a href="https://github.com/MiniVoiceOrg/Mini_Voice/actions/workflows/ci.yml"><img alt="CI" src="https://github.com/MiniVoiceOrg/Mini_Voice/actions/workflows/ci.yml/badge.svg"></a>
+    <a href="https://github.com/MiniVoiceOrg/Mini_Voice/discussions/categories/ideias"><img alt="Ideias" src="https://img.shields.io/badge/ideias-vote%20aqui-orange"></a>
+  </p>
 </div>
+
+---
+
+## 📚 Índice
+
+- [O que é o Mini Voice](#-o-que-é-o-mini-voice)
+- [Instalando](#️-instalando)
+- [Começando (o caminho rápido)](#-começando-o-caminho-rápido)
+- [Criar o seu servidor](#-criar-o-seu-servidor)
+- [Entrar em um servidor](#-entrar-em-um-servidor)
+- [Usando o app no dia a dia](#-usando-o-app-no-dia-a-dia)
+- [Configurações que valem a pena ajustar](#️-configurações-que-valem-a-pena-ajustar)
+- [Hospedar num VPS (ou Linux/Docker)](#-hospedar-num-vps-ou-linuxdocker)
+- [Problemas comuns](#-problemas-comuns)
+- [Recursos em resumo](#-recursos-em-resumo)
+- [Roadmap & Votação](#️-roadmap--votação)
+- [Como colaborar](#-como-colaborar)
+- [Para desenvolvedores](#-para-desenvolvedores)
+- [Licença](#-licença)
 
 ---
 
@@ -315,7 +341,49 @@ Os mesmos atalhos estão dentro do app, em **Configurações › Comunidade**.
 
 ---
 
-## 👩‍💻 Para desenvolvedores
+## 🤝 Como colaborar
+
+Toda ajuda conta, e a maior parte dela **não exige escrever código**.
+
+### Sem programar
+
+| O que fazer | Onde |
+|---|---|
+| Sugerir uma funcionalidade | [Discussions › Ideias](https://github.com/MiniVoiceOrg/Mini_Voice/discussions/new?category=ideias) — uma proposta por discussão |
+| Votar no que vem primeiro | [Ideias abertas](https://github.com/MiniVoiceOrg/Mini_Voice/discussions/categories/ideias) — o voto define o próximo ciclo |
+| Reportar um bug | [Nova issue](https://github.com/MiniVoiceOrg/Mini_Voice/issues/new/choose) — com passos para reproduzir |
+| Testar uma versão beta | **Configurações › Sobre e Updates › Receber versões beta** |
+| Melhorar a documentação | PR direto neste `README.md` ou no `CONTRIBUTING.md` |
+
+Ajudar a testar é especialmente útil: o projeto roda em Windows e macOS, em
+redes muito diferentes (LAN, VPN, IP público, CGNAT), e a maioria dos problemas
+aparece justamente nessa variedade.
+
+### Com código
+
+1. **Escolha uma issue.** As do [board](https://github.com/orgs/MiniVoiceOrg/projects/1)
+   em `Ready` estão prontas para pegar. Se for algo novo, abra uma issue antes —
+   evita você codar algo que não entra.
+2. **Faça um fork** e crie sua branch **a partir da `main` atualizada**:
+   ```bash
+   git checkout main && git pull
+   git checkout -b feat/minha-mudanca
+   ```
+3. **Rode o projeto** — os comandos estão em
+   [Para desenvolvedores](#-para-desenvolvedores).
+4. **Abra o PR para a `main`.** A CI compila e empacota em Windows e macOS;
+   **o PR só entra com os dois checks verdes**.
+5. **Descreva como testar** na descrição do PR: o que mudou e o passo a passo
+   para alguém validar. É o que faz a revisão andar rápido.
+
+O `main` é protegido e todo merge passa por PR com squash.
+
+📖 **O processo completo — padrões de código, estrutura do projeto, o que o
+Mini Voice é e o que não é — está em [CONTRIBUTING.md](CONTRIBUTING.md).**
+
+---
+
+## 💻 Para desenvolvedores
 
 Requisitos: **Node.js 20 ou superior** (a CI usa a 22) e npm. No Windows, o módulo nativo de áudio de tela
 precisa de **Python 3.11** e das **Build Tools do Visual Studio (MSVC)**.
@@ -341,8 +409,7 @@ Mini_Voice/
 └── tsconfig.base.json          # Configuração base do TypeScript
 ```
 
-O processo completo — padrões de código, como abrir um PR e como o ciclo de
-votação vira desenvolvimento — está em **[CONTRIBUTING.md](CONTRIBUTING.md)**.
+Quer mandar uma mudança? Veja [Como colaborar](#-como-colaborar).
 
 ---
 

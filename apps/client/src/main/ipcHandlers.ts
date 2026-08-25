@@ -1,21 +1,47 @@
-import { app, BrowserWindow, desktopCapturer, dialog, ipcMain, shell } from 'electron';
+import { app, BrowserWindow, desktopCapturer, dialog, globalShortcut, ipcMain, shell } from 'electron';
 import fs from 'fs';
 import net from 'net';
 import path from 'path';
 import { v4 as uuidv4 } from 'uuid';
 import { LanDiscovery } from './lanDiscovery';
 import { HostServerOptions, ServerManager } from './serverManager';
+import { TrayManager, VoiceStatus } from './trayManager';
 
 // Screen audio native module (compiled only on CI — graceful fallback)
-let screenAudio: { isSupported: () => boolean; start: (opts: any, cb: (buf: Buffer) => void) => { success: boolean; error?: string }; stop: () => { success: boolean } } | null = null;
+let screenAudio: {
+  isSupported: () => boolean;
+  start: (opts: any, cb: (buf: Buffer) => void) => { success: boolean; error?: string };
+  stop: () => { success: boolean };
+  getLastError: () => string;
+  getStatus: () => number;
+} | null = null;
 try {
-  screenAudio = require('../native/screen-audio');
-} catch {
+  screenAudio = require('@mini-voice/screen-audio');
+} catch (e) {
+  console.warn('[ScreenAudio:Main] Native module not available:', (e as Error).message);
   screenAudio = null;
 }
 
-export function setupIpcHandlers(mainWindow: BrowserWindow, serverManager: ServerManager): void {
+export function setupIpcHandlers(
+  mainWindow: BrowserWindow,
+  serverManager: ServerManager,
+  trayManager?: TrayManager
+): void {
   const lanDiscovery = new LanDiscovery(mainWindow);
+
+  ipcMain.handle('tray:update-voice-status', (_, status: VoiceStatus) => {
+    trayManager?.updateVoiceStatus(status);
+  });
+
+  ipcMain.handle('window:maximize', () => {
+    if (!mainWindow || mainWindow.isDestroyed()) return;
+    const { width: screenW, height: screenH } = require('electron').screen.getPrimaryDisplay().workAreaSize;
+    const w = Math.round(screenW * 0.8);
+    const h = Math.round(screenH * 0.85);
+    mainWindow.setSize(w, h);
+    mainWindow.center();
+    mainWindow.maximize();
+  });
 
   // Client ID persistence
   ipcMain.handle('get-client-id', async () => {
@@ -106,6 +132,24 @@ export function setupIpcHandlers(mainWindow: BrowserWindow, serverManager: Serve
     };
   });
 
+  // Custom sound file selection (#7)
+  ipcMain.handle('dialog-select-sound-file', async () => {
+    const result = await dialog.showOpenDialog(mainWindow, {
+      title: 'Selecionar Arquivo de Som',
+      filters: [
+        { name: 'Áudio (WAV, MP3, OGG)', extensions: ['wav', 'mp3', 'ogg', 'webm'] },
+      ],
+      properties: ['openFile'],
+    });
+    if (result.canceled || result.filePaths.length === 0) return null;
+    const filePath = result.filePaths[0];
+    const buffer = fs.readFileSync(filePath);
+    const ext = path.extname(filePath).toLowerCase().replace('.', '');
+    const mime = ext === 'mp3' ? 'audio/mpeg' : ext === 'ogg' ? 'audio/ogg' : ext === 'webm' ? 'audio/webm' : 'audio/wav';
+    const base64 = buffer.toString('base64');
+    return `data:${mime};base64,${base64}`;
+  });
+
   // Soundboard Folder Selection
   ipcMain.handle('dialog-select-soundboard-folder', async () => {
     const result = await dialog.showOpenDialog(mainWindow, {
@@ -185,6 +229,31 @@ export function setupIpcHandlers(mainWindow: BrowserWindow, serverManager: Serve
     }
   });
 
+  // Soundboard Global Shortcuts Registration
+  ipcMain.handle('soundboard-register-shortcuts', (_, shortcuts: Array<{ soundName: string; accelerator: string }>) => {
+    try {
+      globalShortcut.unregisterAll();
+      if (!Array.isArray(shortcuts)) return true;
+
+      for (const item of shortcuts) {
+        if (!item.accelerator || !item.soundName) continue;
+        try {
+          globalShortcut.register(item.accelerator, () => {
+            if (mainWindow && !mainWindow.isDestroyed()) {
+              mainWindow.webContents.send('soundboard-shortcut-triggered', item.soundName);
+            }
+          });
+        } catch (err) {
+          console.warn(`[main] Failed to register global shortcut "${item.accelerator}" for "${item.soundName}":`, err);
+        }
+      }
+      return true;
+    } catch (e) {
+      console.warn('[main] Error in soundboard-register-shortcuts:', e);
+      return false;
+    }
+  });
+
   // Window Controls
   ipcMain.handle('window-minimize', () => {
     mainWindow.minimize();
@@ -256,19 +325,44 @@ export function setupIpcHandlers(mainWindow: BrowserWindow, serverManager: Serve
     return screenAudio ? screenAudio.isSupported() : false;
   });
 
-  ipcMain.handle('screen-audio-start', () => {
+  ipcMain.handle('screen-audio-diagnose', () => {
+    const os = require('os');
+    const release = os.release();
+    return {
+      nativeModuleLoaded: screenAudio !== null,
+      platformSupported: screenAudio ? screenAudio.isSupported() : false,
+      osVersion: `${os.platform()} ${release}`,
+      pid: process.pid,
+      captureStatus: screenAudio ? screenAudio.getStatus() : -1,
+      lastError: screenAudio ? screenAudio.getLastError() : 'Module not loaded',
+    };
+  });
+
+  ipcMain.handle('screen-audio-start', (_event, sourceId?: string) => {
     if (!screenAudio || !screenAudio.isSupported()) {
       return { success: false, error: 'Not supported on this platform' };
     }
     const excludePid = process.pid;
+    // Electron encodes a window source id as `window:<HWND>:<n>`. When the user
+    // shares a single application window, capture only that app's audio
+    // (INCLUDE its process tree) instead of the whole PC.
+    let includeHwnd = 0;
+    if (sourceId && sourceId.startsWith('window:')) {
+      const parsed = Number.parseInt(sourceId.split(':')[1] ?? '', 10);
+      if (Number.isFinite(parsed) && parsed > 0) includeHwnd = parsed;
+    }
+    const opts: Record<string, number> = { excludePid, sampleRate: 48000, channels: 2 };
+    if (includeHwnd) opts.includeHwnd = includeHwnd;
+    console.log(`[ScreenAudio:Main] Starting capture (excludePid=${excludePid}, includeHwnd=${includeHwnd || 'none'}, source=${sourceId ?? 'screen'})`);
     const result = screenAudio.start(
-      { excludePid, sampleRate: 48000, channels: 2 },
+      opts,
       (buffer: Buffer) => {
         if (!mainWindow.isDestroyed()) {
           mainWindow.webContents.send('screen-audio:frame', buffer);
         }
       }
     );
+    console.log(`[ScreenAudio:Main] start() result:`, result);
     return result;
   });
 

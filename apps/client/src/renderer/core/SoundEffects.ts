@@ -1,9 +1,9 @@
-import micUnmuteUrl from '../assets/sounds/Desmutando_Mic.mp3';
-import micMuteUrl from '../assets/sounds/Mutando_Mic.mp3';
-import deafenUrl from '../assets/sounds/Mutar_Auto-Falante.mp3';
-import undeafenUrl from '../assets/sounds/Desmutar_Auto-Falante.mp3';
-import joinVoiceUrl from '../assets/sounds/Entrando_Na_Call.mp3';
-import leaveVoiceUrl from '../assets/sounds/Saindo_Da_Call.mp3';
+import micUnmuteUrl from '../assets/sounds/Desmutando_Mic.wav';
+import micMuteUrl from '../assets/sounds/Mutando_Mic.wav';
+import deafenUrl from '../assets/sounds/Mutar_Auto-Falante.wav';
+import undeafenUrl from '../assets/sounds/Desmutar_Auto-Falante.wav';
+import joinVoiceUrl from '../assets/sounds/Entrando_Na_Call.wav';
+import leaveVoiceUrl from '../assets/sounds/Saindo_Da_Call.wav';
 import { settingsStore } from '../stores/settingsStore';
 
 export type SoundEffectType =
@@ -14,19 +14,48 @@ export type SoundEffectType =
   | 'join_voice'
   | 'leave_voice'
   | 'screen_share_start'
-  | 'screen_share_stop';
+  | 'screen_share_stop'
+  | 'chat_message';
+
+const DEFAULT_URLS: Record<string, string> = {
+  mic_unmute: micUnmuteUrl,
+  mic_mute: micMuteUrl,
+  deafen: deafenUrl,
+  undeafen: undeafenUrl,
+  join_voice: joinVoiceUrl,
+  leave_voice: leaveVoiceUrl,
+};
+
+export const SOUND_LABELS: Record<string, string> = {
+  mic_mute: 'Mutar microfone',
+  mic_unmute: 'Desmutar microfone',
+  deafen: 'Mutar auto-falante',
+  undeafen: 'Desmutar auto-falante',
+  join_voice: 'Entrar no canal',
+  leave_voice: 'Sair do canal',
+  screen_share_start: 'Iniciar compartilhamento',
+  screen_share_stop: 'Parar compartilhamento',
+};
 
 export class SoundEffectManager {
   private audioMap: Partial<Record<SoundEffectType, HTMLAudioElement>> = {};
   private toneCtx: AudioContext | null = null;
 
   constructor() {
-    this.preload('mic_unmute', micUnmuteUrl);
-    this.preload('mic_mute', micMuteUrl);
-    this.preload('deafen', deafenUrl);
-    this.preload('undeafen', undeafenUrl);
-    this.preload('join_voice', joinVoiceUrl);
-    this.preload('leave_voice', leaveVoiceUrl);
+    this.loadAll();
+  }
+
+  public loadAll(): void {
+    const customSounds = settingsStore.customSounds || {};
+    for (const [key, defaultUrl] of Object.entries(DEFAULT_URLS)) {
+      const url = customSounds[key] || defaultUrl;
+      this.preload(key as SoundEffectType, url);
+    }
+  }
+
+  public reloadSound(key: SoundEffectType, url?: string): void {
+    const finalUrl = url || DEFAULT_URLS[key];
+    if (finalUrl) this.preload(key, finalUrl);
   }
 
   private preload(key: SoundEffectType, url: string): void {
@@ -104,6 +133,44 @@ export class SoundEffectManager {
     }
   }
 
+  /**
+   * Synthesizes a soft, quick two-note "pop" used to signal an incoming chat
+   * message (#152). Kept lighter and shorter than the screen-share cue so the
+   * two are easy to tell apart.
+   */
+  private playChatCue(): void {
+    try {
+      if (!this.toneCtx) {
+        const Ctor = window.AudioContext || (window as any).webkitAudioContext;
+        this.toneCtx = new Ctor();
+        if (settingsStore.selectedSpeakerId && typeof (this.toneCtx as any).setSinkId === 'function') {
+          (this.toneCtx as any).setSinkId(settingsStore.selectedSpeakerId).catch(() => {});
+        }
+      }
+      const ctx = this.toneCtx!;
+      if (ctx.state === 'suspended') ctx.resume().catch(() => {});
+
+      const now = ctx.currentTime;
+      const freqs = [659.25, 987.77]; // E5 -> B5, a light ascending blip
+      const gain = ctx.createGain();
+      gain.gain.setValueAtTime(0.0001, now);
+      gain.gain.exponentialRampToValueAtTime(0.18, now + 0.015);
+      gain.gain.exponentialRampToValueAtTime(0.0001, now + 0.2);
+      gain.connect(ctx.destination);
+
+      freqs.forEach((freq, i) => {
+        const osc = ctx.createOscillator();
+        osc.type = 'sine';
+        osc.frequency.setValueAtTime(freq, now + i * 0.07);
+        osc.connect(gain);
+        osc.start(now + i * 0.07);
+        osc.stop(now + i * 0.07 + 0.1);
+      });
+    } catch (e) {
+      console.debug('[SoundEffects] Chat cue synthesis failed:', e);
+    }
+  }
+
   public play(key: SoundEffectType): void {
     if (key === 'screen_share_start') {
       this.playTone(true);
@@ -111,6 +178,10 @@ export class SoundEffectManager {
     }
     if (key === 'screen_share_stop') {
       this.playTone(false);
+      return;
+    }
+    if (key === 'chat_message') {
+      this.playChatCue();
       return;
     }
     try {

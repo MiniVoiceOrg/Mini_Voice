@@ -44,7 +44,7 @@ export class ConnectionStore {
     }
   }
 
-  public saveUserProfile(nickname: string, avatarBase64?: string): void {
+  public saveUserProfile(nickname: string, avatarBase64?: string | null): void {
     if (nickname) {
       this.savedNickname = nickname;
       try {
@@ -52,9 +52,13 @@ export class ConnectionStore {
       } catch (e) {}
     }
     if (avatarBase64 !== undefined) {
-      this.savedAvatarBase64 = avatarBase64;
+      this.savedAvatarBase64 = avatarBase64 || '';
       try {
-        localStorage.setItem('mini_voice_avatar', avatarBase64);
+        if (avatarBase64) {
+          localStorage.setItem('mini_voice_avatar', avatarBase64);
+        } else {
+          localStorage.removeItem('mini_voice_avatar');
+        }
       } catch (e) {}
     }
   }

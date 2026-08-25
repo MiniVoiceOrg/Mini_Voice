@@ -1,6 +1,7 @@
 import { MessageType } from '@mini-voice/shared';
 import { escapeHtml } from '../utils/html';
 import { appEvents } from '../core/EventBus';
+import { enableBackdropClose } from '../utils/modal';
 import { networkClient } from '../core/NetworkClient';
 import { screenAudioService } from '../core/ScreenAudioService';
 import { videoService } from '../core/VideoService';
@@ -77,9 +78,9 @@ export class ScreenSharePickerModal {
             </button>
           ` : ''}
           <label id="share-audio-label" style="display: flex; align-items: center; gap: 6px; margin-right: auto; cursor: pointer; font-size: 0.85rem; color: var(--text-secondary);">
-            <input type="checkbox" id="chk-share-audio" style="cursor: pointer;" />
+            <input type="checkbox" id="chk-share-audio" style="cursor: pointer;" ${!screenAudioService.getIsTestTone() ? 'checked' : ''} />
             <span class="material-symbols-outlined md-16">volume_up</span>
-            Compartilhar áudio do PC
+            <span id="share-audio-text">${this.activeTab === 'window' ? 'Compartilhar áudio do aplicativo' : 'Compartilhar áudio do PC'}</span>
           </label>
           <button type="button" id="btn-cancel" class="btn btn-secondary">Cancelar</button>
           <button type="button" id="btn-share" class="btn btn-primary" disabled>
@@ -163,6 +164,7 @@ export class ScreenSharePickerModal {
     const tabWindow = this.modalEl.querySelector('#share-tab-window');
 
     btnClose?.addEventListener('click', () => this.close());
+    enableBackdropClose(this.modalEl, () => this.close());
     btnCancel?.addEventListener('click', () => this.close());
     btnShare?.addEventListener('click', () => this.startSharing());
     btnStop?.addEventListener('click', () => this.stopSharing());
@@ -173,6 +175,10 @@ export class ScreenSharePickerModal {
       if (btnShare) btnShare.disabled = true;
       tabScreen?.classList.toggle('active', tab === 'screen');
       tabWindow?.classList.toggle('active', tab === 'window');
+      const audioText = this.modalEl?.querySelector('#share-audio-text');
+      if (audioText) {
+        audioText.textContent = tab === 'window' ? 'Compartilhar áudio do aplicativo' : 'Compartilhar áudio do PC';
+      }
       this.renderSources(sources);
     };
 
@@ -182,21 +188,23 @@ export class ScreenSharePickerModal {
 
   private async startSharing(): Promise<void> {
     try {
-      if (voiceStore.isCameraOn) {
-        videoService.stopCamera();
-        await webRtcManager.setLocalCameraTrack(null);
-        voiceStore.setCameraOn(false);
-      }
       const stream = await videoService.startScreenShare(this.selectedSourceId || undefined);
       const track = stream.getVideoTracks()[0];
       await webRtcManager.setLocalScreenTrack(track);
       voiceStore.setScreenSharing(true);
-      networkClient.send(MessageType.VOICE_STATE_UPDATE, { isScreenSharing: true, isCameraOn: false });
+      // Camera and screen are independent (#26) — do not disturb camera state.
+      networkClient.send(MessageType.VOICE_STATE_UPDATE, { isScreenSharing: true });
 
-      // Start screen audio capture if checkbox is checked
+      // Start or stop screen audio capture based on checkbox. When sharing a
+      // single window, pass its source id so only that app's audio is captured.
       const chk = this.modalEl?.querySelector('#chk-share-audio') as HTMLInputElement | null;
-      if (chk?.checked) {
-        await screenAudioService.start();
+      if (chk?.checked && !screenAudioService.getIsCapturing()) {
+        const audioTrack = await screenAudioService.start(this.selectedSourceId || undefined);
+        if (!audioTrack) {
+          console.warn('[ScreenShare] Screen audio capture not available or failed to start');
+        }
+      } else if (!chk?.checked && screenAudioService.getIsCapturing()) {
+        await screenAudioService.stop();
       }
 
       this.close();
@@ -215,7 +223,6 @@ export class ScreenSharePickerModal {
     voiceStore.setScreenSharing(false);
     networkClient.send(MessageType.VOICE_STATE_UPDATE, { isScreenSharing: false });
 
-    // Stop screen audio if it was active
     if (screenAudioService.getIsCapturing()) {
       await screenAudioService.stop();
     }

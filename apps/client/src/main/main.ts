@@ -1,14 +1,17 @@
-import { app, BrowserWindow, Menu } from 'electron';
+import { app, BrowserWindow, Menu, screen } from 'electron';
 import path from 'path';
 import { setupIpcHandlers } from './ipcHandlers';
 import { setupUpdater } from './updater';
 import { ServerManager } from './serverManager';
+import { TrayManager } from './trayManager';
 
 import fs from 'fs';
 
 let mainWindow: BrowserWindow | null = null;
+let trayManager: TrayManager | null = null;
 const serverManager = new ServerManager();
 let isShuttingDown = false;
+let isQuitting = false;
 
 function shutdownServer(): void {
   if (isShuttingDown) return;
@@ -16,21 +19,33 @@ function shutdownServer(): void {
   serverManager.stopServer();
 }
 
+function quitApplication(): void {
+  isQuitting = true;
+  app.quit();
+}
+
 function createWindow(): void {
   const iconCandidates = [
+    path.join(__dirname, '../../build/icon.ico'),
+    path.join(__dirname, '../../build/icon.png'),
     path.join(__dirname, '../../images/Logo.png'),
     path.join(__dirname, '../../src/renderer/assets/Logo.png'),
+    path.join(app.getAppPath(), 'build/icon.ico'),
+    path.join(app.getAppPath(), 'build/icon.png'),
     path.join(app.getAppPath(), 'images/Logo.png'),
   ];
   const iconPath = iconCandidates.find((p) => fs.existsSync(p));
 
   const isMac = process.platform === 'darwin';
 
+  const { width: screenW } = screen.getPrimaryDisplay().workAreaSize;
+  const winWidth = Math.min(700, Math.round(screenW * 0.85));
+
   mainWindow = new BrowserWindow({
-    width: 1200,
-    height: 800,
-    minWidth: 900,
-    minHeight: 600,
+    width: winWidth,
+    height: 950,
+    minWidth: 600,
+    minHeight: 500,
     backgroundColor: '#0e1117',
     // Windows/Linux: fully frameless (custom title bar in the renderer).
     // macOS: keep the native traffic-light buttons but hide the title bar.
@@ -45,10 +60,15 @@ function createWindow(): void {
       nodeIntegration: false,
       sandbox: false, // needed for custom desktopCapturer / preload access
       webSecurity: true,
+      backgroundThrottling: false, // Keep audio and WebRTC processing smoothly when minimized/hidden
     },
   });
 
-  setupIpcHandlers(mainWindow, serverManager);
+  if (!trayManager) {
+    trayManager = new TrayManager(mainWindow, quitApplication);
+  }
+
+  setupIpcHandlers(mainWindow, serverManager, trayManager);
   setupUpdater(mainWindow);
 
   // In dev, load Vite dev server if running, otherwise load dist/index.html
@@ -58,23 +78,52 @@ function createWindow(): void {
     mainWindow.loadFile(path.join(__dirname, '../../dist/index.html'));
   }
 
+  // Minimize to tray on close instead of quitting the application (#149)
+  mainWindow.on('close', (event) => {
+    if (!isQuitting) {
+      event.preventDefault();
+      mainWindow?.hide();
+    }
+  });
+
   mainWindow.on('closed', () => {
     mainWindow = null;
   });
 }
 
-app.whenReady().then(() => {
-  // Remove the default application menu (File / Edit / View ...).
-  Menu.setApplicationMenu(null);
+// Only allow a single running instance. If a second instance is launched,
+// focus the window of the instance that is already running instead of
+// opening a new one (option 1 from #154).
+const gotTheLock = app.requestSingleInstanceLock();
 
-  createWindow();
-
-  app.on('activate', () => {
-    if (BrowserWindow.getAllWindows().length === 0) {
-      createWindow();
+if (!gotTheLock) {
+  app.quit();
+} else {
+  app.on('second-instance', () => {
+    if (mainWindow) {
+      if (!mainWindow.isVisible()) mainWindow.show();
+      if (mainWindow.isMinimized()) mainWindow.restore();
+      mainWindow.focus();
     }
   });
-});
+
+  app.whenReady().then(() => {
+    // Remove the default application menu (File / Edit / View ...).
+    Menu.setApplicationMenu(null);
+
+    createWindow();
+
+    app.on('activate', () => {
+      if (BrowserWindow.getAllWindows().length === 0) {
+        createWindow();
+      } else if (mainWindow) {
+        if (!mainWindow.isVisible()) mainWindow.show();
+        if (mainWindow.isMinimized()) mainWindow.restore();
+        mainWindow.focus();
+      }
+    });
+  });
+}
 
 app.on('window-all-closed', () => {
   shutdownServer();
@@ -84,5 +133,8 @@ app.on('window-all-closed', () => {
 });
 
 app.on('before-quit', () => {
+  isQuitting = true;
   shutdownServer();
+  trayManager?.destroy();
 });
+

@@ -3,6 +3,7 @@ export {
   LIMITS,
   RECONNECT_DELAYS_MS,
   QUALITY_PRESETS,
+  DEFAULT_CUSTOM_PROFILE,
 } from './constants.js';
 export type { QualityPresetType, QualityProfile } from './constants.js';
 

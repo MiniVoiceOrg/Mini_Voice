@@ -14,6 +14,7 @@ export interface ElectronApi {
         version: string;
     }) => void) => void;
     getClientId: () => Promise<string>;
+    maximizeWindow: () => Promise<void>;
     hostServerStart: (options: {
         port: number;
         serverName: string;
@@ -42,6 +43,7 @@ export interface ElectronApi {
         mimeType: string;
         base64: string;
     } | null>;
+    selectSoundFile: () => Promise<string | null>;
     selectSoundboardFolder: () => Promise<string | null>;
     listSoundboardSounds: (folderPath: string) => Promise<Array<{
         name: string;
@@ -58,6 +60,11 @@ export interface ElectronApi {
         dataUrl: string;
         sizeBytes: number;
     } | null>;
+    registerSoundboardShortcuts: (shortcuts: Array<{
+        soundName: string;
+        accelerator: string;
+    }>) => Promise<boolean>;
+    onSoundboardShortcutTriggered: (cb: (soundName: string) => void) => () => void;
     minimize: () => Promise<void>;
     maximize: () => Promise<void>;
     close: () => Promise<void>;
@@ -76,6 +83,10 @@ export interface ElectronApi {
         ok: boolean;
         error?: string;
     }>;
+    setUpdateChannel: (allowBeta: boolean) => Promise<{
+        ok: boolean;
+        error?: string;
+    }>;
     onUpdateProgress: (cb: (percent: number) => void) => void;
     onUpdateDownloaded: (cb: (info: {
         manual: boolean;
@@ -89,7 +100,13 @@ export interface ElectronApi {
         reason: 'online' | 'refused' | 'timeout' | 'unreachable';
     }>;
     screenAudioSupported: () => Promise<boolean>;
-    screenAudioStart: () => Promise<{
+    screenAudioDiagnose: () => Promise<{
+        nativeModuleLoaded: boolean;
+        platformSupported: boolean;
+        osVersion: string;
+        pid: number;
+    }>;
+    screenAudioStart: (sourceId?: string) => Promise<{
         success: boolean;
         error?: string;
     }>;
@@ -98,6 +115,14 @@ export interface ElectronApi {
     }>;
     onScreenAudioFrame: (cb: (buffer: ArrayBuffer) => void) => void;
     removeScreenAudioFrameListener: () => void;
+    updateTrayVoiceStatus: (status: {
+        inCall: boolean;
+        isMuted: boolean;
+        isDeafened: boolean;
+        isSpeaking: boolean;
+    }) => Promise<void>;
+    onTrayToggleMute: (cb: () => void) => () => void;
+    onTrayToggleDeafen: (cb: () => void) => () => void;
     platform: string;
 }
 declare global {
