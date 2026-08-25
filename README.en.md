@@ -262,22 +262,48 @@ git clone https://github.com/MonkyOrg/Monky.git
 cd Monky
 npm install
 npm run build
-node apps/server/dist/index.js --port 3000 --data ./data --name "Friends Server"
 ```
 
-Available options:
+### Initial setup with the CLI
 
-| Option | Default | Description |
-|---|---|---|
-| `--port <n>` | `3000` | The server's TCP port |
-| `--data <path>` | `./data` | Where `server.db` and the avatars live |
-| `--name <text>` | `Servidor dos Amigos` | Name shown in the app |
-| `--password <password>` | *(empty)* | Access password |
-| `--max-users <n>` | `20` | Limit of simultaneous users |
-| `--text-channel <name>` | `geral` | Starting text channel |
-| `--voice-channel <name>` | `Geral` | Starting voice channel |
+All VPS server administration is done through the **Monky CLI**. First,
+bootstrap to set the initial owner/admin:
+
+```bash
+# Bootstrap: set the owner using your exported identity code
+npx ts-node apps/server/src/cli.ts bootstrap --identity "MONKY-ID:1:..." --data ./data
+
+# Configure the server
+npx ts-node apps/server/src/cli.ts config set name "Friends Server" --data ./data
+npx ts-node apps/server/src/cli.ts config set port 3000 --data ./data
+npx ts-node apps/server/src/cli.ts config set password "mypassword" --data ./data
+```
+
+### Starting the server
+
+```bash
+node apps/server/dist/index.js --data ./data
+```
 
 After that, your friends join normally using the **VPS IP** and the port.
+
+### Administration
+
+Use the CLI to manage members, roles and settings without needing the graphical
+client:
+
+```bash
+# List members
+npx ts-node apps/server/src/cli.ts members list --data ./data
+
+# Promote someone to admin
+npx ts-node apps/server/src/cli.ts admin add "Username" --data ./data
+
+# See all options
+npx ts-node apps/server/src/cli.ts --help
+```
+
+➡️ Full CLI documentation: [docs/CLI.md](docs/CLI.md)
 
 ### Ports used
 
