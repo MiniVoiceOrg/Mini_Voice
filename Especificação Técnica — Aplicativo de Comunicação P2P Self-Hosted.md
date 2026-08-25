@@ -2504,7 +2504,7 @@ O resultado esperado é uma aplicação:
 
 ```text
 ┌─────────────────────────────────────────┐
-│              MINI VOICE                 │
+│              MONKY                      │
 ├─────────────────────────────────────────┤
 │                                         │
 │  Servidor privado entre amigos          │

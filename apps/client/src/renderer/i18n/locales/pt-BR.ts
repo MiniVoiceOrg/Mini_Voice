@@ -459,7 +459,7 @@ export const ptBR = {
 
   // ── Rede e conexão (NetworkClient.ts) ────────────────────────────────────
   'network.genericConnectError': 'Não foi possível conectar. O servidor pode estar offline ou fechado, ou o IP/porta podem estar incorretos.',
-  'network.notMiniVoiceServer': 'O endereço {host}:{port} respondeu, mas não é um servidor Monky válido. Verifique a porta.',
+  'network.notMonkyServer': 'O endereço {host}:{port} respondeu, mas não é um servidor Monky válido. Verifique a porta.',
   'network.portClosed': 'O computador {host} está online, mas nenhum servidor Monky está ativo na porta {port}. Verifique se o servidor foi iniciado.',
   'network.hostUnreachable': 'Não foi possível encontrar o servidor em {host}:{port}. O computador parece estar offline. Verifique o IP e sua conexão.',
   'network.connectionTimeout': 'O servidor em {host}:{port} não respondeu. Ele pode estar fechado (ou bloqueado por um firewall) ou o computador pode estar offline. Verifique se o servidor está rodando e se a porta está liberada.',
