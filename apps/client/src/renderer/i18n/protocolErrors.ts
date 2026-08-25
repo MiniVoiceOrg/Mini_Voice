@@ -1,4 +1,4 @@
-import { ProtocolErrorCode } from '@mini-voice/shared';
+import { ProtocolErrorCode } from '@monky/shared';
 import { t, type TranslationKey } from './index';
 
 /**

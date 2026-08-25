@@ -179,7 +179,7 @@ export class MonkyServer {
             res.end(
               JSON.stringify({
                 port,
-                serverName: server?.name || config.serverName || 'Mini Voice Server',
+                serverName: server?.name || config.serverName || 'Monky Server',
                 networkInterfaces,
               })
             );
