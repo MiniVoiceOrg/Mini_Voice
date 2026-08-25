@@ -1689,8 +1689,8 @@ async function destroyCommand(globalArgs: GlobalArgs): Promise<void> {
   console.log(`  - Configurações`);
   console.log();
 
-  const confirmText = await ask(`Digite "DESTRUIR" para confirmar`);
-  if (confirmText !== 'DESTRUIR') {
+  const confirmText = await ask(`Digite "DESTROY" para confirmar`);
+    if (confirmText !== 'DESTROY') {
     console.log(color('Operação cancelada.', ANSI.yellow));
     return;
   }
