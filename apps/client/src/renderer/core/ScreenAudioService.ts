@@ -16,6 +16,7 @@ import { appEvents } from './EventBus';
 import { webRtcManager } from './WebRtcManager';
 import { networkClient } from './NetworkClient';
 import { MessageType } from '@monky/shared';
+import { t } from '../i18n';
 
 // Ring-buffer based AudioWorklet processor (inlined as a string so it can be
 // loaded via Blob URL without a separate file).
@@ -148,7 +149,7 @@ class ScreenAudioService {
     const supported = await this.isSupported();
     if (!supported) {
       console.warn('[ScreenAudio] Not supported on this platform');
-      appEvents.emit('screen_audio.error', 'Captura de áudio de tela não é suportada nesta versão do Windows (necessário build 19041+).');
+      appEvents.emit('screen_audio.error', t('screenAudio.unsupportedWindows'));
       return null;
     }
 
@@ -191,7 +192,7 @@ class ScreenAudioService {
     this.frameWatchdog = setTimeout(() => {
       if (this.frameCount === 0 && this.isCapturing && !this.isTestTone) {
         console.warn('[ScreenAudio] No frames received within timeout — native capture may have failed silently');
-        appEvents.emit('screen_audio.warning', 'Nenhum frame de áudio foi recebido. A captura nativa pode ter falhado. Verifique se o aplicativo/tela selecionado está realmente reproduzindo som.');
+        appEvents.emit('screen_audio.warning', t('screenAudio.noFrames'));
       }
     }, FRAME_WATCHDOG_TIMEOUT * 1000);
 

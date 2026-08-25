@@ -4,6 +4,7 @@ import { settingsStore } from '../stores/settingsStore';
 import { serverStore } from '../stores/serverStore';
 import { voiceStore } from '../stores/voiceStore';
 import { appEvents } from '../core/EventBus';
+import { t, tCount } from '../i18n';
 import { formatKeyCombo } from '../utils/keybind';
 import { showConfirm } from './Dialog';
 import { enableBackdropClose } from '../utils/modal';
@@ -39,9 +40,9 @@ export class SoundboardModal {
             <span class="material-symbols-outlined" style="color: var(--accent-primary);">music_note</span>
             <span>Soundboard</span>
             <span id="sb-sound-count" style="font-size: 11px; background: var(--bg-tertiary); padding: 2px 8px; border-radius: 12px; color: var(--text-muted); font-weight: 500;">
-              ${sounds.length} ${sounds.length === 1 ? 'som' : 'sons'}
+              ${tCount('soundboard.soundCount', sounds.length)}
             </span>
-            <div class="sb-help-badge" title="Formatos suportados: MP3, WAV, OGG, M4A, AAC, WEBM (máx. 3MB por som)" style="margin-left: 2px;">
+            <div class="sb-help-badge" title="${t('soundboard.formatsBadge')}" style="margin-left: 2px;">
               <span class="material-symbols-outlined md-16">help</span>
             </div>
           </div>
@@ -54,16 +55,16 @@ export class SoundboardModal {
           <div style="display: flex; align-items: center; gap: 8px; flex: 1; min-width: 0;">
             <button id="sb-btn-change-folder" class="btn btn-secondary" style="font-size: 11px; padding: 4px 10px; height: 28px; white-space: nowrap;">
               <span class="material-symbols-outlined md-14" style="margin-right: 4px;">folder_open</span>
-              ${settingsStore.soundboardFolderPath ? 'Trocar Pasta' : 'Escolher Pasta'}
+              ${settingsStore.soundboardFolderPath ? t('soundboard.changeFolder') : t('soundboard.chooseFolder')}
             </button>
             <span id="sb-folder-path-label" style="font-size: 11px; color: var(--text-muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis;" title="${settingsStore.soundboardFolderPath || ''}">
-              ${settingsStore.soundboardFolderPath ? escapeHtml(settingsStore.soundboardFolderPath) : 'Nenhuma pasta selecionada'}
+              ${settingsStore.soundboardFolderPath ? escapeHtml(settingsStore.soundboardFolderPath) : t('soundboard.noFolderSelected')}
             </span>
           </div>
 
           <!-- Volume & Mute Controls -->
           <div style="display: flex; align-items: center; gap: 12px;">
-            <button id="sb-btn-mute" class="btn btn-icon ${settingsStore.soundboardMuted ? 'danger-active' : ''}" style="width: 28px; height: 28px; padding: 0;" title="${settingsStore.soundboardMuted ? 'Desmutar Soundboard' : 'Mutar Soundboard para você'}">
+            <button id="sb-btn-mute" class="btn btn-icon ${settingsStore.soundboardMuted ? 'danger-active' : ''}" style="width: 28px; height: 28px; padding: 0;" title="${settingsStore.soundboardMuted ? t('soundboard.unmuteTitle') : t('soundboard.muteTitle')}">
               <span class="material-symbols-outlined md-16">${settingsStore.soundboardMuted ? 'volume_off' : 'volume_up'}</span>
             </button>
             
@@ -82,7 +83,7 @@ export class SoundboardModal {
             <div style="flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 4px;">
               <div style="display: flex; align-items: center; justify-content: space-between; gap: 8px;">
                 <span id="sb-player-sound-name" style="font-size: 12px; font-weight: 600; color: var(--text-primary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">
-                  ${currentPlayback.soundName ? escapeHtml(currentPlayback.soundName) : 'Tocando áudio...'}
+                  ${currentPlayback.soundName ? escapeHtml(currentPlayback.soundName) : t('soundboard.playingAudio')}
                 </span>
                 <div style="font-family: var(--font-mono); font-size: 10px; color: var(--text-muted); white-space: nowrap;">
                   <span id="sb-player-current-time">${formatTime(currentPlayback.currentTime)}</span>
@@ -97,9 +98,9 @@ export class SoundboardModal {
               </div>
             </div>
 
-            <button id="sb-player-btn-stop" class="btn btn-secondary" style="font-size: 11px; padding: 4px 8px; height: 26px; display: flex; align-items: center; gap: 4px; color: var(--danger); border-color: rgba(237, 66, 69, 0.3);" title="Parar reprodução de som">
+            <button id="sb-player-btn-stop" class="btn btn-secondary" style="font-size: 11px; padding: 4px 8px; height: 26px; display: flex; align-items: center; gap: 4px; color: var(--danger); border-color: rgba(237, 66, 69, 0.3);" title="${t('soundboard.stopPlayback')}">
               <span class="material-symbols-outlined md-14">stop</span>
-              <span>Parar</span>
+              <span>${t('stage.stop')}</span>
             </button>
           </div>
         </div>
@@ -108,7 +109,7 @@ export class SoundboardModal {
         ${!serverAllows ? `
           <div style="margin: 12px 20px 0; padding: 8px 12px; background: rgba(237, 66, 69, 0.15); border: 1px solid rgba(237, 66, 69, 0.3); border-radius: var(--radius-md); color: var(--danger); font-size: 12px; display: flex; align-items: center; gap: 8px;">
             <span class="material-symbols-outlined md-16">block</span>
-            <span>A reprodução de soundboard está desabilitada neste servidor pelo administrador.</span>
+            <span>${t('soundboard.disabledByAdmin')}</span>
           </div>
         ` : ''}
 
@@ -116,7 +117,7 @@ export class SoundboardModal {
         ${!voiceStore.currentVoiceChannelId ? `
           <div style="margin: 12px 20px 0; padding: 8px 12px; background: rgba(240, 178, 50, 0.15); border: 1px solid rgba(240, 178, 50, 0.3); border-radius: var(--radius-md); color: #f0b232; font-size: 12px; display: flex; align-items: center; gap: 8px;">
             <span class="material-symbols-outlined md-16">info</span>
-            <span>Você não está em um canal de voz. Os sons serão tocados apenas como prévia local.</span>
+            <span>${t('soundboard.localPreviewOnly')}</span>
           </div>
         ` : ''}
 
@@ -128,9 +129,9 @@ export class SoundboardModal {
         <!-- Footer -->
         <div class="modal-footer" style="padding: 12px 20px; border-top: 1px solid var(--border-color); background: var(--bg-card);">
           <div style="font-size: 11px; color: var(--text-muted); flex: 1;">
-            Clique no som para tocar ou configure <strong>atalhos globais</strong> para acionar mesmo dentro de jogos!
+            ${t('soundboard.footerHint')}
           </div>
-          <button type="button" id="sb-btn-close" class="btn btn-secondary" style="padding: 6px 16px; font-size: 12px;">Fechar</button>
+          <button type="button" id="sb-btn-close" class="btn btn-secondary" style="padding: 6px 16px; font-size: 12px;">${t('common.close')}</button>
         </div>
       </div>
     `;
@@ -146,12 +147,12 @@ export class SoundboardModal {
         <div style="display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100%; min-height: 180px; text-align: center; color: var(--text-muted); gap: 12px;">
           <span class="material-symbols-outlined" style="font-size: 48px; color: var(--text-dim);">folder_special</span>
           <div>
-            <div style="font-size: 14px; font-weight: 600; color: var(--text-primary); margin-bottom: 4px;">Nenhuma pasta de sons selecionada</div>
-            <div style="font-size: 12px; max-width: 340px;">Escolha uma pasta no seu computador com arquivos MP3, WAV, OGG, M4A, AAC ou WEBM para usar no seu soundboard!</div>
+            <div style="font-size: 14px; font-weight: 600; color: var(--text-primary); margin-bottom: 4px;">${t('soundboard.emptyFolderTitle')}</div>
+            <div style="font-size: 12px; max-width: 340px;">${t('soundboard.emptyFolderDesc')}</div>
           </div>
           <button type="button" id="sb-btn-select-folder-empty" class="btn btn-primary" style="font-size: 12px; padding: 8px 18px; margin-top: 6px;">
             <span class="material-symbols-outlined md-16" style="margin-right: 6px;">folder_open</span>
-            Escolher Pasta de Sons
+            ${t('soundboard.chooseFolderButton')}
           </button>
         </div>
       `;
@@ -162,12 +163,12 @@ export class SoundboardModal {
         <div style="display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100%; min-height: 180px; text-align: center; color: var(--text-muted); gap: 12px;">
           <span class="material-symbols-outlined" style="font-size: 48px; color: var(--text-dim);">audio_file</span>
           <div>
-            <div style="font-size: 14px; font-weight: 600; color: var(--text-primary); margin-bottom: 4px;">Nenhum arquivo de áudio encontrado</div>
-            <div style="font-size: 12px; max-width: 340px;">A pasta selecionada não contém arquivos de áudio compatíveis (.mp3, .wav, .ogg, .m4a, .aac, .webm de até 3MB).</div>
+            <div style="font-size: 14px; font-weight: 600; color: var(--text-primary); margin-bottom: 4px;">${t('soundboard.noAudioFilesTitle')}</div>
+            <div style="font-size: 12px; max-width: 340px;">${t('soundboard.noAudioFilesDesc')}</div>
           </div>
           <button type="button" id="sb-btn-select-folder-empty" class="btn btn-secondary" style="font-size: 12px; padding: 6px 14px;">
             <span class="material-symbols-outlined md-16" style="margin-right: 6px;">folder_open</span>
-            Trocar de Pasta
+            ${t('soundboard.changeFolderButton')}
           </button>
         </div>
       `;
@@ -195,17 +196,17 @@ export class SoundboardModal {
                 <!-- Shortcut Badge or Add Shortcut Button -->
                 <div style="padding: 4px 6px 8px; display: flex; align-items: center; justify-content: center;">
                   ${shortcut && shortcut.display ? `
-                    <div class="sb-shortcut-badge" data-soundname="${escapeHtml(s.name)}" title="Atalho global: ${escapeHtml(shortcut.display)} (Clique para alterar)" style="display: inline-flex; align-items: center; gap: 3px; padding: 2px 6px; background: rgba(88, 101, 242, 0.15); border: 1px solid rgba(88, 101, 242, 0.4); border-radius: 4px; font-family: var(--font-mono); font-size: 10px; color: #ffffff; cursor: pointer; max-width: 100%;">
+                    <div class="sb-shortcut-badge" data-soundname="${escapeHtml(s.name)}" title="${t('soundboard.shortcutBadgeTitle', { combo: escapeHtml(shortcut.display) })}" style="display: inline-flex; align-items: center; gap: 3px; padding: 2px 6px; background: rgba(88, 101, 242, 0.15); border: 1px solid rgba(88, 101, 242, 0.4); border-radius: 4px; font-family: var(--font-mono); font-size: 10px; color: #ffffff; cursor: pointer; max-width: 100%;">
                       <span class="material-symbols-outlined" style="font-size: 11px; color: var(--accent-primary);">keyboard</span>
                       <span style="overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 70px;">${escapeHtml(shortcut.display)}</span>
-                      <button type="button" class="sb-btn-remove-shortcut" data-soundname="${escapeHtml(s.name)}" title="Remover atalho" style="background: none; border: none; color: var(--text-muted); cursor: pointer; display: inline-flex; align-items: center; padding: 0; margin-left: 2px;">
+                      <button type="button" class="sb-btn-remove-shortcut" data-soundname="${escapeHtml(s.name)}" title="${t('soundboard.removeShortcut')}" style="background: none; border: none; color: var(--text-muted); cursor: pointer; display: inline-flex; align-items: center; padding: 0; margin-left: 2px;">
                         <span class="material-symbols-outlined" style="font-size: 12px;">close</span>
                       </button>
                     </div>
                   ` : `
-                    <button type="button" class="sb-btn-add-shortcut" data-soundname="${escapeHtml(s.name)}" title="Adicionar atalho de teclado para este som" style="display: inline-flex; align-items: center; gap: 3px; padding: 2px 6px; background: transparent; border: 1px dashed var(--border-color); border-radius: 4px; font-size: 10px; color: var(--text-muted); cursor: pointer; transition: all 0.15s ease;">
+                    <button type="button" class="sb-btn-add-shortcut" data-soundname="${escapeHtml(s.name)}" title="${t('soundboard.addShortcut')}" style="display: inline-flex; align-items: center; gap: 3px; padding: 2px 6px; background: transparent; border: 1px dashed var(--border-color); border-radius: 4px; font-size: 10px; color: var(--text-muted); cursor: pointer; transition: all 0.15s ease;">
                       <span class="material-symbols-outlined" style="font-size: 11px;">keyboard</span>
-                      <span>Atalho</span>
+                      <span>${t('soundboard.shortcut')}</span>
                     </button>
                   `}
                 </div>
@@ -240,23 +241,23 @@ export class SoundboardModal {
         <div class="modal-header" style="justify-content: center; position: relative;">
           <div class="modal-title" style="display: flex; align-items: center; gap: 8px; font-size: 15px;">
             <span class="material-symbols-outlined" style="color: var(--accent-primary);">keyboard</span>
-            <span>Configurar Atalho</span>
+            <span>${t('soundboard.keybindTitle')}</span>
           </div>
           <button id="sb-keybind-modal-close" class="modal-close-btn" style="position: absolute; right: 16px; top: 16px;">&times;</button>
         </div>
         <div style="padding: 16px 20px 20px;">
           <div style="font-size: 12px; color: var(--text-muted); margin-bottom: 16px; word-break: break-word;">
-            Pressione a tecla ou combinação para o som <strong style="color: var(--text-primary);">${escapeHtml(soundName)}</strong>
+            ${t('soundboard.keybindPrompt', { sound: `<strong style="color: var(--text-primary);">${escapeHtml(soundName)}</strong>` })}
           </div>
           <div id="sb-keybind-box" style="padding: 24px 16px; background: var(--bg-input); border: 2px dashed var(--accent-primary); border-radius: var(--radius-md); display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 8px; box-shadow: 0 0 16px rgba(88, 101, 242, 0.25);">
             <span class="material-symbols-outlined" style="font-size: 32px; color: var(--accent-primary); animation: pulse 1.5s infinite;">keyboard</span>
-            <div style="font-size: 14px; font-weight: 600; color: var(--text-primary);">Aguardando tecla...</div>
-            <div style="font-size: 11px; color: var(--text-muted);">Exemplos: F1 a F12, NumPad 1, Ctrl + Alt + 1</div>
+            <div style="font-size: 14px; font-weight: 600; color: var(--text-primary);">${t('soundboard.keybindWaiting')}</div>
+            <div style="font-size: 11px; color: var(--text-muted);">${t('soundboard.keybindExamples')}</div>
           </div>
         </div>
         <div class="modal-footer" style="justify-content: space-between; padding: 12px 20px;">
-          <button type="button" id="sb-keybind-btn-clear" class="btn btn-secondary" style="font-size: 12px; color: var(--danger);">Remover Atalho</button>
-          <button type="button" id="sb-keybind-btn-cancel" class="btn btn-secondary" style="font-size: 12px;">Cancelar (Esc)</button>
+          <button type="button" id="sb-keybind-btn-clear" class="btn btn-secondary" style="font-size: 12px; color: var(--danger);">${t('soundboard.removeShortcutButton')}</button>
+          <button type="button" id="sb-keybind-btn-cancel" class="btn btn-secondary" style="font-size: 12px;">${t('soundboard.cancelEsc')}</button>
         </div>
       </div>
     `;
@@ -295,10 +296,10 @@ export class SoundboardModal {
       if (existingConflict) {
         const [conflictSoundName] = existingConflict;
         const confirm = await showConfirm({
-          title: 'Atalho em uso',
-          message: `O atalho "${combo.display}" já está associado ao som "${conflictSoundName}". Deseja substituir?`,
-          confirmLabel: 'Substituir',
-          cancelLabel: 'Cancelar',
+          title: t('soundboard.shortcutInUseTitle'),
+          message: t('soundboard.shortcutInUseMessage', { combo: combo.display, sound: conflictSoundName }),
+          confirmLabel: t('soundboard.replace'),
+          cancelLabel: t('common.cancel'),
           variant: 'warning',
         });
 
@@ -367,7 +368,7 @@ export class SoundboardModal {
         const folderLabel = this.modalEl?.querySelector('#sb-folder-path-label');
         if (folderLabel) folderLabel.textContent = folder;
         const countBadge = this.modalEl?.querySelector('#sb-sound-count');
-        if (countBadge) countBadge.textContent = `${sounds.length} ${sounds.length === 1 ? 'som' : 'sons'}`;
+        if (countBadge) countBadge.textContent = tCount('soundboard.soundCount', sounds.length);
       }
     };
 
@@ -380,7 +381,7 @@ export class SoundboardModal {
       if (btnMute) {
         btnMute.className = `btn btn-icon ${settingsStore.soundboardMuted ? 'danger-active' : ''}`;
         btnMute.innerHTML = `<span class="material-symbols-outlined md-16">${settingsStore.soundboardMuted ? 'volume_off' : 'volume_up'}</span>`;
-        btnMute.setAttribute('title', settingsStore.soundboardMuted ? 'Desmutar Soundboard' : 'Mutar Soundboard para você');
+        btnMute.setAttribute('title', settingsStore.soundboardMuted ? t('soundboard.unmuteTitle') : t('soundboard.muteTitle'));
       }
     });
 
@@ -440,7 +441,7 @@ export class SoundboardModal {
 
   private setupPlaybackListeners(): void {
     // 1. Playback started
-    const onPlaybackStarted = (payload: { soundName: string; duration: number }) => {
+    const onPlaybackStarted = (payload: { soundName: string; duration: number; userName?: string }) => {
       if (!this.modalEl) return;
 
       const playerContainer = this.modalEl.querySelector('#sb-player-container') as HTMLElement | null;
@@ -451,15 +452,22 @@ export class SoundboardModal {
 
       if (playerContainer) playerContainer.style.display = 'block';
       if (soundNameEl) {
-        soundNameEl.textContent = payload.soundName;
-        soundNameEl.setAttribute('title', payload.soundName);
+        const activeCount = soundboardService.getActivePlaybacks().length;
+        if (activeCount > 1) {
+          soundNameEl.textContent = `${payload.soundName} (+${activeCount - 1} outros sons)`;
+          soundNameEl.setAttribute('title', t('soundboard.alsoPlaying', { sound: payload.soundName, count: activeCount - 1 }));
+        } else {
+          const userSuffix = payload.userName ? ` (${payload.userName})` : '';
+          soundNameEl.textContent = `${payload.soundName}${userSuffix}`;
+          soundNameEl.setAttribute('title', `${payload.soundName}${userSuffix}`);
+        }
       }
       if (progressFill) progressFill.style.width = '0%';
       if (currentTimeEl) currentTimeEl.textContent = '0:00';
       if (totalTimeEl) totalTimeEl.textContent = formatTime(payload.duration);
 
-      // Highlight active sound button
-      this.updateActiveButton(payload.soundName);
+      // Highlight active sound buttons
+      this.updateActiveButtons();
     };
 
     // 2. Playback progress
@@ -479,11 +487,26 @@ export class SoundboardModal {
     const onPlaybackEnded = () => {
       if (!this.modalEl) return;
 
-      const playerContainer = this.modalEl.querySelector('#sb-player-container') as HTMLElement | null;
-      if (playerContainer) playerContainer.style.display = 'none';
-
-      // Clear button active states
-      this.clearActiveButtons();
+      const activePlaybacks = soundboardService.getActivePlaybacks();
+      if (activePlaybacks.length === 0) {
+        const playerContainer = this.modalEl.querySelector('#sb-player-container') as HTMLElement | null;
+        if (playerContainer) playerContainer.style.display = 'none';
+        this.clearActiveButtons();
+      } else {
+        const playerContainer = this.modalEl.querySelector('#sb-player-container') as HTMLElement | null;
+        const soundNameEl = this.modalEl.querySelector('#sb-player-sound-name');
+        if (playerContainer) playerContainer.style.display = 'block';
+        if (soundNameEl) {
+          const latest = activePlaybacks[activePlaybacks.length - 1];
+          if (activePlaybacks.length > 1) {
+            soundNameEl.textContent = `${latest.soundName} (+${activePlaybacks.length - 1} outros sons)`;
+          } else {
+            const userSuffix = latest.userName ? ` (${latest.userName})` : '';
+            soundNameEl.textContent = `${latest.soundName}${userSuffix}`;
+          }
+        }
+        this.updateActiveButtons();
+      }
     };
 
     // 4. Highlight incoming sound trigger
@@ -504,13 +527,14 @@ export class SoundboardModal {
     });
   }
 
-  private updateActiveButton(activeSoundName: string): void {
+  private updateActiveButtons(): void {
     if (!this.modalEl) return;
+    const playingNames = soundboardService.getPlayingSoundNames();
     const buttons = this.modalEl.querySelectorAll('.sb-sound-btn');
     buttons.forEach((btn) => {
       const soundName = btn.getAttribute('data-soundname');
       const icon = btn.querySelector('.sb-sound-icon');
-      if (soundName === activeSoundName) {
+      if (soundName && playingNames.has(soundName)) {
         btn.classList.add('is-playing');
         if (icon) icon.textContent = 'volume_up';
       } else {

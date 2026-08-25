@@ -5,6 +5,7 @@ import path from 'path';
 import { v4 as uuidv4 } from 'uuid';
 import { LanDiscovery } from './lanDiscovery';
 import { HostServerOptions, ServerManager } from './serverManager';
+import { mt, setMainLanguage } from './i18n';
 import { TrayManager, VoiceStatus } from './trayManager';
 
 // Screen audio native module (compiled only on CI — graceful fallback)
@@ -41,6 +42,15 @@ export function setupIpcHandlers(
     mainWindow.setSize(w, h);
     mainWindow.center();
     mainWindow.maximize();
+  });
+
+  // Active UI language (#16): keeps native dialogs in the same language the
+  // renderer is showing.
+  ipcMain.handle('app-set-language', (_event, language: string) => {
+    setMainLanguage(language);
+    // The tray builds its labels eagerly, so it needs a redraw to pick the
+    // new language up (#16).
+    trayManager?.refresh();
   });
 
   // Client ID persistence
@@ -108,7 +118,7 @@ export function setupIpcHandlers(
   // Avatar Image Selection Dialog
   ipcMain.handle('dialog-select-image', async () => {
     const result = await dialog.showOpenDialog(mainWindow, {
-      title: 'Selecionar Foto de Perfil',
+      title: mt('dialog.selectProfilePhoto'),
       filters: [
         { name: 'Imagens (PNG, JPG, WebP)', extensions: ['png', 'jpg', 'jpeg', 'webp'] },
       ],
@@ -135,9 +145,9 @@ export function setupIpcHandlers(
   // Custom sound file selection (#7)
   ipcMain.handle('dialog-select-sound-file', async () => {
     const result = await dialog.showOpenDialog(mainWindow, {
-      title: 'Selecionar Arquivo de Som',
+      title: mt('dialog.selectSoundFile'),
       filters: [
-        { name: 'Áudio (WAV, MP3, OGG)', extensions: ['wav', 'mp3', 'ogg', 'webm'] },
+        { name: mt('dialog.audioFilter'), extensions: ['wav', 'mp3', 'ogg', 'webm'] },
       ],
       properties: ['openFile'],
     });
@@ -153,7 +163,7 @@ export function setupIpcHandlers(
   // Soundboard Folder Selection
   ipcMain.handle('dialog-select-soundboard-folder', async () => {
     const result = await dialog.showOpenDialog(mainWindow, {
-      title: 'Selecionar Pasta de Sons (Soundboard)',
+      title: mt('dialog.selectSoundboardFolder'),
       properties: ['openDirectory'],
     });
 
@@ -205,7 +215,7 @@ export function setupIpcHandlers(
     try {
       const stat = fs.statSync(filePath);
       if (stat.size > 3 * 1024 * 1024) {
-        throw new Error('Arquivo de áudio muito grande (máximo 3MB)');
+        throw new Error(mt('error.audioFileTooLarge'));
       }
       const buffer = fs.readFileSync(filePath);
       const ext = path.extname(filePath).toLowerCase();

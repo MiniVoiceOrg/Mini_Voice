@@ -224,6 +224,31 @@ async function runTests() {
       ws2.send(JSON.stringify(updateSettingsMsg));
     }), 5000, 'Teste 6: desabilitar soundboard no servidor');
 
+    // Test 7: Get server invite info with network interfaces
+    await withTimeout(new Promise<void>((resolve, reject) => {
+      const inviteReqMsg: ProtocolMessage = {
+        type: MessageType.SERVER_GET_INVITE_INFO,
+        requestId: 'req-7-invite',
+        payload: {},
+      };
+
+      const inviteHandler = (data: any) => {
+        const res = JSON.parse(data.toString());
+        if (res.type === MessageType.SERVER_INVITE_INFO && res.requestId === 'req-7-invite') {
+          if (typeof res.payload.port === 'number' && Array.isArray(res.payload.networkInterfaces) && res.payload.networkInterfaces.length > 0) {
+            console.log(`✔ Teste 7 passou: Informações de convite do servidor retornadas com sucesso! (Porta: ${res.payload.port}, ${res.payload.networkInterfaces.length} IPs encontrados)`);
+            ws2.off('message', inviteHandler);
+            resolve();
+          } else {
+            reject(new Error('Resposta de invite info inválida: ' + JSON.stringify(res.payload)));
+          }
+        }
+      };
+
+      ws2.on('message', inviteHandler);
+      ws2.send(JSON.stringify(inviteReqMsg));
+    }), 5000, 'Teste 7: obter dados de convite do servidor');
+
     ws2.close();
     console.log('=== Todos os testes do servidor passaram com sucesso! ===');
   } finally {

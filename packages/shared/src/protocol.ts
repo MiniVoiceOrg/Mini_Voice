@@ -39,12 +39,14 @@ export enum MessageType {
   PING = 'PING',
   USER_LOGOUT = 'USER_LOGOUT',
   SOUNDBOARD_PLAY = 'SOUNDBOARD_PLAY',
+  SERVER_GET_INVITE_INFO = 'SERVER_GET_INVITE_INFO',
 
   // Server -> Client
   AUTH_SUCCESS = 'AUTH_SUCCESS',
   AUTH_FAILED = 'AUTH_FAILED',
   SERVER_STATE = 'SERVER_STATE',
   SERVER_SETTINGS_UPDATED = 'SERVER_SETTINGS_UPDATED',
+  SERVER_INVITE_INFO = 'SERVER_INVITE_INFO',
   SERVER_SHUTDOWN = 'SERVER_SHUTDOWN',
   USER_JOINED = 'USER_JOINED',
   USER_LEFT = 'USER_LEFT',
@@ -240,4 +242,19 @@ export interface VoiceUserLeftPayload {
 
 export interface VoiceStateChangedPayload {
   voiceState: VoiceParticipantState;
+}
+
+export interface ServerNetworkInterface {
+  name: string;
+  address: string;
+  family: 'IPv4' | 'IPv6';
+  type: 'public' | 'lan' | 'vpn' | 'loopback';
+  description: string;
+}
+
+export interface ServerInviteInfoPayload {
+  port: number;
+  serverName: string;
+  publicIp?: string | null;
+  networkInterfaces: ServerNetworkInterface[];
 }

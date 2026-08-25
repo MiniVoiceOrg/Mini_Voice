@@ -2,6 +2,7 @@ import path from 'path';
 import fs from 'fs';
 import { app } from 'electron';
 import { MonkyServer, ServerConfig } from '@monky/server/dist/server.js';
+import { mt } from './i18n';
 
 export interface HostServerOptions {
   port: number;
@@ -45,7 +46,7 @@ export class ServerManager {
       console.error('[ServerManager] Error starting local server:', err);
       this.isRunning = false;
       this.serverInstance = null;
-      return { success: false, error: err.message || 'Falha ao iniciar servidor' };
+      return { success: false, error: err.message || mt('error.startServerFailed') };
     }
   }
 

@@ -1,4 +1,5 @@
 import { escapeHtml } from '../utils/html';
+import { t } from '../i18n';
 import { settingsStore } from '../stores/settingsStore';
 
 const DISMISSED_KEY = 'monky_dismissed_update';
@@ -52,25 +53,25 @@ class UpdateService {
     this.listenersBound = true;
 
     window.api.onUpdateProgress((percent) => {
-      this.setText(`Baixando atualização… ${percent}%`);
+      this.setText(t('update.downloading', { percent }));
     });
 
     window.api.onUpdateDownloaded((info) => {
       if (info.manual) {
-        this.setText('Instalador aberto — arraste o Monky para a pasta Aplicativos e reabra.');
+        this.setText(t('update.installerOpened'));
         this.setActions([{ label: '×', dismiss: true, onClick: () => this.dismiss() }]);
       } else {
         // Windows: the main process installs silently and relaunches on its own.
-        this.setText('Atualização baixada. Instalando e reiniciando…');
+        this.setText(t('update.installing'));
         this.setActions([]);
       }
     });
 
     window.api.onUpdateError(() => {
-      this.setText('Falha ao baixar a atualização.');
+      this.setText(t('update.downloadFailed'));
       this.setActions([
         {
-          label: 'Baixar manualmente',
+          label: t('update.downloadManually'),
           primary: true,
           onClick: () => window.api.openExternal(RELEASES_URL),
         },
@@ -123,13 +124,13 @@ class UpdateService {
 
   private showAvailable(version: string): void {
     this.ensureBanner();
-    this.setText(`Nova versão <strong>${escapeHtml(version)}</strong> disponível.`);
+    this.setText(t('update.available', { version: escapeHtml(version) }));
     this.setActions([
       {
-        label: 'Atualizar agora',
+        label: t('update.updateNow'),
         primary: true,
         onClick: () => {
-          this.setText('Iniciando download…');
+          this.setText(t('update.startingDownload'));
           this.setActions([]);
           window.api.downloadUpdate();
         },

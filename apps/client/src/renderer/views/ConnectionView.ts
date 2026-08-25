@@ -7,6 +7,7 @@ import { settingsModal } from './SettingsModal';
 import { withButtonLoading } from '../utils/buttonLoading';
 import { showConfirm } from './Dialog';
 import logoUrl from '../assets/Logo.png';
+import { getLanguage, t } from '../i18n';
 
 interface DiscoveredServer {
   host: string;
@@ -51,15 +52,15 @@ export class ConnectionView {
   }
 
   private formatDateTime(timestamp: number): string {
-    if (!timestamp) return 'Nunca iniciado';
+    if (!timestamp) return t('connection.neverStarted');
 
     try {
-      return new Intl.DateTimeFormat('pt-BR', {
+      return new Intl.DateTimeFormat(getLanguage(), {
         dateStyle: 'short',
         timeStyle: 'short',
       }).format(timestamp);
     } catch {
-      return new Date(timestamp).toLocaleString('pt-BR');
+      return new Date(timestamp).toLocaleString(getLanguage());
     }
   }
 
@@ -78,10 +79,10 @@ export class ConnectionView {
         <div class="saved-servers-container" style="margin-bottom: 14px;">
           <div style="font-size: 11px; font-weight: 700; color: var(--text-muted); text-transform: uppercase; margin-bottom: 8px; display: flex; align-items: center; gap: 4px;">
             <span class="material-symbols-outlined md-14" style="color: var(--accent-primary);">dns</span>
-            Servidores Criados
+            ${t('connection.createdServers')}
           </div>
           <div style="font-size: 12px; color: var(--text-secondary); line-height: 1.45;">
-            Nenhum servidor salvo ainda. Crie um servidor abaixo para poder iniciá-lo novamente com um clique depois.
+            ${t('connection.noCreatedServers')}
           </div>
         </div>
       `;
@@ -92,9 +93,9 @@ export class ConnectionView {
         <div style="font-size: 11px; font-weight: 700; color: var(--text-muted); text-transform: uppercase; margin-bottom: 8px; display: flex; justify-content: space-between; align-items: center;">
           <span style="display: flex; align-items: center; gap: 4px;">
             <span class="material-symbols-outlined md-14" style="color: var(--accent-primary);">dns</span>
-            Servidores Criados (${createdServers.length}/10)
+            ${t('connection.createdServersCount', { count: createdServers.length, max: 10 })}
           </span>
-          <span style="font-size: 10px; font-weight: normal; color: var(--text-muted);">Inicie ou remova rapidamente</span>
+          <span style="font-size: 10px; font-weight: normal; color: var(--text-muted);">${t('connection.createdServersHint')}</span>
         </div>
         <div class="saved-servers-list" style="max-height: 220px;">
           ${createdServers.map((server) => {
@@ -106,10 +107,10 @@ export class ConnectionView {
                     <span class="material-symbols-outlined md-16" style="color: ${isRunning ? 'var(--success)' : 'var(--accent-primary)'};">${isRunning ? 'radio_button_checked' : 'storage'}</span>
                     ${escapeHtml(server.name)}
                   </span>
-                  <span style="font-size: 11px; color: var(--text-muted); margin-left: 22px;">Porta ${server.port}${server.password ? ' • Com senha' : ' • Sem senha'}</span>
+                  <span style="font-size: 11px; color: var(--text-muted); margin-left: 22px;">${t('connection.portLabelValue', { port: server.port })}${server.password ? ` • ${t('connection.withPassword')}` : ` • ${t('connection.withoutPassword')}`}</span>
                   <span style="font-size: 11px; color: var(--text-muted); margin-left: 22px;">#${escapeHtml(server.textChannel)} • ${escapeHtml(server.voiceChannel)}</span>
                   <span style="font-size: 10px; color: ${isRunning ? 'var(--success)' : 'var(--text-muted)'}; margin-left: 22px; margin-top: 4px;">
-                    ${isRunning ? 'Servidor local em execução' : `Última inicialização: ${escapeHtml(this.formatDateTime(server.lastStarted))}`}
+                    ${isRunning ? t('connection.serverRunning') : t('connection.lastStarted', { date: escapeHtml(this.formatDateTime(server.lastStarted)) })}
                   </span>
                 </div>
                 <div style="display: flex; gap: 6px; align-items: center; margin-left: 10px; flex-shrink: 0;">
@@ -117,16 +118,16 @@ export class ConnectionView {
                     isRunning
                       ? `
                         <button type="button" class="btn btn-danger btn-stop-created-server" data-created-server-id="${escapeHtml(server.id)}" style="padding: 2px 10px; font-size: 11px; height: 28px;">
-                          Parar
+                          ${t('connection.stop')}
                         </button>
                       `
                       : `
                         <button type="button" class="btn btn-start-created-server" data-created-server-id="${escapeHtml(server.id)}" style="padding: 2px 10px; font-size: 11px; height: 28px; background: var(--success); color: #fff; border: 1px solid var(--success);">
-                          Iniciar
+                          ${t('connection.start')}
                         </button>
                       `
                   }
-                  <button type="button" class="btn-delete-saved-srv btn-remove-created-server" data-created-server-id="${escapeHtml(server.id)}" title="Excluir servidor salvo" style="color: var(--danger); background: rgba(242, 63, 67, 0.12);">
+                  <button type="button" class="btn-delete-saved-srv btn-remove-created-server" data-created-server-id="${escapeHtml(server.id)}" title="${t('connection.deleteSavedServer')}" style="color: var(--danger); background: rgba(242, 63, 67, 0.12);">
                     <span class="material-symbols-outlined md-16">close</span>
                   </button>
                 </div>
@@ -147,7 +148,7 @@ export class ConnectionView {
       <div class="connection-layout">
         <div class="connection-card">
           
-          <button id="btn-open-settings" class="btn btn-secondary" title="Configurações" style="position: absolute; top: 12px; right: 12px; padding: 6px 8px; z-index: 2;">
+          <button id="btn-open-settings" class="btn btn-secondary" title="${t('connection.settingsTitle')}" style="position: absolute; top: 12px; right: 12px; padding: 6px 8px; z-index: 2;">
             <span class="material-symbols-outlined md-18">settings</span>
           </button>
 
@@ -157,12 +158,12 @@ export class ConnectionView {
               <span style="font-size: 24px; font-weight: 800; letter-spacing: -0.5px;">Monky</span>
               <span class="brand-badge" style="font-size: 11px; padding: 2px 8px;">P2P</span>
             </div>
-            <div class="brand-tagline" style="font-size: 12px; color: var(--text-secondary); margin-top: 2px;">Comunicação direta, rápida e privada entre amigos</div>
+            <div class="brand-tagline" style="font-size: 12px; color: var(--text-secondary); margin-top: 2px;">${t('connection.tagline')}</div>
           </div>
 
           <div class="nav-tabs" style="margin-bottom: 14px;">
-            <button id="tab-join" class="tab-button ${this.activeTab === 'join' ? 'active' : ''}">Entrar no Servidor</button>
-            <button id="tab-host" class="tab-button ${this.activeTab === 'host' ? 'active' : ''}">Meus Servidores</button>
+            <button id="tab-join" class="tab-button ${this.activeTab === 'join' ? 'active' : ''}">${t('connection.tabJoin')}</button>
+            <button id="tab-host" class="tab-button ${this.activeTab === 'host' ? 'active' : ''}">${t('connection.tabHost')}</button>
           </div>
 
           <div id="error-banner" class="error-banner"></div>
@@ -173,9 +174,9 @@ export class ConnectionView {
             <div>
               <button id="btn-select-avatar" class="btn btn-secondary" style="padding: 5px 10px; font-size: 11px;">
                 <span class="material-symbols-outlined md-14" style="margin-right: 4px;">photo_camera</span>
-                Escolher Foto de Perfil
+                ${t('connection.choosePhoto')}
               </button>
-              <div style="font-size: 10px; color: var(--text-muted); margin-top: 2px;">PNG, JPG ou WebP (Salvo no PC)</div>
+              <div style="font-size: 10px; color: var(--text-muted); margin-top: 2px;">${t('connection.photoHint')}</div>
             </div>
           </div>
 
@@ -190,9 +191,9 @@ export class ConnectionView {
                 <div style="font-size: 11px; font-weight: 700; color: var(--text-muted); text-transform: uppercase; margin-bottom: 8px; display: flex; justify-content: space-between; align-items: center;">
                   <span style="display: flex; align-items: center; gap: 4px;">
                     <span class="material-symbols-outlined md-14" style="color: var(--accent-primary);">bookmark</span>
-                    Servidores Salvos (${savedServers.length})
+                    ${t('connection.savedServersCount', { count: savedServers.length })}
                   </span>
-                  <span style="font-size: 10px; font-weight: normal; color: var(--text-muted);">Clique para selecionar</span>
+                  <span style="font-size: 10px; font-weight: normal; color: var(--text-muted);">${t('connection.clickToSelect')}</span>
                 </div>
                 <div class="saved-servers-list">
                   ${savedServers.map((s) => {
@@ -201,18 +202,18 @@ export class ConnectionView {
                       <div class="saved-server-item ${isSelected ? 'selected' : ''}" data-host="${escapeHtml(s.host)}" data-port="${s.port}" data-password="${escapeHtml(s.password || '')}">
                         <div style="display: flex; flex-direction: column; overflow: hidden; pointer-events: none;">
                           <span style="font-size: 13px; font-weight: 600; color: var(--text-primary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; display: flex; align-items: center; gap: 6px;">
-                            <span class="server-status-dot" data-status="checking" data-host="${escapeHtml(s.host)}" data-port="${s.port}" title="Verificando status…"></span>
+                            <span class="server-status-dot" data-status="checking" data-host="${escapeHtml(s.host)}" data-port="${s.port}" title="${t('connection.checkingStatus')}"></span>
                             <span class="material-symbols-outlined md-16" style="color: var(--accent-primary);">dns</span>
-                            ${escapeHtml(s.name || 'Servidor')}
+                            ${escapeHtml(s.name || t('connection.serverFallbackName'))}
                           </span>
                           <span style="font-size: 11px; color: var(--text-muted); margin-left: 22px;">${escapeHtml(s.host)}:${s.port}</span>
                           <div class="saved-server-preview" data-host="${escapeHtml(s.host)}" data-port="${s.port}" style="margin-left: 22px; margin-top: 4px;"></div>
                         </div>
                         <div style="display: flex; gap: 6px; align-items: center;">
                           <button type="button" class="btn btn-secondary btn-select-saved" data-host="${escapeHtml(s.host)}" data-port="${s.port}" data-password="${escapeHtml(s.password || '')}" style="padding: 2px 8px; font-size: 11px; height: 24px;">
-                            ${isSelected ? '✓ Selecionado' : 'Usar'}
+                            ${isSelected ? `✓ ${t('connection.selected')}` : t('connection.use')}
                           </button>
-                          <button type="button" class="btn-delete-saved-srv" data-host="${escapeHtml(s.host)}" data-port="${s.port}" title="Remover dos salvos">
+                          <button type="button" class="btn-delete-saved-srv" data-host="${escapeHtml(s.host)}" data-port="${s.port}" title="${t('connection.removeFromSaved')}">
                             <span class="material-symbols-outlined md-16">close</span>
                           </button>
                         </div>
@@ -224,29 +225,29 @@ export class ConnectionView {
             ` : ''}
 
             <div class="form-group">
-              <label>Seu Nickname</label>
-              <input id="join-nickname" type="text" placeholder="Ex: Murilo" value="${escapeHtml(savedNick)}" required minlength="2" maxlength="32">
+              <label>${t('connection.nicknameLabel')}</label>
+              <input id="join-nickname" type="text" placeholder="${t('connection.nicknamePlaceholder')}" value="${escapeHtml(savedNick)}" required minlength="2" maxlength="32">
             </div>
 
             <div class="form-row">
               <div class="form-group" style="flex: 2;">
-                <label>IP / Host do Servidor</label>
-                <input id="join-host" type="text" placeholder="127.0.0.1 ou IP público" value="${this.selectedSavedHost || '127.0.0.1'}" required>
+                <label>${t('connection.hostLabel')}</label>
+                <input id="join-host" type="text" placeholder="${t('connection.hostPlaceholder')}" value="${this.selectedSavedHost || '127.0.0.1'}" required>
               </div>
               <div class="form-group small-col">
-                <label>Porta</label>
+                <label>${t('connection.portLabel')}</label>
                 <input id="join-port" type="number" placeholder="3000" value="${this.selectedSavedPort || 3000}" required min="1024" max="65535">
               </div>
             </div>
 
             <div class="form-group">
-              <label>Senha do Servidor (opcional)</label>
+              <label>${t('connection.passwordLabel')}</label>
               <input id="join-password" type="password" placeholder="••••••••">
             </div>
 
             <button type="submit" id="btn-submit-join" class="btn btn-primary" style="width: 100%; margin-top: 8px;">
               <span class="material-symbols-outlined md-18" style="margin-right: 6px;">login</span>
-              Entrar no Servidor
+              ${t('connection.tabJoin')}
             </button>
           </form>
 
@@ -257,58 +258,58 @@ export class ConnectionView {
             <div id="host-create-toggle" style="margin-bottom: 10px;">
               <button type="button" id="btn-show-create-form" class="btn btn-secondary" style="width: 100%; padding: 8px 12px; font-size: 12px;">
                 <span class="material-symbols-outlined md-18" style="margin-right: 6px;">add_circle</span>
-                Criar Servidor
+                ${t('connection.createServer')}
               </button>
             </div>
 
             <div id="host-create-form-section" style="display: none;">
               <div style="display: flex; align-items: center; gap: 6px; font-size: 11px; font-weight: 700; color: var(--text-muted); text-transform: uppercase; margin-bottom: 10px;">
                 <span class="material-symbols-outlined md-14" style="color: var(--accent-primary);">add_circle</span>
-                Criar Novo Servidor
+                ${t('connection.createNewServer')}
               </div>
 
               <div style="background: rgba(88, 101, 242, 0.1); border: 1px solid rgba(88, 101, 242, 0.3); border-radius: var(--radius-md); padding: 10px 12px; font-size: 12px; color: var(--text-secondary); margin-bottom: 14px; line-height: 1.4; display: flex; gap: 8px; align-items: flex-start;">
                 <span class="material-symbols-outlined md-18" style="color: var(--accent-primary); flex-shrink: 0; margin-top: 1px;">info</span>
                 <div>
-                  <b>Como funciona:</b> Ao criar o servidor, ele roda na sua própria máquina e escuta em todas as suas interfaces de rede na porta escolhida. Seus amigos usam o seu IP (público ou de VPN) para entrar!
+                  ${t('connection.howItWorks')}
                 </div>
               </div>
 
               <div class="form-group">
-                <label>Seu Nickname (Anfitrião)</label>
-                <input id="host-nickname" type="text" placeholder="Ex: Murilo" value="${escapeHtml(savedNick)}" required minlength="2" maxlength="32">
+                <label>${t('connection.hostNicknameLabel')}</label>
+                <input id="host-nickname" type="text" placeholder="${t('connection.nicknamePlaceholder')}" value="${escapeHtml(savedNick)}" required minlength="2" maxlength="32">
               </div>
 
               <div class="form-group">
-                <label>Nome do Servidor</label>
-                <input id="host-name" type="text" placeholder="Ex: QG dos Amigos" value="Servidor dos Amigos" required minlength="2" maxlength="50">
+                <label>${t('connection.serverNameLabel')}</label>
+                <input id="host-name" type="text" placeholder="${t('connection.serverNamePlaceholder')}" value="${t('connection.serverNameDefault')}" required minlength="2" maxlength="50">
               </div>
 
               <div class="form-row">
                 <div class="form-group">
-                  <label>Porta Local</label>
+                  <label>${t('connection.localPortLabel')}</label>
                   <input id="host-port" type="number" value="3000" required min="1024" max="65535">
                 </div>
                 <div class="form-group">
-                  <label>Senha de Acesso</label>
-                  <input id="host-password" type="password" placeholder="Opcional">
+                  <label>${t('connection.accessPasswordLabel')}</label>
+                  <input id="host-password" type="password" placeholder="${t('connection.optional')}">
                 </div>
               </div>
 
               <div class="form-row">
                 <div class="form-group">
-                  <label>Canal de Texto</label>
+                  <label>${t('connection.textChannelLabel')}</label>
                   <input id="host-text-channel" type="text" value="geral" required>
                 </div>
                 <div class="form-group">
-                  <label>Canal de Voz</label>
+                  <label>${t('connection.voiceChannelLabel')}</label>
                   <input id="host-voice-channel" type="text" value="Geral" required>
                 </div>
               </div>
 
               <button type="submit" id="btn-submit-host" class="btn btn-primary" style="width: 100%; margin-top: 8px;">
                 <span class="material-symbols-outlined md-18" style="margin-right: 6px;">add_circle</span>
-                Criar e Iniciar Servidor
+                ${t('connection.createAndStart')}
               </button>
             </div>
           </form>
@@ -326,17 +327,17 @@ export class ConnectionView {
     await this.syncHostedServerStatus();
     if (this.isHostedServerRunning && window.api?.hostServerStop) {
       const confirmed = await showConfirm({
-        title: 'Servidor local já está em execução',
-        message: 'Deseja encerrar o servidor atual para iniciar este servidor salvo?',
-        confirmLabel: 'Trocar servidor',
-        cancelLabel: 'Cancelar',
+        title: t('connection.serverAlreadyRunningTitle'),
+        message: t('connection.serverAlreadyRunningMessage'),
+        confirmLabel: t('connection.switchServer'),
+        cancelLabel: t('common.cancel'),
         variant: 'warning',
       });
       if (!confirmed) return;
 
       const stopRes = await window.api.hostServerStop();
       if (!stopRes.success) {
-        throw new Error('Não foi possível encerrar o servidor local atual.');
+        throw new Error(t('connection.stopCurrentServerError'));
       }
 
       this.isHostedServerRunning = false;
@@ -353,7 +354,7 @@ export class ConnectionView {
       });
 
       if (!hostRes.success) {
-        throw new Error(hostRes.error || 'Falha ao iniciar servidor local');
+        throw new Error(hostRes.error || t('connection.startServerError'));
       }
     }
 
@@ -399,7 +400,7 @@ export class ConnectionView {
 
     const stopRes = await window.api.hostServerStop();
     if (!stopRes.success) {
-      throw new Error('Não foi possível encerrar o servidor local.');
+      throw new Error(t('connection.stopServerError'));
     }
 
     this.isHostedServerRunning = false;
@@ -411,12 +412,12 @@ export class ConnectionView {
   private async removeCreatedServer(server: CreatedServer): Promise<void> {
     const needsStop = this.isHostedServerRunning && this.runningCreatedServerId === server.id;
     const confirmed = await showConfirm({
-      title: 'Excluir servidor salvo',
+      title: t('connection.deleteSavedServer'),
       message: needsStop
-        ? `Deseja excluir "${server.name}"? O servidor local também será encerrado.`
-        : `Deseja excluir "${server.name}" da sua lista de servidores criados?`,
-      confirmLabel: 'Excluir',
-      cancelLabel: 'Cancelar',
+        ? t('connection.deleteRunningServerMessage', { name: server.name })
+        : t('connection.deleteServerMessage', { name: server.name }),
+      confirmLabel: t('common.delete'),
+      cancelLabel: t('common.cancel'),
       variant: 'danger',
     });
     if (!confirmed) return;
@@ -480,7 +481,7 @@ export class ConnectionView {
     ) as HTMLElement | null;
     if (!dot) return;
     dot.setAttribute('data-status', status);
-    dot.title = status === 'online' ? 'Servidor online' : 'Servidor offline';
+    dot.title = status === 'online' ? t('connection.serverOnline') : t('connection.serverOffline');
   }
 
   private renderServerPreview(
@@ -502,7 +503,7 @@ export class ConnectionView {
         const raw = u.avatarUrl && u.avatarUrl.startsWith('/avatars/')
           ? `http://${host}:${port}${u.avatarUrl}`
           : u.avatarUrl || getAvatarUrl(null);
-        const title = escapeHtml(u.nickname || 'Usuário');
+        const title = escapeHtml(u.nickname || t('connection.unknownUser'));
         return `<img class="preview-avatar" src="${raw}" title="${title}" onerror="this.src='${getAvatarUrl(null)}'">`;
       })
       .join('');
@@ -510,7 +511,7 @@ export class ConnectionView {
     node.innerHTML = `
       <div class="server-preview-row">
         <div class="preview-avatars">${avatars}</div>
-        <span class="preview-count">${count}${max ? `/${max}` : ''} online</span>
+        <span class="preview-count">${count}${max ? `/${max}` : ''} ${t('connection.online')}</span>
       </div>
     `;
   }
@@ -528,11 +529,11 @@ export class ConnectionView {
         <div style="font-size: 11px; font-weight: 700; color: var(--text-muted); text-transform: uppercase; margin-bottom: 8px; display: flex; justify-content: space-between; align-items: center;">
           <span style="display: flex; align-items: center; gap: 4px;">
             <span class="material-symbols-outlined md-14" style="color: #3ba55d;">wifi</span>
-            Servidores na Rede (${servers.length})
+            ${t('connection.lanServersCount', { count: servers.length })}
           </span>
           <button type="button" id="btn-scan-lan" class="btn btn-secondary" style="padding: 2px 10px; font-size: 10px; height: 22px;">
             <span class="material-symbols-outlined md-14" style="margin-right: 3px;">radar</span>
-            Buscar
+            ${t('connection.scan')}
           </button>
         </div>
         ${servers.length > 0 ? `
@@ -541,7 +542,7 @@ export class ConnectionView {
               <div class="saved-server-item">
                 <div style="display: flex; flex-direction: column; overflow: hidden;">
                   <span style="font-size: 13px; font-weight: 600; color: var(--text-primary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; display: flex; align-items: center; gap: 6px;">
-                    <span title="Servidor descoberto na rede" style="width: 9px; height: 9px; border-radius: 50%; background: #3ba55d; box-shadow: 0 0 0 2px rgba(59, 165, 93, 0.16); display: inline-block;"></span>
+                    <span title="${t('connection.discoveredOnLan')}" style="width: 9px; height: 9px; border-radius: 50%; background: #3ba55d; box-shadow: 0 0 0 2px rgba(59, 165, 93, 0.16); display: inline-block;"></span>
                     <span class="material-symbols-outlined md-16" style="color: #3ba55d;">lan</span>
                     ${escapeHtml(server.serverName)}
                   </span>
@@ -554,14 +555,14 @@ export class ConnectionView {
                   data-port="${server.port}"
                   style="padding: 2px 10px; font-size: 11px; height: 28px; flex-shrink: 0;"
                 >
-                  Entrar
+                  ${t('connection.join')}
                 </button>
               </div>
             `).join('')}
           </div>
         ` : `
           <div style="padding: 8px 12px; border: 1px dashed rgba(255, 255, 255, 0.12); border-radius: var(--radius-md); color: var(--text-muted); font-size: 12px;">
-            Clique em "Buscar" para procurar servidores na rede local.
+            ${t('connection.scanHint', { button: t('connection.scan') })}
           </div>
         `}
       </div>
@@ -584,7 +585,7 @@ export class ConnectionView {
     const scanBtn = this.container.querySelector('#btn-scan-lan') as HTMLButtonElement | null;
     scanBtn?.addEventListener('click', async () => {
       scanBtn.disabled = true;
-      scanBtn.innerHTML = '<span class="material-symbols-outlined md-14" style="margin-right: 3px;">radar</span> Buscando...';
+      scanBtn.innerHTML = `<span class="material-symbols-outlined md-14" style="margin-right: 3px;">radar</span> ${t('connection.scanning')}`;
       this.discoveredServers.clear();
       this.renderDiscoveredServersSection();
       await window.api?.startLanDiscovery?.();
@@ -593,7 +594,7 @@ export class ConnectionView {
         const btn2 = this.container.querySelector('#btn-scan-lan') as HTMLButtonElement | null;
         if (btn2) {
           btn2.disabled = false;
-          btn2.innerHTML = '<span class="material-symbols-outlined md-14" style="margin-right: 3px;">radar</span> Buscar';
+          btn2.innerHTML = `<span class="material-symbols-outlined md-14" style="margin-right: 3px;">radar</span> ${t('connection.scan')}`;
         }
       }, 5000);
     });
@@ -670,10 +671,10 @@ export class ConnectionView {
       await window.api?.stopLanDiscovery?.();
       await window.api?.maximizeWindow?.();
     } catch (err: any) {
-      this.showError(err.message || 'Não foi possível conectar ao servidor. Verifique o IP, porta e senha.');
+      this.showError(err.message || t('connection.connectError'));
     } finally {
       btn.disabled = false;
-      btn.innerHTML = `<span class="material-symbols-outlined md-18" style="margin-right: 6px;">login</span> Entrar no Servidor`;
+      btn.innerHTML = `<span class="material-symbols-outlined md-18" style="margin-right: 6px;">login</span> ${t('connection.tabJoin')}`;
     }
   }
 
@@ -718,8 +719,8 @@ export class ConnectionView {
         const visible = section.style.display !== 'none';
         section.style.display = visible ? 'none' : 'block';
         toggleBtn.innerHTML = visible
-          ? '<span class="material-symbols-outlined md-18" style="margin-right: 6px;">add_circle</span> Criar Servidor'
-          : '<span class="material-symbols-outlined md-18" style="margin-right: 6px;">close</span> Cancelar';
+          ? `<span class="material-symbols-outlined md-18" style="margin-right: 6px;">add_circle</span> ${t('connection.createServer')}`
+          : `<span class="material-symbols-outlined md-18" style="margin-right: 6px;">close</span> ${t('common.cancel')}`;
       }
     });
 
@@ -734,7 +735,7 @@ export class ConnectionView {
         if (!server) return;
 
         if (nickname.length < 2) {
-          this.showError('Informe seu nickname de anfitrião antes de iniciar um servidor salvo.');
+          this.showError(t('connection.hostNicknameRequired'));
           hostNickInput?.focus();
           return;
         }
@@ -749,7 +750,7 @@ export class ConnectionView {
           await window.api?.stopLanDiscovery?.();
         } catch (err: any) {
           this.render();
-          this.showError(err.message || 'Erro ao iniciar o servidor salvo.');
+          this.showError(err.message || t('connection.startSavedServerError'));
           return;
         } finally {
           if (button.isConnected) {
@@ -774,7 +775,7 @@ export class ConnectionView {
           await this.stopHostedServer(btn.getAttribute('data-created-server-id') || undefined);
           this.render();
         } catch (err: any) {
-          this.showError(err.message || 'Erro ao encerrar o servidor local.');
+          this.showError(err.message || t('connection.stopServerError'));
           if (button.isConnected) {
             button.disabled = false;
             button.innerHTML = originalHtml;
@@ -796,7 +797,7 @@ export class ConnectionView {
         try {
           await this.removeCreatedServer(server);
         } catch (err: any) {
-          this.showError(err.message || 'Erro ao excluir o servidor salvo.');
+          this.showError(err.message || t('connection.deleteServerError'));
         }
       });
     });
@@ -896,7 +897,7 @@ export class ConnectionView {
 
       const btn = document.getElementById('btn-submit-host') as HTMLButtonElement;
       btn.disabled = true;
-      btn.innerText = 'Iniciando servidor local...';
+      btn.innerText = t('connection.startingServer');
 
       try {
         const now = Date.now();
@@ -922,11 +923,11 @@ export class ConnectionView {
         await window.api?.stopLanDiscovery?.();
       } catch (err: any) {
         this.render();
-        this.showError(err.message || 'Erro ao criar e conectar ao servidor local.');
+        this.showError(err.message || t('connection.createServerError'));
       } finally {
         if (btn.isConnected) {
           btn.disabled = false;
-          btn.innerHTML = `<span class="material-symbols-outlined md-18" style="margin-right: 6px;">add_circle</span> Criar e Iniciar Servidor`;
+          btn.innerHTML = `<span class="material-symbols-outlined md-18" style="margin-right: 6px;">add_circle</span> ${t('connection.createServerButton')}`;
         }
       }
     });

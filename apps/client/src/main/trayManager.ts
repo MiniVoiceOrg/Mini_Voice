@@ -1,6 +1,7 @@
 import { app, BrowserWindow, Menu, NativeImage, nativeImage, Tray } from 'electron';
 import fs from 'fs';
 import path from 'path';
+import { mt } from './i18n';
 
 export interface VoiceStatus {
   inCall: boolean;
@@ -111,6 +112,14 @@ export class TrayManager {
     this.updateTray();
   }
 
+  /**
+   * Rebuilds the tooltip and context menu. The tray labels are built once per
+   * update, so switching languages has to trigger a redraw explicitly (#16).
+   */
+  public refresh(): void {
+    this.updateTray();
+  }
+
   private updateTray(): void {
     if (!this.tray || this.tray.isDestroyed()) return;
 
@@ -120,19 +129,19 @@ export class TrayManager {
 
     if (!this.voiceStatus.inCall) {
       currentIcon = this.appLogoImage || this.micIdleImage;
-      tooltip = 'Monky';
+      tooltip = mt('tray.tooltipIdle');
     } else if (this.voiceStatus.isDeafened) {
       currentIcon = this.deafenedImage;
-      tooltip = 'Monky (Áudio Mutado / Ensurdecido)';
+      tooltip = mt('tray.tooltipDeafened');
     } else if (this.voiceStatus.isMuted) {
       currentIcon = this.micMutedImage;
-      tooltip = 'Monky (Microfone Mutado)';
+      tooltip = mt('tray.tooltipMuted');
     } else if (this.voiceStatus.isSpeaking) {
       currentIcon = this.micSpeakingImage;
-      tooltip = 'Monky (Microfone Ativo — Falando)';
+      tooltip = mt('tray.tooltipSpeaking');
     } else {
       currentIcon = this.micIdleImage;
-      tooltip = 'Monky (Em Chamada)';
+      tooltip = mt('tray.tooltipInCall');
     }
 
     this.tray.setImage(currentIcon);
@@ -141,7 +150,7 @@ export class TrayManager {
     // 2. Build context menu
     const menuTemplate: Electron.MenuItemConstructorOptions[] = [
       {
-        label: 'Abrir Monky',
+        label: mt('tray.open'),
         click: () => this.showWindow(),
       },
     ];
@@ -152,7 +161,7 @@ export class TrayManager {
       // Mute / Unmute Microphone
       const isMuted = this.voiceStatus.isMuted;
       menuTemplate.push({
-        label: isMuted ? 'Desmutar Microfone' : 'Mutar Microfone',
+        label: isMuted ? mt('tray.unmuteMic') : mt('tray.muteMic'),
         click: () => {
           if (this.mainWindow && !this.mainWindow.isDestroyed()) {
             this.mainWindow.webContents.send('tray:toggle-mute');
@@ -163,7 +172,7 @@ export class TrayManager {
       // Deafen / Undeafen Audio (mutes both audio & mic, same as app behavior)
       const isDeafened = this.voiceStatus.isDeafened;
       menuTemplate.push({
-        label: isDeafened ? 'Desmutar Áudio (Ouvir)' : 'Mutar Áudio (Ensurdecer)',
+        label: isDeafened ? mt('tray.undeafen') : mt('tray.deafen'),
         click: () => {
           if (this.mainWindow && !this.mainWindow.isDestroyed()) {
             this.mainWindow.webContents.send('tray:toggle-deafen');
@@ -174,7 +183,7 @@ export class TrayManager {
 
     menuTemplate.push({ type: 'separator' });
     menuTemplate.push({
-      label: 'Fechar Monky',
+      label: mt('tray.quit'),
       click: () => {
         this.onQuitApp();
       },

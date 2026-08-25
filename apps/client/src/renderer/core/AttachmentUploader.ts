@@ -1,5 +1,6 @@
 import { AttachmentMeta, ChatUploadTokenPayload, MessageType } from '@monky/shared';
 import { networkClient } from './NetworkClient';
+import { t } from '../i18n';
 
 export interface UploadHandle {
   /** Resolves with the finalized attachment metadata once stored on the host. */
@@ -27,10 +28,10 @@ export function uploadAttachment(
 
   const promise = (async (): Promise<AttachmentMeta> => {
     const token = await requestUploadToken(channelId);
-    if (cancelled) throw new Error('Upload cancelado');
+    if (cancelled) throw new Error(t('upload.cancelled'));
 
     const base = networkClient.getHttpBaseUrl();
-    if (!base) throw new Error('Sem conexão com o servidor');
+    if (!base) throw new Error(t('upload.noConnection'));
 
     const url = `${base}/attachments?token=${encodeURIComponent(token)}&name=${encodeURIComponent(file.name)}`;
 
@@ -81,7 +82,7 @@ async function requestUploadToken(channelId: string): Promise<string> {
     MessageType.CHAT_REQUEST_UPLOAD_TOKEN,
     { channelId }
   );
-  if (!reply?.token) throw new Error('Não foi possível obter autorização de upload');
+  if (!reply?.token) throw new Error(t('upload.tokenFailed'));
   return reply.token;
 }
 
@@ -90,12 +91,12 @@ function mapUploadError(status: number, body: unknown): string {
   if (b?.message) return b.message;
   switch (status) {
     case 413:
-      return 'Arquivo maior que o limite permitido pelo servidor';
+      return t('upload.tooLarge');
     case 507:
-      return 'Armazenamento do servidor cheio';
+      return t('upload.storageFull');
     case 401:
-      return 'Autorização de upload expirada, tente novamente';
+      return t('upload.tokenExpired');
     default:
-      return 'Falha ao enviar o arquivo';
+      return t('upload.failed');
   }
 }

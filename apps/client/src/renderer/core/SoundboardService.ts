@@ -4,6 +4,7 @@ import { networkClient } from './NetworkClient';
 import { settingsStore } from '../stores/settingsStore';
 import { voiceStore } from '../stores/voiceStore';
 import { serverStore } from '../stores/serverStore';
+import { t } from '../i18n';
 
 export interface SoundItem {
   name: string;
@@ -13,12 +14,17 @@ export interface SoundItem {
   ext: string;
 }
 
+export interface ActiveSoundPlayback {
+  userId: string;
+  userName?: string;
+  soundName: string;
+  audio: HTMLAudioElement;
+}
+
 export class SoundboardService {
   private sounds: SoundItem[] = [];
-  private audioContext: AudioContext | null = null;
   private sinkId: string = '';
-  private currentAudio: HTMLAudioElement | null = null;
-  private currentSoundName: string | null = null;
+  private activePlaybacks: Map<string, ActiveSoundPlayback> = new Map();
 
   private isCapturingKey: boolean = false;
 
@@ -83,6 +89,11 @@ export class SoundboardService {
 
   public setSinkId(sinkId: string): void {
     this.sinkId = sinkId;
+    for (const playback of this.activePlaybacks.values()) {
+      if (typeof (playback.audio as any).setSinkId === 'function') {
+        (playback.audio as any).setSinkId(sinkId).catch(() => {});
+      }
+    }
   }
 
   public async loadSounds(): Promise<SoundItem[]> {
@@ -110,28 +121,69 @@ export class SoundboardService {
     return this.sounds;
   }
 
-  public getCurrentPlayback(): { soundName: string | null; isPlaying: boolean; currentTime: number; duration: number } {
+  public getPlayingSoundNames(): Set<string> {
+    const active = new Set<string>();
+    for (const p of this.activePlaybacks.values()) {
+      if (!p.audio.paused && !p.audio.ended) {
+        active.add(p.soundName);
+      }
+    }
+    return active;
+  }
+
+  public getActivePlaybacks(): ActiveSoundPlayback[] {
+    return Array.from(this.activePlaybacks.values()).filter(
+      (p) => !p.audio.paused && !p.audio.ended
+    );
+  }
+
+  public getCurrentPlayback(): {
+    soundName: string | null;
+    isPlaying: boolean;
+    currentTime: number;
+    duration: number;
+    activeCount: number;
+  } {
+    const active = this.getActivePlaybacks();
+    const latest = active[active.length - 1];
     return {
-      soundName: this.currentSoundName,
-      isPlaying: !!this.currentAudio && !this.currentAudio.paused,
-      currentTime: this.currentAudio?.currentTime || 0,
-      duration: this.currentAudio?.duration || 0,
+      soundName: latest ? latest.soundName : null,
+      isPlaying: active.length > 0,
+      currentTime: latest?.audio.currentTime || 0,
+      duration: latest?.audio.duration || 0,
+      activeCount: active.length,
     };
   }
 
-  public stopSound(): void {
-    if (this.currentAudio) {
+  public stopSoundForUser(userId: string): void {
+    const existing = this.activePlaybacks.get(userId);
+    if (existing) {
       try {
-        this.currentAudio.pause();
-        this.currentAudio.currentTime = 0;
+        existing.audio.pause();
+        existing.audio.currentTime = 0;
+      } catch (err) {
+        console.warn('[SoundboardService] Error stopping user audio:', err);
+      }
+      this.activePlaybacks.delete(userId);
+      appEvents.emit('soundboard.playback_ended', { userId, soundName: existing.soundName });
+    }
+  }
+
+  public stopSound(userId?: string): void {
+    if (userId) {
+      this.stopSoundForUser(userId);
+      return;
+    }
+    for (const [uid, playback] of Array.from(this.activePlaybacks.entries())) {
+      try {
+        playback.audio.pause();
+        playback.audio.currentTime = 0;
       } catch (err) {
         console.warn('[SoundboardService] Error stopping audio:', err);
       }
-      const soundName = this.currentSoundName || '';
-      this.currentAudio = null;
-      this.currentSoundName = null;
-      appEvents.emit('soundboard.playback_ended', { soundName });
+      appEvents.emit('soundboard.playback_ended', { userId: uid, soundName: playback.soundName });
     }
+    this.activePlaybacks.clear();
   }
 
   public async selectFolder(): Promise<string | null> {
@@ -185,23 +237,31 @@ export class SoundboardService {
     }
   }
 
-  private playAudioInstance(audio: HTMLAudioElement, soundName: string): void {
-    // Stop any previously playing sound
-    this.stopSound();
-
-    this.currentAudio = audio;
-    this.currentSoundName = soundName;
+  private playAudioForUser(
+    audio: HTMLAudioElement,
+    userId: string,
+    userName: string | undefined,
+    soundName: string
+  ): void {
+    const playback: ActiveSoundPlayback = {
+      userId,
+      userName,
+      soundName,
+      audio,
+    };
+    this.activePlaybacks.set(userId, playback);
 
     const cleanup = () => {
-      if (this.currentAudio === audio) {
-        this.currentAudio = null;
-        this.currentSoundName = null;
-        appEvents.emit('soundboard.playback_ended', { soundName });
+      if (this.activePlaybacks.get(userId)?.audio === audio) {
+        this.activePlaybacks.delete(userId);
+        appEvents.emit('soundboard.playback_ended', { userId, soundName });
       }
     };
 
     audio.addEventListener('play', () => {
       appEvents.emit('soundboard.playback_started', {
+        userId,
+        userName,
         soundName,
         duration: audio.duration || 0,
       });
@@ -212,6 +272,8 @@ export class SoundboardService {
       const currentTime = audio.currentTime || 0;
       const percent = duration > 0 ? (currentTime / duration) * 100 : 0;
       appEvents.emit('soundboard.playback_progress', {
+        userId,
+        userName,
         soundName,
         currentTime,
         duration,
@@ -241,6 +303,8 @@ export class SoundboardService {
         return;
       }
 
+      this.stopSoundForUser('local');
+
       const audio = new Audio(soundData.dataUrl);
       audio.volume = Math.max(0, Math.min(1, settingsStore.soundboardVolume / 100));
 
@@ -248,7 +312,7 @@ export class SoundboardService {
         (audio as any).setSinkId(this.sinkId).catch(() => {});
       }
 
-      this.playAudioInstance(audio, soundData.soundName);
+      this.playAudioForUser(audio, 'local', t('common.you'), soundData.soundName);
     } catch (err) {
       console.warn('[SoundboardService] Local preview failed:', err);
     }
@@ -261,6 +325,12 @@ export class SoundboardService {
     if (settingsStore.soundboardMuted || settingsStore.soundboardVolume <= 0) {
       return;
     }
+
+    const userId = payload.userId || 'unknown';
+
+    // Per #156: If the SAME user triggers another sound, interrupt and replace their own previous sound.
+    // Different users play their sounds concurrently at the same time.
+    this.stopSoundForUser(userId);
 
     try {
       const dataUrl = payload.audioBase64.startsWith('data:')
@@ -275,7 +345,7 @@ export class SoundboardService {
         (audio as any).setSinkId(targetSink).catch(() => {});
       }
 
-      this.playAudioInstance(audio, payload.soundName);
+      this.playAudioForUser(audio, userId, payload.userName, payload.soundName);
     } catch (err) {
       console.warn('[SoundboardService] Failed to play incoming soundboard audio:', err);
     }
