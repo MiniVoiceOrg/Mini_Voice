@@ -270,40 +270,40 @@ npm install -g ./apps/server
 ### Configuração inicial com o CLI
 
 Toda administração do servidor em VPS é feita pelo **Monky CLI**. Depois do
-`npm install -g ./apps/server`, use o comando `monky`. Primeiro, faça o
-bootstrap para definir o dono/admin inicial do servidor:
+`npm install -g ./apps/server`, use o comando `monky` de qualquer lugar.
+
+O CLI é **interativo** — basta executar o comando e ele faz as perguntas
+necessárias:
 
 ```bash
-# Bootstrap: define o owner usando seu código de identidade exportado
-monky bootstrap --identity "MONKY-ID:1:..." --data ./data
-
-# Configurar o servidor
-monky config set name "Servidor dos Amigos" --data ./data
-monky config set password "minhasenha" --data ./data
+# Configura tudo: dono, nome do servidor, porta, senha...
+monky bootstrap
 ```
 
-### Iniciar o servidor
+O bootstrap pergunta passo a passo: código de identidade, senha, nickname,
+nome do servidor, porta e senha do servidor. Ao final, oferece iniciar o
+servidor automaticamente.
+
+### Iniciar / parar o servidor
 
 ```bash
-monky start --data ./data --port 3001
+monky start    # inicia o servidor
+monky stop     # para o servidor
 ```
 
 Depois, seus amigos entram normalmente usando o **IP do VPS** e a porta.
 
 ### Administração
 
-Use o CLI para gerenciar membros, cargos e configurações sem precisar abrir o
-cliente gráfico:
+Use o CLI para gerenciar membros, cargos e configurações. Todos os comandos
+são interativos — se não passar argumentos, ele pergunta:
 
 ```bash
-# Listar membros
-monky members --data ./data
-
-# Promover alguém a admin
-monky admin add "NicknameDoUsuario" --data ./data
-
-# Ver todas as opções
-monky --help
+monky members          # lista membros
+monky admin add        # mostra lista de membros pra escolher
+monky roles create     # cria cargo interativamente
+monky config set       # menu de configurações
+monky --help           # todas as opções
 ```
 
 ➡️ Documentação completa do CLI: [docs/CLI.md](docs/CLI.md)

@@ -268,40 +268,40 @@ npm install -g ./apps/server
 ### Initial setup with the CLI
 
 All VPS server administration is done through the **Monky CLI**. After
-`npm install -g ./apps/server`, use the `monky` command. First, bootstrap to
-set the initial owner/admin:
+`npm install -g ./apps/server`, use the `monky` command from anywhere.
+
+The CLI is **interactive** — just run the command and it asks the necessary
+questions:
 
 ```bash
-# Bootstrap: set the owner using your exported identity code
-monky bootstrap --identity "MONKY-ID:1:..." --data ./data
-
-# Configure the server
-monky config set name "Friends Server" --data ./data
-monky config set password "mypassword" --data ./data
+# Configures everything: owner, server name, port, password...
+monky bootstrap
 ```
 
-### Starting the server
+The bootstrap asks step by step: identity code, password, nickname, server
+name, port and server password. At the end, it offers to start the server
+automatically.
+
+### Starting / stopping the server
 
 ```bash
-monky start --data ./data --port 3001
+monky start    # start the server
+monky stop     # stop the server
 ```
 
 After that, your friends join normally using the **VPS IP** and the port.
 
 ### Administration
 
-Use the CLI to manage members, roles and settings without needing the graphical
-client:
+Use the CLI to manage members, roles and settings. All commands are
+interactive — if you don't pass arguments, it asks:
 
 ```bash
-# List members
-monky members --data ./data
-
-# Promote someone to admin
-monky admin add "Username" --data ./data
-
-# See all options
-monky --help
+monky members          # list members
+monky admin add        # shows member list to pick from
+monky roles create     # create role interactively
+monky config set       # configuration menu
+monky --help           # all options
 ```
 
 ➡️ Full CLI documentation: [docs/CLI.md](docs/CLI.md)
