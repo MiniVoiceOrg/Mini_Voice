@@ -10,6 +10,55 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  docs-sync:
+    name: Docs traduzidos em sincronia
+    runs-on: ubuntu-latest
+    # Documentacao aqui deriva: ja aconteceu com o caminho de Configuracoes no
+    # template de bug e com as colunas do board no AGENTS.md. Com README e
+    # CONTRIBUTING em dois idiomas a superficie dobra, entao o CI cobra o par.
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Conferir pares PT/EN
+        env:
+          BASE: ${{ github.event.pull_request.base.sha }}
+          HEAD: ${{ github.event.pull_request.head.sha }}
+        shell: bash
+        run: |
+          if [ -z "$BASE" ]; then
+            echo "Sem contexto de PR (execucao manual) — nada a conferir."
+            exit 0
+          fi
+          changed=$(git diff --name-only "$BASE" "$HEAD")
+          echo "Arquivos alterados:"; echo "$changed" | sed 's/^/  /'
+
+          fail=0
+          check_pair() {
+            local pt="$1" en="$2"
+            local pt_changed en_changed
+            pt_changed=$(echo "$changed" | grep -Fx "$pt" || true)
+            en_changed=$(echo "$changed" | grep -Fx "$en" || true)
+            if [ -n "$pt_changed" ] && [ -z "$en_changed" ]; then
+              echo "::error file=$pt::$pt mudou mas $en nao. Atualize a traducao no mesmo PR."
+              fail=1
+            fi
+            if [ -n "$en_changed" ] && [ -z "$pt_changed" ]; then
+              echo "::error file=$en::$en mudou mas $pt nao. Atualize a versao em portugues no mesmo PR."
+              fail=1
+            fi
+          }
+
+          check_pair "README.md" "README.en.md"
+          check_pair "CONTRIBUTING.md" "CONTRIBUTING.en.md"
+
+          if [ "$fail" -eq 0 ]; then
+            echo "Pares PT/EN consistentes."
+          fi
+          exit $fail
+
   build:
     name: Build check (${{ matrix.platform }})
     strategy:

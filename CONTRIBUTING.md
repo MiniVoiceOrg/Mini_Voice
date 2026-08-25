@@ -1,5 +1,7 @@
 # Contribuindo com o Monky
 
+***Português** · [English](CONTRIBUTING.en.md)*
+
 Obrigado pelo interesse! Este documento explica como propor ideias, votar no que
 vem primeiro e — se você quiser codar — como abrir um PR que entra sem atrito.
 

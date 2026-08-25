@@ -9,6 +9,8 @@
     <a href="https://github.com/MonkyOrg/Monky/actions/workflows/ci.yml"><img alt="CI" src="https://github.com/MonkyOrg/Monky/actions/workflows/ci.yml/badge.svg"></a>
     <a href="https://github.com/MonkyOrg/Monky/discussions/categories/ideias"><img alt="Ideias" src="https://img.shields.io/badge/ideias-vote%20aqui-orange"></a>
   </p>
+
+  <p><b>Português</b> · <a href="README.en.md">English</a></p>
 </div>
 
 ---
