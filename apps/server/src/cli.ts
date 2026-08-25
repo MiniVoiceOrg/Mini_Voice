@@ -166,11 +166,86 @@ async function ask(question: string, defaultValue?: string): Promise<string> {
   });
 }
 
-async function askChoice(question: string, choices: string[]): Promise<string> {
-  if (choices.length === 0) {
-    throw new Error('Nenhuma opção disponível.');
+function renderChoiceList(choices: string[], cursor: number, selected?: Set<number>): void {
+  const stdout = process.stdout;
+  for (let i = 0; i < choices.length; i++) {
+    const isCursor = i === cursor;
+    const prefix = selected
+      ? (selected.has(i) ? (isCursor ? '❯ ✔ ' : '  ✔ ') : (isCursor ? '❯   ' : '    '))
+      : (isCursor ? '❯ ' : '  ');
+    const line = `${prefix}${choices[i]}`;
+    stdout.write(isCursor ? color(line, ANSI.cyan) : `${ANSI.dim}${line}${ANSI.reset}`);
+    stdout.write('\n');
   }
+}
 
+function clearLines(count: number): void {
+  const stdout = process.stdout;
+  for (let i = 0; i < count; i++) {
+    stdout.write('\u001b[1A\u001b[2K');
+  }
+}
+
+async function askChoiceArrows(question: string, choices: string[]): Promise<string> {
+  const stdin = process.stdin;
+  const stdout = process.stdout;
+
+  stdout.write(`${color(question, ANSI.bold)}\n`);
+  stdout.write(color('  Use ↑↓ para navegar, Enter para selecionar\n', ANSI.dim));
+
+  let cursor = 0;
+  renderChoiceList(choices, cursor);
+
+  return new Promise((resolve, reject) => {
+    stdin.resume();
+    stdin.setEncoding('utf8');
+    stdin.setRawMode(true);
+
+    const cleanup = () => {
+      stdin.setRawMode(false);
+      stdin.pause();
+      stdin.removeListener('data', onData);
+    };
+
+    const onData = (data: string) => {
+      if (data === '\u0003') {
+        cleanup();
+        reject(new Error('Operação cancelada.'));
+        return;
+      }
+      if (data === '\r' || data === '\n') {
+        cleanup();
+        clearLines(choices.length);
+        stdout.write(`${color('❯', ANSI.cyan)} ${choices[cursor]}\n`);
+        resolve(choices[cursor]);
+        return;
+      }
+      if (data === '\u001b[A' || data === 'k') {
+        clearLines(choices.length);
+        cursor = (cursor - 1 + choices.length) % choices.length;
+        renderChoiceList(choices, cursor);
+        return;
+      }
+      if (data === '\u001b[B' || data === 'j') {
+        clearLines(choices.length);
+        cursor = (cursor + 1) % choices.length;
+        renderChoiceList(choices, cursor);
+        return;
+      }
+      const numeric = Number.parseInt(data, 10);
+      if (Number.isInteger(numeric) && numeric >= 1 && numeric <= choices.length) {
+        cleanup();
+        clearLines(choices.length);
+        stdout.write(`${color('❯', ANSI.cyan)} ${choices[numeric - 1]}\n`);
+        resolve(choices[numeric - 1]);
+      }
+    };
+
+    stdin.on('data', onData);
+  });
+}
+
+async function askChoiceFallback(question: string, choices: string[]): Promise<string> {
   console.log(question);
   choices.forEach((choice, index) => {
     console.log(`  ${index + 1}. ${choice}`);
@@ -182,14 +257,20 @@ async function askChoice(question: string, choices: string[]): Promise<string> {
     if (Number.isInteger(numeric) && numeric >= 1 && numeric <= choices.length) {
       return choices[numeric - 1];
     }
-
     const direct = choices.find((choice) => choice.toLowerCase() === answer.toLowerCase());
-    if (direct) {
-      return direct;
-    }
-
+    if (direct) return direct;
     console.log(color('Opção inválida. Tente novamente.', ANSI.yellow));
   }
+}
+
+async function askChoice(question: string, choices: string[]): Promise<string> {
+  if (choices.length === 0) {
+    throw new Error('Nenhuma opção disponível.');
+  }
+  if (process.stdin.isTTY) {
+    return askChoiceArrows(question, choices);
+  }
+  return askChoiceFallback(question, choices);
 }
 
 async function confirm(question: string, defaultYes: boolean = true): Promise<boolean> {
@@ -203,7 +284,84 @@ async function confirm(question: string, defaultYes: boolean = true): Promise<bo
   }
 }
 
-async function askMultiChoice(question: string, choices: string[]): Promise<string[]> {
+async function askMultiChoiceArrows(question: string, choices: string[]): Promise<string[]> {
+  const stdin = process.stdin;
+  const stdout = process.stdout;
+
+  stdout.write(`${color(question, ANSI.bold)}\n`);
+  stdout.write(color('  Use ↑↓ para navegar, Espaço para marcar/desmarcar, Enter para confirmar\n', ANSI.dim));
+
+  let cursor = 0;
+  const selected = new Set<number>();
+  renderChoiceList(choices, cursor, selected);
+
+  return new Promise((resolve, reject) => {
+    stdin.resume();
+    stdin.setEncoding('utf8');
+    stdin.setRawMode(true);
+
+    const cleanup = () => {
+      stdin.setRawMode(false);
+      stdin.pause();
+      stdin.removeListener('data', onData);
+    };
+
+    const onData = (data: string) => {
+      if (data === '\u0003') {
+        cleanup();
+        reject(new Error('Operação cancelada.'));
+        return;
+      }
+      if (data === '\r' || data === '\n') {
+        cleanup();
+        clearLines(choices.length);
+        const result = choices.filter((_, i) => selected.has(i));
+        if (result.length) {
+          stdout.write(`${color('✔', ANSI.green)} ${result.join(', ')}\n`);
+        } else {
+          stdout.write(`${color('—', ANSI.dim)} nenhuma selecionada\n`);
+        }
+        resolve(result);
+        return;
+      }
+      if (data === '\u001b[A' || data === 'k') {
+        clearLines(choices.length);
+        cursor = (cursor - 1 + choices.length) % choices.length;
+        renderChoiceList(choices, cursor, selected);
+        return;
+      }
+      if (data === '\u001b[B' || data === 'j') {
+        clearLines(choices.length);
+        cursor = (cursor + 1) % choices.length;
+        renderChoiceList(choices, cursor, selected);
+        return;
+      }
+      if (data === ' ') {
+        clearLines(choices.length);
+        if (selected.has(cursor)) {
+          selected.delete(cursor);
+        } else {
+          selected.add(cursor);
+        }
+        renderChoiceList(choices, cursor, selected);
+        return;
+      }
+      if (data === 'a') {
+        clearLines(choices.length);
+        if (selected.size === choices.length) {
+          selected.clear();
+        } else {
+          choices.forEach((_, i) => selected.add(i));
+        }
+        renderChoiceList(choices, cursor, selected);
+      }
+    };
+
+    stdin.on('data', onData);
+  });
+}
+
+async function askMultiChoiceFallback(question: string, choices: string[]): Promise<string[]> {
   console.log(question);
   choices.forEach((choice, index) => {
     console.log(`  ${index + 1}. [ ] ${choice}`);
@@ -216,31 +374,33 @@ async function askMultiChoice(question: string, choices: string[]): Promise<stri
       return [];
     }
 
-    const selected = new Set<string>();
+    const result = new Set<string>();
     let valid = true;
     for (const token of answer.split(',').map((item) => item.trim()).filter(Boolean)) {
       const numeric = Number.parseInt(token, 10);
       if (Number.isInteger(numeric) && numeric >= 1 && numeric <= choices.length) {
-        selected.add(choices[numeric - 1]);
+        result.add(choices[numeric - 1]);
         continue;
       }
-
       const direct = choices.find((choice) => choice.toLowerCase() === token.toLowerCase());
       if (direct) {
-        selected.add(direct);
+        result.add(direct);
         continue;
       }
-
       valid = false;
       break;
     }
 
-    if (valid) {
-      return [...selected];
-    }
-
+    if (valid) return [...result];
     console.log(color('Seleção inválida. Use números separados por vírgula.', ANSI.yellow));
   }
+}
+
+async function askMultiChoice(question: string, choices: string[]): Promise<string[]> {
+  if (process.stdin.isTTY) {
+    return askMultiChoiceArrows(question, choices);
+  }
+  return askMultiChoiceFallback(question, choices);
 }
 
 async function promptPassword(question: string): Promise<string> {
@@ -550,19 +710,9 @@ async function selectUser(ctx: CliContext, question: string, query?: string): Pr
     throw new Error('Nenhum membro registrado.');
   }
 
-  console.log(question);
-  users.forEach((user, index) => {
-    console.log(`  ${index + 1}. ${user.nickname} (${user.clientId})`);
-  });
-
-  while (true) {
-    const answer = await ask('Selecione o membro (número)');
-    const numeric = Number.parseInt(answer, 10);
-    if (Number.isInteger(numeric) && numeric >= 1 && numeric <= users.length) {
-      return users[numeric - 1];
-    }
-    console.log(color('Seleção inválida. Tente novamente.', ANSI.yellow));
-  }
+  const labels = users.map((u) => `${u.nickname} (${u.clientId})`);
+  const selected = await askChoice(question, labels);
+  return users[labels.indexOf(selected)];
 }
 
 async function selectRole(
@@ -580,19 +730,9 @@ async function selectRole(
     throw new Error('Nenhum cargo cadastrado.');
   }
 
-  console.log(question);
-  roles.forEach((role, index) => {
-    console.log(`  ${index + 1}. ${role.name} (${role.id})`);
-  });
-
-  while (true) {
-    const answer = await ask('Selecione o cargo (número)');
-    const numeric = Number.parseInt(answer, 10);
-    if (Number.isInteger(numeric) && numeric >= 1 && numeric <= roles.length) {
-      return roles[numeric - 1];
-    }
-    console.log(color('Seleção inválida. Tente novamente.', ANSI.yellow));
-  }
+  const labels = roles.map((r) => `${r.name} (${r.id})`);
+  const selected = await askChoice(question, labels);
+  return roles[labels.indexOf(selected)];
 }
 
 async function changeAdminRole(ctx: CliContext, query: string, assign: boolean): Promise<void> {
