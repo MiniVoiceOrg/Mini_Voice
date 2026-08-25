@@ -1,7 +1,14 @@
-name: 🐛 Reportar um bug
-description: Algo no Monky não funciona como deveria.
-labels: ['bug']
+title: '[Bug]: '
 body:
+  - type: markdown
+    attributes:
+      value: |
+        Relate o problema aqui. Depois que alguém confirmar que reproduz, ele
+        vira uma issue e entra na fila de correção.
+
+        > **Não há votação em bug.** Esta categoria existe para triagem, não
+        > para disputa de popularidade — um problema confirmado é corrigido
+        > independente de quantas pessoas votaram nele.
   - type: textarea
     id: descricao
     attributes:

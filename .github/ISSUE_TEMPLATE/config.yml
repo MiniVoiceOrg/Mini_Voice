@@ -1,5 +1,8 @@
 blank_issues_enabled: true
 contact_links:
+  - name: 🐛 Reportar um bug
+    url: https://github.com/MonkyOrg/Monky/discussions/new?category=bug-reports
+    about: Bugs começam em Discussions. Depois de confirmado que reproduz, vira issue e entra na fila de correção.
   - name: 💡 Sugerir uma ideia
     url: https://github.com/MonkyOrg/Monky/discussions/new?category=ideas
     about: Ideias de funcionalidades vão para Discussions, onde a comunidade vota nas próximas.
