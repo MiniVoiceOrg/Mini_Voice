@@ -207,6 +207,7 @@ class App {
       chatStore.clear();
       voiceStore.reset();
       participantManager.clear();
+      audioProcessor.stopMicrophone();
       webRtcManager.closeAllPeers();
 
       this.connectionView.render();
