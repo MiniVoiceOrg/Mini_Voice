@@ -204,6 +204,9 @@ export const ptBR = {
   'identity.cameraError': 'Não foi possível acessar a webcam para ler o QR Code.',
   'identity.firstLaunchTitle': 'Já tem uma identidade?',
   'identity.firstLaunchHint': 'Se você já usa o Monky em outro dispositivo, importe seu backup antes da primeira conexão para manter o mesmo perfil criptográfico.',
+  'identity.onboardingDesc': 'Sua identidade criptográfica garante que você seja reconhecido nos servidores sem precisar criar conta. É gerada uma vez e pode ser exportada para outros dispositivos.',
+  'identity.onboardingCreate': 'Criar nova identidade',
+  'identity.onboardingImport': 'Importar identidade existente',
 
   // ── Tela de conexão (ConnectionView.ts) ──────────────────────────────────
   'connection.tagline': 'Comunicação direta, rápida e privada entre amigos',

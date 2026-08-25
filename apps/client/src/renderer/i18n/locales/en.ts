@@ -203,6 +203,9 @@ export const en: TranslationMap = {
   'identity.cameraError': 'Could not access the webcam to scan the QR code.',
   'identity.firstLaunchTitle': 'Already have an identity?',
   'identity.firstLaunchHint': 'If you already use Monky on another device, import your backup before the first connection to keep the same cryptographic profile.',
+  'identity.onboardingDesc': 'Your cryptographic identity ensures you are recognized on servers without creating an account. It is generated once and can be exported to other devices.',
+  'identity.onboardingCreate': 'Create new identity',
+  'identity.onboardingImport': 'Import existing identity',
 
   // ── Connection screen (ConnectionView.ts) ────────────────────────────────
   'connection.tagline': 'Direct, fast and private conversations between friends',
