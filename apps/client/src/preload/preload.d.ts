@@ -96,6 +96,10 @@ export interface ElectronApi {
     openExternal: (url: string) => Promise<{
         success: boolean;
     }>;
+    downloadFile: (url: string, fileName: string) => Promise<{
+        success: boolean;
+        error?: string;
+    }>;
     probeServer: (host: string, port: number) => Promise<{
         reachable: boolean;
         reason: 'online' | 'refused' | 'timeout' | 'unreachable';
