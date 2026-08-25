@@ -440,7 +440,7 @@ export class SoundboardModal {
 
   private setupPlaybackListeners(): void {
     // 1. Playback started
-    const onPlaybackStarted = (payload: { soundName: string; duration: number }) => {
+    const onPlaybackStarted = (payload: { soundName: string; duration: number; userName?: string }) => {
       if (!this.modalEl) return;
 
       const playerContainer = this.modalEl.querySelector('#sb-player-container') as HTMLElement | null;
@@ -451,15 +451,22 @@ export class SoundboardModal {
 
       if (playerContainer) playerContainer.style.display = 'block';
       if (soundNameEl) {
-        soundNameEl.textContent = payload.soundName;
-        soundNameEl.setAttribute('title', payload.soundName);
+        const activeCount = soundboardService.getActivePlaybacks().length;
+        if (activeCount > 1) {
+          soundNameEl.textContent = `${payload.soundName} (+${activeCount - 1} outros sons)`;
+          soundNameEl.setAttribute('title', `${payload.soundName} (+${activeCount - 1} outros sons em reprodução)`);
+        } else {
+          const userSuffix = payload.userName ? ` (${payload.userName})` : '';
+          soundNameEl.textContent = `${payload.soundName}${userSuffix}`;
+          soundNameEl.setAttribute('title', `${payload.soundName}${userSuffix}`);
+        }
       }
       if (progressFill) progressFill.style.width = '0%';
       if (currentTimeEl) currentTimeEl.textContent = '0:00';
       if (totalTimeEl) totalTimeEl.textContent = formatTime(payload.duration);
 
-      // Highlight active sound button
-      this.updateActiveButton(payload.soundName);
+      // Highlight active sound buttons
+      this.updateActiveButtons();
     };
 
     // 2. Playback progress
@@ -479,11 +486,26 @@ export class SoundboardModal {
     const onPlaybackEnded = () => {
       if (!this.modalEl) return;
 
-      const playerContainer = this.modalEl.querySelector('#sb-player-container') as HTMLElement | null;
-      if (playerContainer) playerContainer.style.display = 'none';
-
-      // Clear button active states
-      this.clearActiveButtons();
+      const activePlaybacks = soundboardService.getActivePlaybacks();
+      if (activePlaybacks.length === 0) {
+        const playerContainer = this.modalEl.querySelector('#sb-player-container') as HTMLElement | null;
+        if (playerContainer) playerContainer.style.display = 'none';
+        this.clearActiveButtons();
+      } else {
+        const playerContainer = this.modalEl.querySelector('#sb-player-container') as HTMLElement | null;
+        const soundNameEl = this.modalEl.querySelector('#sb-player-sound-name');
+        if (playerContainer) playerContainer.style.display = 'block';
+        if (soundNameEl) {
+          const latest = activePlaybacks[activePlaybacks.length - 1];
+          if (activePlaybacks.length > 1) {
+            soundNameEl.textContent = `${latest.soundName} (+${activePlaybacks.length - 1} outros sons)`;
+          } else {
+            const userSuffix = latest.userName ? ` (${latest.userName})` : '';
+            soundNameEl.textContent = `${latest.soundName}${userSuffix}`;
+          }
+        }
+        this.updateActiveButtons();
+      }
     };
 
     // 4. Highlight incoming sound trigger
@@ -504,13 +526,14 @@ export class SoundboardModal {
     });
   }
 
-  private updateActiveButton(activeSoundName: string): void {
+  private updateActiveButtons(): void {
     if (!this.modalEl) return;
+    const playingNames = soundboardService.getPlayingSoundNames();
     const buttons = this.modalEl.querySelectorAll('.sb-sound-btn');
     buttons.forEach((btn) => {
       const soundName = btn.getAttribute('data-soundname');
       const icon = btn.querySelector('.sb-sound-icon');
-      if (soundName === activeSoundName) {
+      if (soundName && playingNames.has(soundName)) {
         btn.classList.add('is-playing');
         if (icon) icon.textContent = 'volume_up';
       } else {
