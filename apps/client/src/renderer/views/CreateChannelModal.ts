@@ -1,5 +1,6 @@
 import { MessageType } from '@mini-voice/shared';
 import { networkClient } from '../core/NetworkClient';
+import { t } from '../i18n';
 import { enableBackdropClose } from '../utils/modal';
 
 export class CreateChannelModal {
@@ -13,7 +14,7 @@ export class CreateChannelModal {
     this.modalEl.innerHTML = `
       <div class="modal-card">
         <div class="modal-header">
-          <div class="modal-title">Criar Canal</div>
+          <div class="modal-title">${t('channelModal.title')}</div>
           <button id="modal-close" class="modal-close-btn">&times;</button>
         </div>
 
@@ -21,29 +22,29 @@ export class CreateChannelModal {
 
         <form id="form-create-channel">
           <div class="form-group">
-            <label>Tipo de Canal</label>
+            <label>${t('channelModal.typeLabel')}</label>
             <div style="display: flex; gap: 12px; margin-top: 4px;">
               <label style="display: flex; align-items: center; gap: 6px; cursor: pointer; text-transform: none; color: var(--text-primary);">
                 <input type="radio" name="channel-type" value="TEXT" ${defaultType === 'TEXT' ? 'checked' : ''}>
                 <span class="material-symbols-outlined md-16" style="color: var(--text-muted);">tag</span>
-                <span>Texto</span>
+                <span>${t('channelModal.typeText')}</span>
               </label>
               <label style="display: flex; align-items: center; gap: 6px; cursor: pointer; text-transform: none; color: var(--text-primary);">
                 <input type="radio" name="channel-type" value="VOICE" ${defaultType === 'VOICE' ? 'checked' : ''}>
                 <span class="material-symbols-outlined md-16" style="color: var(--success);">volume_up</span>
-                <span>Voz</span>
+                <span>${t('channelModal.typeVoice')}</span>
               </label>
             </div>
           </div>
 
           <div class="form-group">
-            <label>Nome do Canal</label>
-            <input id="input-channel-name" type="text" placeholder="Ex: jogos" required minlength="2" maxlength="50">
+            <label>${t('channelModal.nameLabel')}</label>
+            <input id="input-channel-name" type="text" placeholder="${t('channelModal.namePlaceholder')}" required minlength="2" maxlength="50">
           </div>
 
           <div class="modal-footer">
-            <button type="button" id="btn-cancel" class="btn btn-secondary">Cancelar</button>
-            <button type="submit" id="btn-create" class="btn btn-primary">Criar Canal</button>
+            <button type="button" id="btn-cancel" class="btn btn-secondary">${t('common.cancel')}</button>
+            <button type="submit" id="btn-create" class="btn btn-primary">${t('channelModal.submit')}</button>
           </div>
         </form>
       </div>
@@ -81,7 +82,7 @@ export class CreateChannelModal {
       } catch (err: any) {
         const banner = document.getElementById('channel-error-banner');
         if (banner) {
-          banner.innerText = err.message || 'Erro ao criar canal';
+          banner.innerText = err.message || t('channelModal.error');
           banner.classList.add('show');
         }
       }

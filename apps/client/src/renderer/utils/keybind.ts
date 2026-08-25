@@ -3,6 +3,8 @@
  * and friendly human-readable display strings.
  */
 
+import { t } from '../i18n';
+
 export interface ShortcutKeyCombo {
   accelerator: string;
   display: string;
@@ -76,7 +78,7 @@ export function formatKeyCombo(e: KeyboardEvent): ShortcutKeyCombo | null {
     displayKey = mainKey;
   } else if (['Space', 'Backspace', 'Delete', 'Insert', 'Home', 'End', 'PageUp', 'PageDown', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'Tab'].includes(code)) {
     const map: Record<string, { accel: string; disp: string }> = {
-      Space: { accel: 'Space', disp: 'Espaço' },
+      Space: { accel: 'Space', disp: t('keybind.space') },
       Backspace: { accel: 'Backspace', disp: 'Backspace' },
       Delete: { accel: 'Delete', disp: 'Del' },
       Insert: { accel: 'Insert', disp: 'Ins' },

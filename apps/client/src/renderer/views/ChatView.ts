@@ -9,6 +9,7 @@ import { participantManager } from '../core/ParticipantManager';
 import { userContextMenu } from './UserContextMenu';
 import { getAvatarUrl } from '../utils/avatar';
 import { renderMarkdown } from '../utils/markdown';
+import { getLanguage, t } from '../i18n';
 import { uploadAttachment, UploadHandle } from '../core/AttachmentUploader';
 import { getAttachmentUrl, formatBytes, fileIconName } from '../utils/attachment';
 
@@ -59,7 +60,7 @@ export class ChatView {
     if (!this.currentChannelId || !serverStore.serverDetails) {
       this.container.innerHTML = `
         <div style="display: flex; align-items: center; justify-content: center; height: 100%; color: var(--text-muted);">
-          Selecione um canal para conversar
+          ${t('chat.selectChannel')}
         </div>
       `;
       return;
@@ -73,8 +74,8 @@ export class ChatView {
         <div id="chat-drop-overlay" class="chat-drop-overlay">
           <div class="drop-inner">
             <span class="material-symbols-outlined" style="font-size: 48px;">upload_file</span>
-            <div class="drop-title">Solte para anexar</div>
-            <div class="drop-sub">Imagens, vídeos ou arquivos</div>
+            <div class="drop-title">${t('chat.dropTitle')}</div>
+            <div class="drop-sub">${t('chat.dropSubtitle')}</div>
           </div>
         </div>
         <div class="content-header">
@@ -82,7 +83,7 @@ export class ChatView {
             <span class="material-symbols-outlined md-18" style="color: var(--text-muted);">tag</span>
             <span class="channel-title">${escapeHtml(channelName)}</span>
           </div>
-          <div class="header-status-badge">Canal de Texto</div>
+          <div class="header-status-badge">${t('chat.textChannelBadge')}</div>
         </div>
 
         <div id="chat-messages-feed" class="chat-messages-feed"></div>
@@ -91,15 +92,15 @@ export class ChatView {
           <div id="mention-dropup" class="mention-dropup" style="display: none;"></div>
           <div id="chat-attachment-tray" class="chat-attachment-tray" style="display: none;"></div>
           <div class="chat-input-wrapper">
-            <button id="btn-attach" type="button" class="chat-attach-btn" title="Anexar arquivo">
+            <button id="btn-attach" type="button" class="chat-attach-btn" title="${t('chat.attachFile')}">
               <span class="material-symbols-outlined md-22">add_circle</span>
             </button>
             <input id="chat-file-input" type="file" multiple style="display: none;">
-            <textarea id="chat-message-input" class="chat-input-field" rows="1" placeholder="Conversar em #${escapeHtml(channelName)}... (Shift+Enter para quebrar linha)" maxlength="${LIMITS.MAX_MESSAGE_LENGTH}"></textarea>
+            <textarea id="chat-message-input" class="chat-input-field" rows="1" placeholder="${t('chat.inputPlaceholder', { channel: escapeHtml(channelName) })}" maxlength="${LIMITS.MAX_MESSAGE_LENGTH}"></textarea>
             <span id="chat-char-counter" class="chat-char-count">0/${LIMITS.MAX_MESSAGE_LENGTH}</span>
             <button id="btn-send-message" class="btn btn-primary" style="padding: 6px 14px; font-size: 13px;">
               <span class="material-symbols-outlined md-16" style="margin-right: 4px;">send</span>
-              Enviar
+              ${t('chat.send')}
             </button>
           </div>
         </div>
@@ -128,8 +129,8 @@ export class ChatView {
       feed.innerHTML = `
         <div style="display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100%; color: var(--text-muted); gap: 10px;">
           <span class="material-symbols-outlined md-36" style="color: var(--text-dim); font-size: 44px;">forum</span>
-          <div style="font-size: 15px; font-weight: 600; color: var(--text-secondary);">Este é o início do canal #${escapeHtml(serverStore.serverDetails?.channels.find((c) => c.id === this.currentChannelId)?.name || 'geral')}</div>
-          <div style="font-size: 13px;">Envie uma mensagem para começar!</div>
+          <div style="font-size: 15px; font-weight: 600; color: var(--text-secondary);">${t('chat.emptyTitle', { channel: escapeHtml(serverStore.serverDetails?.channels.find((c) => c.id === this.currentChannelId)?.name || 'geral') })}</div>
+          <div style="font-size: 13px;">${t('chat.emptySubtitle')}</div>
         </div>
       `;
       return;
@@ -210,7 +211,7 @@ export class ChatView {
   }
 
   private renderDateDivider(ts: number): string {
-    const label = new Date(ts).toLocaleDateString('pt-BR', {
+    const label = new Date(ts).toLocaleDateString(getLanguage(), {
       day: 'numeric',
       month: 'long',
       year: 'numeric',
@@ -221,8 +222,8 @@ export class ChatView {
   /** Full date + time shown on each message, e.g. "24/08/2026 19:15" (#11). */
   private formatDateTime(ts: number): string {
     const d = new Date(ts);
-    const date = d.toLocaleDateString('pt-BR');
-    const time = d.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
+    const date = d.toLocaleDateString(getLanguage());
+    const time = d.toLocaleTimeString(getLanguage(), { hour: '2-digit', minute: '2-digit' });
     return `${date} ${time}`;
   }
 
@@ -274,7 +275,7 @@ export class ChatView {
       return `
         <div class="attachment-evicted" title="${escapeHtml(a.originalName)}">
           <span class="material-symbols-outlined md-18">hide_source</span>
-          <span>Anexo expirado (removido para liberar espaço)</span>
+          <span>${t('chat.attachmentEvicted')}</span>
         </div>
       `;
     }
@@ -638,7 +639,7 @@ export class ChatView {
     this.renderTray();
     this.updateSendButtonState();
     if (overflow) {
-      this.showTrayNotice(`Máximo de ${LIMITS.MAX_ATTACHMENTS_PER_MESSAGE} arquivos por mensagem.`);
+      this.showTrayNotice(t('chat.tooManyAttachments', { max: LIMITS.MAX_ATTACHMENTS_PER_MESSAGE }));
     }
   }
 
@@ -674,9 +675,9 @@ export class ChatView {
         <span class="tray-status" data-progress-label="${p.localId}">${pct}%</span>
       `;
     } else if (p.status === 'error') {
-      statusHtml = `<span class="tray-status tray-error">${escapeHtml(p.error || 'Erro')}</span>`;
+      statusHtml = `<span class="tray-status tray-error">${escapeHtml(p.error || t('common.error'))}</span>`;
     } else {
-      statusHtml = `<span class="tray-status tray-done">Pronto</span>`;
+      statusHtml = `<span class="tray-status tray-done">${t('common.done')}</span>`;
     }
 
     return `
@@ -689,7 +690,7 @@ export class ChatView {
             ${statusHtml}
           </div>
         </div>
-        <button type="button" class="tray-remove" data-remove-id="${p.localId}" title="Remover">
+        <button type="button" class="tray-remove" data-remove-id="${p.localId}" title="${t('common.remove')}">
           <span class="material-symbols-outlined md-18">close</span>
         </button>
       </div>
@@ -750,7 +751,7 @@ export class ChatView {
     overlay.className = 'attachment-lightbox';
     overlay.innerHTML = `
       <img src="${url}" alt="">
-      <button type="button" class="lightbox-close" title="Fechar">
+      <button type="button" class="lightbox-close" title="${t('common.close')}">
         <span class="material-symbols-outlined">close</span>
       </button>
     `;

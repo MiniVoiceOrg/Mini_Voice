@@ -2,6 +2,7 @@ import { MessageType, ServerInviteInfoPayload, ServerNetworkInterface } from '@m
 import { networkClient } from '../core/NetworkClient';
 import { serverStore } from '../stores/serverStore';
 import { enableBackdropClose } from '../utils/modal';
+import { t } from '../i18n';
 
 export class InviteModal {
   private modalEl: HTMLElement | null = null;
@@ -27,40 +28,40 @@ export class InviteModal {
         <div class="modal-header">
           <div class="modal-title" style="display: flex; align-items: center; gap: 8px;">
             <span class="material-symbols-outlined" style="color: var(--accent-primary);">person_add</span>
-            <span>Convidar Amigos</span>
+            <span>${t('invite.title')}</span>
           </div>
           <button id="modal-close" class="modal-close-btn">&times;</button>
         </div>
 
         <div style="font-size: 13px; color: var(--text-secondary); line-height: 1.5;">
-          Escolha o endereço IP do servidor de acordo com a sua rede e compartilhe os dados com seus amigos para eles entrarem no servidor:
+          ${t('invite.intro')}
         </div>
 
         <div style="background: var(--bg-card); border: 1px solid var(--border-color); border-radius: var(--radius-md); padding: 16px; display: flex; flex-direction: column; gap: 12px;">
           <div style="display: flex; justify-content: space-between; align-items: center; font-size: 13px;">
-            <span style="color: var(--text-muted); font-weight: 500;">Servidor:</span>
+            <span style="color: var(--text-muted); font-weight: 500;">${t('invite.serverLabel')}</span>
             <span style="font-weight: 700; color: var(--text-primary);">${this.serverName}</span>
           </div>
 
           <div class="form-group" style="margin-bottom: 0;">
             <label style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 6px; font-size: 12px;">
-              <span>Endereço IP do Servidor</span>
+              <span>${t('invite.ipLabel')}</span>
               <span id="invite-loading-tag" style="font-size: 11px; color: var(--accent-primary); display: flex; align-items: center; gap: 4px;">
                 <span class="material-symbols-outlined md-14" style="animation: spin 1s linear infinite;">autorenew</span>
-                Buscando IPs do servidor...
+                ${t('invite.fetchingIps')}
               </span>
             </label>
             <select id="select-invite-ip" style="width: 100%; font-size: 13px; padding: 8px 10px;">
-              <option value="${this.selectedIp}">Carregando IPs do servidor...</option>
+              <option value="${this.selectedIp}">${t('invite.loadingIps')}</option>
             </select>
           </div>
 
           <div id="custom-ip-container" style="display: none; margin-top: -4px;">
-            <input id="input-custom-ip" type="text" placeholder="Digite o IP ou domínio personalizado..." style="width: 100%; font-size: 12px; padding: 6px 10px;">
+            <input id="input-custom-ip" type="text" placeholder="${t('invite.customIpPlaceholder')}" style="width: 100%; font-size: 12px; padding: 6px 10px;">
           </div>
 
           <div style="display: flex; justify-content: space-between; align-items: center; font-size: 13px; border-top: 1px solid var(--border-color); padding-top: 10px; margin-top: 2px;">
-            <span style="color: var(--text-muted); font-weight: 500;">Porta:</span>
+            <span style="color: var(--text-muted); font-weight: 500;">${t('invite.portLabel')}</span>
             <span id="invite-port" style="font-family: var(--font-mono); font-weight: 700; color: var(--accent-primary); font-size: 14px;">${this.selectedPort}</span>
           </div>
         </div>
@@ -69,23 +70,23 @@ export class InviteModal {
         <div id="invite-tip-box" style="background: rgba(88, 101, 242, 0.1); border: 1px solid rgba(88, 101, 242, 0.3); border-radius: var(--radius-md); padding: 10px 12px; font-size: 11px; color: var(--text-secondary); line-height: 1.4; display: flex; gap: 8px; align-items: flex-start;">
           <span class="material-symbols-outlined md-16" style="color: var(--accent-primary); flex-shrink: 0; margin-top: 1px;">info</span>
           <div id="invite-tip-text">
-            Selecione o IP acima que corresponde à rede usada pelos seus amigos (VPN, Rede Local ou Internet).
+            ${t('invite.tip')}
           </div>
         </div>
 
         <div id="copy-success-msg" style="display: none; font-size: 12px; color: var(--success); text-align: center; font-weight: 500;">
           <span class="material-symbols-outlined md-14" style="vertical-align: middle; margin-right: 4px;">check_circle</span>
-          Convite copiado para a área de transferência!
+          ${t('invite.copied')}
         </div>
 
         <div class="modal-footer" style="display: flex; gap: 8px; flex-wrap: wrap;">
           <button id="btn-copy-ip-only" class="btn btn-secondary" style="flex: 1; font-size: 12px; padding: 8px 12px; white-space: nowrap;">
             <span class="material-symbols-outlined md-16" style="margin-right: 4px;">pin</span>
-            Copiar IP:Porta
+            ${t('invite.copyIpOnly')}
           </button>
           <button id="btn-copy-invite" class="btn btn-primary" style="flex: 2; font-size: 12px; padding: 8px 16px; white-space: nowrap;">
             <span class="material-symbols-outlined md-16" style="margin-right: 6px;">content_copy</span>
-            Copiar Convite Completo
+            ${t('invite.copyButton')}
           </button>
         </div>
       </div>
@@ -155,11 +156,11 @@ export class InviteModal {
     const fallbackHost = this.getFallbackHost();
     this.networkInterfaces = [
       {
-        name: 'Servidor Conectado',
+        name: t('invite.connectedServer'),
         address: fallbackHost,
         family: 'IPv4',
         type: fallbackHost === '127.0.0.1' || fallbackHost === 'localhost' ? 'loopback' : 'lan',
-        description: `IP Conectado (${fallbackHost})`,
+        description: t('invite.connectedIpDesc', { host: fallbackHost }),
       },
     ];
     this.renderInterfaceOptions();
@@ -205,7 +206,7 @@ export class InviteModal {
     const optCustom = document.createElement('option');
     optCustom.value = '__custom__';
     optCustom.setAttribute('data-type', 'custom');
-    optCustom.textContent = '✏️ Outro endereço IP ou domínio...';
+    optCustom.textContent = `✏️ ${t('invite.customOption')}`;
     selectEl.appendChild(optCustom);
 
     this.selectedIp = firstIp || this.getFallbackHost();
@@ -224,19 +225,19 @@ export class InviteModal {
 
     switch (type) {
       case 'public':
-        tipText.innerHTML = `<b>IP Público:</b> Para amigos em outra casa conectarem diretamente por este IP, certifique-se de que a porta <b>${this.selectedPort}</b> está aberta/redirecionada no seu roteador (Port Forwarding).`;
+        tipText.innerHTML = t('invite.tipPublic', { port: this.selectedPort });
         break;
       case 'vpn':
-        tipText.innerHTML = `<b>Rede Virtual (VPN):</b> Para amigos se conectarem por este IP, todos devem estar na mesma sala do <b>Radmin VPN, Hamachi ou Tailscale</b>.`;
+        tipText.innerHTML = t('invite.tipVpn');
         break;
       case 'lan':
-        tipText.innerHTML = `<b>Rede Local (Wi-Fi / Cabo):</b> Use este endereço para outros computadores conectados na mesma rede ou Wi-Fi da sua casa.`;
+        tipText.innerHTML = t('invite.tipLan');
         break;
       case 'loopback':
-        tipText.innerHTML = `<b>Localhost:</b> Este endereço só funciona no mesmo computador onde o servidor está em execução.`;
+        tipText.innerHTML = t('invite.tipLoopback');
         break;
       default:
-        tipText.innerHTML = `<b>Endereço personalizado:</b> Certifique-se de que o host e a porta <b>${this.selectedPort}</b> estão acessíveis pelos seus amigos.`;
+        tipText.innerHTML = t('invite.tipCustom', { port: this.selectedPort });
         break;
     }
   }
@@ -284,16 +285,16 @@ export class InviteModal {
 
     btnCopy?.addEventListener('click', async () => {
       const host = this.selectedIp || this.getFallbackHost();
-      const textToCopy = `Convite para o Mini Voice!
-Servidor: ${this.serverName}
-IP / Host: ${host}
-Porta: ${this.selectedPort}
-
-Baixe o app e cole esses dados na aba "Entrar no Servidor"!`;
+      const textToCopy = t('invite.clipboardText', {
+        server: this.serverName,
+        host,
+        port: this.selectedPort,
+        tab: t('connection.tabJoin'),
+      });
 
       try {
         await navigator.clipboard.writeText(textToCopy);
-        triggerCopyFeedback('Convite completo copiado para a área de transferência!');
+        triggerCopyFeedback(t('invite.copied'));
       } catch (err) {
         console.warn('Could not copy to clipboard', err);
       }
@@ -305,7 +306,7 @@ Baixe o app e cole esses dados na aba "Entrar no Servidor"!`;
 
       try {
         await navigator.clipboard.writeText(textToCopy);
-        triggerCopyFeedback(`Endereço "${textToCopy}" copiado!`);
+        triggerCopyFeedback(t('invite.addressCopied', { address: textToCopy }));
       } catch (err) {
         console.warn('Could not copy to clipboard', err);
       }
