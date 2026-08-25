@@ -1,10 +1,10 @@
-# Contribuindo com o Mini Voice
+# Contribuindo com o Monky
 
 Obrigado pelo interesse! Este documento explica como propor ideias, votar no que
 vem primeiro e — se você quiser codar — como abrir um PR que entra sem atrito.
 
-O Mini Voice é MIT e o desenvolvimento acontece todo em público, nas
-[Issues](https://github.com/MiniVoiceOrg/Mini_Voice/issues).
+O Monky é MIT e o desenvolvimento acontece todo em público, nas
+[Issues](https://github.com/MonkyOrg/Monky/issues).
 
 ---
 
@@ -16,7 +16,7 @@ entra em cada ciclo é decidido pelos votos da comunidade.
 ### Propor uma ideia
 
 Abra uma discussão em
-**[Discussions › Ideias](https://github.com/MiniVoiceOrg/Mini_Voice/discussions/categories/ideias)**.
+**[Discussions › Ideias](https://github.com/MonkyOrg/Monky/discussions/categories/ideias)**.
 
 Duas regras que fazem a votação funcionar:
 
@@ -62,7 +62,7 @@ motivo escrito na discussão.
 Duas coisas que assumimos como compromisso:
 
 - **Voto alto não é promessa automática.** Uma ideia muito votada pode ser
-  recusada se conflitar com o que o Mini Voice é — P2P, self-hosted, sem
+  recusada se conflitar com o que o Monky é — P2P, self-hosted, sem
   servidor central e sem coleta de dados. Quando isso acontecer, o motivo é
   escrito na discussão, não deixamos morrer no silêncio.
 - **O status volta para a discussão.** Se nada nunca muda de label, a votação
@@ -71,7 +71,7 @@ Duas coisas que assumimos como compromisso:
 
 ### Reportar um bug
 
-Bugs vão direto em [Issues](https://github.com/MiniVoiceOrg/Mini_Voice/issues/new/choose),
+Bugs vão direto em [Issues](https://github.com/MonkyOrg/Monky/issues/new/choose),
 não em Discussions — eles não precisam de votação para serem corrigidos.
 
 ---
@@ -85,8 +85,8 @@ Requisitos: **Node.js 22+** e as ferramentas de build nativas da sua plataforma
 Tools no macOS).
 
 ```bash
-git clone https://github.com/MiniVoiceOrg/Mini_Voice.git
-cd Mini_Voice
+git clone https://github.com/MonkyOrg/Monky.git
+cd Monky
 npm install
 npm run build
 npm start
@@ -159,7 +159,7 @@ começa **depois que a release estiver publicada** — nunca só após o merge.
 
 ---
 
-## 🧭 O que o Mini Voice é (e o que não é)
+## 🧭 O que o Monky é (e o que não é)
 
 Ajuda a calibrar propostas antes de escrevê-las:
 

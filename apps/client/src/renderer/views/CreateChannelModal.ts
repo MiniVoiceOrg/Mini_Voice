@@ -1,4 +1,4 @@
-import { MessageType } from '@mini-voice/shared';
+import { MessageType } from '@monky/shared';
 import { networkClient } from '../core/NetworkClient';
 import { t } from '../i18n';
 import { enableBackdropClose } from '../utils/modal';

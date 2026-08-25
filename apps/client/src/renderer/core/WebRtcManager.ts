@@ -3,7 +3,7 @@ import {
   QUALITY_PRESETS,
   QualityPresetType,
   WebRtcSignalPayload,
-} from '@mini-voice/shared';
+} from '@monky/shared';
 import { appEvents } from './EventBus';
 import { networkClient } from './NetworkClient';
 import { participantManager } from './ParticipantManager';

@@ -1,5 +1,5 @@
 /**
- * Checks whether a Mini Voice server is online and joinable by hitting its
+ * Checks whether a Monky server is online and joinable by hitting its
  * public HTTP `/preview` endpoint. A successful response means the server
  * process is actually running (more reliable than a raw TCP probe, which a
  * firewall can distort). Used for the online/offline indicators in the saved

@@ -1,8 +1,8 @@
-# Mini Voice — Especificação Técnica
+# Monky — Especificação Técnica
 
 ## 1. Visão geral
 
-O Mini Voice será um aplicativo desktop desenvolvido utilizando **Electron**, cujo objetivo é fornecer uma comunicação simples entre amigos através de um servidor privado hospedado na máquina de um dos usuários.
+O Monky será um aplicativo desktop desenvolvido utilizando **Electron**, cujo objetivo é fornecer uma comunicação simples entre amigos através de um servidor privado hospedado na máquina de um dos usuários.
 
 O aplicativo terá como funcionalidades principais:
 
@@ -278,7 +278,7 @@ Ao abrir o aplicativo, o usuário deverá visualizar:
 
 ```text
 ┌──────────────────────────────┐
-│          Mini Voice          │
+│          Monky          │
 │                              │
 │ IP / Host                    │
 │ [________________________]   │
@@ -355,7 +355,7 @@ Electron
 Isso permitirá futuramente executar:
 
 ```text
-MiniVoiceServer
+MonkyServer
 ```
 
 sem Electron.
@@ -523,7 +523,7 @@ Após entrar:
 
 ```text
 ┌─────────────────────────────────────────────────────────┐
-│ Mini Voice                                    ⚙         │
+│ Monky                                    ⚙         │
 ├──────────────┬──────────────────────────────┬───────────┤
 │              │                              │           │
 │ VOICE        │                              │           │
@@ -994,7 +994,7 @@ A UI não deverá conhecer diretamente a implementação da rede.
 Recomendação:
 
 ```text
-mini-voice/
+monky/
 │
 ├── apps/
 │   │
@@ -2355,13 +2355,13 @@ Esses recursos podem ser adicionados posteriormente.
 Separar:
 
 ```text
-MiniVoice Client
+Monky Client
 ```
 
 de:
 
 ```text
-MiniVoice Server
+Monky Server
 ```
 
 permitindo hospedagem independente.
@@ -2504,7 +2504,7 @@ O resultado esperado é uma aplicação:
 
 ```text
 ┌─────────────────────────────────────────┐
-│              MINI VOICE                 │
+│              MONKY                      │
 ├─────────────────────────────────────────┤
 │                                         │
 │  Servidor privado entre amigos          │

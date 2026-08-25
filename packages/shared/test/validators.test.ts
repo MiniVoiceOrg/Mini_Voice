@@ -6,7 +6,7 @@ import {
   PROTOCOL_VERSION,
 } from '../src/index.js';
 
-console.log('=== Início dos Testes Unitários de @mini-voice/shared ===');
+console.log('=== Início dos Testes Unitários de @monky/shared ===');
 
 // Test Nickname validation
 console.assert(isValidNickname('Murilo') === true, 'Murilo deve ser válido');

@@ -1,7 +1,7 @@
 import path from 'path';
 import fs from 'fs';
 import { app } from 'electron';
-import { MiniVoiceServer, ServerConfig } from '@mini-voice/server/dist/server.js';
+import { MonkyServer, ServerConfig } from '@monky/server/dist/server.js';
 import { mt } from './i18n';
 
 export interface HostServerOptions {
@@ -13,7 +13,7 @@ export interface HostServerOptions {
 }
 
 export class ServerManager {
-  private serverInstance: MiniVoiceServer | null = null;
+  private serverInstance: MonkyServer | null = null;
   private isRunning: boolean = false;
 
   public async startServer(options: HostServerOptions): Promise<{ success: boolean; error?: string }> {
@@ -29,14 +29,14 @@ export class ServerManager {
     const config: ServerConfig = {
       port: options.port,
       dataDir,
-      serverName: options.serverName || 'Mini Voice Server',
+      serverName: options.serverName || 'Monky Server',
       password: options.password || '',
       initialVoiceChannel: options.initialVoiceChannel || 'Geral',
       initialTextChannel: options.initialTextChannel || 'geral',
     };
 
     try {
-      const server = await MiniVoiceServer.create(config);
+      const server = await MonkyServer.create(config);
       await server.start();
       this.serverInstance = server;
       this.isRunning = true;

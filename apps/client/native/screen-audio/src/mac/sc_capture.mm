@@ -1,7 +1,7 @@
 /**
  * ScreenCaptureKit Audio Capture (macOS 13+)
  *
- * Captures system audio EXCLUDING the MiniVoice process using SCStream with
+ * Captures system audio EXCLUDING the Monky process using SCStream with
  * excludesCurrentProcessAudio = YES.
  *
  * Output: PCM float32 interleaved, 48kHz stereo (configurable).
@@ -21,12 +21,12 @@ static std::atomic<bool> g_captureRunning_mac{false};
 static Napi::ThreadSafeFunction g_tsfn_mac;
 
 // SCStream delegate that receives audio samples
-@interface MiniVoiceAudioDelegate : NSObject <SCStreamOutput>
+@interface MonkyAudioDelegate : NSObject <SCStreamOutput>
 @property (nonatomic, assign) uint32_t sampleRate;
 @property (nonatomic, assign) uint32_t channels;
 @end
 
-@implementation MiniVoiceAudioDelegate
+@implementation MonkyAudioDelegate
 
 - (void)stream:(SCStream *)stream
     didOutputSampleBuffer:(CMSampleBufferRef)sampleBuffer
@@ -61,7 +61,7 @@ static Napi::ThreadSafeFunction g_tsfn_mac;
 @end
 
 static SCStream* g_stream = nil;
-static MiniVoiceAudioDelegate* g_delegate = nil;
+static MonkyAudioDelegate* g_delegate = nil;
 
 bool platform_is_supported() {
   if (@available(macOS 13.0, *)) {
@@ -113,7 +113,7 @@ bool platform_start(uint32_t excludePid, uint32_t loopbackMode, uint32_t sampleR
       config.height = 2;
       config.minimumFrameInterval = CMTimeMake(1, 1); // 1 fps minimum video
 
-      g_delegate = [[MiniVoiceAudioDelegate alloc] init];
+      g_delegate = [[MonkyAudioDelegate alloc] init];
       g_delegate.sampleRate = sampleRate;
       g_delegate.channels = channels;
 

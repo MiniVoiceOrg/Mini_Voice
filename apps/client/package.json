@@ -1,5 +1,5 @@
 {
-  "name": "@mini-voice/client",
+  "name": "@monky/client",
   "version": "1.0.0",
   "private": true,
   "main": "dist-electron/main/main.js",
@@ -11,16 +11,16 @@
     "package": "electron-builder --win --dir",
     "dist": "electron-builder --win"
   },
-  "description": "Mini Voice — P2P Self-Hosted Voice, Video and Chat",
+  "description": "Monky — P2P Self-Hosted Voice, Video and Chat",
   "author": "Murilo",
   "repository": {
     "type": "git",
-    "url": "https://github.com/MiniVoiceOrg/Mini_Voice.git"
+    "url": "https://github.com/MonkyOrg/Monky.git"
   },
   "dependencies": {
-    "@mini-voice/screen-audio": "file:./native/screen-audio",
-    "@mini-voice/server": "*",
-    "@mini-voice/shared": "*",
+    "@monky/screen-audio": "file:./native/screen-audio",
+    "@monky/server": "*",
+    "@monky/shared": "*",
     "@sapphi-red/web-noise-suppressor": "^0.4.0",
     "electron-updater": "^6.8.9",
     "uuid": "^11.1.0"
@@ -34,8 +34,8 @@
     "vite": "^6.2.0"
   },
   "build": {
-    "appId": "com.minivoice.app",
-    "productName": "Mini Voice",
+    "appId": "com.monky.app",
+    "productName": "Monky",
     "electronVersion": "34.2.0",
     "asar": false,
     "directories": {
@@ -46,8 +46,8 @@
     "publish": [
       {
         "provider": "github",
-        "owner": "MiniVoiceOrg",
-        "repo": "Mini_Voice"
+        "owner": "MonkyOrg",
+        "repo": "Monky"
       }
     ],
     "files": [
@@ -76,15 +76,15 @@
     "nsis": {
       "oneClick": false,
       "allowToChangeInstallationDirectory": true,
-      "artifactName": "Mini-Voice-${version}-win-${arch}-setup.${ext}"
+      "artifactName": "Monky-${version}-win-${arch}-setup.${ext}"
     },
     "portable": {
-      "artifactName": "Mini-Voice-${version}-win-${arch}-portable.${ext}"
+      "artifactName": "Monky-${version}-win-${arch}-portable.${ext}"
     },
     "mac": {
       "icon": "build/icon.png",
       "category": "public.app-category.social-networking",
-      "artifactName": "Mini-Voice-${version}-mac-${arch}.${ext}",
+      "artifactName": "Monky-${version}-mac-${arch}.${ext}",
       "target": [
         {
           "target": "dmg",

@@ -1,6 +1,6 @@
 import path from 'path';
-import { LIMITS } from '@mini-voice/shared';
-import { MiniVoiceServer, ServerConfig } from './server';
+import { LIMITS } from '@monky/shared';
+import { MonkyServer, ServerConfig } from './server';
 import { Logger } from './infrastructure/logger/Logger';
 
 function parseArgs(): ServerConfig {
@@ -37,7 +37,7 @@ function parseArgs(): ServerConfig {
 
 async function main() {
   const config = parseArgs();
-  const server = await MiniVoiceServer.create(config);
+  const server = await MonkyServer.create(config);
 
   process.on('SIGINT', async () => {
     Logger.info('INFO', 'Received SIGINT, shutting down server...');
@@ -61,4 +61,4 @@ if (require.main === module) {
   });
 }
 
-export { MiniVoiceServer, ServerConfig };
+export { MonkyServer, ServerConfig };

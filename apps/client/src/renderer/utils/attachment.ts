@@ -1,4 +1,4 @@
-import { AttachmentKind } from '@mini-voice/shared';
+import { AttachmentKind } from '@monky/shared';
 import { networkClient } from '../core/NetworkClient';
 
 /**

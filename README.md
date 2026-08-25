@@ -1,13 +1,13 @@
 <div align="center">
-  <img src="images/Logo.png" alt="Mini Voice" width="220">
-  <h1>Mini Voice 🎙️</h1>
+  <img src="images/Logo.png" alt="Monky" width="220">
+  <h1>Monky 🎙️</h1>
   <p><b>Voz, vídeo, tela e chat entre amigos — no seu próprio servidor, sem cadastro e sem intermediários.</b></p>
 
   <p>
-    <a href="https://github.com/MiniVoiceOrg/Mini_Voice/releases/latest"><img alt="Release" src="https://img.shields.io/github/v/release/MiniVoiceOrg/Mini_Voice?label=download&color=5865f2"></a>
+    <a href="https://github.com/MonkyOrg/Monky/releases/latest"><img alt="Release" src="https://img.shields.io/github/v/release/MonkyOrg/Monky?label=download&color=5865f2"></a>
     <a href="LICENSE"><img alt="Licença MIT" src="https://img.shields.io/badge/licen%C3%A7a-MIT-green"></a>
-    <a href="https://github.com/MiniVoiceOrg/Mini_Voice/actions/workflows/ci.yml"><img alt="CI" src="https://github.com/MiniVoiceOrg/Mini_Voice/actions/workflows/ci.yml/badge.svg"></a>
-    <a href="https://github.com/MiniVoiceOrg/Mini_Voice/discussions/categories/ideias"><img alt="Ideias" src="https://img.shields.io/badge/ideias-vote%20aqui-orange"></a>
+    <a href="https://github.com/MonkyOrg/Monky/actions/workflows/ci.yml"><img alt="CI" src="https://github.com/MonkyOrg/Monky/actions/workflows/ci.yml/badge.svg"></a>
+    <a href="https://github.com/MonkyOrg/Monky/discussions/categories/ideias"><img alt="Ideias" src="https://img.shields.io/badge/ideias-vote%20aqui-orange"></a>
   </p>
 </div>
 
@@ -15,7 +15,7 @@
 
 ## 📚 Índice
 
-- [O que é o Mini Voice](#-o-que-é-o-mini-voice)
+- [O que é o Monky](#-o-que-é-o-monky)
 - [Instalando](#️-instalando)
 - [Começando (o caminho rápido)](#-começando-o-caminho-rápido)
 - [Criar o seu servidor](#-criar-o-seu-servidor)
@@ -32,9 +32,9 @@
 
 ---
 
-## 🤔 O que é o Mini Voice
+## 🤔 O que é o Monky
 
-Mini Voice é um aplicativo desktop (Windows e macOS) para conversar por voz com
+Monky é um aplicativo desktop (Windows e macOS) para conversar por voz com
 os amigos, ligar a câmera, compartilhar a tela e trocar mensagens — no estilo de
 um Discord bem enxuto, só que **o servidor é seu**.
 
@@ -58,13 +58,13 @@ ficam salvos no seu próprio PC.
 
 Baixe a versão mais recente na página de releases:
 
-**➡️ [github.com/MiniVoiceOrg/Mini_Voice/releases/latest](https://github.com/MiniVoiceOrg/Mini_Voice/releases/latest)**
+**➡️ [github.com/MonkyOrg/Monky/releases/latest](https://github.com/MonkyOrg/Monky/releases/latest)**
 
 | Sistema | Arquivo | Observação |
 |---|---|---|
-| Windows 10/11 (x64) | `Mini-Voice-<versão>-win-x64-setup.exe` | Instalador — permite escolher a pasta |
-| Windows 10/11 (x64) | `Mini-Voice-<versão>-win-x64-portable.exe` | Não instala nada, é só executar |
-| macOS (Intel / Apple Silicon) | `Mini-Voice-<versão>-mac-<arch>.dmg` | Escolha `x64` (Intel) ou `arm64` (M1/M2/M3+) |
+| Windows 10/11 (x64) | `Monky-<versão>-win-x64-setup.exe` | Instalador — permite escolher a pasta |
+| Windows 10/11 (x64) | `Monky-<versão>-win-x64-portable.exe` | Não instala nada, é só executar |
+| macOS (Intel / Apple Silicon) | `Monky-<versão>-mac-<arch>.dmg` | Escolha `x64` (Intel) ou `arm64` (M1/M2/M3+) |
 
 > **O Windows/macOS mostrou um aviso de segurança?** É esperado: os
 > executáveis ainda não têm assinatura digital paga. No Windows, clique em
@@ -134,7 +134,7 @@ Qual IP mandar para cada situação:
 Para que alguém de fora da sua rede consiga conectar direto no seu IP público:
 
 1. **Libere a porta no firewall do Windows** (ou do seu sistema) para o
-   aplicativo Mini Voice.
+   aplicativo Monky.
 2. **Faça o encaminhamento de porta (port forwarding)** no roteador: porta
    `3000` (TCP) apontando para o IP local do seu PC.
 3. Se seu provedor usa CGNAT (comum em internet 4G/5G e alguns planos de fibra),
@@ -156,7 +156,7 @@ lixeira apaga.
 Na aba **Entrar no Servidor** existem três caminhos:
 
 **1. Servidores na Rede (mesma rede local).** Clique em **Buscar**: o app
-escuta por ~5 segundos os servidores Mini Voice na sua rede e lista cada um com
+escuta por ~5 segundos os servidores Monky na sua rede e lista cada um com
 nome, IP e versão. Clique em **Entrar** e pronto — sem digitar IP.
 
 **2. Servidores Salvos.** Todo servidor em que você entra fica salvo. A bolinha
@@ -257,8 +257,8 @@ Se você quer o servidor no ar 24/7, rode só o servidor (sem interface gráfica
 numa máquina Linux. Requer **Node.js 20 ou superior** (a CI do projeto usa a 22):
 
 ```bash
-git clone https://github.com/MiniVoiceOrg/Mini_Voice.git
-cd Mini_Voice
+git clone https://github.com/MonkyOrg/Monky.git
+cd Monky
 npm install
 npm run build
 node apps/server/dist/index.js --port 3000 --data ./data --name "Servidor dos Amigos"
@@ -327,10 +327,10 @@ Depois, seus amigos entram normalmente usando o **IP do VPS** e a porta.
 O que entra nas próximas versões é decidido pela comunidade — e você **não
 precisa saber programar** para participar.
 
-- 💡 **[Sugerir uma ideia](https://github.com/MiniVoiceOrg/Mini_Voice/discussions/new?category=ideias)** — uma proposta por discussão
-- ⬆️ **[Ver e votar nas ideias](https://github.com/MiniVoiceOrg/Mini_Voice/discussions/categories/ideias)** — antes de sugerir, veja se alguém já pediu o mesmo
-- 📋 **[Issues abertas](https://github.com/MiniVoiceOrg/Mini_Voice/issues)** — o que já foi planejado e o que está em andamento
-- 🐛 **[Reportar um bug](https://github.com/MiniVoiceOrg/Mini_Voice/issues/new/choose)** — bugs vão direto para Issues, sem votação
+- 💡 **[Sugerir uma ideia](https://github.com/MonkyOrg/Monky/discussions/new?category=ideias)** — uma proposta por discussão
+- ⬆️ **[Ver e votar nas ideias](https://github.com/MonkyOrg/Monky/discussions/categories/ideias)** — antes de sugerir, veja se alguém já pediu o mesmo
+- 📋 **[Issues abertas](https://github.com/MonkyOrg/Monky/issues)** — o que já foi planejado e o que está em andamento
+- 🐛 **[Reportar um bug](https://github.com/MonkyOrg/Monky/issues/new/choose)** — bugs vão direto para Issues, sem votação
 
 Na primeira semana de cada mês, as três ideias mais votadas (com no mínimo 5
 votos) viram issues e entram no fluxo de desenvolvimento. O status volta
@@ -349,9 +349,9 @@ Toda ajuda conta, e a maior parte dela **não exige escrever código**.
 
 | O que fazer | Onde |
 |---|---|
-| Sugerir uma funcionalidade | [Discussions › Ideias](https://github.com/MiniVoiceOrg/Mini_Voice/discussions/new?category=ideias) — uma proposta por discussão |
-| Votar no que vem primeiro | [Ideias abertas](https://github.com/MiniVoiceOrg/Mini_Voice/discussions/categories/ideias) — o voto define o próximo ciclo |
-| Reportar um bug | [Nova issue](https://github.com/MiniVoiceOrg/Mini_Voice/issues/new/choose) — com passos para reproduzir |
+| Sugerir uma funcionalidade | [Discussions › Ideias](https://github.com/MonkyOrg/Monky/discussions/new?category=ideias) — uma proposta por discussão |
+| Votar no que vem primeiro | [Ideias abertas](https://github.com/MonkyOrg/Monky/discussions/categories/ideias) — o voto define o próximo ciclo |
+| Reportar um bug | [Nova issue](https://github.com/MonkyOrg/Monky/issues/new/choose) — com passos para reproduzir |
 | Testar uma versão beta | **Configurações › Sobre e Updates › Receber versões beta** |
 | Melhorar a documentação | PR direto neste `README.md` ou no `CONTRIBUTING.md` |
 
@@ -361,7 +361,7 @@ aparece justamente nessa variedade.
 
 ### Com código
 
-1. **Escolha uma issue.** As [issues abertas](https://github.com/MiniVoiceOrg/Mini_Voice/issues) mostram o que já está
+1. **Escolha uma issue.** As [issues abertas](https://github.com/MonkyOrg/Monky/issues) mostram o que já está
    planejado; comente na que você quiser pegar, para ninguém trabalhar em
    duplicado. Se for algo novo, abra uma issue antes — evita você codar algo
    que não entra.
@@ -380,7 +380,7 @@ aparece justamente nessa variedade.
 O `main` é protegido e todo merge passa por PR com squash.
 
 📖 **O processo completo — padrões de código, estrutura do projeto, o que o
-Mini Voice é e o que não é — está em [CONTRIBUTING.md](CONTRIBUTING.md).**
+Monky é e o que não é — está em [CONTRIBUTING.md](CONTRIBUTING.md).**
 
 ---
 
@@ -400,7 +400,7 @@ npm run package      # gera o executável/ZIP em release/
 Estrutura do repositório:
 
 ```text
-Mini_Voice/
+Monky/
 ├── packages/
 │   └── shared/                 # Protocolo, modelos, constantes e validadores
 ├── apps/

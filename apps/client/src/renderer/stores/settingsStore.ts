@@ -1,4 +1,4 @@
-import { QualityPresetType, QualityProfile, DEFAULT_CUSTOM_PROFILE } from '@mini-voice/shared';
+import { QualityPresetType, QualityProfile, DEFAULT_CUSTOM_PROFILE } from '@monky/shared';
 import { appEvents } from '../core/EventBus';
 
 /**
@@ -49,7 +49,7 @@ export class SettingsStore {
 
   public load(): void {
     try {
-      const raw = localStorage.getItem('mini_voice_settings');
+      const raw = localStorage.getItem('monky_settings');
       if (raw) {
         const parsed = JSON.parse(raw);
         Object.assign(this, parsed);
@@ -192,7 +192,7 @@ export class SettingsStore {
 
   public save(): void {
     try {
-      localStorage.setItem('mini_voice_settings', JSON.stringify({
+      localStorage.setItem('monky_settings', JSON.stringify({
         qualityPreset: this.qualityPreset,
         vadSensitivity: this.vadSensitivity,
         selectedMicrophoneId: this.selectedMicrophoneId,

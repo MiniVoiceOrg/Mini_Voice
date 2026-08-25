@@ -3,21 +3,21 @@ import path from 'path';
 import { execSync } from 'child_process';
 
 async function packageApp() {
-  console.log('=== Empacotando Mini Voice para Windows ===');
+  console.log('=== Empacotando Monky para Windows ===');
 
   const rootDir = process.cwd();
   const releaseDir = path.join(rootDir, 'release');
-  const outDir = path.join(releaseDir, 'Mini Voice');
+  const outDir = path.join(releaseDir, 'Monky');
 
   // Close running instances if any
   try {
-    execSync('taskkill /F /IM "Mini Voice.exe" 2>nul', { stdio: 'ignore' });
+    execSync('taskkill /F /IM "Monky.exe" 2>nul', { stdio: 'ignore' });
     execSync('taskkill /F /IM "electron.exe" 2>nul', { stdio: 'ignore' });
   } catch (e) {}
 
   // Clean release directory
   if (fs.existsSync(outDir)) {
-    console.log('Limpando pasta release/Mini Voice anterior...');
+    console.log('Limpando pasta release/Monky anterior...');
     try {
       fs.rmSync(outDir, { recursive: true, force: true });
     } catch (e) {
@@ -38,9 +38,9 @@ async function packageApp() {
   console.log('1/4 Copiando binários do Electron...');
   fs.cpSync(electronDist, outDir, { recursive: true });
 
-  // Rename electron.exe to "Mini Voice.exe"
+  // Rename electron.exe to "Monky.exe"
   const oldExe = path.join(outDir, 'electron.exe');
-  const newExe = path.join(outDir, 'Mini Voice.exe');
+  const newExe = path.join(outDir, 'Monky.exe');
   if (fs.existsSync(oldExe)) {
     fs.renameSync(oldExe, newExe);
   }
@@ -58,20 +58,20 @@ async function packageApp() {
 
   // Client package.json
   const clientPkg = {
-    name: "mini-voice",
+    name: "monky",
     version: "1.0.0",
     main: "dist-electron/main/main.js"
   };
   fs.writeFileSync(path.join(appDir, 'package.json'), JSON.stringify(clientPkg, null, 2), 'utf8');
 
-  // Copy shared package to app node_modules/@mini-voice/shared
-  const sharedTarget = path.join(appDir, 'node_modules', '@mini-voice', 'shared');
+  // Copy shared package to app node_modules/@monky/shared
+  const sharedTarget = path.join(appDir, 'node_modules', '@monky', 'shared');
   fs.mkdirSync(sharedTarget, { recursive: true });
   fs.cpSync(path.join(rootDir, 'packages/shared/dist'), path.join(sharedTarget, 'dist'), { recursive: true });
   fs.cpSync(path.join(rootDir, 'packages/shared/package.json'), path.join(sharedTarget, 'package.json'));
 
-  // Copy server package to app node_modules/@mini-voice/server
-  const serverTarget = path.join(appDir, 'node_modules', '@mini-voice', 'server');
+  // Copy server package to app node_modules/@monky/server
+  const serverTarget = path.join(appDir, 'node_modules', '@monky', 'server');
   fs.mkdirSync(serverTarget, { recursive: true });
   fs.cpSync(path.join(rootDir, 'apps/server/dist'), path.join(serverTarget, 'dist'), { recursive: true });
   fs.cpSync(path.join(rootDir, 'apps/server/package.json'), path.join(serverTarget, 'package.json'));
@@ -103,7 +103,7 @@ async function packageApp() {
   }
 
   console.log('4/4 Gerando arquivo ZIP para envio fácil...');
-  const zipPath = path.join(releaseDir, 'Mini-Voice-Windows.zip');
+  const zipPath = path.join(releaseDir, 'Monky-Windows.zip');
   if (fs.existsSync(zipPath)) {
     fs.unlinkSync(zipPath);
   }
@@ -114,7 +114,7 @@ async function packageApp() {
     });
     console.log(`✔ Arquivo ZIP gerado com sucesso em: ${zipPath}`);
   } catch (err) {
-    console.warn('Compress-Archive falhou, mas a pasta release/Mini Voice está pronta.');
+    console.warn('Compress-Archive falhou, mas a pasta release/Monky está pronta.');
   }
 
   console.log('\n=============================================');

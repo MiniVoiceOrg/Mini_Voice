@@ -1,4 +1,4 @@
-# 🔬 Code Review — Mini Voice (NovoDiscord)
+# 🔬 Code Review — Monky (NovoDiscord)
 
 > **Revisão completa de arquitetura, lógica, bugs e organização**  
 > Analisados ~50 arquivos de código fonte em `packages/shared`, `apps/server` e `apps/client`.

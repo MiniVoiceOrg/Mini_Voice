@@ -1,5 +1,5 @@
 import os from 'os';
-import { ServerNetworkInterface } from '@mini-voice/shared';
+import { ServerNetworkInterface } from '@monky/shared';
 
 let cachedPublicIp: string | null = null;
 let lastPublicIpFetch = 0;

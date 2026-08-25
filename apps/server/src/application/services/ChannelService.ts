@@ -4,7 +4,7 @@ import {
   ChannelSummary,
   ProtocolErrorCode,
   channelCreateSchema,
-} from '@mini-voice/shared';
+} from '@monky/shared';
 import { ChannelRecord } from '../../domain/entities';
 import { IChannelRepository, IServerRepository } from '../../domain/repositories';
 

@@ -1,5 +1,5 @@
 import { v4 as uuidv4 } from 'uuid';
-import { AttachmentMeta, AttachmentStorageInfo, LIMITS, ProtocolErrorCode } from '@mini-voice/shared';
+import { AttachmentMeta, AttachmentStorageInfo, LIMITS, ProtocolErrorCode } from '@monky/shared';
 import { AttachmentRecord } from '../../domain/entities';
 import { IAttachmentRepository, IServerRepository } from '../../domain/repositories';
 import { AttachmentStorageService } from '../../infrastructure/security/AttachmentStorageService';

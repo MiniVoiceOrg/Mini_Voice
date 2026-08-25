@@ -1,5 +1,5 @@
 {
-  "name": "@mini-voice/server",
+  "name": "@monky/server",
   "version": "1.0.0",
   "private": true,
   "main": "dist/index.js",
@@ -11,7 +11,7 @@
     "clean": "rimraf dist"
   },
   "dependencies": {
-    "@mini-voice/shared": "*",
+    "@monky/shared": "*",
     "ws": "^8.18.0",
     "uuid": "^11.1.0",
     "sql.js": "^1.12.0"
