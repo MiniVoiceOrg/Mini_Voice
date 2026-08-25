@@ -18,6 +18,16 @@ export const en: TranslationMap = {
   'common.download': 'Download',
   'common.remove': 'Remove',
   'common.moreOptions': 'More options',
+  'common.open': 'Open',
+  'common.play': 'Play',
+  'common.pause': 'Pause',
+  'common.previous': 'Previous',
+  'common.next': 'Next',
+  'common.mute': 'Mute',
+  'common.unmute': 'Unmute',
+  'common.fullscreen': 'Fullscreen',
+  'common.exitFullscreen': 'Exit fullscreen',
+  'common.zoom': 'Zoom',
 
   // ── Generic dialogs (Dialog.ts) ──────────────────────────────────────────
   'dialog.alertTitle': 'Notice',
@@ -88,6 +98,9 @@ export const en: TranslationMap = {
   'chat.tooManyAttachments': 'Maximum of {max} files per message.',
   'chat.downloadFailedTitle': 'Download failed',
   'chat.downloadFailedMessage': 'Could not download the attachment. {error}',
+  'chat.openMediaViewer': 'Open media viewer',
+  'chat.videoSeek': 'Video progress',
+  'chat.videoVolume': 'Video volume',
 
   // ── Server settings (ServerSettingsModal.ts) ─────────────────────────────
   'serverSettings.title': 'Server Settings',
