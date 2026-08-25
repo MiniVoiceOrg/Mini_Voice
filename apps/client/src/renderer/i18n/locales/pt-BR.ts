@@ -19,6 +19,16 @@ export const ptBR = {
   'common.download': 'Baixar',
   'common.remove': 'Remover',
   'common.moreOptions': 'Mais opções',
+  'common.open': 'Abrir',
+  'common.play': 'Reproduzir',
+  'common.pause': 'Pausar',
+  'common.previous': 'Anterior',
+  'common.next': 'Próximo',
+  'common.mute': 'Silenciar',
+  'common.unmute': 'Ativar som',
+  'common.fullscreen': 'Tela cheia',
+  'common.exitFullscreen': 'Sair da tela cheia',
+  'common.zoom': 'Zoom',
 
   // ── Diálogos genéricos (Dialog.ts) ───────────────────────────────────────
   'dialog.alertTitle': 'Aviso',
@@ -89,6 +99,9 @@ export const ptBR = {
   'chat.tooManyAttachments': 'Máximo de {max} arquivos por mensagem.',
   'chat.downloadFailedTitle': 'Falha no download',
   'chat.downloadFailedMessage': 'Não foi possível baixar o anexo. {error}',
+  'chat.openMediaViewer': 'Abrir visualizador de mídia',
+  'chat.videoSeek': 'Progresso do vídeo',
+  'chat.videoVolume': 'Volume do vídeo',
 
   // ── Configurações do servidor (ServerSettingsModal.ts) ───────────────────
   'serverSettings.title': 'Configurações do Servidor',

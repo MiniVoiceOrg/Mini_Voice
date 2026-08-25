@@ -28,6 +28,22 @@ interface PendingAttachment {
   handle?: UploadHandle;
 }
 
+interface LightboxMedia {
+  kind: 'image' | 'video';
+  url: string;
+  fileName: string;
+  source: HTMLElement;
+}
+
+interface LinkPreviewData {
+  url: string;
+  title: string;
+  description?: string;
+  image?: string;
+  siteName?: string;
+  favicon?: string;
+}
+
 export class ChatView {
   private container: HTMLElement;
   private currentChannelId: string | null = null;
@@ -40,6 +56,9 @@ export class ChatView {
   // Files picked for the next message, keyed by a local id (#11).
   private pending: PendingAttachment[] = [];
   private uploadSeq = 0;
+  private closeLightbox: (() => void) | null = null;
+  private linkPreviewCache = new Map<string, LinkPreviewData | null>();
+  private linkPreviewRequests = new Map<string, Promise<LinkPreviewData | null>>();
 
   constructor(container: HTMLElement) {
     this.container = container;
@@ -154,6 +173,8 @@ export class ChatView {
       });
     });
 
+    this.initializeLinkPreviews(feed);
+
     // Attach right-click context menu on message rows (when not selecting text)
     feed.querySelectorAll('.chat-message-row').forEach((row) => {
       row.addEventListener('contextmenu', (e: Event) => {
@@ -178,30 +199,8 @@ export class ChatView {
       });
     });
 
-    // Image attachments open in a lightbox; downloads stay inside the app (#184).
-    feed.querySelectorAll('.chat-attachment-image').forEach((img) => {
-      img.addEventListener('click', () => {
-        const url = img.getAttribute('data-full-url');
-        const name = img.getAttribute('data-file-name') || 'image';
-        if (url) this.openLightbox(url, name);
-      });
-    });
-    feed.querySelectorAll('.chat-attachment-file').forEach((chip) => {
-      chip.addEventListener('click', () => {
-        const url = chip.getAttribute('data-download-url');
-        const name = chip.getAttribute('data-file-name') || 'attachment';
-        if (url) void this.downloadAttachment(url, name);
-      });
-    });
-    feed.querySelectorAll('.chat-attachment-download').forEach((button) => {
-      button.addEventListener('click', (e) => {
-        e.preventDefault();
-        e.stopPropagation();
-        const url = button.getAttribute('data-download-url');
-        const name = button.getAttribute('data-file-name') || 'attachment';
-        if (url) void this.downloadAttachment(url, name);
-      });
-    });
+    this.bindMediaInteractions(feed);
+    this.initializeCustomVideoPlayers(feed);
 
     this.scrollToBottom();
   }
@@ -281,7 +280,7 @@ export class ChatView {
     const rowClass = `chat-message-row${isMentioned ? ' chat-message-mentioned' : ''}`;
 
     return `
-      <div class="${rowClass}" data-user-id="${m.userId}">
+      <div class="${rowClass}" data-user-id="${m.userId}" data-message-id="${m.id}">
         <img class="chat-author-avatar" src="${avatarSrc}">
         <div class="chat-message-body">
           <div class="chat-author-header">
@@ -289,6 +288,7 @@ export class ChatView {
             <span class="chat-timestamp">${time}</span>
           </div>
           ${textHtml}
+          <div class="chat-link-previews" data-message-id="${escapeHtml(m.id)}"></div>
           ${attachmentsHtml}
         </div>
       </div>
@@ -317,22 +317,38 @@ export class ChatView {
     const name = escapeHtml(a.originalName);
 
     if (a.kind === 'image') {
-      return `<img class="chat-attachment-image" src="${src}" alt="${name}" title="${name}" data-full-url="${src}" data-file-name="${name}" loading="lazy">`;
+      return `<img class="chat-attachment-image" src="${src}" alt="${name}" title="${name}" data-lightbox-kind="image" data-lightbox-url="${src}" data-lightbox-name="${name}" loading="lazy">`;
     }
 
     if (a.kind === 'video') {
       return `
-        <div class="chat-attachment-video-wrap">
-          <video class="chat-attachment-video" controls preload="metadata" src="${src}"></video>
-          <button
-            type="button"
-            class="chat-attachment-download chat-attachment-video-download"
-            data-download-url="${src}"
-            data-file-name="${name}"
-            title="${t('common.download')}"
-          >
-            <span class="material-symbols-outlined md-18">download</span>
-          </button>
+        <div
+          class="chat-attachment-video-wrap"
+          data-lightbox-kind="video"
+          data-lightbox-url="${src}"
+          data-lightbox-name="${name}"
+        >
+          <div class="chat-video-player">
+            <video class="chat-attachment-video" preload="metadata" src="${src}" playsinline></video>
+            <div class="chat-video-top-actions">
+              <button
+                type="button"
+                class="chat-attachment-action chat-attachment-lightbox-trigger"
+                title="${t('chat.openMediaViewer')}"
+              >
+                <span class="material-symbols-outlined md-18">open_in_full</span>
+              </button>
+              <button
+                type="button"
+                class="chat-attachment-action chat-attachment-download chat-attachment-video-download"
+                data-download-url="${src}"
+                data-file-name="${name}"
+                title="${t('common.download')}"
+              >
+                <span class="material-symbols-outlined md-18">download</span>
+              </button>
+            </div>
+          </div>
         </div>
       `;
     }
@@ -353,6 +369,484 @@ export class ChatView {
         <span class="material-symbols-outlined md-20 af-dl">download</span>
       </button>
     `;
+  }
+
+  private initializeLinkPreviews(feed: HTMLElement): void {
+    if (!window.api?.fetchLinkPreview) return;
+
+    feed.querySelectorAll<HTMLElement>('.chat-link-previews').forEach((container) => {
+      const row = container.closest('.chat-message-row') as HTMLElement | null;
+      if (!row) {
+        container.remove();
+        return;
+      }
+
+      const urls = this.collectPreviewUrls(row);
+      if (urls.length === 0) {
+        container.remove();
+        return;
+      }
+
+      container.innerHTML = '';
+      for (const url of urls) {
+        const slot = document.createElement('div');
+        slot.className = 'chat-link-preview-slot';
+        slot.innerHTML = this.renderLinkPreviewSkeleton();
+        container.appendChild(slot);
+        void this.populateLinkPreview(url, slot);
+      }
+    });
+  }
+
+  private collectPreviewUrls(row: HTMLElement): string[] {
+    const attachmentUrls = new Set<string>();
+    row.querySelectorAll<HTMLElement>('[data-download-url], [data-lightbox-url]').forEach((element) => {
+      const rawUrl = element.getAttribute('data-download-url') || element.getAttribute('data-lightbox-url');
+      const normalized = this.normalizePreviewUrl(rawUrl);
+      if (normalized) {
+        attachmentUrls.add(normalized);
+      }
+    });
+
+    const seen = new Set<string>();
+    const urls: string[] = [];
+    row.querySelectorAll<HTMLAnchorElement>('.chat-message-text .md-link[data-external-link]').forEach((link) => {
+      const normalized = this.normalizePreviewUrl(link.getAttribute('data-external-link'));
+      if (!normalized || seen.has(normalized) || attachmentUrls.has(normalized)) {
+        return;
+      }
+
+      seen.add(normalized);
+      urls.push(normalized);
+    });
+
+    return urls;
+  }
+
+  private normalizePreviewUrl(url: string | null | undefined): string | null {
+    if (!url) return null;
+
+    try {
+      const parsed = new URL(url);
+      if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') {
+        return null;
+      }
+
+      parsed.hash = '';
+      return parsed.toString();
+    } catch {
+      return null;
+    }
+  }
+
+  private async populateLinkPreview(url: string, slot: HTMLElement): Promise<void> {
+    const preview = await this.fetchLinkPreview(url);
+    if (!slot.isConnected) return;
+
+    const parent = slot.parentElement;
+    if (!preview) {
+      slot.remove();
+      if (parent && parent.childElementCount === 0) {
+        parent.remove();
+      }
+      return;
+    }
+
+    slot.innerHTML = this.renderLinkPreviewCard(preview);
+
+    const card = slot.querySelector<HTMLElement>('.chat-link-preview');
+    card?.addEventListener('click', () => {
+      void window.api.openExternal(preview.url);
+    });
+
+    const favicon = slot.querySelector<HTMLImageElement>('.chat-link-preview-favicon');
+    favicon?.addEventListener('error', () => {
+      const iconWrap = favicon.parentElement;
+      if (!iconWrap) return;
+      iconWrap.classList.add('chat-link-preview-site-icon--fallback');
+      iconWrap.innerHTML = '<span class="material-symbols-outlined md-16">public</span>';
+    });
+
+    const thumb = slot.querySelector<HTMLImageElement>('.chat-link-preview-thumb');
+    thumb?.addEventListener('error', () => {
+      thumb.closest('.chat-link-preview-media')?.remove();
+      card?.classList.add('chat-link-preview--no-image');
+    });
+  }
+
+  private async fetchLinkPreview(url: string): Promise<LinkPreviewData | null> {
+    if (this.linkPreviewCache.has(url)) {
+      return this.linkPreviewCache.get(url) ?? null;
+    }
+
+    const pendingRequest = this.linkPreviewRequests.get(url);
+    if (pendingRequest) {
+      return pendingRequest;
+    }
+
+    const request = window.api.fetchLinkPreview(url)
+      .catch(() => null)
+      .then((preview) => {
+        this.linkPreviewCache.set(url, preview);
+        const normalizedPreviewUrl = this.normalizePreviewUrl(preview?.url);
+        if (normalizedPreviewUrl && normalizedPreviewUrl !== url) {
+          this.linkPreviewCache.set(normalizedPreviewUrl, preview);
+        }
+        this.linkPreviewRequests.delete(url);
+        return preview;
+      });
+
+    this.linkPreviewRequests.set(url, request);
+    return request;
+  }
+
+  private renderLinkPreviewSkeleton(): string {
+    return `
+      <div class="chat-link-preview chat-link-preview--loading" aria-hidden="true">
+        <div class="chat-link-preview-main">
+          <div class="chat-link-preview-site">
+            <span class="chat-link-preview-site-icon chat-link-preview-skeleton-block"></span>
+            <span class="chat-link-preview-skeleton-line chat-link-preview-skeleton-line--site"></span>
+          </div>
+          <span class="chat-link-preview-skeleton-line chat-link-preview-skeleton-line--title"></span>
+          <span class="chat-link-preview-skeleton-line chat-link-preview-skeleton-line--text"></span>
+          <span class="chat-link-preview-skeleton-line chat-link-preview-skeleton-line--text chat-link-preview-skeleton-line--short"></span>
+        </div>
+        <div class="chat-link-preview-media chat-link-preview-skeleton-block"></div>
+      </div>
+    `;
+  }
+
+  private renderLinkPreviewCard(preview: LinkPreviewData): string {
+    const normalizedUrl = this.normalizePreviewUrl(preview.url) ?? preview.url;
+    const hostname = this.getPreviewHostname(normalizedUrl);
+    const siteLabel = escapeHtml((preview.siteName || hostname || normalizedUrl).trim());
+    const title = escapeHtml((preview.title || preview.siteName || hostname || normalizedUrl).trim());
+    const description = preview.description ? escapeHtml(preview.description.trim()) : '';
+    const faviconHtml = preview.favicon
+      ? `<img class="chat-link-preview-favicon" src="${escapeHtml(preview.favicon)}" alt="" loading="lazy">`
+      : '<span class="material-symbols-outlined md-16">public</span>';
+    const thumbHtml = preview.image
+      ? `
+        <div class="chat-link-preview-media">
+          <img class="chat-link-preview-thumb" src="${escapeHtml(preview.image)}" alt="" loading="lazy">
+        </div>
+      `
+      : '';
+
+    return `
+      <button
+        type="button"
+        class="chat-link-preview${preview.image ? '' : ' chat-link-preview--no-image'}"
+        title="${escapeHtml(normalizedUrl)}"
+      >
+        <div class="chat-link-preview-main">
+          <div class="chat-link-preview-site">
+            <span class="chat-link-preview-site-icon${preview.favicon ? '' : ' chat-link-preview-site-icon--fallback'}">
+              ${faviconHtml}
+            </span>
+            <span class="chat-link-preview-site-label">${siteLabel}</span>
+          </div>
+          <span class="chat-link-preview-title">${title}</span>
+          ${description ? `<span class="chat-link-preview-description">${description}</span>` : ''}
+        </div>
+        ${thumbHtml}
+      </button>
+    `;
+  }
+
+  private getPreviewHostname(url: string): string {
+    try {
+      return new URL(url).hostname.replace(/^www\./i, '');
+    } catch {
+      return '';
+    }
+  }
+
+  private bindMediaInteractions(feed: HTMLElement): void {
+    feed.querySelectorAll('.chat-attachment-image').forEach((img) => {
+      img.addEventListener('click', () => this.openLightboxFromSource(img as HTMLElement));
+    });
+
+    feed.querySelectorAll('.chat-attachment-lightbox-trigger').forEach((button) => {
+      button.addEventListener('click', (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        const source = (button as HTMLElement).closest('[data-lightbox-kind]') as HTMLElement | null;
+        if (source) this.openLightboxFromSource(source);
+      });
+    });
+
+    feed.querySelectorAll('.chat-attachment-file').forEach((chip) => {
+      chip.addEventListener('click', () => {
+        const url = chip.getAttribute('data-download-url');
+        const name = chip.getAttribute('data-file-name') || 'attachment';
+        if (url) void this.downloadAttachment(url, name);
+      });
+    });
+
+    feed.querySelectorAll('.chat-attachment-download').forEach((button) => {
+      button.addEventListener('click', (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        const url = button.getAttribute('data-download-url');
+        const name = button.getAttribute('data-file-name') || 'attachment';
+        if (url) void this.downloadAttachment(url, name);
+      });
+    });
+  }
+
+  private initializeCustomVideoPlayers(root: ParentNode): void {
+    root.querySelectorAll<HTMLElement>('.chat-video-player').forEach((player) => {
+      if (player.dataset.enhanced === 'true') return;
+      player.dataset.enhanced = 'true';
+
+      const video = player.querySelector('video') as HTMLVideoElement | null;
+      if (!video) return;
+
+      video.controls = false;
+      video.removeAttribute('controls');
+      video.playsInline = true;
+      video.volume = video.volume || 0.8;
+
+      const bigPlay = document.createElement('button');
+      bigPlay.type = 'button';
+      bigPlay.className = 'chat-video-big-play';
+      bigPlay.title = t('common.play');
+      bigPlay.innerHTML = '<span class="material-symbols-outlined md-36">play_arrow</span>';
+
+      const controls = document.createElement('div');
+      controls.className = 'chat-video-controls';
+      controls.innerHTML = `
+        <button type="button" class="chat-video-control-btn" data-action="play" title="${t('common.play')}">
+          <span class="material-symbols-outlined md-20">play_arrow</span>
+        </button>
+        <div class="chat-video-progress-group">
+          <input
+            type="range"
+            class="chat-video-progress"
+            min="0"
+            max="100"
+            step="0.1"
+            value="0"
+            aria-label="${t('chat.videoSeek')}"
+            title="${t('chat.videoSeek')}"
+          >
+        </div>
+        <div class="chat-video-time">00:00 / --:--</div>
+        <button type="button" class="chat-video-control-btn" data-action="mute" title="${t('common.mute')}">
+          <span class="material-symbols-outlined md-20">volume_up</span>
+        </button>
+        <input
+          type="range"
+          class="chat-video-volume"
+          min="0"
+          max="1"
+          step="0.05"
+          value="${video.volume || 0.8}"
+          aria-label="${t('chat.videoVolume')}"
+          title="${t('chat.videoVolume')}"
+        >
+        <button type="button" class="chat-video-control-btn" data-action="fullscreen" title="${t('common.fullscreen')}">
+          <span class="material-symbols-outlined md-20">fullscreen</span>
+        </button>
+      `;
+
+      player.append(bigPlay, controls);
+
+      const playButton = controls.querySelector('[data-action="play"]') as HTMLButtonElement | null;
+      const playIcon = playButton?.querySelector('.material-symbols-outlined') as HTMLElement | null;
+      const muteButton = controls.querySelector('[data-action="mute"]') as HTMLButtonElement | null;
+      const muteIcon = muteButton?.querySelector('.material-symbols-outlined') as HTMLElement | null;
+      const fullscreenButton = controls.querySelector('[data-action="fullscreen"]') as HTMLButtonElement | null;
+      const fullscreenIcon = fullscreenButton?.querySelector('.material-symbols-outlined') as HTMLElement | null;
+      const progress = controls.querySelector('.chat-video-progress') as HTMLInputElement | null;
+      const volume = controls.querySelector('.chat-video-volume') as HTMLInputElement | null;
+      const timeDisplay = controls.querySelector('.chat-video-time') as HTMLElement | null;
+      let lastVolume = video.volume || 0.8;
+
+      const syncRangeFill = (input: HTMLInputElement, ratio: number) => {
+        input.style.setProperty('--value', `${Math.max(0, Math.min(ratio * 100, 100))}%`);
+      };
+
+      const getVolumeIcon = (level: number) => {
+        if (level <= 0.001) return 'volume_off';
+        if (level < 0.5) return 'volume_down';
+        return 'volume_up';
+      };
+
+      const updatePlayState = () => {
+        const paused = video.paused || video.ended;
+        player.classList.toggle('is-paused', paused);
+        if (playIcon) playIcon.innerText = paused ? 'play_arrow' : 'pause';
+        if (playButton) playButton.title = paused ? t('common.play') : t('common.pause');
+        bigPlay.title = paused ? t('common.play') : t('common.pause');
+      };
+
+      const updateTimeline = () => {
+        const duration = Number.isFinite(video.duration) ? video.duration : 0;
+        const current = Number.isFinite(video.currentTime) ? video.currentTime : 0;
+        if (timeDisplay) {
+          timeDisplay.innerText = `${this.formatMediaTime(current)} / ${duration > 0 ? this.formatMediaTime(duration) : '--:--'}`;
+        }
+        if (progress) {
+          const ratio = duration > 0 ? current / duration : 0;
+          progress.value = `${ratio * 100}`;
+          syncRangeFill(progress, ratio);
+        }
+      };
+
+      const updateVolumeState = () => {
+        const level = video.muted ? 0 : video.volume;
+        if (muteIcon) muteIcon.innerText = getVolumeIcon(level);
+        if (muteButton) muteButton.title = level <= 0.001 ? t('common.unmute') : t('common.mute');
+        if (volume) {
+          volume.value = `${level}`;
+          syncRangeFill(volume, level);
+        }
+      };
+
+      const updateFullscreenState = () => {
+        const isFullscreen = document.fullscreenElement === player;
+        if (fullscreenIcon) fullscreenIcon.innerText = isFullscreen ? 'fullscreen_exit' : 'fullscreen';
+        if (fullscreenButton) {
+          fullscreenButton.title = isFullscreen ? t('common.exitFullscreen') : t('common.fullscreen');
+        }
+      };
+
+      const togglePlay = async () => {
+        try {
+          if (video.paused || video.ended) {
+            if (video.ended) video.currentTime = 0;
+            await video.play();
+          } else {
+            video.pause();
+          }
+        } catch (err) {
+          console.warn('[ChatView] Unable to toggle video playback:', err);
+        }
+      };
+
+      player.querySelectorAll('.chat-attachment-action').forEach((button) => {
+        button.addEventListener('click', (e) => e.stopPropagation());
+      });
+      controls.addEventListener('click', (e) => e.stopPropagation());
+      controls.addEventListener('dblclick', (e) => e.stopPropagation());
+      playButton?.addEventListener('click', (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        void togglePlay();
+      });
+      bigPlay.addEventListener('click', (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        void togglePlay();
+      });
+      video.addEventListener('click', (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        void togglePlay();
+      });
+      video.addEventListener('dblclick', (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+      });
+
+      progress?.addEventListener('input', (e) => {
+        const target = e.currentTarget as HTMLInputElement;
+        const duration = Number.isFinite(video.duration) ? video.duration : 0;
+        const ratio = Number(target.value) / 100;
+        syncRangeFill(target, ratio);
+        if (duration > 0) {
+          video.currentTime = duration * ratio;
+          updateTimeline();
+        }
+      });
+
+      muteButton?.addEventListener('click', (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        if (video.muted || video.volume <= 0.001) {
+          video.muted = false;
+          video.volume = lastVolume > 0 ? lastVolume : 0.8;
+        } else {
+          lastVolume = video.volume;
+          video.muted = true;
+        }
+        updateVolumeState();
+      });
+
+      volume?.addEventListener('input', (e) => {
+        const target = e.currentTarget as HTMLInputElement;
+        const nextVolume = Number(target.value);
+        video.muted = nextVolume <= 0.001;
+        video.volume = nextVolume;
+        if (nextVolume > 0.001) lastVolume = nextVolume;
+        syncRangeFill(target, nextVolume);
+        updateVolumeState();
+      });
+
+      fullscreenButton?.addEventListener('click', async (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        try {
+          if (document.fullscreenElement === player) {
+            await document.exitFullscreen();
+          } else {
+            await player.requestFullscreen();
+          }
+        } catch (err) {
+          console.warn('[ChatView] Unable to toggle video fullscreen:', err);
+        }
+        updateFullscreenState();
+      });
+
+      player.addEventListener('mouseenter', updateFullscreenState);
+      video.addEventListener('play', updatePlayState);
+      video.addEventListener('pause', updatePlayState);
+      video.addEventListener('ended', updatePlayState);
+      video.addEventListener('loadedmetadata', updateTimeline);
+      video.addEventListener('durationchange', updateTimeline);
+      video.addEventListener('timeupdate', updateTimeline);
+      video.addEventListener('volumechange', updateVolumeState);
+
+      updatePlayState();
+      updateTimeline();
+      updateVolumeState();
+      updateFullscreenState();
+    });
+  }
+
+  private openLightboxFromSource(source: HTMLElement): void {
+    const feed = document.getElementById('chat-messages-feed');
+    if (!feed) return;
+
+    const items = Array.from(feed.querySelectorAll<HTMLElement>('[data-lightbox-kind]'))
+      .map((node) => {
+        const kind = node.getAttribute('data-lightbox-kind');
+        const url = node.getAttribute('data-lightbox-url');
+        const fileName = node.getAttribute('data-lightbox-name') || 'attachment';
+        if ((kind === 'image' || kind === 'video') && url) {
+          return { kind, url, fileName, source: node } as LightboxMedia;
+        }
+        return null;
+      })
+      .filter((item): item is LightboxMedia => item !== null);
+
+    if (items.length === 0) return;
+    const startIndex = items.findIndex((item) => item.source === source);
+    if (startIndex >= 0) this.openLightbox(items, startIndex);
+  }
+
+  private formatMediaTime(totalSeconds: number): string {
+    const seconds = Math.max(0, Math.floor(totalSeconds));
+    const hours = Math.floor(seconds / 3600);
+    const minutes = Math.floor((seconds % 3600) / 60);
+    const secs = seconds % 60;
+    if (hours > 0) {
+      return [hours, minutes, secs].map((part, index) => (index === 0 ? `${part}` : `${part}`.padStart(2, '0'))).join(':');
+    }
+    return `${minutes}`.padStart(2, '0') + `:${`${secs}`.padStart(2, '0')}`;
   }
 
   private attachEvents(): void {
@@ -836,46 +1330,285 @@ export class ChatView {
     }
   }
 
-  private openLightbox(url: string, fileName: string): void {
+  private openLightbox(items: LightboxMedia[], startIndex: number): void {
+    if (items.length === 0) return;
+    this.closeLightbox?.();
+
+    let currentIndex = Math.max(0, Math.min(startIndex, items.length - 1));
+    let zoom = 1;
+    let panX = 0;
+    let panY = 0;
+    let dragging = false;
+    let pointerId: number | null = null;
+    let dragStartX = 0;
+    let dragStartY = 0;
+    let startPanX = 0;
+    let startPanY = 0;
+    let currentImage: HTMLImageElement | null = null;
+
     const overlay = document.createElement('div');
     overlay.className = 'attachment-lightbox';
     overlay.innerHTML = `
-      <img src="${url}" alt="">
-      <button type="button" class="lightbox-download" title="${t('common.download')}">
-        <span class="material-symbols-outlined">download</span>
+      <div class="lightbox-toolbar">
+        <div class="lightbox-meta">
+          <div class="lightbox-counter-row">
+            <span class="lightbox-counter"></span>
+            <span class="lightbox-zoom-indicator" hidden></span>
+          </div>
+          <div class="lightbox-caption"></div>
+        </div>
+        <div class="lightbox-actions">
+          <button type="button" class="lightbox-btn lightbox-download" title="${t('common.download')}">
+            <span class="material-symbols-outlined">download</span>
+          </button>
+          <button type="button" class="lightbox-btn lightbox-close" title="${t('common.close')}">
+            <span class="material-symbols-outlined">close</span>
+          </button>
+        </div>
+      </div>
+      <button type="button" class="lightbox-nav lightbox-nav--prev" title="${t('common.previous')}">
+        <span class="material-symbols-outlined md-28">chevron_left</span>
       </button>
-      <button type="button" class="lightbox-close" title="${t('common.close')}">
-        <span class="material-symbols-outlined">close</span>
+      <div class="lightbox-stage">
+        <div class="lightbox-media-frame"></div>
+      </div>
+      <button type="button" class="lightbox-nav lightbox-nav--next" title="${t('common.next')}">
+        <span class="material-symbols-outlined md-28">chevron_right</span>
       </button>
     `;
-    const btnDownload = overlay.querySelector('.lightbox-download') as HTMLButtonElement | null;
-    btnDownload?.addEventListener('click', (e) => {
-      e.preventDefault();
-      e.stopPropagation();
-      void this.downloadAttachment(url, fileName);
-    });
-    const btnClose = overlay.querySelector('.lightbox-close') as HTMLButtonElement | null;
-    btnClose?.addEventListener('click', (e) => {
+
+    const stage = overlay.querySelector('.lightbox-stage') as HTMLElement | null;
+    const frame = overlay.querySelector('.lightbox-media-frame') as HTMLElement | null;
+    const counter = overlay.querySelector('.lightbox-counter') as HTMLElement | null;
+    const caption = overlay.querySelector('.lightbox-caption') as HTMLElement | null;
+    const zoomIndicator = overlay.querySelector('.lightbox-zoom-indicator') as HTMLElement | null;
+    const prevButton = overlay.querySelector('.lightbox-nav--prev') as HTMLButtonElement | null;
+    const nextButton = overlay.querySelector('.lightbox-nav--next') as HTMLButtonElement | null;
+    const downloadButton = overlay.querySelector('.lightbox-download') as HTMLButtonElement | null;
+    const closeButton = overlay.querySelector('.lightbox-close') as HTMLButtonElement | null;
+    if (!stage || !frame || !counter || !caption || !zoomIndicator || !prevButton || !nextButton || !downloadButton || !closeButton) {
+      return;
+    }
+
+    const clamp = (value: number, min: number, max: number) => Math.min(max, Math.max(min, value));
+
+    const updateZoomIndicator = () => {
+      if (!currentImage) {
+        zoomIndicator.hidden = true;
+        return;
+      }
+      const fittedWidth = currentImage.clientWidth || currentImage.naturalWidth || 1;
+      const fittedHeight = currentImage.clientHeight || currentImage.naturalHeight || 1;
+      const actualScale = Math.max(currentImage.naturalWidth / fittedWidth, currentImage.naturalHeight / fittedHeight, 1);
+      const percent = Math.round((zoom / actualScale) * 100);
+      zoomIndicator.hidden = false;
+      zoomIndicator.innerText = `${percent}%`;
+      zoomIndicator.title = `${t('common.zoom')}: ${percent}%`;
+    };
+
+    const clampPan = () => {
+      if (!currentImage || zoom <= 1) {
+        panX = 0;
+        panY = 0;
+        return;
+      }
+      const maxX = Math.max(0, (currentImage.clientWidth * zoom - stage.clientWidth) / 2);
+      const maxY = Math.max(0, (currentImage.clientHeight * zoom - stage.clientHeight) / 2);
+      panX = clamp(panX, -maxX, maxX);
+      panY = clamp(panY, -maxY, maxY);
+    };
+
+    const updateImageTransform = () => {
+      if (!currentImage) {
+        zoomIndicator.hidden = true;
+        stage.classList.remove('is-pannable', 'is-dragging');
+        return;
+      }
+      clampPan();
+      currentImage.style.transform = `translate(${panX}px, ${panY}px) scale(${zoom})`;
+      currentImage.style.cursor = zoom > 1 ? (dragging ? 'grabbing' : 'grab') : 'zoom-in';
+      stage.classList.toggle('is-pannable', zoom > 1);
+      stage.classList.toggle('is-dragging', dragging);
+      updateZoomIndicator();
+    };
+
+    const resetZoom = () => {
+      zoom = 1;
+      panX = 0;
+      panY = 0;
+      dragging = false;
+      pointerId = null;
+      updateImageTransform();
+    };
+
+    const getActualScale = () => {
+      if (!currentImage) return 1;
+      const fittedWidth = currentImage.clientWidth || currentImage.naturalWidth || 1;
+      const fittedHeight = currentImage.clientHeight || currentImage.naturalHeight || 1;
+      return Math.max(currentImage.naturalWidth / fittedWidth, currentImage.naturalHeight / fittedHeight, 1);
+    };
+
+    const setZoom = (nextZoom: number) => {
+      zoom = clamp(nextZoom, 1, 8);
+      if (zoom <= 1) {
+        panX = 0;
+        panY = 0;
+      }
+      updateImageTransform();
+    };
+
+    const releaseDrag = () => {
+      if (currentImage && pointerId !== null && currentImage.hasPointerCapture(pointerId)) {
+        currentImage.releasePointerCapture(pointerId);
+      }
+      pointerId = null;
+      dragging = false;
+      updateImageTransform();
+    };
+
+    const navigate = (direction: number) => {
+      const nextIndex = currentIndex + direction;
+      if (nextIndex < 0 || nextIndex >= items.length) return;
+      currentIndex = nextIndex;
+      renderCurrent();
+    };
+
+    const renderCurrent = () => {
+      releaseDrag();
+      resetZoom();
+      frame.innerHTML = '';
+      currentImage = null;
+      const item = items[currentIndex];
+
+      counter.innerText = `${currentIndex + 1} / ${items.length}`;
+      caption.innerText = item.fileName;
+      prevButton.disabled = currentIndex === 0;
+      nextButton.disabled = currentIndex === items.length - 1;
+      zoomIndicator.hidden = item.kind !== 'image';
+
+      if (item.kind === 'image') {
+        const img = document.createElement('img');
+        img.className = 'lightbox-media lightbox-media--image';
+        img.src = item.url;
+        img.alt = item.fileName;
+        img.draggable = false;
+        img.addEventListener('load', () => {
+          resetZoom();
+          updateImageTransform();
+        });
+        img.addEventListener(
+          'wheel',
+          (e) => {
+            e.preventDefault();
+            setZoom(zoom + (e.deltaY < 0 ? 0.2 : -0.2));
+          },
+          { passive: false },
+        );
+        img.addEventListener('dblclick', (e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          setZoom(zoom > 1.01 ? 1 : getActualScale());
+        });
+        img.addEventListener('pointerdown', (e) => {
+          if (zoom <= 1) return;
+          e.preventDefault();
+          e.stopPropagation();
+          pointerId = e.pointerId;
+          dragging = true;
+          dragStartX = e.clientX;
+          dragStartY = e.clientY;
+          startPanX = panX;
+          startPanY = panY;
+          img.setPointerCapture(e.pointerId);
+          updateImageTransform();
+        });
+        img.addEventListener('pointermove', (e) => {
+          if (!dragging || pointerId !== e.pointerId) return;
+          panX = startPanX + (e.clientX - dragStartX);
+          panY = startPanY + (e.clientY - dragStartY);
+          updateImageTransform();
+        });
+        img.addEventListener('pointerup', releaseDrag);
+        img.addEventListener('pointercancel', releaseDrag);
+        currentImage = img;
+        frame.appendChild(img);
+        updateImageTransform();
+      } else {
+        const player = document.createElement('div');
+        player.className = 'chat-video-player chat-video-player--lightbox';
+        const video = document.createElement('video');
+        video.className = 'chat-attachment-video chat-attachment-video--lightbox';
+        video.src = item.url;
+        video.preload = 'metadata';
+        video.playsInline = true;
+        player.appendChild(video);
+        frame.appendChild(player);
+        this.initializeCustomVideoPlayers(frame);
+        void video.play().catch(() => undefined);
+      }
+    };
+
+    const onKey = (e: KeyboardEvent) => {
+      const target = e.target as HTMLElement | null;
+      const isFormField = target?.tagName === 'INPUT' || target?.tagName === 'TEXTAREA';
+
+      if (e.key === 'Escape') {
+        e.preventDefault();
+        e.stopPropagation();
+        close();
+      } else if (!isFormField && e.key === 'ArrowLeft') {
+        e.preventDefault();
+        e.stopPropagation();
+        navigate(-1);
+      } else if (!isFormField && e.key === 'ArrowRight') {
+        e.preventDefault();
+        e.stopPropagation();
+        navigate(1);
+      }
+    };
+
+    const close = () => {
+      releaseDrag();
+      if (document.fullscreenElement && overlay.contains(document.fullscreenElement)) {
+        void document.exitFullscreen().catch(() => undefined);
+      }
+      document.removeEventListener('keydown', onKey, true);
+      overlay.remove();
+      if (this.closeLightbox === close) this.closeLightbox = null;
+    };
+
+    this.closeLightbox = close;
+    closeButton.addEventListener('click', (e) => {
       e.preventDefault();
       e.stopPropagation();
       close();
     });
-    const close = () => {
-      document.removeEventListener('keydown', onKey, true);
-      overlay.remove();
-    };
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') {
-        e.stopPropagation();
-        close();
-      }
-    };
-    overlay.addEventListener('click', close);
+    downloadButton.addEventListener('click', (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      const current = items[currentIndex];
+      void this.downloadAttachment(current.url, current.fileName);
+    });
+    prevButton.addEventListener('click', (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      navigate(-1);
+    });
+    nextButton.addEventListener('click', (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      navigate(1);
+    });
+    overlay.addEventListener('click', (e) => {
+      if (e.target === overlay || e.target === stage || e.target === frame) close();
+    });
     document.addEventListener('keydown', onKey, true);
     document.body.appendChild(overlay);
+    renderCurrent();
   }
 
   public destroy(): void {
+    this.closeLightbox?.();
     this.clearPending();
     this.unbindEvents.forEach((u) => u());
     this.unbindEvents = [];

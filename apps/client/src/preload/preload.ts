@@ -1,5 +1,14 @@
 import { contextBridge, ipcRenderer } from 'electron';
 
+export interface LinkPreviewData {
+  url: string;
+  title: string;
+  description?: string;
+  image?: string;
+  siteName?: string;
+  favicon?: string;
+}
+
 export interface ElectronApi {
   startLanDiscovery: () => Promise<void>;
   stopLanDiscovery: () => Promise<void>;
@@ -75,6 +84,7 @@ export interface ElectronApi {
   onUpdateDownloaded: (cb: (info: { manual: boolean }) => void) => void;
   onUpdateError: (cb: (message: string) => void) => void;
   openExternal: (url: string) => Promise<{ success: boolean }>;
+  fetchLinkPreview: (url: string) => Promise<LinkPreviewData | null>;
   downloadFile: (url: string, fileName: string) => Promise<{ success: boolean; error?: string }>;
   probeServer: (
     host: string,
@@ -137,6 +147,7 @@ const api: ElectronApi = {
   onUpdateDownloaded: (cb) => ipcRenderer.on('update:downloaded', (_e, info) => cb(info)),
   onUpdateError: (cb) => ipcRenderer.on('update:error', (_e, message) => cb(message)),
   openExternal: (url) => ipcRenderer.invoke('open-external', url),
+  fetchLinkPreview: (url) => ipcRenderer.invoke('fetch-link-preview', url),
   downloadFile: (url, fileName) => ipcRenderer.invoke('download-file', url, fileName),
   probeServer: (host, port) => ipcRenderer.invoke('probe-server', host, port),
   screenAudioSupported: () => ipcRenderer.invoke('screen-audio-supported'),

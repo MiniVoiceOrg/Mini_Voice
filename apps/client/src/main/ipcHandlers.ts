@@ -8,6 +8,7 @@ import { LanDiscovery } from './lanDiscovery';
 import { exportIdentity, getClientId, getIdentity, hasIdentity, importIdentity, signChallenge } from './identityService';
 import { HostServerOptions, ServerManager } from './serverManager';
 import { mt, setMainLanguage } from './i18n';
+import { fetchLinkPreview } from './linkPreview';
 import { TrayManager, VoiceStatus } from './trayManager';
 
 function sanitizeDownloadFileName(fileName: string): string {
@@ -352,11 +353,22 @@ export function setupIpcHandlers(
 
   // Open an external URL in the default browser
   ipcMain.handle('open-external', async (_, url: string) => {
-    if (typeof url === 'string' && /^https:\/\//i.test(url)) {
-      await shell.openExternal(url);
+    try {
+      const parsed = new URL(url);
+      if (!['http:', 'https:'].includes(parsed.protocol)) {
+        return { success: false };
+      }
+
+      await shell.openExternal(parsed.toString());
       return { success: true };
+    } catch {
+      return { success: false };
     }
-    return { success: false };
+  });
+
+  ipcMain.handle('fetch-link-preview', async (_, url: string) => {
+    if (typeof url !== 'string') return null;
+    return await fetchLinkPreview(url);
   });
 
   ipcMain.handle('download-file', async (_, url: string, fileName: string) => {
