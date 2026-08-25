@@ -1,88 +1,110 @@
 # Instruções para Agentes de IA
 
-Este documento define o fluxo de trabalho obrigatório para agentes de IA que
-desenvolvem neste repositório a partir do board do GitHub.
+Este documento vale para agentes de IA que desenvolvem neste repositório.
 
-## Fluxo de trabalho a partir do board
+**O processo de contribuição está em [`CONTRIBUTING.md`](CONTRIBUTING.md)** —
+como rodar o projeto, padrões de commit, como abrir o PR e o que o Monky é e não
+é. Leia aquilo primeiro: vale para todo mundo, humano ou agente.
 
-O board fica em: https://github.com/orgs/MonkyOrg/projects/1
+Aqui ficam só as regras que existem **por você ser um agente**, e a seção final,
+que só se aplica a quem tem acesso ao board da organização.
 
-Sempre que iniciar um desenvolvimento a partir de uma issue/card do board, siga
-exatamente estas etapas, nesta ordem:
+---
 
-1. **Antes de começar a codar**: mova o card para **In progress**.
-   - **Nunca desenvolva cards que estejam na coluna `Blocked`.** Cards
-     bloqueados não devem ser trabalhados enquanto estiverem nessa coluna. Se o
-     desenvolvedor quiser que algo em `Blocked` seja desenvolvido, **solicite
-     que ele (ou alguém com permissão) mova o card para fora de `Blocked`**
-     (ex.: `Backlog`/`In progress`) antes de qualquer implementação. Não mova o
-     card para fora de `Blocked` por conta própria — peça a autorização/ação de
-     quem tem permissão.
-2. **Entenda a issue por completo antes de codar.** Se a issue **não estiver
-   totalmente clara** (requisitos ambíguos, escopo indefinido, critérios de
-   aceite vagos, decisões de design em aberto), **tire dúvidas com o
-   desenvolvedor** antes de prosseguir. **Nunca assuma nada** — pergunte e só
-   comece a implementar depois de esclarecer.
-3. **Crie a branch a partir da `main` atualizada.** Sempre
-   `git checkout main && git pull` **antes** de `git checkout -b <branch>` —
-   nunca ramifique da branch em que você estava. Ramificar de uma branch com PR
-   aberto faz o seu PR arrastar os commits dela no diff, e os dois passam a
-   depender um do outro para mergear. Se a issue realmente depender de outro PR
-   aberto, **combine o empilhamento com o desenvolvedor antes de ramificar**.
-4. **Desenvolva** a solução completa da issue.
-5. **Ao terminar**: abra um Pull Request para o branch padrão (`main`).
-   - O `main` é protegido; todo merge deve passar por PR.
-   - Faça o merge com squash e delete do branch após aprovação.
-6. **Comente na issue/card do board (em PT-BR)** descrevendo:
-   - **Como foi implementado**: resumo técnico da solução (arquivos/áreas
-     alteradas, decisões relevantes).
-   - **Como testar**: passo a passo claro para o QA validar (cenários,
-     resultados esperados e casos de borda).
-   - Objetivo: facilitar o trabalho do QA.
-7. **Após o merge, aguarde a release ser gerada.** O push na `main` dispara
-   automaticamente o workflow **Release** (GitHub Actions), que calcula a versão
-   SemVer (`v<MAJOR>.<MINOR>.<PATCH>`) baseada nas convenções de commit, builda e publica
-   uma nova release com os artefatos Win/Mac:
-   - **Patch** (ex: `1.0.X`): correções de bugs (`fix:`, `fix(...)`, `bugfix:`, etc.).
-   - **Minor** (ex: `1.X.0`): novas funcionalidades (`feat:`, `feat(...)`, `feature:`).
-   - **Major** (ex: `X.0.0`): mudanças com breaking changes / refatoração arquitetural (`BREAKING CHANGE:`, `feat!:`, `major:`).
-   **Só mova o card para `QA` depois que a release estiver publicada** (run do
-   workflow concluída com sucesso), pois o QA valida a partir do build publicado
-   — nunca apenas após o merge.
-8. **Não mova para Done automaticamente.** Após o QA ser concluído, o
-   desenvolvedor pode pedir ao agente para mover para **Done** ou fazer isso
-   manualmente.
+## Regras para agentes
 
-> Resumo: (esclarecer dúvidas se necessário) → `In progress` → (branch a partir
-> da `main` atualizada) → (PR para `main`) → (comentário PT-BR: como foi feito +
-> como testar) → (release publicada automaticamente) → `QA` → (após QA) `Done`.
+Estas complementam o `CONTRIBUTING.md`; não o substituem.
 
-### Comando para comentar na issue
+1. **Nunca assuma.** Se a issue não estiver totalmente clara — requisitos
+   ambíguos, escopo indefinido, critérios de aceite vagos, decisões de design em
+   aberto — **pergunte ao desenvolvedor e espere a resposta** antes de
+   implementar. Um humano hesita diante de ambiguidade; um agente tende a
+   escolher uma interpretação e seguir. É a diferença que mais gera retrabalho.
 
-```bash
-gh issue comment <NÚMERO_DA_ISSUE> --body "<comentário em PT-BR>"
-```
+2. **Não trabalhe em issue bloqueada, e não a desbloqueie.** Se você acha que
+   deveria andar, peça a quem tem permissão — nunca mova por conta própria.
 
-O comentário deve conter, no mínimo, uma seção **"Como foi implementado"** e uma
-seção **"Como testar"**.
+3. **Comente na issue ao terminar**, em PT-BR, com as duas seções que o
+   `CONTRIBUTING.md` § *Descreva como testar* descreve:
 
-## Referência do board (org `MonkyOrg`, projeto #1)
+   ```bash
+   gh issue comment <NÚMERO_DA_ISSUE> --body "<comentário em PT-BR>"
+   ```
+
+4. **Verifique antes de afirmar.** Não diga que algo está feito, verde ou
+   mergeado sem ter conferido. Estado de PR muda enquanto você trabalha:
+   consulte `state` junto de `mergeable`, porque `mergeable: UNKNOWN` tanto
+   significa "o GitHub ainda está calculando" quanto "já foi fechado".
+
+5. **Documentação apodrece em silêncio.** Link, âncora, caminho de menu e nome
+   de arquivo não dão erro quando ficam errados — apenas passam a apontar para o
+   lugar errado. Ao mexer em documentação, confira o que você citou: âncoras
+   contra o render real, caminhos de menu contra a interface, nomes de arquivo
+   contra o que existe.
+
+6. **Não invente trailer de co-autoria.** Atribua o commit a quem de fato
+   escreveu.
+
+---
+
+## Fluxo do board
+
+> ⚠️ **Esta seção só se aplica a quem tem acesso ao board da organização.**
+> O board é privado. Se você está contribuindo de fora, ele não é visível nem
+> necessário — siga o [`CONTRIBUTING.md`](CONTRIBUTING.md) e ignore o que vem
+> abaixo.
+
+O board fica em https://github.com/orgs/MonkyOrg/projects/1
+
+Nem toda issue está no board: a entrada é filtrada por label, e bug começa em
+Discussions e só vira issue depois de confirmado. Se a issue em que você vai
+trabalhar não tem card, não crie um — pergunte ao desenvolvedor.
+
+Quando houver card:
+
+1. **Antes de codar**, mova para **In progress**.
+2. **Ao terminar**, siga o fluxo de PR do `CONTRIBUTING.md`.
+3. **Depois do merge, aguarde a release.** O push na `main` dispara o workflow
+   **Release**, que publica os artefatos Win/Mac. Só mova para **QA** depois que
+   a release estiver publicada — o QA valida a partir do build publicado, nunca
+   apenas do merge.
+4. **Nunca mova para Done por conta própria.** Depois do QA, o desenvolvedor
+   decide.
+
+> Resumo: (esclarecer dúvidas) → `In progress` → PR → (release publicada) →
+> `QA` → (após QA) `Done`.
+
+### Referência do board
 
 - Project ID: `PVT_kwDOEws3wM4BhD7I`
 - Campo Status (field ID): `PVTSSF_lADOEws3wM4BhD7IzhgBIGI`
 - Opções de Status (single-select-option-id):
-  - Discussing: `146d7ce6`
-  - Backlog: `f75ad846`
-  - Blocked: `7a1e61fe`
-  - In progress: `47fc9ee4`
-  - QA: `df73e18b`
-  - After QA Review: `98330754`
-  - Done: `98236657`
-  - Ideias descartadas: `6eeb0bfb`
 
-### Comando para mover um card
+  | Coluna | ID |
+  |---|---|
+  | Discussing | `146d7ce6` |
+  | Backlog | `f75ad846` |
+  | Blocked | `7a1e61fe` |
+  | In progress | `47fc9ee4` |
+  | QA | `df73e18b` |
+  | After QA Review | `98330754` |
+  | Done | `98236657` |
+  | Ideias descartadas | `6eeb0bfb` |
+
+Estes IDs saem da API, e o board muda sem avisar — uma coluna `Ready` ficou
+documentada aqui depois de ter sido removida. Confira antes de confiar:
 
 ```bash
+gh api graphql -f query='
+{ organization(login: "MonkyOrg") { projectV2(number: 1) {
+    field(name: "Status") { ... on ProjectV2SingleSelectField { options { id name } } } } } }'
+```
+
+### Mover um card
+
+```bash
+gh project item-list 1 --owner MonkyOrg --format json   # descobre o <ITEM_ID>
+
 gh project item-edit \
   --id <ITEM_ID> \
   --project-id PVT_kwDOEws3wM4BhD7I \
@@ -90,28 +112,9 @@ gh project item-edit \
   --single-select-option-id <OPTION_ID>
 ```
 
-O `<ITEM_ID>` é o ID do item do projeto (não o número da issue). Liste os itens
-e seus IDs com:
+O `<ITEM_ID>` é o ID do item no projeto, não o número da issue. Requer token com
+escopo `project` (`gh auth refresh -s project`).
 
-```bash
-gh project item-list 1 --owner MonkyOrg --format json
-```
-
-## Fluxo de PR (branch protegido)
-
-```bash
-export GIT_SSH_COMMAND='ssh -o BatchMode=yes'
-git checkout main && git pull      # toda branch nova sai da main atualizada
-git checkout -b <branch>
-# ... commits ...
-git push -u origin <branch>
-gh pr create --title "<título>" --body "<descrição>"
-gh pr merge <branch> --squash --delete-branch
-git checkout main && git pull
-```
-
-Inclua sempre o trailer de co-autoria nos commits:
-
-```
-Co-authored-by: Copilot <223556219+Copilot@users.noreply.github.com>
-```
+> A configuração dos workflows automáticos do board (auto-add, item fechado)
+> **não é exposta pela API** — é só interface. Se algo precisa mudar ali, peça ao
+> desenvolvedor.
