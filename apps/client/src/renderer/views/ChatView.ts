@@ -1310,6 +1310,13 @@ export class ChatView {
     el.style.display = 'block';
 
     el.querySelectorAll('.mention-item').forEach((item) => {
+      item.addEventListener('mouseenter', () => {
+        const idx = parseInt((item as HTMLElement).getAttribute('data-mention-index') || '0', 10);
+        this.mentionActiveIndex = idx;
+        el.querySelectorAll('.mention-item').forEach((el, i) => {
+          el.classList.toggle('active', i === idx);
+        });
+      });
       // mousedown (not click) + preventDefault keeps focus in the textarea.
       item.addEventListener('mousedown', (e) => {
         e.preventDefault();
