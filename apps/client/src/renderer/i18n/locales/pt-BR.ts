@@ -258,6 +258,7 @@ export const ptBR = {
   'connection.selected': 'Selecionado',
   'connection.use': 'Usar',
   'connection.removeFromSaved': 'Remover dos salvos',
+  'connection.editSavedServer': 'Editar conexão',
   'connection.serverOnline': 'Servidor online',
   'connection.serverOffline': 'Servidor offline',
   'connection.unknownUser': 'Usuário',

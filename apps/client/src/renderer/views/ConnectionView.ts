@@ -234,6 +234,9 @@ export class ConnectionView {
                           <button type="button" class="btn btn-secondary btn-select-saved" data-host="${escapeHtml(s.host)}" data-port="${s.port}" data-password="${escapeHtml(s.password || '')}" style="padding: 2px 8px; font-size: 11px; height: 24px;">
                             ${isSelected ? `✓ ${t('connection.selected')}` : t('connection.use')}
                           </button>
+                          <button type="button" class="btn-edit-saved-srv" data-host="${escapeHtml(s.host)}" data-port="${s.port}" data-name="${escapeHtml(s.name || '')}" data-password="${escapeHtml(s.password || '')}" title="${t('connection.editSavedServer')}">
+                            <span class="material-symbols-outlined md-16">edit</span>
+                          </button>
                           <button type="button" class="btn-delete-saved-srv" data-host="${escapeHtml(s.host)}" data-port="${s.port}" title="${t('connection.removeFromSaved')}">
                             <span class="material-symbols-outlined md-16">close</span>
                           </button>
@@ -838,7 +841,7 @@ export class ConnectionView {
     const savedServerItems = this.container.querySelectorAll('.saved-server-item');
     savedServerItems.forEach((item) => {
       item.addEventListener('click', (e) => {
-        if ((e.target as HTMLElement).closest('.btn-delete-saved-srv')) return;
+        if ((e.target as HTMLElement).closest('.btn-delete-saved-srv') || (e.target as HTMLElement).closest('.btn-edit-saved-srv')) return;
 
         const host = item.getAttribute('data-host');
         const port = parseInt(item.getAttribute('data-port') || '3000', 10);
@@ -872,6 +875,19 @@ export class ConnectionView {
           }
           this.render();
         }
+      });
+    });
+
+    // Handle edit saved server button
+    const editButtons = this.container.querySelectorAll('.btn-edit-saved-srv');
+    editButtons.forEach((btn) => {
+      btn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        const oldHost = btn.getAttribute('data-host') || '';
+        const oldPort = parseInt(btn.getAttribute('data-port') || '3000', 10);
+        const oldName = btn.getAttribute('data-name') || '';
+        const oldPass = btn.getAttribute('data-password') || '';
+        this.showEditServerDialog(oldHost, oldPort, oldName, oldPass);
       });
     });
 
@@ -979,5 +995,88 @@ export class ConnectionView {
       el.style.display = 'none';
       el.innerText = '';
     }
+  }
+
+  private showEditServerDialog(oldHost: string, oldPort: number, oldName: string, oldPass: string): void {
+    const backdrop = document.createElement('div');
+    backdrop.className = 'modal-backdrop';
+    backdrop.innerHTML = `
+      <div class="modal-card" style="max-width: 420px;">
+        <div class="modal-header">
+          <div class="modal-title" style="display: flex; align-items: center; gap: 8px;">
+            <span class="material-symbols-outlined" style="color: var(--accent-primary);">edit</span>
+            <span>${t('connection.editSavedServer')}</span>
+          </div>
+        </div>
+        <div style="display: flex; flex-direction: column; gap: 12px; padding: 4px 0;">
+          <div class="form-group" style="margin-bottom: 0;">
+            <label>${t('connection.serverNameLabel')}</label>
+            <input id="edit-srv-name" type="text" value="${escapeHtml(oldName)}" placeholder="${t('connection.serverNamePlaceholder')}">
+          </div>
+          <div class="form-row" style="gap: 12px;">
+            <div class="form-group" style="flex: 2; margin-bottom: 0;">
+              <label>${t('connection.hostLabel')}</label>
+              <input id="edit-srv-host" type="text" value="${escapeHtml(oldHost)}" required>
+            </div>
+            <div class="form-group small-col" style="margin-bottom: 0;">
+              <label>${t('connection.portLabel')}</label>
+              <input id="edit-srv-port" type="number" value="${oldPort}" required min="1024" max="65535">
+            </div>
+          </div>
+          <div class="form-group" style="margin-bottom: 0;">
+            <label>${t('connection.passwordLabel')}</label>
+            <input id="edit-srv-pass" type="password" value="${escapeHtml(oldPass)}" placeholder="••••••••">
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-secondary" data-action="cancel">${t('common.cancel')}</button>
+          <button type="button" class="btn btn-primary" data-action="save">${t('common.save')}</button>
+        </div>
+      </div>
+    `;
+
+    const close = () => {
+      document.removeEventListener('keydown', onKey, true);
+      backdrop.remove();
+    };
+
+    const save = () => {
+      const name = (backdrop.querySelector('#edit-srv-name') as HTMLInputElement).value.trim();
+      const host = (backdrop.querySelector('#edit-srv-host') as HTMLInputElement).value.trim();
+      const port = parseInt((backdrop.querySelector('#edit-srv-port') as HTMLInputElement).value, 10);
+      const password = (backdrop.querySelector('#edit-srv-pass') as HTMLInputElement).value;
+
+      if (!host || !port || port < 1024 || port > 65535) return;
+
+      const saved = connectionStore.savedServers.find((s) => s.host === oldHost && s.port === oldPort);
+      connectionStore.updateSavedServer(oldHost, oldPort, {
+        host,
+        port,
+        name,
+        password,
+        lastConnected: saved?.lastConnected ?? Date.now(),
+      });
+
+      if (this.selectedSavedHost === oldHost && this.selectedSavedPort === oldPort) {
+        this.selectedSavedHost = host;
+        this.selectedSavedPort = port;
+      }
+
+      close();
+      this.render();
+    };
+
+    const onKey = (e: KeyboardEvent): void => {
+      if (e.key === 'Escape') { e.preventDefault(); close(); }
+      if (e.key === 'Enter') { e.preventDefault(); save(); }
+    };
+
+    backdrop.querySelector('[data-action="cancel"]')?.addEventListener('click', close);
+    backdrop.querySelector('[data-action="save"]')?.addEventListener('click', save);
+    backdrop.addEventListener('mousedown', (e) => { if (e.target === backdrop) close(); });
+    document.addEventListener('keydown', onKey, true);
+
+    document.body.appendChild(backdrop);
+    (backdrop.querySelector('#edit-srv-name') as HTMLInputElement)?.focus();
   }
 }

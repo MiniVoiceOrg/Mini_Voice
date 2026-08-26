@@ -105,6 +105,16 @@ export class ConnectionStore {
     } catch (e) {}
   }
 
+  public updateSavedServer(oldHost: string, oldPort: number, updated: SavedServer): void {
+    const idx = this.savedServers.findIndex((s) => s.host === oldHost && s.port === oldPort);
+    if (idx >= 0) {
+      this.savedServers[idx] = updated;
+    }
+    try {
+      localStorage.setItem('monky_saved_servers', JSON.stringify(this.savedServers));
+    } catch (e) {}
+  }
+
   public loadCreatedServers(): void {
     try {
       const raw = localStorage.getItem('monky_created_servers');
