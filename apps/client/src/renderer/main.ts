@@ -37,6 +37,7 @@ import { MainView } from './views/MainView';
 import { screenAudioService } from './core/ScreenAudioService';
 import { screenSharePickerModal } from './views/ScreenSharePickerModal';
 import { showAlert } from './views/Dialog';
+import { showIdentityImportDialog } from './views/IdentityDialogs';
 import { initI18n, t } from './i18n';
 
 class App {
@@ -119,7 +120,6 @@ class App {
       });
 
       document.getElementById('btn-onboard-import')?.addEventListener('click', async () => {
-        const { showIdentityImportDialog } = await import('./views/IdentityDialogs');
         const result = await showIdentityImportDialog();
         if (result) {
           connectionStore.setIdentity(result);

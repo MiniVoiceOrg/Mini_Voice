@@ -48,7 +48,8 @@ export class WebRtcManager {
   private pendingScreenAudioTracks: Map<string, { track: MediaStreamTrack; peerUserId: string }> = new Map();
   // Screen video tracks received before screen-video-meta arrived, keyed by streamId
   private pendingScreenVideoTracks: Map<string, { track: MediaStreamTrack; peerUserId: string }> = new Map();
-  private remoteAudioVads: Map<string, { ctx: AudioContext; interval: any }> = new Map();
+  private sharedVadAudioContext: AudioContext | null = null;
+  private remoteAudioVads: Map<string, { source: MediaStreamAudioSourceNode; analyser: AnalyserNode; interval: any }> = new Map();
   private localAudioTrack: MediaStreamTrack | null = null;
   private localCameraTrack: MediaStreamTrack | null = null;
   private localScreenTrack: MediaStreamTrack | null = null;
@@ -1046,14 +1047,21 @@ export class WebRtcManager {
     return Math.round(pings.reduce((a, b) => a + b, 0) / pings.length);
   }
 
+  private getSharedVadContext(): AudioContext {
+    if (!this.sharedVadAudioContext || this.sharedVadAudioContext.state === 'closed') {
+      const AudioCtx = window.AudioContext || (window as any).webkitAudioContext;
+      this.sharedVadAudioContext = new AudioCtx();
+    }
+    if (this.sharedVadAudioContext.state === 'suspended') {
+      this.sharedVadAudioContext.resume().catch(() => {});
+    }
+    return this.sharedVadAudioContext;
+  }
+
   private setupRemoteVad(peerUserId: string, stream: MediaStream): void {
     this.cleanupRemoteVad(peerUserId);
     try {
-      const AudioCtx = window.AudioContext || (window as any).webkitAudioContext;
-      const ctx = new AudioCtx();
-      if (ctx.state === 'suspended') {
-        ctx.resume().catch(() => {});
-      }
+      const ctx = this.getSharedVadContext();
       const analyser = ctx.createAnalyser();
       analyser.fftSize = 256;
       analyser.smoothingTimeConstant = 0.3;
@@ -1098,7 +1106,7 @@ export class WebRtcManager {
         }
       }, 50);
 
-      this.remoteAudioVads.set(peerUserId, { ctx, interval });
+      this.remoteAudioVads.set(peerUserId, { source, analyser, interval });
     } catch (err) {
       console.warn(`[WebRTC] Could not setup remote VAD for ${peerUserId}:`, err);
     }
@@ -1109,8 +1117,11 @@ export class WebRtcManager {
     if (vad) {
       clearInterval(vad.interval);
       try {
-        vad.ctx.close();
-      } catch (e) {}
+        vad.source.disconnect();
+      } catch {}
+      try {
+        vad.analyser.disconnect();
+      } catch {}
       this.remoteAudioVads.delete(peerUserId);
     }
   }
@@ -1179,8 +1190,12 @@ export class WebRtcManager {
       this.removePeer(peerUserId);
     }
     this.peers.clear();
-    for (const peerUserId of this.remoteAudioVads.keys()) {
+    for (const peerUserId of Array.from(this.remoteAudioVads.keys())) {
       this.cleanupRemoteVad(peerUserId);
+    }
+    if (this.sharedVadAudioContext && this.sharedVadAudioContext.state !== 'closed') {
+      this.sharedVadAudioContext.close().catch(() => {});
+      this.sharedVadAudioContext = null;
     }
   }
 }

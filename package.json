@@ -41,9 +41,5 @@
   "devDependencies": {
     "rimraf": "^6.0.1",
     "typescript": "^5.9.3"
-  },
-  "dependencies": {
-    "@types/sql.js": "^1.4.11",
-    "sql.js": "^1.14.2"
   }
 }

@@ -188,7 +188,7 @@ export function setupIpcHandlers(
     }
 
     const filePath = result.filePaths[0];
-    const buffer = fs.readFileSync(filePath);
+    const buffer = await fs.promises.readFile(filePath);
     const ext = path.extname(filePath).toLowerCase().replace('.', '');
     const mime = ext === 'jpg' ? 'image/jpeg' : `image/${ext}`;
     const base64 = buffer.toString('base64');
@@ -211,7 +211,7 @@ export function setupIpcHandlers(
     });
     if (result.canceled || result.filePaths.length === 0) return null;
     const filePath = result.filePaths[0];
-    const buffer = fs.readFileSync(filePath);
+    const buffer = await fs.promises.readFile(filePath);
     const ext = path.extname(filePath).toLowerCase().replace('.', '');
     const mime = ext === 'mp3' ? 'audio/mpeg' : ext === 'ogg' ? 'audio/ogg' : ext === 'webm' ? 'audio/webm' : 'audio/wav';
     const base64 = buffer.toString('base64');
@@ -233,30 +233,34 @@ export function setupIpcHandlers(
 
   // Soundboard List Sounds
   ipcMain.handle('soundboard:list-sounds', async (_, folderPath: string) => {
-    if (!folderPath || typeof folderPath !== 'string' || !fs.existsSync(folderPath)) {
+    if (!folderPath || typeof folderPath !== 'string') {
       return [];
     }
     try {
-      const entries = fs.readdirSync(folderPath, { withFileTypes: true });
-      const validExts = ['.mp3', '.wav', '.ogg', '.m4a', '.aac', '.webm'];
-      const sounds = [];
-      for (const entry of entries) {
-        if (entry.isFile()) {
-          const ext = path.extname(entry.name).toLowerCase();
-          if (validExts.includes(ext)) {
-            const fullPath = path.join(folderPath, entry.name);
-            const stat = fs.statSync(fullPath);
-            const displayName = path.basename(entry.name, ext);
-            sounds.push({
-              name: displayName,
-              fileName: entry.name,
-              filePath: fullPath,
-              sizeBytes: stat.size,
-              ext,
-            });
-          }
-        }
+      const folderStat = await fs.promises.stat(folderPath).catch(() => null);
+      if (!folderStat || !folderStat.isDirectory()) {
+        return [];
       }
+      const entries = await fs.promises.readdir(folderPath, { withFileTypes: true });
+      const validExts = new Set(['.mp3', '.wav', '.ogg', '.m4a', '.aac', '.webm']);
+      
+      const soundPromises = entries
+        .filter((entry) => entry.isFile() && validExts.has(path.extname(entry.name).toLowerCase()))
+        .map(async (entry) => {
+          const ext = path.extname(entry.name).toLowerCase();
+          const fullPath = path.join(folderPath, entry.name);
+          const stat = await fs.promises.stat(fullPath);
+          const displayName = path.basename(entry.name, ext);
+          return {
+            name: displayName,
+            fileName: entry.name,
+            filePath: fullPath,
+            sizeBytes: stat.size,
+            ext,
+          };
+        });
+
+      const sounds = await Promise.all(soundPromises);
       sounds.sort((a, b) => a.name.localeCompare(b.name));
       return sounds;
     } catch (e) {
@@ -267,15 +271,18 @@ export function setupIpcHandlers(
 
   // Soundboard Read Sound
   ipcMain.handle('soundboard:read-sound', async (_, filePath: string) => {
-    if (!filePath || typeof filePath !== 'string' || !fs.existsSync(filePath)) {
+    if (!filePath || typeof filePath !== 'string') {
       return null;
     }
     try {
-      const stat = fs.statSync(filePath);
+      const stat = await fs.promises.stat(filePath).catch(() => null);
+      if (!stat || !stat.isFile()) {
+        return null;
+      }
       if (stat.size > 3 * 1024 * 1024) {
         throw new Error(mt('error.audioFileTooLarge'));
       }
-      const buffer = fs.readFileSync(filePath);
+      const buffer = await fs.promises.readFile(filePath);
       const ext = path.extname(filePath).toLowerCase();
       let mime = 'audio/mp3';
       if (ext === '.wav') mime = 'audio/wav';

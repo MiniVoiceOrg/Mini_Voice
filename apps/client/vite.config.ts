@@ -8,6 +8,7 @@ export default defineConfig({
     outDir: path.resolve(__dirname, 'dist'),
     emptyOutDir: true,
     target: 'esnext',
+    chunkSizeWarningLimit: 1000,
   },
   server: {
     port: 5173,
