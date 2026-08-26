@@ -106,6 +106,8 @@ export interface ElectronApi {
   }) => Promise<void>;
   onTrayToggleMute: (cb: () => void) => () => void;
   onTrayToggleDeafen: (cb: () => void) => () => void;
+  getAutoStart: () => Promise<boolean>;
+  setAutoStart: (enabled: boolean) => Promise<void>;
   platform: string;
 }
 
@@ -169,6 +171,8 @@ const api: ElectronApi = {
     ipcRenderer.on('tray:toggle-deafen', listener);
     return () => ipcRenderer.removeListener('tray:toggle-deafen', listener);
   },
+  getAutoStart: () => ipcRenderer.invoke('get-auto-start'),
+  setAutoStart: (enabled: boolean) => ipcRenderer.invoke('set-auto-start', enabled),
   platform: process.platform,
 };
 

@@ -516,6 +516,8 @@ export const en: TranslationMap = {
   'settings.chatSoundMentionsOnly': 'Only when I am mentioned',
   'settings.betaChannel': 'Receive beta versions',
   'settings.betaChannelDesc': 'Receive pre-release test builds before they become stable. They may be unstable.',
+  'settings.autoStart': 'Start with system',
+  'settings.autoStartDesc': 'Launch Monky automatically when your computer starts.',
   'settings.communitySection': 'Community',
   'settings.communityDesc': 'Monky is open source. The ideas the community votes up become the next features.',
   'settings.suggestIdea': 'Suggest an idea',

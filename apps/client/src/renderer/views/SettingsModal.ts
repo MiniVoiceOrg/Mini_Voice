@@ -73,9 +73,9 @@ export class SettingsModal {
         <div class="settings-main-container">
           <!-- Top Header -->
           <div class="settings-content-header">
-            <button id="modal-close" class="settings-back-btn" title="${t('common.back')}">
-              <span class="material-symbols-outlined md-18">arrow_back</span>
-              ${t('common.back')}
+            <button id="modal-close" class="settings-back-btn" title="${t('common.back')} (ESC)">
+              <span class="material-symbols-outlined md-18">close</span>
+              <span class="esc-hint">ESC</span>
             </button>
             <div id="settings-current-tab-title" style="font-size: 16px; font-weight: 700; color: var(--text-primary); display: flex; align-items: center; gap: 8px;">
               <span class="material-symbols-outlined" style="color: var(--accent-primary);">person</span>
@@ -453,6 +453,18 @@ export class SettingsModal {
                     </div>
                   </div>
                   <input id="checkbox-update-beta" type="checkbox" ${settingsStore.updateBetaChannel ? 'checked' : ''} style="width: 18px; height: 18px; cursor: pointer; accent-color: var(--accent-primary);">
+                </div>
+                <div style="display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-top: 12px; padding-top: 12px; border-top: 1px dashed var(--border-color);">
+                  <div>
+                    <label style="display: flex; align-items: center; gap: 6px; margin-bottom: 2px; cursor: pointer; font-weight: 600;" for="checkbox-auto-start">
+                      <span class="material-symbols-outlined md-16" style="color: var(--accent-primary);">power_settings_new</span>
+                      ${t('settings.autoStart')}
+                    </label>
+                    <div style="font-size: 11px; color: var(--text-muted);">
+                      ${t('settings.autoStartDesc')}
+                    </div>
+                  </div>
+                  <input id="checkbox-auto-start" type="checkbox" style="width: 18px; height: 18px; cursor: pointer; accent-color: var(--accent-primary);">
                 </div>
               </div>
 
@@ -836,6 +848,14 @@ export class SettingsModal {
     btnClose?.addEventListener('click', () => this.close());
     btnDone?.addEventListener('click', () => this.close());
 
+    // Close on ESC key (#243)
+    const handleEsc = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') { this.close(); }
+    };
+    window.addEventListener('keydown', handleEsc);
+    // Store for cleanup in close()
+    (this.modalEl as any)._escHandler = handleEsc;
+
     const btnCheckUpdates = this.modalEl.querySelector('#btn-check-updates');
     btnCheckUpdates?.addEventListener('click', () => this.checkUpdates());
 
@@ -851,6 +871,15 @@ export class SettingsModal {
       // Re-check immediately so the user sees the outcome for the new channel.
       this.checkUpdates();
     });
+
+    // Auto-start with OS (#245)
+    const checkboxAutoStart = this.modalEl.querySelector('#checkbox-auto-start') as HTMLInputElement | null;
+    if (checkboxAutoStart && window.api?.getAutoStart) {
+      window.api.getAutoStart().then((enabled) => { checkboxAutoStart.checked = enabled; });
+      checkboxAutoStart.addEventListener('change', () => {
+        window.api?.setAutoStart?.(checkboxAutoStart.checked);
+      });
+    }
 
     const btnSuggestIdea = this.modalEl.querySelector('#btn-suggest-idea');
     const btnVoteIdeas = this.modalEl.querySelector('#btn-vote-ideas');
@@ -1350,6 +1379,8 @@ export class SettingsModal {
     this.stopCameraPreview();
     this.stopVadMeter();
     if (this.modalEl) {
+      const handler = (this.modalEl as any)._escHandler;
+      if (handler) window.removeEventListener('keydown', handler);
       this.modalEl.remove();
       this.modalEl = null;
     }

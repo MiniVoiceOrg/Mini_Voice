@@ -987,6 +987,16 @@ input:focus, textarea:focus, select:focus {
   box-shadow: 0 0 0 2px var(--success);
 }
 
+.voice-participant-mini.dragging {
+  opacity: 0.4;
+}
+
+.channel-item.drop-target {
+  background: rgba(88, 101, 242, 0.15) !important;
+  outline: 2px dashed var(--accent-primary);
+  outline-offset: -2px;
+}
+
 /* Bottom User Bar */
 .user-control-bar {
   background-color: var(--bg-panel);
@@ -3747,8 +3757,8 @@ button[data-loading="1"]::after {
 .settings-modal-card {
   max-width: 100vw !important;
   width: 100vw !important;
-  height: 100vh !important;
-  max-height: 100vh !important;
+  height: 100% !important;
+  max-height: 100% !important;
   border-radius: 0 !important;
   border: none !important;
   padding: 0 !important;
@@ -3898,25 +3908,42 @@ button[data-loading="1"]::after {
 
 .modal-backdrop--settings {
   background-color: var(--bg-primary);
+  top: 32px;
+  height: calc(100vh - 32px);
 }
 
 .settings-back-btn {
   display: inline-flex;
+  flex-direction: column;
   align-items: center;
-  gap: 6px;
-  background: transparent;
-  border: none;
-  color: var(--text-muted);
-  font-size: 13px;
+  justify-content: center;
+  gap: 2px;
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid var(--border-color);
+  color: var(--text-secondary);
+  font-size: 10px;
   cursor: pointer;
-  padding: 6px 10px;
-  border-radius: var(--radius-md);
-  transition: color 0.15s, background 0.15s;
+  width: 42px;
+  height: 42px;
+  border-radius: 50%;
+  transition: color 0.15s, background 0.15s, border-color 0.15s;
+  position: fixed;
+  top: 52px;
+  right: 20px;
+  z-index: 10;
 }
 
 .settings-back-btn:hover {
   color: var(--text-primary);
-  background: var(--bg-tertiary);
+  background: rgba(255, 255, 255, 0.1);
+  border-color: var(--text-muted);
+}
+
+.settings-back-btn .esc-hint {
+  font-size: 9px;
+  font-weight: 600;
+  color: var(--text-muted);
+  letter-spacing: 0.5px;
 }
 
 .modal-close-btn:hover {
@@ -4237,6 +4264,51 @@ button[data-loading="1"]::after {
   font-weight: 600;
 }
 
+/* Context menu submenu (#247) */
+.ctx-submenu-wrap {
+  position: relative;
+}
+.ctx-submenu-trigger {
+  width: 100%;
+}
+.ctx-submenu {
+  display: none;
+  position: absolute;
+  left: calc(100% + 6px);
+  top: -6px;
+  min-width: 180px;
+  background: var(--bg-panel);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-md);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.5);
+  padding: 6px;
+  flex-direction: column;
+  gap: 2px;
+  z-index: 10001;
+}
+.ctx-submenu-wrap:hover > .ctx-submenu,
+.ctx-submenu-wrap.open > .ctx-submenu {
+  display: flex;
+}
+.ctx-submenu-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 10px;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  border: none;
+  color: var(--text-secondary);
+  font-size: 13px;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: background 0.1s;
+}
+.ctx-submenu-item:hover {
+  background: rgba(255, 255, 255, 0.08);
+  color: var(--text-primary);
+}
+
 /* Custom Sliders */
 .sb-slider {
   -webkit-appearance: none;
@@ -4310,6 +4382,7 @@ button[data-loading="1"]::after {
   width: 100%;
   overflow-x: auto;
   overflow-y: visible;
+  position: relative;
 }
 
 .settings-data-table {
@@ -4406,6 +4479,7 @@ button[data-loading="1"]::after {
   display: none;
   flex-direction: column;
   gap: 4px;
+  overflow: visible;
 }
 
 .settings-action-menu.show {
@@ -4419,13 +4493,30 @@ button[data-loading="1"]::after {
 .settings-action-submenu {
   position: absolute;
   top: -6px;
-  right: calc(100% + 6px);
+  right: calc(100% + 2px);
   display: none;
   flex-direction: column;
   gap: 4px;
+  padding: 6px;
 }
 
-.settings-action-submenu-wrap:hover .settings-action-submenu {
+/* Bridge the gap between trigger and submenu to prevent hover loss */
+.settings-action-submenu-wrap::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: -8px;
+  width: 8px;
+  height: 100%;
+  display: none;
+}
+
+.settings-action-submenu-wrap:hover::before {
+  display: block;
+}
+
+.settings-action-submenu-wrap:hover .settings-action-submenu,
+.settings-action-submenu-wrap.open .settings-action-submenu {
   display: flex;
 }
 
@@ -4769,4 +4860,45 @@ button[data-loading="1"]::after {
 @keyframes fadeIn {
   from { opacity: 0; transform: translateY(10px); }
   to { opacity: 1; transform: translateY(0); }
+}
+
+/* Toggle Switch (#249) */
+.toggle-switch {
+  position: relative;
+  display: inline-block;
+  width: 36px;
+  height: 20px;
+  flex-shrink: 0;
+  cursor: pointer;
+}
+.toggle-switch input {
+  opacity: 0;
+  width: 0;
+  height: 0;
+  position: absolute;
+}
+.toggle-slider {
+  position: absolute;
+  inset: 0;
+  background: var(--bg-tertiary);
+  border-radius: 20px;
+  transition: background 0.2s;
+}
+.toggle-slider::before {
+  content: '';
+  position: absolute;
+  width: 14px;
+  height: 14px;
+  left: 3px;
+  top: 3px;
+  background: var(--text-muted);
+  border-radius: 50%;
+  transition: transform 0.2s, background 0.2s;
+}
+.toggle-switch input:checked + .toggle-slider {
+  background: var(--accent-primary);
+}
+.toggle-switch input:checked + .toggle-slider::before {
+  transform: translateX(16px);
+  background: #ffffff;
 }
