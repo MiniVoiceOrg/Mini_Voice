@@ -35,6 +35,11 @@ export const en: TranslationMap = {
   'dialog.alertTitle': 'Notice',
   'dialog.confirmTitle': 'Confirmation',
 
+  // ── Image cropping (ImageCropModal.ts) ───────────────────────────────────
+  'crop.title': 'Adjust image',
+  'crop.hint': 'Drag to reposition and zoom to frame it. The image is saved at 512x512.',
+  'crop.confirm': 'Apply',
+
   // ── Channel creation (CreateChannelModal.ts) ─────────────────────────────
   'channelModal.title': 'Create Channel',
   'channelModal.typeLabel': 'Channel type',
@@ -59,7 +64,8 @@ export const en: TranslationMap = {
   'userMenu.serverUndeafen': 'Remove server deafen',
   'userMenu.kickFromVoice': 'Kick from voice',
   'userMenu.kickMember': 'Kick member',
-  'userMenu.makeAdmin': 'Make admin',
+  'userMenu.promoteToAdmin': 'Promote to admin',
+  'userMenu.removeAdmin': 'Remove admin',
   'userMenu.rolesSubmenu': 'Roles',
   'userMenu.moveToChannel': 'Move to channel',
   'userMenu.manageRoles': 'Manage roles',

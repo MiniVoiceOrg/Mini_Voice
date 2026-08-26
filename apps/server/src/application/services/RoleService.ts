@@ -1,5 +1,5 @@
 import { v4 as uuidv4 } from 'uuid';
-import { Permission, ProtocolErrorCode, Role, RoleAssignPayload, RoleCreatePayload, RoleUpdatePayload, UserRoleSummary, roleAssignmentSchema, roleCreateSchema, roleUpdateSchema } from '@monky/shared';
+import { Permission, ProtocolErrorCode, Role, RoleAssignPayload, RoleCreatePayload, RoleUpdatePayload, UserRoleSummary, roleAssignmentSchema, roleCreateSchema, roleUpdateSchema, stripAdministrator } from '@monky/shared';
 import { RoleRecord } from '../../domain/entities';
 import { IRoleRepository, IUserRepository } from '../../domain/repositories';
 import { PermissionService } from './PermissionService';
@@ -15,6 +15,9 @@ interface RoleStateResult {
   roles: Role[];
   userRoles: UserRoleSummary[];
 }
+
+/** Name of the built-in role that grants admin rights; not usable by custom roles (#277). */
+const RESERVED_ADMIN_ROLE_NAME = 'admin';
 
 export class RoleService {
   constructor(
@@ -70,6 +73,20 @@ export class RoleService {
     }
   }
 
+  /**
+   * The built-in Admin role is the only one allowed to carry ADMINISTRATOR, so
+   * it is matched by identity: a role merely named "Admin" must not inherit the
+   * exemption (#277).
+   */
+  private async isBuiltInAdminRole(roleId: string): Promise<boolean> {
+    const adminRole = await this.roleRepo.findByName('Admin');
+    return !!adminRole && adminRole.id === roleId;
+  }
+
+  private usesReservedAdminName(name: string): boolean {
+    return name.trim().toLowerCase() === RESERVED_ADMIN_ROLE_NAME;
+  }
+
   public async createRole(actorUserId: string, payload: RoleCreatePayload): Promise<RoleResult> {
     if (!(await this.permissionService.checkPermission(actorUserId, Permission.MANAGE_ROLES))) {
       return { success: false, errorCode: ProtocolErrorCode.PERMISSION_DENIED, errorMessage: 'Você não pode gerenciar cargos.' };
@@ -80,11 +97,15 @@ export class RoleService {
       return { success: false, errorCode: ProtocolErrorCode.BAD_REQUEST, errorMessage: parsed.error.errors[0]?.message || 'Cargo inválido' };
     }
 
+    if (this.usesReservedAdminName(parsed.data.name)) {
+      return { success: false, errorCode: ProtocolErrorCode.BAD_REQUEST, errorMessage: 'Esse nome de cargo é reservado.' };
+    }
+
     const roleRecord: RoleRecord = {
       id: uuidv4(),
       name: parsed.data.name,
       color: parsed.data.color ?? null,
-      permissions: parsed.data.permissions,
+      permissions: stripAdministrator(parsed.data.permissions),
       position: parsed.data.position ?? Date.now(),
       isDefault: parsed.data.isDefault ?? false,
       createdAt: Date.now(),
@@ -108,10 +129,23 @@ export class RoleService {
       return { success: false, errorCode: ProtocolErrorCode.BAD_REQUEST, errorMessage: 'Cargo não encontrado.' };
     }
 
+    const isBuiltInAdmin = await this.isBuiltInAdminRole(existing.id);
+    if (parsed.data.name !== undefined && parsed.data.name !== existing.name) {
+      // Renaming either direction would move the ADMINISTRATOR exemption around.
+      if (isBuiltInAdmin || this.usesReservedAdminName(parsed.data.name)) {
+        return { success: false, errorCode: ProtocolErrorCode.BAD_REQUEST, errorMessage: 'Esse nome de cargo é reservado.' };
+      }
+    }
+
     const updates: Partial<RoleRecord> = {};
     if (parsed.data.name !== undefined) updates.name = parsed.data.name;
     if (parsed.data.color !== undefined) updates.color = parsed.data.color ?? null;
-    if (parsed.data.permissions !== undefined) updates.permissions = parsed.data.permissions;
+    if (parsed.data.permissions !== undefined) {
+      // Admin rights come exclusively from the Admin role now (#277).
+      updates.permissions = isBuiltInAdmin
+        ? parsed.data.permissions
+        : stripAdministrator(parsed.data.permissions);
+    }
     if (parsed.data.position !== undefined) updates.position = parsed.data.position;
     if (parsed.data.isDefault !== undefined) updates.isDefault = parsed.data.isDefault;
     await this.roleRepo.update(existing.id, updates);

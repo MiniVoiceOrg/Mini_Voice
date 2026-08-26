@@ -891,8 +891,12 @@ input:focus, textarea:focus, select:focus {
   background-color: var(--text-primary);
 }
 
+/* Kept in the layout at all times (only hidden visually) so revealing it on
+   hover doesn't push the channel name around (#272). */
 .channel-delete-btn {
-  display: none;
+  display: inline-flex;
+  visibility: hidden;
+  opacity: 0;
   align-items: center;
   justify-content: center;
   flex-shrink: 0;
@@ -904,10 +908,12 @@ input:focus, textarea:focus, select:focus {
   color: var(--text-muted);
   border-radius: var(--radius-sm);
   cursor: pointer;
+  transition: opacity 0.12s;
 }
 
 .channel-item:hover .channel-delete-btn {
-  display: inline-flex;
+  visibility: visible;
+  opacity: 1;
 }
 
 .channel-delete-btn:hover {
@@ -916,7 +922,9 @@ input:focus, textarea:focus, select:focus {
 }
 
 .channel-menu-btn {
-  display: none;
+  display: inline-flex;
+  visibility: hidden;
+  opacity: 0;
   align-items: center;
   justify-content: center;
   flex-shrink: 0;
@@ -928,10 +936,12 @@ input:focus, textarea:focus, select:focus {
   color: var(--text-muted);
   border-radius: var(--radius-sm);
   cursor: pointer;
+  transition: opacity 0.12s;
 }
 
 .channel-item:hover .channel-menu-btn {
-  display: inline-flex;
+  visibility: visible;
+  opacity: 1;
 }
 
 .channel-menu-btn:hover {
@@ -2166,8 +2176,6 @@ input:focus, textarea:focus, select:focus {
 
 /* Drag & drop affordance */
 .chat-container.chat-drag-over {
-  outline: 2px dashed var(--accent-primary);
-  outline-offset: -6px;
   background: rgba(88, 101, 242, 0.05);
 }
 
@@ -2186,6 +2194,17 @@ input:focus, textarea:focus, select:focus {
 
 .chat-container.chat-drag-over .chat-drop-overlay {
   display: flex;
+}
+
+/* The dashed frame belongs to the overlay instead of being an outline on the
+   container, otherwise the positioned message input paints on top of it (#278). */
+.chat-drop-overlay::before {
+  content: '';
+  position: absolute;
+  inset: 6px;
+  border: 2px dashed var(--accent-primary);
+  border-radius: 8px;
+  pointer-events: none;
 }
 
 .chat-drop-overlay .drop-inner {
@@ -2843,6 +2862,19 @@ input:focus, textarea:focus, select:focus {
 .stage-focused-main.speaking {
   border-color: var(--success);
   box-shadow: 0 0 20px var(--success-glow);
+}
+
+/* Zoomed screen share: the image is dragged around instead of clicked (#271). */
+.stage-focused-main.is-zoomed {
+  cursor: grab;
+}
+
+.stage-focused-main.is-panning {
+  cursor: grabbing;
+}
+
+.stage-focused-main.is-zoomed .stage-video-element {
+  will-change: transform;
 }
 
 .stage-focus-hint-badge {
@@ -3793,6 +3825,13 @@ button[data-loading="1"]::after {
   gap: 0 !important;
 }
 
+/* The server settings modal holds denser content (roles, members, permissions)
+   so it gets more room than the user settings modal (#259). */
+.settings-modal-card.server-settings-modal-card {
+  max-width: 1200px !important;
+  width: min(1200px, 92vw) !important;
+}
+
 .settings-sidebar {
   width: 210px;
   min-width: 210px;
@@ -3994,6 +4033,71 @@ button[data-loading="1"]::after {
   line-height: 1.5;
   color: var(--text-secondary);
   white-space: pre-wrap;
+}
+
+/* Square crop dialog used before an image becomes a picture (#255). */
+.crop-modal-card {
+  max-width: 420px;
+  align-items: center;
+}
+
+.crop-hint {
+  font-size: 12px;
+  color: var(--text-muted);
+  line-height: 1.5;
+  text-align: center;
+}
+
+.crop-viewport {
+  position: relative;
+  overflow: hidden;
+  border-radius: var(--radius-md);
+  background: var(--bg-secondary);
+  border: 2px solid var(--border-color);
+  cursor: grab;
+  touch-action: none;
+  align-self: center;
+}
+
+.crop-viewport.is-dragging {
+  cursor: grabbing;
+}
+
+.crop-image {
+  position: absolute;
+  top: 0;
+  left: 0;
+  transform-origin: top left;
+  max-width: none;
+  user-select: none;
+  -webkit-user-drag: none;
+}
+
+/* Circular guide showing how the square crop will look as an avatar. */
+.crop-mask {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  border-radius: 50%;
+  border: 1px dashed rgba(255, 255, 255, 0.45);
+}
+
+.crop-zoom-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  color: var(--text-muted);
+}
+
+.crop-zoom-slider {
+  flex: 1;
+  accent-color: var(--accent-primary);
+  cursor: pointer;
+}
+
+.crop-modal-card .modal-footer {
+  width: 100%;
 }
 
 .modal-footer {
@@ -4376,6 +4480,70 @@ button[data-loading="1"]::after {
   color: var(--text-primary);
 }
 
+/* Role picker option shared by every place where roles are assigned to a
+   member: color dot, role name and a styled checkbox (#275). */
+.role-option {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  min-width: 0;
+}
+
+.role-option-dot {
+  flex-shrink: 0;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: var(--role-color, var(--text-muted));
+  box-shadow: 0 0 0 3px rgba(255, 255, 255, 0.06);
+}
+
+.role-option-name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  text-align: left;
+  font-weight: 600;
+}
+
+.role-option-check {
+  flex-shrink: 0;
+  width: 18px;
+  height: 18px;
+  border-radius: 6px;
+  border: 2px solid var(--border-color);
+  background: var(--bg-secondary);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: transparent;
+  transition: background-color 0.15s, border-color 0.15s, color 0.15s;
+}
+
+.role-option-check .material-symbols-outlined {
+  font-size: 14px;
+  font-weight: 700;
+  transform: scale(0.5);
+  transition: transform 0.15s;
+}
+
+.role-option-check.checked {
+  background: var(--accent-primary);
+  border-color: var(--accent-primary);
+  color: #ffffff;
+}
+
+.role-option-check.checked .material-symbols-outlined {
+  transform: scale(1);
+}
+
+button:hover .role-option-check:not(.checked) {
+  border-color: var(--accent-primary);
+}
+
 /* Custom Sliders */
 .sb-slider {
   -webkit-appearance: none;
@@ -4476,6 +4644,18 @@ button[data-loading="1"]::after {
 
 .settings-data-table tbody tr:hover {
   background: rgba(255, 255, 255, 0.03);
+}
+
+/* Reorderable role rows: the row being dragged stays visible but dimmed while
+   the others glide to their new slot (#276). */
+.role-table-row {
+  cursor: grab;
+}
+
+.role-table-row.role-row-dragging {
+  cursor: grabbing;
+  opacity: 0.5;
+  background: rgba(88, 101, 242, 0.16);
 }
 
 .role-editor-tab-btn {

@@ -1,6 +1,7 @@
 import { MessageType, Permission, UserSummary } from '@monky/shared';
 import { escapeHtml } from '../utils/html';
 import { getAvatarUrl } from '../utils/avatar';
+import { renderRoleOption } from '../utils/roleOption';
 import { settingsStore } from '../stores/settingsStore';
 import { serverStore } from '../stores/serverStore';
 import { connectionStore } from '../stores/connectionStore';
@@ -47,7 +48,14 @@ export class UserContextMenu {
     const canKickMembers = !!targetState && serverStore.hasPermission(Permission.KICK_MEMBERS);
     const canMoveMembers = !!targetState && serverStore.hasPermission(Permission.MOVE_MEMBERS) && voiceChannels.length > 0;
     const canManageRoles = serverStore.hasPermission(Permission.MANAGE_ROLES) && manageableRoles.length > 0;
-    const showAdminSection = canMuteMembers || canDeafenMembers || canKickMembers || canMoveMembers || canManageRoles;
+    // Promoting/demoting admins is also available straight from the member list (#273).
+    const adminRole = serverStore.getAdminRole();
+    const isTargetAdmin = !!adminRole && roleIds.has(adminRole.id);
+    const canManageAdmin =
+      !!adminRole &&
+      user.id !== serverStore.ownerId &&
+      serverStore.hasPermission(Permission.MANAGE_ROLES);
+    const showAdminSection = canMuteMembers || canDeafenMembers || canKickMembers || canMoveMembers || canManageRoles || canManageAdmin;
 
     this.menuEl = document.createElement('div');
     this.menuEl.className = 'user-context-menu';
@@ -132,12 +140,19 @@ export class UserContextMenu {
             <div class="ctx-submenu">
               ${manageableRoles.map((role) => `
                 <button type="button" class="ctx-submenu-item" data-action="toggle-role" data-role-id="${role.id}">
-                  <span class="material-symbols-outlined md-16">${roleIds.has(role.id) ? 'check_box' : 'check_box_outline_blank'}</span>
-                  <span style="${role.color ? `color: ${role.color};` : ''}">${escapeHtml(role.name)}</span>
+                  ${renderRoleOption(role, roleIds.has(role.id))}
                 </button>
               `).join('')}
             </div>
           </div>
+        ` : ''}
+        ${canManageAdmin ? `
+          <button type="button" class="btn btn-secondary" data-action="toggle-admin" data-role-id="${adminRole!.id}">
+            <span style="display: inline-flex; align-items: center; gap: 8px; width: 100%;">
+              <span class="material-symbols-outlined md-16">${isTargetAdmin ? 'remove_moderator' : 'shield_person'}</span>
+              <span>${isTargetAdmin ? t('userMenu.removeAdmin') : t('userMenu.promoteToAdmin')}</span>
+            </span>
+          </button>
         ` : ''}
       </div>
       ` : ''}
@@ -313,13 +328,25 @@ export class UserContextMenu {
         const roleId = btn.getAttribute('data-role-id');
         if (!roleId) return;
         const hasRole = serverStore.getUserRoleIds(user.id).includes(roleId);
-        const icon = btn.querySelector('.material-symbols-outlined');
-        if (icon) icon.textContent = hasRole ? 'check_box_outline_blank' : 'check_box';
+        btn.querySelector('.role-option-check')?.classList.toggle('checked', !hasRole);
         void networkClient.sendRequest(
           hasRole ? MessageType.ROLE_UNASSIGN : MessageType.ROLE_ASSIGN,
           { userId: user.id, roleId }
         ).catch(() => {});
       });
+    });
+
+    const adminBtn = this.menuEl.querySelector('[data-action="toggle-admin"]');
+    adminBtn?.addEventListener('click', (e) => {
+      e.stopPropagation();
+      const roleId = adminBtn.getAttribute('data-role-id');
+      if (!roleId) return;
+      const isAdmin = serverStore.getUserRoleIds(user.id).includes(roleId);
+      void networkClient.sendRequest(
+        isAdmin ? MessageType.ROLE_UNASSIGN : MessageType.ROLE_ASSIGN,
+        { userId: user.id, roleId }
+      ).catch(() => {});
+      this.close();
     });
 
     const handleOutsideClick = (e: MouseEvent | PointerEvent) => {

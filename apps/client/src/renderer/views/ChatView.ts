@@ -14,6 +14,9 @@ import { uploadAttachment, UploadHandle } from '../core/AttachmentUploader';
 import { getAttachmentUrl, formatBytes, fileIconName } from '../utils/attachment';
 import { showAlert } from './Dialog';
 
+/** How close to the end the feed must be to keep following new messages (#270). */
+const BOTTOM_SCROLL_THRESHOLD_PX = 48;
+
 /** A file picked for upload, tracked until its message is sent (#11). */
 interface PendingAttachment {
   localId: string;
@@ -52,6 +55,8 @@ export class ChatView {
   private container: HTMLElement;
   private currentChannelId: string | null = null;
   private unbindEvents: Array<() => void> = [];
+  /** Tracks whether the feed is following the end of the conversation (#270). */
+  private pinnedToBottom = true;
   // @-mention autocomplete state (#14)
   private mentionActive = false;
   private mentionMatches: UserSummary[] = [];
@@ -136,7 +141,7 @@ export class ChatView {
       </div>
     `;
 
-    this.renderMessages();
+    this.renderMessages({ forceScroll: true });
     this.attachEvents();
   }
 
@@ -149,9 +154,13 @@ export class ChatView {
     });
   }
 
-  private renderMessages(): void {
+  private renderMessages(options: { forceScroll?: boolean } = {}): void {
     const feed = document.getElementById('chat-messages-feed');
     if (!feed || !this.currentChannelId) return;
+
+    // Read before the feed is replaced: new messages only pull the view down when
+    // the user is already reading the end of the conversation (#270).
+    const shouldScroll = options.forceScroll === true || this.isFeedAtBottom(feed);
 
     const messages = chatStore.getMessages(this.currentChannelId);
     if (messages.length === 0) {
@@ -207,7 +216,35 @@ export class ChatView {
     this.bindMediaInteractions(feed);
     this.initializeCustomVideoPlayers(feed);
 
-    this.scrollToBottom();
+    this.pinnedToBottom = shouldScroll;
+    if (shouldScroll) {
+      this.scrollToBottom();
+      this.repinWhileMediaLoads(feed);
+    }
+  }
+
+  /** Whether the feed is scrolled close enough to the end to count as "at the end" (#270). */
+  private isFeedAtBottom(feed: HTMLElement): boolean {
+    return feed.scrollHeight - feed.scrollTop - feed.clientHeight <= BOTTOM_SCROLL_THRESHOLD_PX;
+  }
+
+  /**
+   * Images, videos and embeds only get their real height after loading, which
+   * grows the feed and would leave the view above the newest message. Re-pin it
+   * while the user hasn't scrolled away (#270).
+   */
+  private repinWhileMediaLoads(feed: HTMLElement): void {
+    const repin = () => {
+      if (this.pinnedToBottom) feed.scrollTop = feed.scrollHeight;
+    };
+    feed.querySelectorAll('img, iframe').forEach((el) => {
+      el.addEventListener('load', repin, { once: true });
+    });
+    // Media elements never fire "load"; their box only settles once metadata arrives.
+    feed.querySelectorAll('video').forEach((el) => {
+      el.addEventListener('loadedmetadata', repin, { once: true });
+      el.addEventListener('loadeddata', repin, { once: true });
+    });
   }
 
   /** Interleaves messages with a per-day divider line (#11). */
@@ -1019,6 +1056,13 @@ export class ChatView {
     const charCounter = document.getElementById('chat-char-counter');
     const btnSend = document.getElementById('btn-send-message');
 
+    const messagesFeed = this.container.querySelector('#chat-messages-feed') as HTMLElement | null;
+    if (messagesFeed) {
+      messagesFeed.addEventListener('scroll', () => {
+        this.pinnedToBottom = this.isFeedAtBottom(messagesFeed);
+      });
+    }
+
     const autoResize = () => {
       if (!input) return;
       input.style.height = 'auto';
@@ -1274,13 +1318,15 @@ export class ChatView {
     const u2 = appEvents.on('server.roles_updated', () => this.syncComposerPermissionState());
     const u3 = appEvents.on('chat.message_added', (msg: ChatMessage) => {
       if (msg.channelId === this.currentChannelId) {
-        this.renderMessages();
+        // Sending a message always brings the author back to the end (#270).
+        const isOwnMessage = msg.userId === serverStore.currentUser?.id;
+        this.renderMessages({ forceScroll: isOwnMessage });
       }
     });
 
     const u4 = appEvents.on('chat.history_loaded', (data: { channelId: string }) => {
       if (data.channelId === this.currentChannelId) {
-        this.renderMessages();
+        this.renderMessages({ forceScroll: true });
       }
     });
 
@@ -1291,6 +1337,10 @@ export class ChatView {
     const feed = document.getElementById('chat-messages-feed');
     if (feed) {
       feed.scrollTop = feed.scrollHeight;
+      // The feed height is still settling right after the markup swap.
+      requestAnimationFrame(() => {
+        if (this.pinnedToBottom) feed.scrollTop = feed.scrollHeight;
+      });
     }
   }
 

@@ -2,7 +2,7 @@ import http from 'http';
 import fs from 'fs';
 import path from 'path';
 import { v4 as uuidv4 } from 'uuid';
-import { ADMIN_PERMISSIONS, DEFAULT_PERMISSIONS, LIMITS, ProtocolErrorCode } from '@monky/shared';
+import { ADMIN_PERMISSIONS, DEFAULT_PERMISSIONS, LIMITS, Permission, ProtocolErrorCode, stripAdministrator } from '@monky/shared';
 import { AuthService } from './application/services/AuthService';
 import { AttachmentService } from './application/services/AttachmentService';
 import { ChannelService } from './application/services/ChannelService';
@@ -116,6 +116,41 @@ export async function ensureServerSeedData(
       createdAt: now,
     });
   }
+
+  await migrateAdministratorRoles(roleRepo);
+}
+
+/**
+ * The ADMINISTRATOR permission was dropped from the role editor: admin rights
+ * now come only from the Admin role. Legacy roles lose the bit and every member
+ * who held one is promoted to Admin so nobody loses access (#277).
+ */
+async function migrateAdministratorRoles(roleRepo: SqliteRoleRepository): Promise<void> {
+  const adminRole = await roleRepo.findByName('Admin');
+  if (!adminRole) return;
+
+  const legacyRoles = (await roleRepo.listAll()).filter(
+    (role) => role.id !== adminRole.id && (role.permissions & Permission.ADMINISTRATOR) !== 0
+  );
+  if (legacyRoles.length === 0) return;
+
+  const legacyRoleIds = new Set(legacyRoles.map((role) => role.id));
+  const userRoles = await roleRepo.listUserRoles();
+  const usersToPromote = new Set(
+    userRoles.filter((entry) => legacyRoleIds.has(entry.roleId)).map((entry) => entry.userId)
+  );
+
+  for (const role of legacyRoles) {
+    await roleRepo.update(role.id, { permissions: stripAdministrator(role.permissions) });
+  }
+  for (const userId of usersToPromote) {
+    await roleRepo.assignRole(userId, adminRole.id);
+  }
+
+  Logger.info(
+    'DATABASE',
+    `Removed the legacy ADMINISTRATOR permission from ${legacyRoles.length} role(s) and promoted ${usersToPromote.size} member(s) to Admin.`
+  );
 }
 
 export class MonkyServer {
