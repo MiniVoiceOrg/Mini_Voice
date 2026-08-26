@@ -66,6 +66,10 @@ export class ServerSettingsModal {
             <span>${t('serverSettings.tabNotifications')}</span>
           </button>
           ${canManageRoles ? `
+          <button type="button" class="settings-tab-btn" data-tab="members">
+            <span class="material-symbols-outlined md-18">group</span>
+            <span>${t('serverSettings.tabMembers')}</span>
+          </button>
           <button type="button" class="settings-tab-btn" data-tab="roles">
             <span class="material-symbols-outlined md-18">admin_panel_settings</span>
             <span>${t('serverSettings.tabRoles')}</span>
@@ -216,6 +220,9 @@ export class ServerSettingsModal {
               </div>
 
               ${canManageRoles ? `
+              <div class="settings-tab-panel" id="tab-panel-members" style="display: none;">
+                ${this.renderMembersTab()}
+              </div>
               <div class="settings-tab-panel" id="tab-panel-roles" style="display: none;">
                 ${this.renderRolesTab()}
               </div>
@@ -265,6 +272,7 @@ export class ServerSettingsModal {
       voice_video: { icon: 'music_note', title: t('serverSettings.tabVoiceVideo') },
       storage: { icon: 'cloud', title: t('serverSettings.tabStorage') },
       notifications: { icon: 'notifications', title: t('serverSettings.tabNotifications') },
+      members: { icon: 'group', title: t('serverSettings.tabMembers') },
       roles: { icon: 'admin_panel_settings', title: t('serverSettings.tabRoles') },
     };
 
@@ -415,80 +423,116 @@ export class ServerSettingsModal {
     this.attachRoleManagementEvents();
   }
 
-  private renderRolesTab(): string {
+  private renderMembersTab(): string {
     const roles = [...serverStore.roles].sort((a, b) => b.position - a.position);
     const members = [...(serverStore.serverDetails?.members ?? [])].sort((a, b) => a.nickname.localeCompare(b.nickname));
 
     return `
-      <div style="display: grid; grid-template-columns: 1.1fr 1fr; gap: 16px; width: 100%;">
-        <div style="display: flex; flex-direction: column; gap: 12px;">
-          <div style="background: var(--bg-card); border: 1px solid var(--border-color); border-radius: var(--radius-md); padding: 14px;">
-            <div style="font-size: 13px; font-weight: 700; margin-bottom: 10px;">${t('roles.rolesList')}</div>
-            <div style="font-size: 11px; color: var(--text-muted); margin-bottom: 10px;">${t('roles.autoAssignHint')}</div>
-            <div id="roles-list" style="display: flex; flex-direction: column; gap: 8px;">
-              ${roles.map((role) => `
-                <div style="display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 8px; align-items: center;">
-                  <button type="button" class="btn btn-secondary role-item-btn" data-role-id="${role.id}" draggable="true" style="justify-content: space-between; min-width: 0; ${role.color ? `border-left: 4px solid ${role.color};` : ''}">
-                    <span style="display: inline-flex; align-items: center; gap: 8px; min-width: 0;">
-                      <span class="material-symbols-outlined md-16">drag_indicator</span>
-                      <span style="min-width: 0; overflow: hidden; text-overflow: ellipsis;">${escapeHtml(role.name)}</span>
-                      ${role.isDefault ? `<span class="member-badge-you">${t('roles.defaultBadge')}</span>` : ''}
-                      ${role.name === 'Admin' ? `<span class="member-badge-you">${t('roles.adminBadge')}</span>` : ''}
-                    </span>
-                    <span style="font-size: 12px; color: var(--text-muted); margin-left: 8px;">${this.describeRolePermissions(role)}</span>
-                  </button>
-                  <label style="display: inline-flex; align-items: center; gap: 6px; font-size: 11px; color: var(--text-secondary); cursor: pointer; white-space: nowrap;">
-                    <input type="checkbox" class="role-default-toggle" data-role-id="${role.id}" ${role.isDefault ? 'checked' : ''}>
-                    <span>${t('roles.autoAssign')}</span>
-                  </label>
-                </div>
-              `).join('')}
-            </div>
-          </div>
+      <div style="display: flex; flex-direction: column; gap: 16px; width: 100%;">
+        <div style="background: var(--bg-card); border: 1px solid var(--border-color); border-radius: var(--radius-md); padding: 14px;">
+          <div style="font-size: 13px; font-weight: 700; margin-bottom: 12px;">${t('roles.membersList')}</div>
+          <div id="roles-members-list" style="display: flex; flex-direction: column; gap: 10px;">
+            ${members.map((member) => {
+              const userRoles = serverStore.getUserRoles(member.id);
+              const avatar = getAvatarUrl(member.avatarUrl);
 
-          <div style="background: var(--bg-card); border: 1px solid var(--border-color); border-radius: var(--radius-md); padding: 14px;">
-            <div style="font-size: 13px; font-weight: 700; margin-bottom: 10px;">${t('roles.membersList')}</div>
-            <div id="roles-members-list" style="display: flex; flex-direction: column; gap: 8px; max-height: 260px; overflow: auto;">
-              ${members.map((member) => `
-                <div style="padding: 10px; border: 1px solid var(--border-color); border-radius: var(--radius-md);">
-                  <div style="display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 8px;">
-                    <span style="font-weight: 600;">${escapeHtml(member.nickname)}</span>
-                    <span style="font-size: 11px; color: var(--text-muted);">${escapeHtml(serverStore.getUserRoles(member.id).map((role) => role.name).join(', ') || t('roles.noExtraRoles'))}</span>
+              return `
+                <div style="padding: 12px; border: 1px solid var(--border-color); border-radius: var(--radius-md); background: var(--bg-secondary); display: grid; grid-template-columns: minmax(0, 220px) minmax(0, 1fr) minmax(0, 1.35fr); gap: 12px; align-items: start;">
+                  <div style="display: flex; align-items: center; gap: 10px; min-width: 0;">
+                    <img src="${avatar}" alt="${escapeHtml(member.nickname)}" style="width: 40px; height: 40px; border-radius: 50%; object-fit: cover; border: 1px solid var(--border-color); flex-shrink: 0;">
+                    <div style="min-width: 0;">
+                      <div style="display: flex; align-items: center; gap: 6px; flex-wrap: wrap; margin-bottom: 4px;">
+                        <span style="font-size: 13px; font-weight: 600; color: var(--text-primary); min-width: 0; overflow: hidden; text-overflow: ellipsis;">${escapeHtml(member.nickname)}</span>
+                        ${member.id === serverStore.currentUser?.id ? `<span class="member-badge-you">${t('common.you')}</span>` : ''}
+                        ${member.id === serverStore.ownerId ? `<span class="member-badge-you">${t('roles.ownerBadge')}</span>` : ''}
+                      </div>
+                    </div>
                   </div>
-                  <div style="display: flex; flex-wrap: wrap; gap: 6px;">
-                    ${roles.map((role) => {
-                      const assigned = serverStore.getUserRoleIds(member.id).includes(role.id);
-                      const disabled = role.isDefault;
-                      return `
-                        <button type="button" class="btn btn-secondary member-role-toggle" data-user-id="${member.id}" data-role-id="${role.id}" ${disabled ? 'disabled' : ''} style="${role.color ? `border-color: ${role.color};` : ''}">
-                          ${assigned ? '✓ ' : ''}${escapeHtml(role.name)}
-                        </button>
-                      `;
-                    }).join('')}
+                  <div>
+                    <div style="font-size: 11px; font-weight: 600; color: var(--text-muted); margin-bottom: 6px;">${t('roles.rolesList')}</div>
+                    ${userRoles.length
+                      ? `<div class="member-role-tags">${userRoles.map((role) => `<span class="member-role-tag" style="${role.color ? `--role-color: ${role.color}` : ''}">${escapeHtml(role.name)}</span>`).join('')}</div>`
+                      : `<span style="font-size: 11px; color: var(--text-muted);">${t('roles.noExtraRoles')}</span>`}
+                  </div>
+                  <div>
+                    <div style="font-size: 11px; font-weight: 600; color: var(--text-muted); margin-bottom: 6px;">${t('userMenu.manageRoles')}</div>
+                    <div style="display: flex; flex-wrap: wrap; gap: 6px;">
+                      ${roles.map((role) => {
+                        const assigned = serverStore.getUserRoleIds(member.id).includes(role.id);
+                        const disabled = role.isDefault;
+                        const assignedStyle = assigned
+                          ? (role.color
+                            ? `background: color-mix(in srgb, ${role.color} 18%, transparent); color: var(--text-primary);`
+                            : 'background: rgba(88, 101, 242, 0.16); color: var(--text-primary);')
+                          : '';
+                        return `
+                          <button type="button" class="btn btn-secondary member-role-toggle" data-user-id="${member.id}" data-role-id="${role.id}" ${disabled ? 'disabled' : ''} style="${role.color ? `border-color: ${role.color};` : ''} ${assignedStyle}">
+                            ${assigned ? '✓ ' : ''}${escapeHtml(role.name)}
+                          </button>
+                        `;
+                      }).join('')}
+                    </div>
                   </div>
                 </div>
-              `).join('')}
+              `;
+            }).join('')}
+          </div>
+        </div>
+      </div>
+    `;
+  }
+
+  private renderRolesTab(): string {
+    const roles = [...serverStore.roles].sort((a, b) => b.position - a.position);
+
+    return `
+      <div style="display: flex; flex-direction: column; gap: 16px; width: 100%;">
+        <div style="background: var(--bg-card); border: 1px solid var(--border-color); border-radius: var(--radius-md); padding: 14px; display: flex; flex-direction: column; gap: 12px;">
+          <div style="display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; flex-wrap: wrap;">
+            <div>
+              <div style="font-size: 13px; font-weight: 700; margin-bottom: 4px;">${t('roles.rolesList')}</div>
+              <div style="font-size: 11px; color: var(--text-muted);">${t('roles.autoAssignHint')}</div>
             </div>
+            <button type="button" id="btn-role-create-new" class="btn btn-primary">${t('roles.createRole')}</button>
+          </div>
+          <div id="roles-list" style="display: flex; flex-direction: column; gap: 8px;">
+            ${roles.map((role) => `
+              <div style="display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 8px; align-items: center;">
+                <button type="button" class="btn btn-secondary role-item-btn" data-role-id="${role.id}" draggable="true" style="justify-content: space-between; min-width: 0; ${role.color ? `border-left: 4px solid ${role.color};` : ''}">
+                  <span style="display: inline-flex; align-items: center; gap: 10px; min-width: 0; flex: 1;">
+                    <span class="material-symbols-outlined md-16">drag_indicator</span>
+                    <span style="width: 12px; height: 12px; border-radius: 50%; background: ${role.color || 'var(--text-muted)'}; border: 1px solid rgba(255, 255, 255, 0.12); flex-shrink: 0;"></span>
+                    <span style="min-width: 0; overflow: hidden; text-overflow: ellipsis;">${escapeHtml(role.name)}</span>
+                    ${role.isDefault ? `<span class="member-badge-you">${t('roles.defaultBadge')}</span>` : ''}
+                    ${role.name === 'Admin' ? `<span class="member-badge-you">${t('roles.adminBadge')}</span>` : ''}
+                  </span>
+                  <span style="font-size: 11px; color: var(--text-muted); margin-left: 12px; text-align: right;">${this.describeRolePermissions(role)}</span>
+                </button>
+                <label style="display: inline-flex; align-items: center; gap: 6px; font-size: 11px; color: var(--text-secondary); cursor: pointer; white-space: nowrap;">
+                  <input type="checkbox" class="role-default-toggle" data-role-id="${role.id}" ${role.isDefault ? 'checked' : ''}>
+                  <span>${t('roles.autoAssign')}</span>
+                </label>
+              </div>
+            `).join('')}
           </div>
         </div>
 
-        <div style="background: var(--bg-card); border: 1px solid var(--border-color); border-radius: var(--radius-md); padding: 14px; display: flex; flex-direction: column; gap: 12px;">
+        <div id="role-editor-section" style="display: none; background: var(--bg-card); border: 1px solid var(--border-color); border-radius: var(--radius-md); padding: 14px; flex-direction: column; gap: 12px;">
           <div style="font-size: 13px; font-weight: 700;">${t('roles.editorTitle')}</div>
           <input type="hidden" id="role-editor-id">
           <div class="form-group" style="margin-bottom: 0;">
             <label>${t('roles.roleName')}</label>
             <input id="role-editor-name" type="text" maxlength="32" placeholder="${t('roles.roleNamePlaceholder')}">
           </div>
-          <div class="form-group" style="margin-bottom: 0;">
+          <div class="form-group" style="margin-bottom: 0; max-width: 180px;">
             <label>${t('roles.roleColor')}</label>
             <input id="role-editor-color" type="color" value="#5865f2">
           </div>
-          <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px;">
-            ${this.renderPermissionCheckboxes()}
+          <div style="display: flex; flex-direction: column; gap: 10px;">
+            ${this.renderPermissionSwitches()}
           </div>
-          <div style="display: flex; gap: 8px;">
+          <div style="display: flex; gap: 8px; flex-wrap: wrap;">
             <button type="button" id="btn-role-save" class="btn btn-primary">${t('roles.createRole')}</button>
-            <button type="button" id="btn-role-reset" class="btn btn-secondary">${t('roles.newRole')}</button>
             <button type="button" id="btn-role-delete" class="btn btn-danger">${t('common.delete')}</button>
           </div>
         </div>
@@ -496,27 +540,33 @@ export class ServerSettingsModal {
     `;
   }
 
-  private renderPermissionCheckboxes(): string {
-    const items: Array<{ key: Permission; label: string }> = [
-      { key: Permission.MANAGE_CHANNELS, label: t('permissions.manageChannels') },
-      { key: Permission.MANAGE_SERVER, label: t('permissions.manageServer') },
-      { key: Permission.MANAGE_ROLES, label: t('permissions.manageRoles') },
-      { key: Permission.KICK_MEMBERS, label: t('permissions.kickMembers') },
-      { key: Permission.SPEAK, label: t('permissions.speak') },
-      { key: Permission.MUTE_MEMBERS, label: t('permissions.muteMembers') },
-      { key: Permission.DEAFEN_MEMBERS, label: t('permissions.deafenMembers') },
-      { key: Permission.MOVE_MEMBERS, label: t('permissions.moveMembers') },
-      { key: Permission.SEND_MESSAGES, label: t('permissions.sendMessages') },
-      { key: Permission.READ_MESSAGES, label: t('permissions.readMessages') },
-      { key: Permission.ATTACH_FILES, label: t('permissions.attachFiles') },
-      { key: Permission.ADMINISTRATOR, label: t('permissions.administrator') },
+  private renderPermissionSwitches(): string {
+    const items: Array<{ key: Permission; label: string; description: string }> = [
+      { key: Permission.MANAGE_CHANNELS, label: t('permissions.manageChannels'), description: t('permissions.manageChannelsDesc') },
+      { key: Permission.MANAGE_SERVER, label: t('permissions.manageServer'), description: t('permissions.manageServerDesc') },
+      { key: Permission.MANAGE_ROLES, label: t('permissions.manageRoles'), description: t('permissions.manageRolesDesc') },
+      { key: Permission.KICK_MEMBERS, label: t('permissions.kickMembers'), description: t('permissions.kickMembersDesc') },
+      { key: Permission.SPEAK, label: t('permissions.speak'), description: t('permissions.speakDesc') },
+      { key: Permission.MUTE_MEMBERS, label: t('permissions.muteMembers'), description: t('permissions.muteMembersDesc') },
+      { key: Permission.DEAFEN_MEMBERS, label: t('permissions.deafenMembers'), description: t('permissions.deafenMembersDesc') },
+      { key: Permission.MOVE_MEMBERS, label: t('permissions.moveMembers'), description: t('permissions.moveMembersDesc') },
+      { key: Permission.SEND_MESSAGES, label: t('permissions.sendMessages'), description: t('permissions.sendMessagesDesc') },
+      { key: Permission.READ_MESSAGES, label: t('permissions.readMessages'), description: t('permissions.readMessagesDesc') },
+      { key: Permission.ATTACH_FILES, label: t('permissions.attachFiles'), description: t('permissions.attachFilesDesc') },
+      { key: Permission.ADMINISTRATOR, label: t('permissions.administrator'), description: t('permissions.administratorDesc') },
     ];
 
     return items.map((item) => `
-      <label style="display: flex; align-items: center; gap: 8px; font-size: 12px; cursor: pointer;">
-        <input type="checkbox" class="role-permission-checkbox" data-permission="${item.key}">
-        <span>${item.label}</span>
-      </label>
+      <div style="display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 10px 12px; border: 1px solid var(--border-color); border-radius: var(--radius-md); background: var(--bg-secondary);">
+        <div style="min-width: 0;">
+          <div style="font-size: 12px; font-weight: 600; color: var(--text-primary);">${item.label}</div>
+          <div style="font-size: 11px; color: var(--text-muted); margin-top: 2px;">${item.description}</div>
+        </div>
+        <label class="permission-switch" aria-label="${item.label}">
+          <input type="checkbox" class="role-permission-switch" data-permission="${item.key}">
+          <span class="slider"></span>
+        </label>
+      </div>
     `).join('');
   }
 
@@ -536,29 +586,38 @@ export class ServerSettingsModal {
     if (!this.modalEl || !serverStore.hasPermission(Permission.MANAGE_ROLES)) return;
 
     const list = this.modalEl.querySelector('#roles-list');
+    const editorSection = this.modalEl.querySelector('#role-editor-section') as HTMLElement | null;
     const inputId = this.modalEl.querySelector('#role-editor-id') as HTMLInputElement | null;
     const inputName = this.modalEl.querySelector('#role-editor-name') as HTMLInputElement | null;
     const inputColor = this.modalEl.querySelector('#role-editor-color') as HTMLInputElement | null;
+    const btnCreateNew = this.modalEl.querySelector('#btn-role-create-new') as HTMLButtonElement | null;
     const btnSave = this.modalEl.querySelector('#btn-role-save') as HTMLButtonElement | null;
-    const btnReset = this.modalEl.querySelector('#btn-role-reset') as HTMLButtonElement | null;
     const btnDelete = this.modalEl.querySelector('#btn-role-delete') as HTMLButtonElement | null;
 
-    const resetEditor = () => {
+    const setEditorVisible = (visible: boolean) => {
+      if (editorSection) {
+        editorSection.style.display = visible ? 'flex' : 'none';
+      }
+    };
+
+    const resetEditor = (showEditor = false) => {
       if (inputId) inputId.value = '';
       if (inputName) inputName.value = '';
       if (inputColor) inputColor.value = '#5865f2';
-      this.modalEl?.querySelectorAll('.role-permission-checkbox').forEach((checkbox) => {
+      this.modalEl?.querySelectorAll('.permission-switch input').forEach((checkbox) => {
         (checkbox as HTMLInputElement).checked = false;
       });
       if (btnSave) btnSave.innerText = t('roles.createRole');
       if (btnDelete) btnDelete.disabled = true;
+      setEditorVisible(showEditor);
     };
 
     const loadRoleIntoEditor = (role: Role) => {
+      setEditorVisible(true);
       if (inputId) inputId.value = role.id;
       if (inputName) inputName.value = role.name;
       if (inputColor) inputColor.value = role.color ?? '#5865f2';
-      this.modalEl?.querySelectorAll('.role-permission-checkbox').forEach((checkbox) => {
+      this.modalEl?.querySelectorAll('.permission-switch input').forEach((checkbox) => {
         const permission = Number((checkbox as HTMLInputElement).dataset.permission || '0');
         (checkbox as HTMLInputElement).checked = (role.permissions & permission) !== 0;
       });
@@ -569,7 +628,9 @@ export class ServerSettingsModal {
       }
     };
 
-    resetEditor();
+    resetEditor(false);
+
+    btnCreateNew?.addEventListener('click', () => resetEditor(true));
 
     list?.querySelectorAll('.role-item-btn').forEach((btn) => {
       btn.addEventListener('click', () => {
@@ -599,12 +660,11 @@ export class ServerSettingsModal {
       });
     });
 
-    btnReset?.addEventListener('click', () => resetEditor());
     btnSave?.addEventListener('click', async () => {
       const name = inputName?.value.trim();
       if (!name) return;
       let permissions = 0;
-      this.modalEl?.querySelectorAll('.role-permission-checkbox').forEach((checkbox) => {
+      this.modalEl?.querySelectorAll('.permission-switch input').forEach((checkbox) => {
         const input = checkbox as HTMLInputElement;
         if (input.checked) permissions |= Number(input.dataset.permission || '0');
       });
