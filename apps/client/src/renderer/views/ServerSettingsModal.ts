@@ -2,6 +2,8 @@ import { LIMITS, MessageType, Permission, Role, ServerUpdateSettingsPayload } fr
 import logoUrl from '../assets/Logo.png';
 import { escapeHtml } from '../utils/html';
 import { getAvatarUrl } from '../utils/avatar';
+import { renderRoleOption } from '../utils/roleOption';
+import { pickAndCropImage } from './ImageCropModal';
 import { formatBytes } from '../utils/attachment';
 import { networkClient } from '../core/NetworkClient';
 import { serverStore } from '../stores/serverStore';
@@ -61,7 +63,7 @@ export class ServerSettingsModal {
     this.modalEl = document.createElement('div');
     this.modalEl.className = 'modal-backdrop modal-backdrop--settings';
     this.modalEl.innerHTML = `
-      <div class="modal-card settings-modal-card">
+      <div class="modal-card settings-modal-card server-settings-modal-card">
         <!-- Sidebar Navigation -->
         <div class="settings-sidebar">
           <div style="font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.6px; color: var(--text-muted); padding: 4px 10px 8px;">
@@ -353,11 +355,11 @@ export class ServerSettingsModal {
 
       const action = await this.showIconActionModal(hasCustomIcon);
       if (action === 'change') {
-        const file = await window.api.selectImageDialog();
-        if (file && file.base64) {
-          this.pendingIconBase64 = file.base64;
+        const croppedIcon = await pickAndCropImage();
+        if (croppedIcon) {
+          this.pendingIconBase64 = croppedIcon;
           const preview = this.modalEl?.querySelector('#server-icon-preview') as HTMLImageElement | null;
-          if (preview) preview.src = file.base64;
+          if (preview) preview.src = croppedIcon;
         }
       } else if (action === 'remove') {
         this.pendingIconBase64 = null;
@@ -483,7 +485,9 @@ export class ServerSettingsModal {
               </thead>
               <tbody>
             ${members.map((member) => {
-              const userRoles = serverStore.getUserRoles(member.id).filter((role) => !role.isDefault);
+              const userRoles = serverStore
+                .getUserRoles(member.id)
+                .filter((role) => !role.isDefault && !serverStore.isAdminRole(role));
               const visibleRoles = userRoles.slice(0, 2);
               const extraRoles = userRoles.length - visibleRoles.length;
               const avatar = getAvatarUrl(member.avatarUrl);
@@ -528,8 +532,8 @@ export class ServerSettingsModal {
                         ` : ''}
                         ${adminRole ? `
                           <button type="button" class="settings-action-menu-item" data-member-action="toggle-admin" data-user-id="${member.id}" data-role-id="${adminRole.id}" ${isOwner ? 'disabled' : ''}>
-                            <span class="material-symbols-outlined md-16">${isAdmin ? 'check_box' : 'check_box_outline_blank'}</span>
-                            <span>${t('userMenu.makeAdmin')}</span>
+                            <span class="material-symbols-outlined md-16">${isAdmin ? 'remove_moderator' : 'shield_person'}</span>
+                            <span>${isAdmin ? t('userMenu.removeAdmin') : t('userMenu.promoteToAdmin')}</span>
                           </button>
                         ` : ''}
                         <div class="settings-action-submenu-wrap">
@@ -543,8 +547,7 @@ export class ServerSettingsModal {
                                 const assigned = serverStore.getUserRoleIds(member.id).includes(role.id);
                                 return `
                                   <button type="button" class="settings-action-menu-item" data-member-action="toggle-role" data-user-id="${member.id}" data-role-id="${role.id}" ${isOwner ? 'disabled' : ''}>
-                                    <span class="material-symbols-outlined md-16">${assigned ? 'check_box' : 'check_box_outline_blank'}</span>
-                                    <span style="${role.color ? `color: ${role.color};` : ''}">${escapeHtml(role.name)}</span>
+                                    ${renderRoleOption(role, assigned)}
                                   </button>
                                 `;
                               }).join('')}
@@ -666,6 +669,31 @@ export class ServerSettingsModal {
     `;
   }
 
+  /**
+   * Runs a DOM reorder and glides every row from where it was to where it
+   * landed, so dragging roles no longer snaps between slots (#276).
+   */
+  private animateRoleRowsWhile(tbody: HTMLElement, mutate: () => void): void {
+    const rows = Array.from(tbody.querySelectorAll('.role-table-row')) as HTMLElement[];
+    const previousTops = new Map(rows.map((row) => [row, row.getBoundingClientRect().top]));
+
+    mutate();
+
+    rows.forEach((row) => {
+      const previousTop = previousTops.get(row);
+      if (previousTop === undefined) return;
+      const delta = previousTop - row.getBoundingClientRect().top;
+      if (Math.abs(delta) < 1) return;
+
+      row.style.transition = 'none';
+      row.style.transform = `translateY(${delta}px)`;
+      requestAnimationFrame(() => {
+        row.style.transition = 'transform 0.18s ease';
+        row.style.transform = '';
+      });
+    });
+  }
+
   private renderPermissionSwitches(): string {
     const items: Array<{ key: Permission; label: string; description: string }> = [
       { key: Permission.MANAGE_CHANNELS, label: t('permissions.manageChannels'), description: t('permissions.manageChannelsDesc') },
@@ -679,7 +707,6 @@ export class ServerSettingsModal {
       { key: Permission.SEND_MESSAGES, label: t('permissions.sendMessages'), description: t('permissions.sendMessagesDesc') },
       { key: Permission.READ_MESSAGES, label: t('permissions.readMessages'), description: t('permissions.readMessagesDesc') },
       { key: Permission.ATTACH_FILES, label: t('permissions.attachFiles'), description: t('permissions.attachFilesDesc') },
-      { key: Permission.ADMINISTRATOR, label: t('permissions.administrator'), description: t('permissions.administratorDesc') },
     ];
 
     return items.map((item) => `
@@ -883,32 +910,67 @@ export class ServerSettingsModal {
     btnCreateNew?.addEventListener('click', () => resetEditor(true));
     btnRoleCancel?.addEventListener('click', () => resetEditor(false));
 
-    list?.querySelectorAll('.role-table-row').forEach((row) => {
-      row.addEventListener('dragstart', () => {
+    const rolesBody = list?.querySelector('tbody') as HTMLElement | null;
+    let orderAtDragStart: string[] = [];
+
+    const currentRoleOrder = (): string[] =>
+      Array.from(rolesBody?.querySelectorAll('.role-table-row') ?? []).map(
+        (row) => row.getAttribute('data-role-id') ?? ''
+      );
+
+    list?.querySelectorAll('.role-table-row').forEach((rowEl) => {
+      const row = rowEl as HTMLElement;
+
+      row.addEventListener('dragstart', (e) => {
         this.draggedRoleId = row.getAttribute('data-role-id');
-      });
-      row.addEventListener('dragend', () => {
-        this.draggedRoleId = null;
-      });
-      row.addEventListener('dragover', (e) => e.preventDefault());
-      row.addEventListener('drop', async () => {
-        const targetRoleId = row.getAttribute('data-role-id');
-        if (!this.draggedRoleId || !targetRoleId || this.draggedRoleId === targetRoleId) return;
-        // Reorder only the roles actually listed, so the hidden Admin role never
-        // shifts around as a side effect (#262, #265).
-        const ordered = serverStore.getVisibleRoles().sort((a, b) => b.position - a.position);
-        const from = ordered.findIndex((role) => role.id === this.draggedRoleId);
-        const to = ordered.findIndex((role) => role.id === targetRoleId);
-        if (from < 0 || to < 0) return;
-        const [moved] = ordered.splice(from, 1);
-        ordered.splice(to, 0, moved);
-        for (let i = 0; i < ordered.length; i += 1) {
-          await networkClient.sendRequest(MessageType.ROLE_UPDATE, {
-            roleId: ordered[i].id,
-            position: ordered.length - i,
-          });
+        orderAtDragStart = currentRoleOrder();
+        const transfer = (e as DragEvent).dataTransfer;
+        if (transfer) {
+          transfer.effectAllowed = 'move';
+          transfer.setData('text/plain', this.draggedRoleId ?? '');
         }
-        this.reopenPreservingTab();
+        // Deferred so the class doesn't end up baked into the drag ghost image.
+        setTimeout(() => row.classList.add('role-row-dragging'), 0);
+      });
+
+      row.addEventListener('dragover', (e) => {
+        e.preventDefault();
+        const event = e as DragEvent;
+        if (event.dataTransfer) event.dataTransfer.dropEffect = 'move';
+        if (!rolesBody || !this.draggedRoleId) return;
+
+        const dragged = rolesBody.querySelector(
+          `.role-table-row[data-role-id="${this.draggedRoleId}"]`
+        ) as HTMLElement | null;
+        if (!dragged || dragged === row) return;
+
+        const rect = row.getBoundingClientRect();
+        const dropAfter = event.clientY > rect.top + rect.height / 2;
+        const reference = dropAfter ? row.nextElementSibling : row;
+        if (reference === dragged) return;
+
+        this.animateRoleRowsWhile(rolesBody, () => rolesBody.insertBefore(dragged, reference));
+      });
+
+      row.addEventListener('drop', (e) => e.preventDefault());
+
+      row.addEventListener('dragend', () => {
+        row.classList.remove('role-row-dragging');
+        this.draggedRoleId = null;
+
+        const ordered = currentRoleOrder();
+        if (ordered.join() === orderAtDragStart.join()) return;
+
+        // The list already shows the new order, so it is persisted without a
+        // re-render to keep the movement smooth (#276).
+        void (async () => {
+          for (let i = 0; i < ordered.length; i += 1) {
+            await networkClient.sendRequest(MessageType.ROLE_UPDATE, {
+              roleId: ordered[i],
+              position: ordered.length - i,
+            });
+          }
+        })();
       });
     });
 

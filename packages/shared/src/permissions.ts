@@ -25,3 +25,11 @@ export function hasPermission(userPermissions: number, permission: Permission): 
   if (userPermissions & Permission.ADMINISTRATOR) return true;
   return (userPermissions & permission) !== 0;
 }
+
+/**
+ * ADMINISTRATOR is no longer granted through a custom role: admin rights come
+ * exclusively from the Admin role, given by promoting the member (#277).
+ */
+export function stripAdministrator(permissions: number): number {
+  return (permissions & ~Permission.ADMINISTRATOR) >>> 0;
+}

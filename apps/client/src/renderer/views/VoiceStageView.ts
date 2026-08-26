@@ -51,11 +51,18 @@ interface StageTile {
   key: string; // `${userId}:${kind}` — stable identity for focus/DOM keys
 }
 
+/** Zoom bounds for the focused screen share (#271). */
+const FOCUS_ZOOM_MAX_SCALE = 4;
+const FOCUS_ZOOM_STEP = 0.25;
+
 export class VoiceStageView {
   private container: HTMLElement;
   private currentChannelId: string | null = null;
   private unbindEvents: Array<() => void> = [];
   private focusedTileKey: string | null = null;
+  /** Zoom/pan state of the focused screen share, reset when focus changes (#271). */
+  private focusZoom = { scale: 1, x: 0, y: 0 };
+  private focusZoomTileKey: string | null = null;
   private gridExpanded = false;
   private suppressCardClickUntil = 0;
   // #150: remote screen shares are gated behind an explicit "Assistir
@@ -410,6 +417,8 @@ export class VoiceStageView {
         // pointer-up may land outside the controls (#75).
         if (Date.now() < this.suppressCardClickUntil) return;
         if ((e.target as HTMLElement).closest('.stage-card-controls')) return;
+        // While zoomed in, a click pans instead of dropping out of focus (#271).
+        if (this.focusZoom.scale > 1 && card.classList.contains('stage-focused-main')) return;
         const tileKey = card.getAttribute('data-tile-key');
         if (tileKey) {
           this.focusedTileKey = (this.focusedTileKey === tileKey ? null : tileKey);
@@ -439,6 +448,8 @@ export class VoiceStageView {
         if (targetId) this.toggleVideoFullscreen(targetId);
       });
     });
+
+    this.setupFocusedScreenZoom(area);
 
     // #150: "Assistir transmissão" — opt into a gated remote screen share.
     // Starts video + audio and auto-focuses the broadcaster.
@@ -589,6 +600,118 @@ export class VoiceStageView {
     }
     videoEl.addEventListener('playing', hide, { once: true });
     videoEl.addEventListener('loadeddata', hide, { once: true });
+  }
+
+  /**
+   * Ctrl+scroll zooms the focused screen share towards the pointer, dragging
+   * pans the zoomed image and a double-click resets it (#271). Re-attached on
+   * every render because the stage markup is rebuilt from scratch.
+   */
+  private setupFocusedScreenZoom(area: HTMLElement): void {
+    const main = area.querySelector('.stage-focused-main') as HTMLElement | null;
+    const video = main?.querySelector(
+      'video.stage-video-element.screen-share:not(.screen-locked)'
+    ) as HTMLElement | null;
+    const tileKey = main?.getAttribute('data-tile-key') ?? null;
+
+    if (!main || !video || !tileKey) {
+      this.focusZoomTileKey = null;
+      this.focusZoom = { scale: 1, x: 0, y: 0 };
+      return;
+    }
+
+    if (this.focusZoomTileKey !== tileKey) {
+      this.focusZoomTileKey = tileKey;
+      this.focusZoom = { scale: 1, x: 0, y: 0 };
+    }
+
+    const clampPan = () => {
+      const rect = main.getBoundingClientRect();
+      const maxX = (rect.width * (this.focusZoom.scale - 1)) / 2;
+      const maxY = (rect.height * (this.focusZoom.scale - 1)) / 2;
+      this.focusZoom.x = Math.min(maxX, Math.max(-maxX, this.focusZoom.x));
+      this.focusZoom.y = Math.min(maxY, Math.max(-maxY, this.focusZoom.y));
+    };
+
+    const apply = () => {
+      const { scale, x, y } = this.focusZoom;
+      video.style.transform = scale > 1 ? `translate(${x}px, ${y}px) scale(${scale})` : '';
+      main.classList.toggle('is-zoomed', scale > 1);
+    };
+
+    apply();
+
+    main.addEventListener('wheel', (e: WheelEvent) => {
+      if (!e.ctrlKey) return;
+      e.preventDefault();
+
+      const previous = this.focusZoom.scale;
+      const next = Math.min(
+        FOCUS_ZOOM_MAX_SCALE,
+        Math.max(1, previous - Math.sign(e.deltaY) * FOCUS_ZOOM_STEP)
+      );
+      if (next === previous) return;
+
+      // Keep the pixel under the cursor anchored while the scale changes.
+      const rect = main.getBoundingClientRect();
+      const cursorX = e.clientX - rect.left - rect.width / 2;
+      const cursorY = e.clientY - rect.top - rect.height / 2;
+      const anchorX = (cursorX - this.focusZoom.x) / previous;
+      const anchorY = (cursorY - this.focusZoom.y) / previous;
+
+      this.focusZoom.scale = next;
+      this.focusZoom.x = cursorX - anchorX * next;
+      this.focusZoom.y = cursorY - anchorY * next;
+      clampPan();
+      apply();
+    }, { passive: false });
+
+    let panning = false;
+    let panStartX = 0;
+    let panStartY = 0;
+    let panOriginX = 0;
+    let panOriginY = 0;
+
+    main.addEventListener('pointerdown', (e: PointerEvent) => {
+      if (e.button !== 0 || this.focusZoom.scale <= 1) return;
+      if ((e.target as HTMLElement).closest('.stage-card-controls')) return;
+      panning = true;
+      panStartX = e.clientX;
+      panStartY = e.clientY;
+      panOriginX = this.focusZoom.x;
+      panOriginY = this.focusZoom.y;
+      main.classList.add('is-panning');
+      main.setPointerCapture(e.pointerId);
+    });
+
+    main.addEventListener('pointermove', (e: PointerEvent) => {
+      if (!panning) return;
+      this.focusZoom.x = panOriginX + (e.clientX - panStartX);
+      this.focusZoom.y = panOriginY + (e.clientY - panStartY);
+      clampPan();
+      apply();
+    });
+
+    const endPan = (e: PointerEvent) => {
+      if (!panning) return;
+      panning = false;
+      main.classList.remove('is-panning');
+      if (main.hasPointerCapture(e.pointerId)) main.releasePointerCapture(e.pointerId);
+      // The pointer-up turns into a click that would otherwise leave focus mode.
+      this.suppressCardClickUntil = Date.now() + 200;
+    };
+
+    main.addEventListener('pointerup', endPan);
+    main.addEventListener('pointercancel', endPan);
+
+    main.addEventListener('dblclick', (e: MouseEvent) => {
+      if (this.focusZoom.scale <= 1) return;
+      e.preventDefault();
+      e.stopPropagation();
+      this.focusZoom = { scale: 1, x: 0, y: 0 };
+      apply();
+      this.suppressCardClickUntil = Date.now() + 200;
+    });
   }
 
   /** Toggles native fullscreen for a stage video tile (#68).

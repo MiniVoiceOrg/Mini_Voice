@@ -15,6 +15,7 @@ import { updateService } from '../core/UpdateService';
 import { soundboardService } from '../core/SoundboardService';
 import { getLanguage, setLanguage, SUPPORTED_LANGUAGES, t, tCount, type SupportedLanguage } from '../i18n';
 import { showAlert } from './Dialog';
+import { pickAndCropImage } from './ImageCropModal';
 import { showIdentityExportDialog, showIdentityImportDialog } from './IdentityDialogs';
 
 const IDEAS_URL = 'https://github.com/MonkyOrg/Monky/discussions/categories/ideias';
@@ -1147,28 +1148,26 @@ export class SettingsModal {
       if (!action) return;
 
       if (action === 'change') {
-        if (window.api?.selectImageDialog) {
-          const file = await window.api.selectImageDialog();
-          if (file) {
-            // Offline: store the avatar locally only.
-            if (!serverStore.currentUser) {
-              const preview = document.getElementById('settings-avatar-preview') as HTMLImageElement;
-              if (preview) preview.src = file.base64;
-              connectionStore.saveUserProfile(connectionStore.savedNickname, file.base64);
-              return;
-            }
-            try {
-              await networkClient.sendRequest(MessageType.USER_UPDATE_AVATAR, {
-                avatarBase64: file.base64,
-                mimeType: 'image/png',
-              });
-              const preview = document.getElementById('settings-avatar-preview') as HTMLImageElement;
-              if (preview) preview.src = file.base64;
-              const currentNick = serverStore.currentUser?.nickname || connectionStore.savedNickname;
-              connectionStore.saveUserProfile(currentNick, file.base64);
-            } catch (err: any) {
-              this.showError(err.message || t('settings.avatarError'));
-            }
+        const croppedAvatar = await pickAndCropImage();
+        if (croppedAvatar) {
+          // Offline: store the avatar locally only.
+          if (!serverStore.currentUser) {
+            const preview = document.getElementById('settings-avatar-preview') as HTMLImageElement;
+            if (preview) preview.src = croppedAvatar;
+            connectionStore.saveUserProfile(connectionStore.savedNickname, croppedAvatar);
+            return;
+          }
+          try {
+            await networkClient.sendRequest(MessageType.USER_UPDATE_AVATAR, {
+              avatarBase64: croppedAvatar,
+              mimeType: 'image/png',
+            });
+            const preview = document.getElementById('settings-avatar-preview') as HTMLImageElement;
+            if (preview) preview.src = croppedAvatar;
+            const currentNick = serverStore.currentUser?.nickname || connectionStore.savedNickname;
+            connectionStore.saveUserProfile(currentNick, croppedAvatar);
+          } catch (err: any) {
+            this.showError(err.message || t('settings.avatarError'));
           }
         }
       } else if (action === 'remove') {

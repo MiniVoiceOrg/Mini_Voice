@@ -36,6 +36,11 @@ export const ptBR = {
   'dialog.alertTitle': 'Aviso',
   'dialog.confirmTitle': 'Confirmação',
 
+  // ── Recorte de imagem (ImageCropModal.ts) ────────────────────────────────
+  'crop.title': 'Ajustar imagem',
+  'crop.hint': 'Arraste para posicionar e use o zoom para enquadrar. A imagem será salva em 512x512.',
+  'crop.confirm': 'Aplicar',
+
   // ── Criação de canal (CreateChannelModal.ts) ─────────────────────────────
   'channelModal.title': 'Criar Canal',
   'channelModal.typeLabel': 'Tipo de Canal',
@@ -60,7 +65,8 @@ export const ptBR = {
   'userMenu.serverUndeafen': 'Remover surdez do servidor',
   'userMenu.kickFromVoice': 'Expulsar da voz',
   'userMenu.kickMember': 'Expulsar membro',
-  'userMenu.makeAdmin': 'Tornar admin',
+  'userMenu.promoteToAdmin': 'Promover a admin',
+  'userMenu.removeAdmin': 'Remover admin',
   'userMenu.rolesSubmenu': 'Cargos',
   'userMenu.moveToChannel': 'Mover para canal',
   'userMenu.manageRoles': 'Gerenciar cargos',

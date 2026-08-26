@@ -6,6 +6,7 @@ import { getAvatarUrl } from '../utils/avatar';
 import { settingsModal } from './SettingsModal';
 import { withButtonLoading } from '../utils/buttonLoading';
 import { showAlert, showConfirm } from './Dialog';
+import { pickAndCropImage } from './ImageCropModal';
 import { showIdentityImportDialog } from './IdentityDialogs';
 import logoUrl from '../assets/Logo.png';
 import { getLanguage, t } from '../i18n';
@@ -913,15 +914,13 @@ export class ConnectionView {
 
     btnSelectAvatar?.addEventListener('click', async (e) => {
       e.preventDefault();
-      if (window.api?.selectImageDialog) {
-        const file = await window.api.selectImageDialog();
-        if (file) {
-          this.selectedAvatarBase64 = file.base64;
-          const img = document.getElementById('avatar-preview') as HTMLImageElement;
-          if (img) img.src = file.base64;
-          const currentNick = joinNickInput?.value || hostNickInput?.value || connectionStore.savedNickname;
-          connectionStore.saveUserProfile(currentNick, this.selectedAvatarBase64);
-        }
+      const croppedAvatar = await pickAndCropImage();
+      if (croppedAvatar) {
+        this.selectedAvatarBase64 = croppedAvatar;
+        const img = document.getElementById('avatar-preview') as HTMLImageElement;
+        if (img) img.src = croppedAvatar;
+        const currentNick = joinNickInput?.value || hostNickInput?.value || connectionStore.savedNickname;
+        connectionStore.saveUserProfile(currentNick, this.selectedAvatarBase64);
       }
     });
 
