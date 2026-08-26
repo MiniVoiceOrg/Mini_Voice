@@ -84,6 +84,7 @@ class ScreenAudioService {
   private frameCount: number = 0;
   private testToneInterval: ReturnType<typeof setInterval> | null = null;
   private frameWatchdog: ReturnType<typeof setTimeout> | null = null;
+  private removeFrameListener: (() => void) | null = null;
 
   public async isSupported(): Promise<boolean> {
     return window.api.screenAudioSupported();
@@ -156,7 +157,7 @@ class ScreenAudioService {
     await this.setupPipeline();
 
     // Listen for PCM frames from the native module via preload.
-    window.api.onScreenAudioFrame((buffer: ArrayBuffer | Uint8Array) => {
+    this.removeFrameListener = window.api.onScreenAudioFrame((buffer: ArrayBuffer | Uint8Array) => {
       if (!this.workletNode) return;
 
       let float32: Float32Array;
@@ -257,7 +258,12 @@ class ScreenAudioService {
       }
     } else {
       await window.api.screenAudioStop();
-      window.api.removeScreenAudioFrameListener();
+      if (this.removeFrameListener) {
+        this.removeFrameListener();
+        this.removeFrameListener = null;
+      } else {
+        window.api.removeScreenAudioFrameListener();
+      }
     }
 
     await webRtcManager.setLocalScreenAudioTrack(null);

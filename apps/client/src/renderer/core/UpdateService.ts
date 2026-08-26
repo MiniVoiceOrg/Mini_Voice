@@ -28,6 +28,7 @@ class UpdateService {
   private actionsEl: HTMLElement | null = null;
   private latestVersion = '';
   private listenersBound = false;
+  private unbindUpdateEvents: Array<() => void> = [];
 
   public async init(): Promise<void> {
     if (!window.api?.checkForUpdates) {
@@ -52,11 +53,11 @@ class UpdateService {
     if (this.listenersBound) return;
     this.listenersBound = true;
 
-    window.api.onUpdateProgress((percent) => {
+    const u1 = window.api.onUpdateProgress((percent) => {
       this.setText(t('update.downloading', { percent }));
     });
 
-    window.api.onUpdateDownloaded((info) => {
+    const u2 = window.api.onUpdateDownloaded((info) => {
       if (info.manual) {
         this.setText(t('update.installerOpened'));
         this.setActions([{ label: '×', dismiss: true, onClick: () => this.dismiss() }]);
@@ -67,7 +68,7 @@ class UpdateService {
       }
     });
 
-    window.api.onUpdateError(() => {
+    const u3 = window.api.onUpdateError(() => {
       this.setText(t('update.downloadFailed'));
       this.setActions([
         {
@@ -78,6 +79,8 @@ class UpdateService {
         { label: '×', dismiss: true, onClick: () => this.dismiss() },
       ]);
     });
+
+    this.unbindUpdateEvents.push(u1, u2, u3);
   }
 
   private async check(): Promise<void> {

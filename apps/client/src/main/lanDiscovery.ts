@@ -152,12 +152,12 @@ export class LanDiscovery {
 
   private emitFound(server: DiscoveredLanServer): void {
     if (this.mainWindow.isDestroyed()) return;
-    this.mainWindow.webContents.send('lan-discovery:found', server);
+    this.mainWindow.webContents.send('lan:found', server);
   }
 
   private emitLost(server: DiscoveredLanServer): void {
     if (this.mainWindow.isDestroyed()) return;
-    this.mainWindow.webContents.send('lan-discovery:lost', server);
+    this.mainWindow.webContents.send('lan:lost', server);
   }
 
   private getKey(host: string, port: number): string {

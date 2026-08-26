@@ -272,26 +272,26 @@ export function setupUpdater(mainWindow: BrowserWindow): void {
 
       updater.on('download-progress', (p) => {
         const percent = (p as { percent?: number })?.percent ?? 0;
-        mainWindow.webContents.send('update:progress', Math.round(percent));
+        mainWindow.webContents.send('updater:progress', Math.round(percent));
       });
       updater.on('update-downloaded', () => {
-        mainWindow.webContents.send('update:downloaded', { manual: false });
+        mainWindow.webContents.send('updater:downloaded', { manual: false });
         // Install silently and relaunch automatically — no installer wizard.
         setTimeout(() => {
           try {
             updater.quitAndInstall(true, true);
           } catch (e) {
-            mainWindow.webContents.send('update:error', msg(e));
+            mainWindow.webContents.send('updater:error', msg(e));
           }
         }, 1500);
       });
       updater.on('error', (err) => {
-        mainWindow.webContents.send('update:error', msg(err));
+        mainWindow.webContents.send('updater:error', msg(err));
       });
     }
   }
 
-  ipcMain.handle('update-set-channel', async (_e, allowBeta: unknown): Promise<CheckResult> => {
+  ipcMain.handle('updater:set-channel', async (_e, allowBeta: unknown): Promise<CheckResult> => {
     betaChannel = !!allowBeta;
     // Only toggle pre-release eligibility — do NOT force `updater.channel`.
     // On a prerelease-versioned build (e.g. `1.9.0-beta.1`) with
@@ -308,12 +308,12 @@ export function setupUpdater(mainWindow: BrowserWindow): void {
     return { ok: true };
   });
 
-  ipcMain.handle('update-check', async (): Promise<CheckResult> => {
+  ipcMain.handle('updater:check', async (): Promise<CheckResult> => {
     // Detection is done via the GitHub API on every platform for reliability.
     return checkViaGitHub();
   });
 
-  ipcMain.handle('update-download', async (): Promise<CheckResult> => {
+  ipcMain.handle('updater:download', async (): Promise<CheckResult> => {
     if (isMac) {
       return downloadMacDmg(mainWindow);
     }
@@ -337,7 +337,7 @@ export function setupUpdater(mainWindow: BrowserWindow): void {
     }
   });
 
-  ipcMain.handle('update-install', async (): Promise<CheckResult> => {
+  ipcMain.handle('updater:install', async (): Promise<CheckResult> => {
     if (isMac) {
       if (downloadedMacPath) {
         await shell.openPath(downloadedMacPath);

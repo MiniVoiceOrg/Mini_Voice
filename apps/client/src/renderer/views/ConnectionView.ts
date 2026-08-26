@@ -416,7 +416,7 @@ export class ConnectionView {
       lastConnected: startedAt,
     });
 
-    await window.api?.maximizeWindow?.();
+    await window.api?.maximize?.();
   }
 
   private async stopHostedServer(serverId?: string): Promise<void> {
@@ -454,18 +454,27 @@ export class ConnectionView {
     this.render();
   }
 
+  private unbindLanListeners: Array<() => void> = [];
+
   private setupLanDiscoveryListeners(): void {
+    for (const unbind of this.unbindLanListeners) {
+      unbind();
+    }
+    this.unbindLanListeners = [];
+
     if (!window.api?.onLanDiscoveryFound || !window.api?.onLanDiscoveryLost) return;
 
-    window.api.onLanDiscoveryFound((server) => {
+    const u1 = window.api.onLanDiscoveryFound((server) => {
       this.discoveredServers.set(this.getDiscoveredServerKey(server.host, server.port), server);
       this.renderDiscoveredServersSection();
     });
 
-    window.api.onLanDiscoveryLost((server) => {
+    const u2 = window.api.onLanDiscoveryLost((server) => {
       this.discoveredServers.delete(this.getDiscoveredServerKey(server.host, server.port));
       this.renderDiscoveredServersSection();
     });
+
+    this.unbindLanListeners.push(u1, u2);
   }
 
   private async loadServerPreviews(): Promise<void> {
@@ -692,7 +701,7 @@ export class ConnectionView {
       });
 
       await window.api?.stopLanDiscovery?.();
-      await window.api?.maximizeWindow?.();
+      await window.api?.maximize?.();
     } catch (err: any) {
       this.showError(err.message || t('connection.connectError'));
     } finally {

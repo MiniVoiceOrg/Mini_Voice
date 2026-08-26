@@ -109,9 +109,9 @@ Napi::Value Stop(const Napi::CallbackInfo& info) {
   Napi::Object result = Napi::Object::New(env);
 
   if (g_running) {
+    g_running = false;
     platform_stop();
     g_tsfn.Release();
-    g_running = false;
     result.Set("success", Napi::Boolean::New(env, true));
   } else {
     result.Set("success", Napi::Boolean::New(env, false));
