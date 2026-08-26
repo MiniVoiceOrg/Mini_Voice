@@ -11,6 +11,7 @@ export const ptBR = {
   'common.confirm': 'Confirmar',
   'common.save': 'Salvar',
   'common.close': 'Fechar',
+  'common.back': 'Voltar',
   'common.delete': 'Excluir',
   'common.ok': 'OK',
   'common.done': 'Pronto',

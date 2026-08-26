@@ -1,7 +1,6 @@
 import { LIMITS, MessageType, Permission, Role, ServerUpdateSettingsPayload } from '@monky/shared';
 import logoUrl from '../assets/Logo.png';
 import { escapeHtml } from '../utils/html';
-import { enableBackdropClose } from '../utils/modal';
 import { getAvatarUrl } from '../utils/avatar';
 import { formatBytes } from '../utils/attachment';
 import { networkClient } from '../core/NetworkClient';
@@ -38,7 +37,7 @@ export class ServerSettingsModal {
     const barColor = usedPct >= 90 ? 'var(--danger)' : usedPct >= 70 ? '#f0b232' : 'var(--accent-primary)';
 
     this.modalEl = document.createElement('div');
-    this.modalEl.className = 'modal-backdrop';
+    this.modalEl.className = 'modal-backdrop modal-backdrop--settings';
     this.modalEl.innerHTML = `
       <div class="modal-card settings-modal-card">
         <!-- Sidebar Navigation -->
@@ -78,11 +77,15 @@ export class ServerSettingsModal {
         <div class="settings-main-container">
           <!-- Top Header -->
           <div class="settings-content-header">
+            <button id="modal-close" class="settings-back-btn" title="${t('common.back')}">
+              <span class="material-symbols-outlined md-18">arrow_back</span>
+              ${t('common.back')}
+            </button>
             <div id="server-settings-tab-title" style="font-size: 16px; font-weight: 700; color: var(--text-primary); display: flex; align-items: center; gap: 8px;">
               <span class="material-symbols-outlined" style="color: var(--accent-primary);">tune</span>
               <span>${t('serverSettings.tabGeneral')}</span>
             </div>
-            <button id="modal-close" class="modal-close-btn" title="${t('common.close')}">&times;</button>
+            <div></div>
           </div>
 
           <!-- Form wraps body and footer -->
@@ -249,7 +252,6 @@ export class ServerSettingsModal {
     const canManageServer = serverStore.hasPermission(Permission.MANAGE_SERVER);
 
     btnClose?.addEventListener('click', () => this.close());
-    enableBackdropClose(this.modalEl, () => this.close());
     btnCancel?.addEventListener('click', () => this.close());
 
     // Tab Navigation
