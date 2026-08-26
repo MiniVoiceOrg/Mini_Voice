@@ -1794,7 +1794,7 @@ input:focus, textarea:focus, select:focus {
 
 .chat-input-wrapper {
   display: flex;
-  align-items: flex-end;
+  align-items: center;
   background-color: var(--bg-input);
   border: 1px solid var(--border-color);
   border-radius: var(--radius-md);
@@ -1834,11 +1834,13 @@ input:focus, textarea:focus, select:focus {
 }
 
 .chat-send-btn {
-  padding: 8px 14px;
+  padding: 6px 14px;
   font-size: 13px;
   gap: 4px;
   flex-shrink: 0;
   white-space: nowrap;
+  display: inline-flex;
+  align-items: center;
 }
 
 .chat-char-count {
@@ -1846,8 +1848,6 @@ input:focus, textarea:focus, select:focus {
   color: var(--text-muted);
   font-family: var(--font-mono);
   margin-right: 8px;
-  align-self: flex-end;
-  margin-bottom: 10px;
 }
 
 /* Per-day divider line in the chat feed (#11) */
@@ -1881,8 +1881,6 @@ input:focus, textarea:focus, select:focus {
   color: var(--text-muted);
   cursor: pointer;
   padding: 4px;
-  align-self: flex-end;
-  margin-bottom: 4px;
   display: flex;
   align-items: center;
   border-radius: 6px;
@@ -4306,6 +4304,164 @@ button[data-loading="1"]::after {
   height: 6px;
   background: var(--accent-primary);
   border-radius: 3px 0 0 3px;
+}
+
+.settings-table-wrap {
+  width: 100%;
+  overflow-x: auto;
+  overflow-y: visible;
+}
+
+.settings-data-table {
+  width: 100%;
+  border-collapse: collapse;
+  min-width: 640px;
+}
+
+.settings-data-table th {
+  text-align: left;
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.4px;
+  color: var(--text-muted);
+  padding: 0 12px 10px;
+}
+
+.settings-data-table td {
+  padding: 12px;
+  border-top: 1px solid var(--border-color);
+  vertical-align: middle;
+}
+
+.settings-data-table tbody tr:hover {
+  background: rgba(255, 255, 255, 0.03);
+}
+
+.role-editor-tab-btn {
+  border: 1px solid transparent;
+  background: transparent;
+  color: var(--text-secondary);
+  font-size: 12px;
+  font-weight: 600;
+  padding: 8px 12px;
+  border-radius: var(--radius-md);
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.role-editor-tab-btn:hover {
+  background: rgba(255, 255, 255, 0.05);
+  color: var(--text-primary);
+}
+
+.role-editor-tab-btn.active {
+  background: rgba(88, 101, 242, 0.18);
+  border-color: rgba(88, 101, 242, 0.4);
+  color: var(--accent-primary);
+}
+
+.role-color-swatch {
+  width: 100%;
+  min-width: 32px;
+  height: 32px;
+  border-radius: 10px;
+  border: 2px solid transparent;
+  background: var(--role-swatch-color);
+  cursor: pointer;
+  transition: transform 0.12s ease, border-color 0.12s ease, box-shadow 0.12s ease;
+}
+
+.role-color-swatch:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 6px 16px rgba(0, 0, 0, 0.25);
+}
+
+.role-color-swatch.active {
+  border-color: #ffffff;
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--role-swatch-color) 50%, transparent);
+}
+
+.settings-action-menu-wrap {
+  position: relative;
+  display: inline-flex;
+  justify-content: flex-end;
+}
+
+.settings-action-menu,
+.settings-action-submenu {
+  min-width: 190px;
+  background: var(--bg-panel);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-md);
+  box-shadow: 0 12px 28px rgba(0, 0, 0, 0.35);
+  padding: 6px;
+  z-index: 20;
+}
+
+.settings-action-menu {
+  position: absolute;
+  top: calc(100% + 6px);
+  right: 0;
+  display: none;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.settings-action-menu.show {
+  display: flex;
+}
+
+.settings-action-submenu-wrap {
+  position: relative;
+}
+
+.settings-action-submenu {
+  position: absolute;
+  top: -6px;
+  right: calc(100% + 6px);
+  display: none;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.settings-action-submenu-wrap:hover .settings-action-submenu {
+  display: flex;
+}
+
+.settings-action-menu-item {
+  width: 100%;
+  border: none;
+  background: transparent;
+  color: var(--text-secondary);
+  font-size: 12px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 8px 10px;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  text-align: left;
+}
+
+.settings-action-menu-item:hover {
+  background: var(--bg-card-hover);
+  color: var(--text-primary);
+}
+
+.settings-action-menu-item.danger {
+  color: #ff8b8d;
+}
+
+.settings-action-menu-item.danger:hover {
+  background: rgba(242, 63, 67, 0.14);
+  color: #ffffff;
+}
+
+.settings-action-menu-item:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
 }
 
 .sb-slider::-moz-range-thumb {

@@ -98,6 +98,13 @@ export class AttachmentService {
     }
   }
 
+  /** Invalidates every outstanding upload token issued to a user (e.g. on kick). */
+  public revokeTokensForUser(userId: string): void {
+    for (const [token, entry] of this.tokens) {
+      if (entry.userId === userId) this.tokens.delete(token);
+    }
+  }
+
   // --- Upload finalize + eviction -----------------------------------------
 
   public async finalizeUpload(input: FinalizeUploadInput): Promise<FinalizeUploadResult> {
