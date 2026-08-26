@@ -1552,6 +1552,49 @@ input:focus, textarea:focus, select:focus {
   object-fit: cover;
 }
 
+.chat-link-preview-play-overlay {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(0, 0, 0, 0.4);
+  opacity: 0;
+  transition: opacity 0.2s;
+  pointer-events: none;
+}
+
+.chat-link-preview-play-overlay .material-symbols-outlined {
+  font-size: 48px;
+  color: #ffffff;
+}
+
+.chat-link-preview--embed .chat-link-preview-media {
+  position: relative;
+}
+
+.chat-link-preview--embed:hover .chat-link-preview-play-overlay {
+  opacity: 1;
+}
+
+.chat-embed-container {
+  width: 100%;
+  max-width: 480px;
+  border-radius: var(--radius-md);
+  overflow: hidden;
+  border: 1px solid var(--border-color);
+  margin: 4px 0;
+}
+
+.chat-embed-iframe {
+  width: 100%;
+  border: none;
+  display: block;
+}
+
 .chat-link-preview--loading {
   pointer-events: none;
 }

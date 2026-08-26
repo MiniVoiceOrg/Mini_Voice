@@ -5,6 +5,8 @@ export interface LinkPreviewData {
     image?: string;
     siteName?: string;
     favicon?: string;
+    embedType?: 'youtube' | 'spotify';
+    embedUrl?: string;
 }
 export interface ElectronApi {
     startLanDiscovery: () => Promise<void>;

@@ -44,6 +44,8 @@ interface LinkPreviewData {
   image?: string;
   siteName?: string;
   favicon?: string;
+  embedType?: 'youtube' | 'spotify';
+  embedUrl?: string;
 }
 
 export class ChatView {
@@ -552,8 +554,36 @@ export class ChatView {
     slot.innerHTML = this.renderLinkPreviewCard(preview);
 
     const card = slot.querySelector<HTMLElement>('.chat-link-preview');
-    card?.addEventListener('click', () => {
-      void window.api.openExternal(preview.url);
+    card?.addEventListener('click', (event) => {
+      const embedUrl = card.getAttribute('data-embed-url');
+      const embedType = card.getAttribute('data-embed-type');
+
+      if (embedUrl && embedType) {
+        event.preventDefault();
+        event.stopPropagation();
+
+        const iframe = document.createElement('iframe');
+        iframe.src = embedUrl;
+        iframe.className = 'chat-embed-iframe';
+        iframe.setAttribute('sandbox', 'allow-scripts allow-same-origin allow-presentation allow-popups');
+        iframe.setAttribute('allow', 'autoplay; encrypted-media; picture-in-picture; fullscreen');
+        iframe.setAttribute('allowfullscreen', '');
+
+        if (embedType === 'spotify') {
+          iframe.style.height = '152px';
+        } else {
+          iframe.style.aspectRatio = '16/9';
+        }
+
+        const container = document.createElement('div');
+        container.className = 'chat-embed-container';
+        container.appendChild(iframe);
+        card.replaceWith(container);
+        return;
+      }
+
+      const externalUrl = card.getAttribute('data-preview-url') || card.getAttribute('title') || preview.url;
+      void window.api.openExternal(externalUrl);
     });
 
     const favicon = slot.querySelector<HTMLImageElement>('.chat-link-preview-favicon');
@@ -620,13 +650,19 @@ export class ChatView {
     const siteLabel = escapeHtml((preview.siteName || hostname || normalizedUrl).trim());
     const title = escapeHtml((preview.title || preview.siteName || hostname || normalizedUrl).trim());
     const description = preview.description ? escapeHtml(preview.description.trim()) : '';
+    const isEmbed = Boolean(preview.embedType && preview.embedUrl);
     const faviconHtml = preview.favicon
       ? `<img class="chat-link-preview-favicon" src="${escapeHtml(preview.favicon)}" alt="" loading="lazy">`
-      : '<span class="material-symbols-outlined md-16">public</span>';
+      : `<span class="material-symbols-outlined md-16">${isEmbed ? 'play_circle' : 'public'}</span>`;
     const thumbHtml = preview.image
       ? `
         <div class="chat-link-preview-media">
           <img class="chat-link-preview-thumb" src="${escapeHtml(preview.image)}" alt="" loading="lazy">
+          ${isEmbed ? `
+            <div class="chat-link-preview-play-overlay">
+              <span class="material-symbols-outlined">play_circle</span>
+            </div>
+          ` : ''}
         </div>
       `
       : '';
@@ -634,8 +670,10 @@ export class ChatView {
     return `
       <button
         type="button"
-        class="chat-link-preview${preview.image ? '' : ' chat-link-preview--no-image'}"
+        class="chat-link-preview${preview.image ? '' : ' chat-link-preview--no-image'}${isEmbed ? ' chat-link-preview--embed' : ''}"
         title="${escapeHtml(normalizedUrl)}"
+        data-preview-url="${escapeHtml(normalizedUrl)}"
+        ${isEmbed ? `data-embed-url="${escapeHtml(preview.embedUrl || '')}" data-embed-type="${escapeHtml(preview.embedType || '')}"` : ''}
       >
         <div class="chat-link-preview-main">
           <div class="chat-link-preview-site">
