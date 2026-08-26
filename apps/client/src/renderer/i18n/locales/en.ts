@@ -10,6 +10,7 @@ export const en: TranslationMap = {
   'common.confirm': 'Confirm',
   'common.save': 'Save',
   'common.close': 'Close',
+  'common.back': 'Back',
   'common.delete': 'Delete',
   'common.ok': 'OK',
   'common.done': 'Done',

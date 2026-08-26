@@ -1,7 +1,6 @@
 import { MessageType, QUALITY_PRESETS, QualityPresetType, DEFAULT_CUSTOM_PROFILE, QualityProfile } from '@monky/shared';
 import { appEvents } from '../core/EventBus';
 import { networkClient } from '../core/NetworkClient';
-import { enableBackdropClose } from '../utils/modal';
 import { escapeHtml } from '../utils/html';
 import { audioProcessor } from '../core/AudioProcessor';
 import { serverStore } from '../stores/serverStore';
@@ -35,7 +34,7 @@ export class SettingsModal {
     this.close();
 
     this.modalEl = document.createElement('div');
-    this.modalEl.className = 'modal-backdrop';
+    this.modalEl.className = 'modal-backdrop modal-backdrop--settings';
     this.modalEl.innerHTML = `
       <div class="modal-card settings-modal-card">
         <!-- Sidebar Navigation -->
@@ -74,11 +73,15 @@ export class SettingsModal {
         <div class="settings-main-container">
           <!-- Top Header -->
           <div class="settings-content-header">
+            <button id="modal-close" class="settings-back-btn" title="${t('common.back')}">
+              <span class="material-symbols-outlined md-18">arrow_back</span>
+              ${t('common.back')}
+            </button>
             <div id="settings-current-tab-title" style="font-size: 16px; font-weight: 700; color: var(--text-primary); display: flex; align-items: center; gap: 8px;">
               <span class="material-symbols-outlined" style="color: var(--accent-primary);">person</span>
               <span>${t('settings.tabAccount')}</span>
             </div>
-            <button id="modal-close" class="modal-close-btn" title="${t('common.close')}">&times;</button>
+            <div></div>
           </div>
 
           <!-- Body Scroll Container -->
@@ -831,7 +834,6 @@ export class SettingsModal {
     const selectScreenTelemetryMode = this.modalEl.querySelector('#select-screen-telemetry-mode') as HTMLSelectElement | null;
 
     btnClose?.addEventListener('click', () => this.close());
-    enableBackdropClose(this.modalEl, () => this.close());
     btnDone?.addEventListener('click', () => this.close());
 
     const btnCheckUpdates = this.modalEl.querySelector('#btn-check-updates');

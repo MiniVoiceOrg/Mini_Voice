@@ -3688,10 +3688,13 @@ button[data-loading="1"]::after {
 
 /* User Settings Modal with Sidebar (#163) */
 .settings-modal-card {
-  max-width: 780px !important;
-  width: 90vw !important;
-  height: 580px !important;
-  max-height: 88vh !important;
+  max-width: 100vw !important;
+  width: 100vw !important;
+  height: 100vh !important;
+  max-height: 100vh !important;
+  border-radius: 0 !important;
+  border: none !important;
+  padding: 0 !important;
   display: flex !important;
   flex-direction: row !important;
   padding: 0 !important;
@@ -3787,6 +3790,29 @@ button[data-loading="1"]::after {
   color: var(--text-muted);
   font-size: 20px;
   cursor: pointer;
+}
+
+.modal-backdrop--settings {
+  background-color: var(--bg-primary);
+}
+
+.settings-back-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  background: transparent;
+  border: none;
+  color: var(--text-muted);
+  font-size: 13px;
+  cursor: pointer;
+  padding: 6px 10px;
+  border-radius: var(--radius-md);
+  transition: color 0.15s, background 0.15s;
+}
+
+.settings-back-btn:hover {
+  color: var(--text-primary);
+  background: var(--bg-tertiary);
 }
 
 .modal-close-btn:hover {
