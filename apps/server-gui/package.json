@@ -30,6 +30,8 @@
     "productName": "Monky Server",
     "electronVersion": "34.2.0",
     "asar": false,
+    "npmRebuild": false,
+    "nodeGypRebuild": false,
     "directories": {
       "output": "../../release-server",
       "buildResources": "build"
