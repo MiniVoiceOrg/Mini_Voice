@@ -8,6 +8,8 @@ export interface LinkPreviewMetadata {
   image?: string;
   siteName?: string;
   favicon?: string;
+  embedType?: 'youtube' | 'spotify';
+  embedUrl?: string;
 }
 
 interface HtmlFetchResult {
@@ -20,6 +22,94 @@ const MAX_HTML_BYTES = 50 * 1024;
 const MAX_REDIRECTS = 5;
 const previewCache = new Map<string, LinkPreviewMetadata | null>();
 
+function detectEmbedProvider(url: string): 'youtube' | 'spotify' | null {
+  try {
+    const u = new URL(url);
+    if (u.hostname.includes('youtube.com') || u.hostname === 'youtu.be') return 'youtube';
+    if (u.hostname.includes('spotify.com')) return 'spotify';
+  } catch {}
+  return null;
+}
+
+function extractYouTubeId(url: string): string | null {
+  try {
+    const u = new URL(url);
+    if (u.hostname.includes('youtube.com')) return u.searchParams.get('v');
+    if (u.hostname === 'youtu.be') return u.pathname.slice(1).split('?')[0] || null;
+  } catch {}
+  return null;
+}
+
+function extractSpotifyInfo(url: string): { type: string; id: string } | null {
+  try {
+    const u = new URL(url);
+    const match = u.pathname.match(/^\/(track|album|playlist|artist|episode|show)\/([a-zA-Z0-9]+)/);
+    if (match) return { type: match[1], id: match[2] };
+  } catch {}
+  return null;
+}
+
+async function fetchOEmbed(rawUrl: string, provider: 'youtube' | 'spotify'): Promise<LinkPreviewMetadata | null> {
+  const endpoint = provider === 'youtube'
+    ? `https://www.youtube.com/oembed?url=${encodeURIComponent(rawUrl)}&format=json`
+    : `https://open.spotify.com/oembed?url=${encodeURIComponent(rawUrl)}`;
+
+  return await new Promise<LinkPreviewMetadata | null>((resolve) => {
+    let settled = false;
+    const complete = (result: LinkPreviewMetadata | null) => {
+      if (settled) return;
+      settled = true;
+      resolve(result);
+    };
+
+    const request = https.get(endpoint, { headers: { 'User-Agent': 'Monky-App' } }, (response) => {
+      if (response.statusCode !== 200) {
+        response.resume();
+        complete(null);
+        return;
+      }
+
+      const chunks: Buffer[] = [];
+      response.on('data', (chunk: Buffer) => chunks.push(chunk));
+      response.on('end', () => {
+        try {
+          const data = JSON.parse(Buffer.concat(chunks).toString('utf8'));
+
+          let embedUrl: string | undefined;
+          if (provider === 'youtube') {
+            const videoId = extractYouTubeId(rawUrl);
+            if (videoId && /^[a-zA-Z0-9_-]{11}$/.test(videoId)) {
+              embedUrl = `https://www.youtube-nocookie.com/embed/${videoId}`;
+            }
+          } else {
+            const info = extractSpotifyInfo(rawUrl);
+            if (info) {
+              embedUrl = `https://open.spotify.com/embed/${info.type}/${info.id}`;
+            }
+          }
+
+          complete({
+            url: rawUrl,
+            title: data.title || '',
+            description: data.author_name ? `${data.author_name}` : undefined,
+            image: data.thumbnail_url || undefined,
+            siteName: data.provider_name || (provider === 'youtube' ? 'YouTube' : 'Spotify'),
+            favicon: undefined,
+            embedType: provider,
+            embedUrl,
+          });
+        } catch {
+          complete(null);
+        }
+      });
+      response.on('error', () => complete(null));
+    });
+
+    request.setTimeout(FETCH_TIMEOUT_MS, () => request.destroy());
+    request.on('error', () => complete(null));
+  });
+}
+
 export async function fetchLinkPreview(rawUrl: string): Promise<LinkPreviewMetadata | null> {
   const normalizedUrl = normalizeHttpUrl(rawUrl);
   if (!normalizedUrl) return null;
@@ -29,6 +119,15 @@ export async function fetchLinkPreview(rawUrl: string): Promise<LinkPreviewMetad
   }
 
   try {
+    const provider = detectEmbedProvider(normalizedUrl);
+    if (provider) {
+      const oembedResult = await fetchOEmbed(normalizedUrl, provider);
+      if (oembedResult) {
+        previewCache.set(normalizedUrl, oembedResult);
+        return oembedResult;
+      }
+    }
+
     const htmlResult = await fetchHtml(normalizedUrl);
     if (!htmlResult) {
       previewCache.set(normalizedUrl, null);
