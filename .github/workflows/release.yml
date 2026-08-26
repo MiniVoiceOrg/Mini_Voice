@@ -338,13 +338,46 @@ jobs:
           draft: false
           prerelease: ${{ needs.version.outputs.prerelease }}
           fail_on_unmatched_files: false
-          files: |
-            artifacts/**/*.exe
-            artifacts/**/*.dmg
-            artifacts/**/*.zip
-            artifacts/**/*.tgz
-            artifacts/**/*.blockmap
-            artifacts/**/latest*.yml
-            artifacts/checksums-sha256.txt
-            artifacts/checksums-sha256.txt.sig
-            artifacts/checksums-sha256.txt.crt
+
+      # Assets are uploaded here instead of through the action above: uploading
+      # every artifact in parallel silently dropped two files once the Server
+      # GUI doubled the payload, publishing an incomplete release. Uploading one
+      # file at a time with retries, then asserting the final asset list, makes
+      # a missing artifact fail the job instead of going unnoticed.
+      - name: Upload release assets
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: v${{ needs.version.outputs.version }}
+        run: |
+          cd artifacts
+          shopt -s nullglob
+          FILES=( *.exe *.dmg *.zip *.tgz *.blockmap latest*.yml checksums-sha256.txt* )
+          if [ ${#FILES[@]} -eq 0 ]; then
+            echo "No artifacts to upload." >&2
+            exit 1
+          fi
+
+          for file in "${FILES[@]}"; do
+            uploaded=false
+            for attempt in 1 2 3; do
+              if gh release upload "$TAG" "$file" --clobber; then
+                uploaded=true
+                break
+              fi
+              echo "Upload of $file failed (attempt $attempt); retrying..."
+              sleep 15
+            done
+            if [ "$uploaded" != true ]; then
+              echo "::error::Could not upload $file after 3 attempts"
+              exit 1
+            fi
+          done
+
+          gh release view "$TAG" --json assets --jq '.assets[].name' | sort > /tmp/published.txt
+          printf '%s\n' "${FILES[@]}" | sort > /tmp/expected.txt
+          if ! diff -u /tmp/expected.txt /tmp/published.txt; then
+            echo "::error::Published assets do not match the built artifacts"
+            exit 1
+          fi
+          echo "All ${#FILES[@]} assets published."
