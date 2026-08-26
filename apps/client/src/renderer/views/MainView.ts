@@ -25,7 +25,7 @@ import { soundboardModal } from './SoundboardModal';
 import { soundEffects } from '../core/SoundEffects';
 import { getAvatarUrl } from '../utils/avatar';
 import logoUrl from '../assets/Logo.png';
-import { t } from '../i18n';
+import { t, tCount } from '../i18n';
 
 export class MainView {
   private container: HTMLElement;
@@ -34,6 +34,10 @@ export class MainView {
   private unbindEvents: Array<() => void> = [];
   private activeContentView: 'chat' | 'stage' = 'chat';
   private sidebarPingInterval: number | null = null;
+  // Caches the rendered screen-share notice so the frequent (per-frame)
+  // 'participants.updated' events don't rebuild it on every speaking change,
+  // which would flicker the button and drop its listener (#282).
+  private screenShareNoticeSignature: string | null = null;
   private textChannelDragHoverTimer: number | null = null;
   private textChannelDragHoverId: string | null = null;
 
@@ -106,6 +110,7 @@ export class MainView {
 
           <!-- Bottom User Bar -->
           <div class="user-control-bar">
+            <div id="screenshare-notice-slot"></div>
             <div id="voice-connection-row-slot"></div>
             <div class="user-media-bar" id="user-media-bar">
               <button id="media-btn-camera" class="btn btn-icon media-bar-btn-lg ${voiceStore.isCameraOn ? 'broadcasting-pulse active' : ''}" title="${t('main.toggleCamera')}">
@@ -179,6 +184,10 @@ export class MainView {
 
     this.attachEvents();
     this.updateVoiceConnectionRow();
+    // Fresh DOM below means the (empty) slot must be repopulated, so drop the
+    // cached signature (#282).
+    this.screenShareNoticeSignature = null;
+    this.updateScreenShareNotice();
   }
 
   /**
@@ -259,6 +268,81 @@ export class MainView {
       clearInterval(this.sidebarPingInterval);
       this.sidebarPingInterval = null;
     }
+  }
+
+  /**
+   * Remote participants broadcasting their screen in the voice channel the
+   * local user is currently connected to (#282).
+   */
+  private getRemoteScreenSharers(): Array<{ id: string; nickname: string }> {
+    const channelId = voiceStore.currentVoiceChannelId;
+    if (!channelId) return [];
+    const meId = serverStore.currentUser?.id;
+    return participantManager
+      .getInVoiceChannel(channelId)
+      .filter((p) => p.user.id !== meId && (p.voiceState?.isScreenSharing ?? false))
+      .map((p) => ({ id: p.user.id, nickname: p.user.nickname }));
+  }
+
+  /**
+   * Sidebar notice shown while someone in the call is sharing their screen and
+   * the user is looking at a text channel instead of the stage (#282). With a
+   * single broadcaster the button opts straight into watching; with several it
+   * only opens the stage, since there is no way to guess which one to watch.
+   */
+  private updateScreenShareNotice(): void {
+    const slot = document.getElementById('screenshare-notice-slot');
+    if (!slot) return;
+
+    const sharers = this.getRemoteScreenSharers();
+    const signature = `${this.activeContentView}|${sharers.map((s) => `${s.id}:${s.nickname}`).join(',')}`;
+    if (signature === this.screenShareNoticeSignature) return;
+    this.screenShareNoticeSignature = signature;
+
+    if (this.activeContentView === 'stage' || sharers.length === 0) {
+      slot.innerHTML = '';
+      return;
+    }
+
+    const names = sharers.map((s) => escapeHtml(s.nickname));
+    let label: string;
+    if (names.length === 1) {
+      label = t('main.screenShareNoticeOne', { name: names[0] });
+    } else if (names.length === 2) {
+      label = t('main.screenShareNoticeTwo', { first: names[0], second: names[1] });
+    } else {
+      label = tCount('main.screenShareNoticeMany', names.length - 2, {
+        first: names[0],
+        second: names[1],
+      });
+    }
+
+    const single = sharers.length === 1;
+    slot.innerHTML = `
+      <div class="screenshare-notice">
+        <span class="material-symbols-outlined md-16 screenshare-notice-icon">screen_share</span>
+        <span class="screenshare-notice-text" title="${label}">${label}</span>
+        <button id="screenshare-notice-btn" class="screenshare-notice-btn">${single ? t('main.screenShareWatch') : t('main.screenShareGoToStage')}</button>
+      </div>
+    `;
+
+    document.getElementById('screenshare-notice-btn')?.addEventListener('click', () => {
+      this.openVoiceStage(single ? sharers[0].id : undefined);
+    });
+  }
+
+  /**
+   * Switches the center area to the voice stage, optionally opting into a
+   * specific remote screen share on the way in (#282).
+   */
+  private openVoiceStage(watchUserId?: string): void {
+    const channelId = voiceStore.currentVoiceChannelId;
+    if (!channelId) return;
+    this.activeContentView = 'stage';
+    this.voiceStageView?.setChannel(channelId);
+    if (watchUserId) this.voiceStageView?.watchScreenShare(watchUserId);
+    this.renderChannels();
+    this.updateScreenShareNotice();
   }
 
   private closeServerDropdown(): void {
@@ -457,6 +541,7 @@ export class MainView {
     this.activeContentView = 'chat';
     this.chatView?.setChannel(channelId);
     this.renderChannels();
+    this.updateScreenShareNotice();
   }
 
   private isFileDrag(event: DragEvent): boolean {
@@ -687,6 +772,7 @@ export class MainView {
             await this.handleJoinVoiceChannel(channelId);
             this.activeContentView = 'stage';
             this.voiceStageView?.setChannel(channelId);
+            this.updateScreenShareNotice();
           } finally {
             this.renderChannels();
           }
@@ -810,6 +896,7 @@ export class MainView {
       // Already in this channel, just switch view to stage
       this.activeContentView = 'stage';
       this.voiceStageView?.setChannel(channelId);
+      this.updateScreenShareNotice();
       return;
     }
 
@@ -856,6 +943,7 @@ export class MainView {
     await this.handleJoinVoiceChannel(channelId, true);
     this.voiceStageView?.setChannel(channelId);
     this.renderChannels();
+    this.updateScreenShareNotice();
   }
 
   private async handleDeleteChannel(channelId: string): Promise<void> {
@@ -1106,6 +1194,7 @@ export class MainView {
     const u2 = appEvents.on('participants.updated', () => {
       this.renderChannels();
       this.renderMembers();
+      this.updateScreenShareNotice();
     });
 
     const u3 = appEvents.on('user.updated', (user) => {
@@ -1160,9 +1249,13 @@ export class MainView {
       }
 
       // Show/hide the sidebar voice-connection row when joining/leaving a call (#60).
+      // Hanging up via VoiceStageView.leaveVoice() goes through voiceStore.reset(),
+      // which only emits 'voice.state_updated', so the screen-share notice has to
+      // be cleared here too — otherwise it lingers until the server echo (#282).
       if (voiceStore.currentVoiceChannelId !== lastVoiceChannelId) {
         lastVoiceChannelId = voiceStore.currentVoiceChannelId;
         this.updateVoiceConnectionRow();
+        this.updateScreenShareNotice();
       }
     });
 
@@ -1218,6 +1311,7 @@ export class MainView {
       lastVoiceChannelId = voiceStore.currentVoiceChannelId;
       this.updateVoiceConnectionRow();
       this.renderChannels();
+      this.updateScreenShareNotice();
     });
 
     const u10 = appEvents.on('settings.updated', () => {
