@@ -433,12 +433,16 @@ Then asks for the new value with the current value as the suggestion.
 
 ### `monky update`
 
-Updates the Monky server to the latest version.
+Updates the Monky server to the latest version (stable or beta).
 
 #### Check for updates
 
 ```bash
+# Stable channel
 monky update --check
+
+# Including beta/pre-release channel
+monky update --check --beta
 ```
 
 Queries the GitHub Releases API and compares with the local version.
@@ -446,17 +450,24 @@ Queries the GitHub Releases API and compares with the local version.
 #### Update
 
 ```bash
+# Update to the latest stable version
 monky update
+
+# Update to the latest beta version
+monky update --beta
 ```
 
 The command:
 
-1. Checks the latest version on GitHub.
+1. Checks the latest version on GitHub (stable or beta channel).
 2. Asks for confirmation.
-3. Runs `git pull --ff-only`.
-4. Runs `npm install`.
-5. Runs `npm run build`.
-6. If the server is running, asks whether to restart.
+3. If installed via Git repository:
+   - Runs `git pull` (or checkout of the corresponding beta tag).
+   - Runs `npm install`.
+   - Runs `npm run build:server` (compiles only `@monky/shared` and the server, skipping the graphical client).
+4. If installed standalone (`npm install -g monky-cli-*.tgz`):
+   - Updates the global npm package by downloading the official release tarball.
+5. If the server is running via PM2, asks whether to restart.
 
 #### Automatic updates
 

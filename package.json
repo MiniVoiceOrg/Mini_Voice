@@ -24,6 +24,7 @@
     "dev:server": "npm run dev --workspace=apps/server",
     "dev:client": "npm run dev --workspace=apps/client",
     "build": "npm run build --workspace=packages/shared && npm run build --workspace=apps/server && npm run build --workspace=apps/client && npm run build --workspace=apps/server-gui",
+    "build:server": "npm run build --workspace=packages/shared && npm run build --workspace=apps/server",
     "dist:server-gui": "npm run build && npm run dist --workspace=apps/server-gui",
     "pack:cli": "npm run build && node scripts/pack-cli.js",
     "test": "node scripts/test-versioning.js && npm run test --workspaces"
