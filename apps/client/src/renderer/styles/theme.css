@@ -500,6 +500,22 @@ input:focus, textarea:focus, select:focus {
   background: rgba(237, 66, 69, 0.15);
 }
 
+.btn-edit-saved-srv {
+  background: none;
+  border: none;
+  color: var(--text-muted);
+  cursor: pointer;
+  font-size: 13px;
+  padding: 2px 6px;
+  border-radius: 4px;
+  transition: color 0.15s, background 0.15s;
+}
+
+.btn-edit-saved-srv:hover {
+  color: var(--accent-primary);
+  background: rgba(88, 101, 242, 0.15);
+}
+
 /* Avatar Preview & Upload in Connect Screen */
 .avatar-picker {
   display: flex;

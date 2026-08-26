@@ -257,6 +257,7 @@ export const en: TranslationMap = {
   'connection.selected': 'Selected',
   'connection.use': 'Use',
   'connection.removeFromSaved': 'Remove from saved',
+  'connection.editSavedServer': 'Edit connection',
   'connection.serverOnline': 'Server online',
   'connection.serverOffline': 'Server offline',
   'connection.unknownUser': 'User',
