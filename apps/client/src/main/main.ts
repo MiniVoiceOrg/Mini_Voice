@@ -1,4 +1,4 @@
-import { app, BrowserWindow, Menu, screen, session } from 'electron';
+import { app, BrowserWindow, Menu, screen, session, shell } from 'electron';
 import path from 'path';
 import { setupIpcHandlers } from './ipcHandlers';
 import { setupUpdater } from './updater';
@@ -12,6 +12,22 @@ let trayManager: TrayManager | null = null;
 const serverManager = new ServerManager();
 let isShuttingDown = false;
 let isQuitting = false;
+
+function bindMainWindowNavigationGuards(): void {
+  if (!mainWindow) return;
+
+  mainWindow.webContents.setWindowOpenHandler(({ url }) => {
+    void shell.openExternal(url);
+    return { action: 'deny' };
+  });
+
+  mainWindow.webContents.on('will-navigate', (event, url) => {
+    if (!mainWindow) return;
+    if (url === mainWindow.webContents.getURL()) return;
+    event.preventDefault();
+    void shell.openExternal(url);
+  });
+}
 
 function shutdownServer(): void {
   if (isShuttingDown) return;
@@ -130,10 +146,12 @@ if (!gotTheLock) {
     });
 
     createWindow();
+    bindMainWindowNavigationGuards();
 
     app.on('activate', () => {
       if (BrowserWindow.getAllWindows().length === 0) {
         createWindow();
+        bindMainWindowNavigationGuards();
       } else if (mainWindow) {
         if (!mainWindow.isVisible()) mainWindow.show();
         if (mainWindow.isMinimized()) mainWindow.restore();
@@ -155,4 +173,3 @@ app.on('before-quit', () => {
   shutdownServer();
   trayManager?.destroy();
 });
-

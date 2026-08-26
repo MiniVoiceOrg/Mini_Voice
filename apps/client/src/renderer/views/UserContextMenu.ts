@@ -14,6 +14,8 @@ import { t } from '../i18n';
 export class UserContextMenu {
   private menuEl: HTMLElement | null = null;
   private unbindGlobalListeners: Array<() => void> = [];
+  private static readonly SUBMENU_GAP_PX = 2;
+  private static readonly SUBMENU_MIN_WIDTH_PX = 192;
 
   constructor() {
     appEvents.on('network.disconnected', () => this.close());
@@ -147,7 +149,26 @@ export class UserContextMenu {
     this.menuEl.style.left = `${posX}px`;
     this.menuEl.style.top = `${posY}px`;
 
+    this.syncSubmenuPlacement();
     this.attachEvents(user);
+  }
+
+  private syncSubmenuPlacement(): void {
+    if (!this.menuEl) return;
+
+    const submenuWraps = this.menuEl.querySelectorAll('.ctx-submenu-wrap');
+    submenuWraps.forEach((wrapEl) => {
+      const wrap = wrapEl as HTMLElement;
+      wrap.classList.remove('flip-left');
+
+      const wrapRect = wrap.getBoundingClientRect();
+      const spaceRight = window.innerWidth - wrapRect.right;
+      const spaceLeft = wrapRect.left;
+      const needsFlip = spaceRight < UserContextMenu.SUBMENU_MIN_WIDTH_PX + UserContextMenu.SUBMENU_GAP_PX
+        && spaceLeft > spaceRight;
+
+      wrap.classList.toggle('flip-left', needsFlip);
+    });
   }
 
   private getVolumeIcon(volume: number): string {
@@ -214,6 +235,13 @@ export class UserContextMenu {
     this.menuEl.querySelector('#ctx-vol-0')?.addEventListener('click', () => this.applyVolume(user, 0));
     this.menuEl.querySelector('#ctx-vol-50')?.addEventListener('click', () => this.applyVolume(user, 50));
     this.menuEl.querySelector('#ctx-vol-100')?.addEventListener('click', () => this.applyVolume(user, 100));
+    const submenuWrap = this.menuEl.querySelector('.ctx-submenu-wrap') as HTMLElement | null;
+    const submenuTrigger = this.menuEl.querySelector('.ctx-submenu-trigger') as HTMLButtonElement | null;
+    submenuTrigger?.addEventListener('click', (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      submenuWrap?.classList.toggle('open');
+    });
 
     this.menuEl.querySelector('[data-action="server-mute"]')?.addEventListener('click', () => {
       const targetState = participantManager.get(user.id)?.voiceState;
