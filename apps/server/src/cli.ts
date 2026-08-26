@@ -995,7 +995,20 @@ async function setConfig(ctx: CliContext, key: string, value?: string): Promise<
       const config = readLocalConfig(ctx.dataDir);
       config.port = portNum;
       writeLocalConfig(ctx.dataDir, config);
-      console.log(color('A nova porta será usada no próximo "monky start".', ANSI.dim));
+      if (isMonkyServerRunning()) {
+        const shouldRestart = await confirm('Servidor está rodando. Deseja reiniciar agora para aplicar a nova porta?', true);
+        if (shouldRestart) {
+          const ecosystemPath = getEcosystemPath(ctx.dataDir);
+          const ecosystemContent = generateEcosystem(ctx.dataDir, portNum, (await ctx.serverRepo.getServer())?.name || DEFAULT_SERVER_NAME);
+          fs.writeFileSync(ecosystemPath, ecosystemContent, 'utf8');
+          spawnSync('pm2', ['restart', PM2_PROCESS_NAME], { stdio: 'inherit', shell: true });
+          console.log(color('Servidor reiniciado com a nova porta.', ANSI.green));
+        } else {
+          console.log(color('A nova porta será usada no próximo "monky start" ou "monky restart".', ANSI.dim));
+        }
+      } else {
+        console.log(color('A nova porta será usada no próximo "monky start".', ANSI.dim));
+      }
       break;
     }
     case 'icon': {
@@ -1261,6 +1274,18 @@ function isPm2Available(): boolean {
   try {
     execSync('pm2 --version', { stdio: 'ignore' });
     return true;
+  } catch {
+    return false;
+  }
+}
+
+function isMonkyServerRunning(): boolean {
+  if (!isPm2Available()) return false;
+  try {
+    const listResult = spawnSync('pm2', ['jlist'], { encoding: 'utf8', shell: true });
+    if (listResult.status !== 0) return false;
+    const processes = JSON.parse(listResult.stdout);
+    return processes.some((p: any) => p.name === PM2_PROCESS_NAME && p.pm2_env?.status === 'online');
   } catch {
     return false;
   }
