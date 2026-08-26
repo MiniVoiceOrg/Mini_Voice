@@ -1774,6 +1774,14 @@ input:focus, textarea:focus, select:focus {
   cursor: not-allowed;
 }
 
+.chat-send-btn {
+  padding: 8px 14px;
+  font-size: 13px;
+  gap: 4px;
+  flex-shrink: 0;
+  white-space: nowrap;
+}
+
 .chat-char-count {
   font-size: 11px;
   color: var(--text-muted);

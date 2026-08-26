@@ -124,8 +124,8 @@ export class ChatView {
             <input id="chat-file-input" type="file" multiple style="display: none;">
             <textarea id="chat-message-input" class="chat-input-field" rows="1" placeholder="${t('chat.inputPlaceholder', { channel: escapeHtml(channelName) })}" maxlength="${LIMITS.MAX_MESSAGE_LENGTH}"></textarea>
             <span id="chat-char-counter" class="chat-char-count">0/${LIMITS.MAX_MESSAGE_LENGTH}</span>
-            <button id="btn-send-message" class="btn btn-primary" style="padding: 6px 14px; font-size: 13px;">
-              <span class="material-symbols-outlined md-16" style="margin-right: 4px;">send</span>
+            <button id="btn-send-message" class="btn btn-primary chat-send-btn">
+              <span class="material-symbols-outlined md-16">send</span>
               ${t('chat.send')}
             </button>
           </div>
