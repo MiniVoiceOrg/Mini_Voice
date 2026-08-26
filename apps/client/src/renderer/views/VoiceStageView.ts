@@ -159,7 +159,11 @@ export class VoiceStageView {
           <button id="stage-btn-soundboard" class="btn btn-icon" title="${t('main.openSoundboard')}">
             <span class="material-symbols-outlined">music_note</span>
           </button>
-          <button id="stage-btn-leave" class="btn btn-danger" style="margin-left: 12px; padding: 0 16px; height: 38px;" title="${t('stage.leaveChannel')}">
+          <button id="stage-btn-stop-share" class="btn btn-danger" style="display: ${voiceStore.isScreenSharing ? 'inline-flex' : 'none'}; margin-left: 12px; padding: 0 16px; height: 38px;" title="${t('stage.stopScreenShare')}">
+            <span class="material-symbols-outlined md-18" style="margin-right: 4px;">stop_screen_share</span>
+            <span>${t('screenShare.stopSharing')}</span>
+          </button>
+          <button id="stage-btn-leave" class="btn btn-danger" style="margin-left: ${voiceStore.isScreenSharing ? '8px' : '12px'}; padding: 0 16px; height: 38px;" title="${t('stage.leaveChannel')}">
             <span class="material-symbols-outlined md-18" style="margin-right: 4px;">call_end</span>
             <span>${t('stage.leaveVoice')}</span>
           </button>
@@ -207,6 +211,17 @@ export class VoiceStageView {
         <span class="material-symbols-outlined">${voiceStore.isScreenSharing ? 'stop_screen_share' : 'screen_share'}</span>
         ${hasScreenAudio ? '<span class="material-symbols-outlined screen-audio-badge" style="font-size: 12px; position: absolute; bottom: 2px; right: 2px; color: var(--success);">volume_up</span>' : ''}
       `;
+    }
+
+    const btnStopShare = document.getElementById('stage-btn-stop-share') as HTMLButtonElement | null;
+    const btnLeave = document.getElementById('stage-btn-leave') as HTMLButtonElement | null;
+    if (btnStopShare) {
+      const hasScreenAudio = screenAudioService.getIsCapturing();
+      btnStopShare.style.display = voiceStore.isScreenSharing ? 'inline-flex' : 'none';
+      btnStopShare.title = hasScreenAudio ? t('stage.stopScreenShareWithAudio') : t('stage.stopScreenShare');
+    }
+    if (btnLeave) {
+      btnLeave.style.marginLeft = voiceStore.isScreenSharing ? '8px' : '12px';
     }
 
     // Top broadcast banner
@@ -1156,6 +1171,7 @@ export class VoiceStageView {
     const btnDeafen = document.getElementById('stage-btn-deafen');
     const btnCam = document.getElementById('stage-btn-camera');
     const btnScreen = document.getElementById('stage-btn-screen');
+    const btnStopShare = document.getElementById('stage-btn-stop-share');
     const btnLeave = document.getElementById('stage-btn-leave');
 
     btnMic?.addEventListener('click', () => {
@@ -1211,6 +1227,16 @@ export class VoiceStageView {
       // Always open the picker: when not sharing, to start; when already sharing,
       // to switch source or stop (handled inside the modal).
       appEvents.emit('modal.open_screenshare_picker');
+    });
+
+    btnStopShare?.addEventListener('click', async () => {
+      if (isButtonLoading(btnStopShare)) return;
+      setButtonLoading(btnStopShare, true);
+      try {
+        await this.handleStopStreaming();
+      } finally {
+        setButtonLoading(btnStopShare, false);
+      }
     });
 
     const btnViewMode = document.getElementById('stage-btn-viewmode');

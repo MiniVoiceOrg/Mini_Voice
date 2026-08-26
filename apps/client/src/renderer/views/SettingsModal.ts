@@ -213,7 +213,10 @@ export class SettingsModal {
                       ${t('settings.rnnoiseDesc')}
                     </div>
                   </div>
-                  <input id="checkbox-rnnoise" type="checkbox" ${settingsStore.noiseSuppressionEnabled ? 'checked' : ''} style="width: 18px; height: 18px; cursor: pointer; accent-color: var(--accent-primary);">
+                  <label class="toggle-switch" aria-label="${t('settings.rnnoiseLabel')}">
+                    <input id="checkbox-rnnoise" type="checkbox" ${settingsStore.noiseSuppressionEnabled ? 'checked' : ''}>
+                    <span class="toggle-slider"></span>
+                  </label>
                 </div>
               </div>
 
@@ -266,7 +269,10 @@ export class SettingsModal {
                         ${t('settings.telemetryDesc')}
                       </div>
                     </div>
-                    <input id="checkbox-screen-telemetry" type="checkbox" ${settingsStore.screenShareTelemetryEnabled ? 'checked' : ''} style="width: 18px; height: 18px; cursor: pointer; accent-color: var(--accent-primary);">
+                    <label class="toggle-switch" aria-label="${t('settings.telemetryLabel')}">
+                      <input id="checkbox-screen-telemetry" type="checkbox" ${settingsStore.screenShareTelemetryEnabled ? 'checked' : ''}>
+                      <span class="toggle-slider"></span>
+                    </label>
                   </div>
                 </div>
 
@@ -335,7 +341,10 @@ export class SettingsModal {
                       ${t('settings.soundboardMuteDesc')}
                     </div>
                   </div>
-                  <input id="checkbox-soundboard-mute" type="checkbox" ${settingsStore.soundboardMuted ? 'checked' : ''} style="width: 18px; height: 18px; cursor: pointer; accent-color: var(--accent-primary);">
+                  <label class="toggle-switch" aria-label="${t('settings.soundboardMute')}">
+                    <input id="checkbox-soundboard-mute" type="checkbox" ${settingsStore.soundboardMuted ? 'checked' : ''}>
+                    <span class="toggle-slider"></span>
+                  </label>
                 </div>
               </div>
             </div>
@@ -362,7 +371,10 @@ export class SettingsModal {
                         Reproduz um breve som quando uma nova mensagem de outra pessoa chega em qualquer canal de texto.
                       </div>
                     </div>
-                    <input id="checkbox-chat-sound" type="checkbox" ${settingsStore.chatMessageSoundEnabled ? 'checked' : ''} style="width: 18px; height: 18px; cursor: pointer; accent-color: var(--accent-primary);">
+                    <label class="toggle-switch" aria-label="Tocar som ao receber mensagens">
+                      <input id="checkbox-chat-sound" type="checkbox" ${settingsStore.chatMessageSoundEnabled ? 'checked' : ''}>
+                      <span class="toggle-slider"></span>
+                    </label>
                   </div>
                 </div>
                 <div class="form-group" style="padding: 10px 12px; background: var(--bg-card); border: 1px solid var(--border-color); border-radius: var(--radius-md); margin-bottom: 0;">
@@ -376,7 +388,10 @@ export class SettingsModal {
                         Toca o som somente quando seu apelido for citado na mensagem (ex.: @seu_apelido).
                       </div>
                     </div>
-                    <input id="checkbox-chat-sound-mentions" type="checkbox" ${settingsStore.chatMessageSoundMentionsOnly ? 'checked' : ''} style="width: 18px; height: 18px; cursor: pointer; accent-color: var(--accent-primary);">
+                    <label class="toggle-switch" aria-label="${t('settings.chatSoundMentionsOnly')}">
+                      <input id="checkbox-chat-sound-mentions" type="checkbox" ${settingsStore.chatMessageSoundMentionsOnly ? 'checked' : ''}>
+                      <span class="toggle-slider"></span>
+                    </label>
                   </div>
                 </div>
               </div>
@@ -452,7 +467,10 @@ export class SettingsModal {
                       ${t('settings.betaChannelDesc')}
                     </div>
                   </div>
-                  <input id="checkbox-update-beta" type="checkbox" ${settingsStore.updateBetaChannel ? 'checked' : ''} style="width: 18px; height: 18px; cursor: pointer; accent-color: var(--accent-primary);">
+                  <label class="toggle-switch" aria-label="${t('settings.betaChannel')}">
+                    <input id="checkbox-update-beta" type="checkbox" ${settingsStore.updateBetaChannel ? 'checked' : ''}>
+                    <span class="toggle-slider"></span>
+                  </label>
                 </div>
                 <div style="display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-top: 12px; padding-top: 12px; border-top: 1px dashed var(--border-color);">
                   <div>
@@ -464,7 +482,10 @@ export class SettingsModal {
                       ${t('settings.autoStartDesc')}
                     </div>
                   </div>
-                  <input id="checkbox-auto-start" type="checkbox" style="width: 18px; height: 18px; cursor: pointer; accent-color: var(--accent-primary);">
+                  <label class="toggle-switch" aria-label="${t('settings.autoStart')}">
+                    <input id="checkbox-auto-start" type="checkbox">
+                    <span class="toggle-slider"></span>
+                  </label>
                 </div>
               </div>
 

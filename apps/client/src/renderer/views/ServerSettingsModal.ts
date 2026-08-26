@@ -169,7 +169,10 @@ export class ServerSettingsModal {
                       ${t('serverSettings.allowSoundboardDesc')}
                     </div>
                   </div>
-                  <input id="checkbox-allow-soundboard" type="checkbox" ${s.allowSoundboard !== false ? 'checked' : ''} style="width: 18px; height: 18px; cursor: pointer; accent-color: var(--accent-primary);">
+                  <label class="toggle-switch" aria-label="${t('serverSettings.allowSoundboard')}">
+                    <input id="checkbox-allow-soundboard" type="checkbox" ${s.allowSoundboard !== false ? 'checked' : ''}>
+                    <span class="toggle-slider"></span>
+                  </label>
                 </div>
               </div>
 

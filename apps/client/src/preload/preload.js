@@ -59,6 +59,8 @@ const api = {
         ipcRenderer.on('tray:toggle-deafen', listener);
         return () => ipcRenderer.removeListener('tray:toggle-deafen', listener);
     },
+    getAutoStart: () => ipcRenderer.invoke('get-auto-start'),
+    setAutoStart: (enabled) => ipcRenderer.invoke('set-auto-start', enabled),
     platform: process.platform,
 };
 contextBridge.exposeInMainWorld('api', api);

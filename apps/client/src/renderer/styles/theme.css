@@ -3755,12 +3755,12 @@ button[data-loading="1"]::after {
 
 /* User Settings Modal with Sidebar (#163) */
 .settings-modal-card {
-  max-width: 100vw !important;
-  width: 100vw !important;
-  height: 100% !important;
-  max-height: 100% !important;
-  border-radius: 0 !important;
-  border: none !important;
+  max-width: 900px !important;
+  width: min(900px, 90vw) !important;
+  height: min(85vh, 860px) !important;
+  max-height: 85vh !important;
+  border-radius: var(--radius-lg) !important;
+  border: 1px solid var(--border-color) !important;
   padding: 0 !important;
   display: flex !important;
   flex-direction: row !important;
@@ -3822,11 +3822,22 @@ button[data-loading="1"]::after {
 }
 
 .settings-content-header {
-  display: flex;
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
   align-items: center;
-  justify-content: space-between;
+  gap: 12px;
   padding: 14px 24px;
   border-bottom: 1px solid var(--border-color);
+}
+
+.settings-content-header > :nth-child(2) {
+  min-width: 0;
+}
+
+.settings-content-header > :last-child {
+  width: 42px;
+  height: 42px;
+  flex-shrink: 0;
 }
 
 .settings-content-body {
@@ -3907,9 +3918,11 @@ button[data-loading="1"]::after {
 }
 
 .modal-backdrop--settings {
-  background-color: var(--bg-primary);
-  top: 32px;
-  height: calc(100vh - 32px);
+  background-color: rgba(0, 0, 0, 0.78);
+  top: 0;
+  height: 100vh;
+  padding: 24px;
+  box-sizing: border-box;
 }
 
 .settings-back-btn {
@@ -3927,10 +3940,8 @@ button[data-loading="1"]::after {
   height: 42px;
   border-radius: 50%;
   transition: color 0.15s, background 0.15s, border-color 0.15s;
-  position: fixed;
-  top: 52px;
-  right: 20px;
-  z-index: 10;
+  position: static;
+  flex-shrink: 0;
 }
 
 .settings-back-btn:hover {
@@ -4268,14 +4279,35 @@ button[data-loading="1"]::after {
 .ctx-submenu-wrap {
   position: relative;
 }
+
+.ctx-submenu-wrap::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 100%;
+  width: 10px;
+  height: 100%;
+  display: none;
+}
+
+.ctx-submenu-wrap.flip-left::after {
+  left: auto;
+  right: 100%;
+}
+
+.ctx-submenu-wrap:hover::after,
+.ctx-submenu-wrap.open::after {
+  display: block;
+}
+
 .ctx-submenu-trigger {
   width: 100%;
 }
 .ctx-submenu {
   display: none;
   position: absolute;
-  left: calc(100% + 6px);
-  top: -6px;
+  left: calc(100% + 2px);
+  top: 0;
   min-width: 180px;
   background: var(--bg-panel);
   border: 1px solid var(--border-color);
@@ -4290,6 +4322,12 @@ button[data-loading="1"]::after {
 .ctx-submenu-wrap.open > .ctx-submenu {
   display: flex;
 }
+
+.ctx-submenu-wrap.flip-left > .ctx-submenu {
+  left: auto;
+  right: calc(100% + 2px);
+}
+
 .ctx-submenu-item {
   display: flex;
   align-items: center;
@@ -4459,6 +4497,7 @@ button[data-loading="1"]::after {
   position: relative;
   display: inline-flex;
   justify-content: flex-end;
+  overflow: visible;
 }
 
 .settings-action-menu,
@@ -4518,6 +4557,16 @@ button[data-loading="1"]::after {
 .settings-action-submenu-wrap:hover .settings-action-submenu,
 .settings-action-submenu-wrap.open .settings-action-submenu {
   display: flex;
+}
+
+.settings-data-table tbody tr:nth-last-child(-n + 2) .settings-action-menu {
+  top: auto;
+  bottom: calc(100% + 6px);
+}
+
+.settings-data-table tbody tr:nth-last-child(-n + 2) .settings-action-submenu {
+  top: auto;
+  bottom: 0;
 }
 
 .settings-action-menu-item {

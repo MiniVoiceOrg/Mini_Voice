@@ -150,6 +150,8 @@ export interface ElectronApi {
     }) => Promise<void>;
     onTrayToggleMute: (cb: () => void) => () => void;
     onTrayToggleDeafen: (cb: () => void) => () => void;
+    getAutoStart: () => Promise<boolean>;
+    setAutoStart: (enabled: boolean) => Promise<void>;
     platform: string;
 }
 declare global {
