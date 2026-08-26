@@ -368,6 +368,7 @@ export const ptBR = {
   'main.reconnectingTitle': 'Perdeu a conexão, tentando reconectar',
   'main.inVoiceChannel': 'No canal de voz',
   'main.mentionBadge': 'Você foi mencionado',
+  'main.unreadBadge': 'Mensagens não lidas',
   'main.rnnoiseOn': 'Supressão de Ruído (RNNoise): Ativada (Clique para desativar)',
   'main.rnnoiseOff': 'Supressão de Ruído (RNNoise): Desativada (Clique para ativar)',
 
@@ -659,6 +660,7 @@ export const ptBR = {
   'chatSound.mentions': 'Apenas menções',
   'chatSound.none': 'Silenciar',
   'channelMenu.notifications': 'Notificações de mensagem',
+  'channelMenu.markAsRead': 'Marcar como lido',
   'screenAudio.unsupportedWindows': 'Captura de áudio de tela não é suportada nesta versão do Windows (necessário build 19041+).',
   'screenAudio.noFrames': 'Nenhum frame de áudio foi recebido. A captura nativa pode ter falhado. Verifique se o aplicativo/tela selecionado está realmente reproduzindo som.',
   'keybind.space': 'Espaço',

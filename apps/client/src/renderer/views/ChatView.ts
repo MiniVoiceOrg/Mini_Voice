@@ -75,6 +75,7 @@ export class ChatView {
     // Opening a channel reads its mentions: clear the local badge and tell the
     // server so offline-delivered mentions aren't re-shown next connect (#14).
     chatStore.clearMention(channelId);
+    chatStore.clearUnread(channelId);
     networkClient.send(MessageType.CHAT_MENTIONS_READ, { channelId });
     this.render();
     this.loadHistory();
@@ -563,11 +564,9 @@ export class ChatView {
         event.stopPropagation();
 
         const iframe = document.createElement('iframe');
-        iframe.src = embedType === 'youtube' ? `${embedUrl}?autoplay=1&rel=0` : embedUrl;
+        iframe.src = embedUrl;
         iframe.className = 'chat-embed-iframe';
-        if (embedType !== 'youtube') {
-          iframe.setAttribute('sandbox', 'allow-scripts allow-same-origin allow-presentation allow-popups');
-        }
+        iframe.setAttribute('sandbox', 'allow-scripts allow-same-origin allow-presentation allow-popups');
         iframe.setAttribute('allow', 'autoplay; encrypted-media; picture-in-picture; fullscreen');
         iframe.setAttribute('allowfullscreen', '');
 

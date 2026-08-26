@@ -6,6 +6,8 @@ export class ChatStore {
   private messages: Map<string, ChatMessage[]> = new Map();
   // Text channels with an unread @-mention for the current user (#14).
   private mentionChannels: Set<string> = new Set();
+  // Text channels with unread messages for the current user (#263).
+  private unreadChannels: Set<string> = new Set();
   // Maximum number of messages kept in memory per channel to bound memory usage.
   private static readonly MAX_MESSAGES_PER_CHANNEL = 500;
 
@@ -63,9 +65,27 @@ export class ChatStore {
     return this.mentionChannels.has(channelId);
   }
 
+  /** Flag a text channel as having unread messages (#263). */
+  public markUnread(channelId: string): void {
+    if (this.unreadChannels.has(channelId)) return;
+    this.unreadChannels.add(channelId);
+    appEvents.emit('chat.unread_updated');
+  }
+
+  /** Clear the unread flag for a channel (opened or marked as read) (#263). */
+  public clearUnread(channelId: string): void {
+    if (!this.unreadChannels.delete(channelId)) return;
+    appEvents.emit('chat.unread_updated');
+  }
+
+  public hasUnread(channelId: string): boolean {
+    return this.unreadChannels.has(channelId);
+  }
+
   public clear(): void {
     this.messages.clear();
     this.mentionChannels.clear();
+    this.unreadChannels.clear();
     appEvents.emit('chat.cleared');
   }
 }

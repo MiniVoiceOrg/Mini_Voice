@@ -73,15 +73,14 @@ export class SettingsModal {
         <div class="settings-main-container">
           <!-- Top Header -->
           <div class="settings-content-header">
-            <button id="modal-close" class="settings-back-btn" title="${t('common.back')} (ESC)">
-              <span class="material-symbols-outlined md-18">close</span>
-              <span class="esc-hint">ESC</span>
-            </button>
             <div id="settings-current-tab-title" style="font-size: 16px; font-weight: 700; color: var(--text-primary); display: flex; align-items: center; gap: 8px;">
               <span class="material-symbols-outlined" style="color: var(--accent-primary);">person</span>
               <span>${t('settings.tabAccount')}</span>
             </div>
-            <div></div>
+            <button id="modal-close" class="settings-back-btn" title="${t('common.back')} (ESC)">
+              <span class="material-symbols-outlined md-18">close</span>
+              <span class="esc-hint">ESC</span>
+            </button>
           </div>
 
           <!-- Body Scroll Container -->

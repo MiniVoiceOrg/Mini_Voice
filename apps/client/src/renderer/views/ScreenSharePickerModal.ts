@@ -72,12 +72,6 @@ export class ScreenSharePickerModal {
         <div id="share-sources-panel"></div>
 
         <div class="modal-footer">
-          ${alreadySharing ? `
-            <button type="button" id="btn-stop-share" class="btn btn-danger" style="margin-right: auto;">
-              <span class="material-symbols-outlined md-16" style="margin-right: 4px;">stop_screen_share</span>
-              ${t('screenShare.stopSharing')}
-            </button>
-          ` : ''}
           <label id="share-audio-label" style="display: flex; align-items: center; gap: 8px; margin-right: auto; cursor: pointer; font-size: 0.85rem; color: var(--text-secondary);">
             <span class="material-symbols-outlined md-16">volume_up</span>
             <span id="share-audio-text">${this.activeTab === 'window' ? t('screenShare.shareAppAudio') : t('screenShare.shareAudio')}</span>
@@ -163,7 +157,6 @@ export class ScreenSharePickerModal {
     const btnClose = this.modalEl.querySelector('#modal-close');
     const btnCancel = this.modalEl.querySelector('#btn-cancel');
     const btnShare = this.modalEl.querySelector('#btn-share') as HTMLButtonElement;
-    const btnStop = this.modalEl.querySelector('#btn-stop-share');
     const tabScreen = this.modalEl.querySelector('#share-tab-screen');
     const tabWindow = this.modalEl.querySelector('#share-tab-window');
 
@@ -171,7 +164,6 @@ export class ScreenSharePickerModal {
     enableBackdropClose(this.modalEl, () => this.close());
     btnCancel?.addEventListener('click', () => this.close());
     btnShare?.addEventListener('click', () => this.startSharing());
-    btnStop?.addEventListener('click', () => this.stopSharing());
 
     const switchTab = (tab: 'screen' | 'window') => {
       this.activeTab = tab;
@@ -221,18 +213,6 @@ export class ScreenSharePickerModal {
     }
   }
 
-  private async stopSharing(): Promise<void> {
-    videoService.stopScreenShare();
-    await webRtcManager.setLocalScreenTrack(null);
-    voiceStore.setScreenSharing(false);
-    networkClient.send(MessageType.VOICE_STATE_UPDATE, { isScreenSharing: false });
-
-    if (screenAudioService.getIsCapturing()) {
-      await screenAudioService.stop();
-    }
-
-    this.close();
-  }
 
   public close(): void {
     const wasOpen = this.modalEl !== null;
