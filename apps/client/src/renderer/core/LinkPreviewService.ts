@@ -1,4 +1,5 @@
 import { escapeHtml } from '../utils/html';
+import { LruCache } from '@monky/shared';
 
 export interface LinkPreviewData {
   url: string;
@@ -12,7 +13,7 @@ export interface LinkPreviewData {
 }
 
 export class LinkPreviewService {
-  private cache = new Map<string, LinkPreviewData | null>();
+  private cache = new LruCache<string, LinkPreviewData | null>(200, 1000 * 60 * 60);
   private pendingRequests = new Map<string, Promise<LinkPreviewData | null>>();
 
   public normalizeUrl(url: string | null | undefined): string | null {

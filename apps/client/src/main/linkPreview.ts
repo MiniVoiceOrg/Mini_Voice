@@ -1,5 +1,6 @@
 import http from 'http';
 import https from 'https';
+import { LruCache } from '@monky/shared';
 
 export interface LinkPreviewMetadata {
   url: string;
@@ -20,7 +21,7 @@ interface HtmlFetchResult {
 const FETCH_TIMEOUT_MS = 5_000;
 const MAX_HTML_BYTES = 50 * 1024;
 const MAX_REDIRECTS = 5;
-const previewCache = new Map<string, LinkPreviewMetadata | null>();
+const previewCache = new LruCache<string, LinkPreviewMetadata | null>(200, 1000 * 60 * 60);
 
 function detectEmbedProvider(url: string): 'youtube' | 'spotify' | null {
   try {

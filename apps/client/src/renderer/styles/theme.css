@@ -3876,8 +3876,8 @@ button[data-loading="1"]::after {
 /* The server settings modal holds denser content (roles, members, permissions)
    so it gets more room than the user settings modal (#259). */
 .settings-modal-card.server-settings-modal-card {
-  max-width: 1200px !important;
-  width: min(1200px, 92vw) !important;
+  max-width: 1280px !important;
+  width: min(1280px, 94vw) !important;
 }
 
 .settings-sidebar {

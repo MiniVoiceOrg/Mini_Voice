@@ -54,6 +54,12 @@ export class ChatView {
   }
 
   public setChannel(channelId: string): void {
+    if (this.currentChannelId === channelId && this.container.querySelector('#chat-messages-feed')) {
+      // Channel is already active and rendered; keep existing DOM and media state
+      this.focusChatInput({ defer: true });
+      return;
+    }
+
     this.currentChannelId = channelId;
     // Switching channels discards any files staged for the previous channel (#11).
     this.clearPending();
@@ -147,8 +153,8 @@ export class ChatView {
     const messages = chatStore.getMessages(this.currentChannelId);
     if (messages.length === 0) {
       feed.innerHTML = `
-        <div style="display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100%; color: var(--text-muted); gap: 10px;">
-          <span class="material-symbols-outlined md-36" style="color: var(--text-dim); font-size: 44px;">forum</span>
+        <div id="chat-empty-placeholder" style="display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100%; color: var(--text-muted); gap: 10px;">
+          <span class="material-symbols-outlined" style="color: var(--text-dim); font-size: 44px;">forum</span>
           <div style="font-size: 15px; font-weight: 600; color: var(--text-secondary);">${t('chat.emptyTitle', { channel: escapeHtml(serverStore.serverDetails?.channels.find((c) => c.id === this.currentChannelId)?.name || 'geral') })}</div>
           <div style="font-size: 13px;">${t('chat.emptySubtitle')}</div>
         </div>
@@ -157,9 +163,63 @@ export class ChatView {
     }
 
     feed.innerHTML = this.renderMessagesWithDividers(messages);
+    this.bindMessageElementEvents(feed);
 
+    this.pinnedToBottom = shouldScroll;
+    if (shouldScroll) {
+      this.scrollToBottom();
+      this.repinWhileMediaLoads(feed);
+    }
+  }
+
+  private appendMessage(msg: ChatMessage, options: { forceScroll?: boolean } = {}): void {
+    const feed = document.getElementById('chat-messages-feed');
+    if (!feed || !this.currentChannelId) return;
+
+    // If empty placeholder is shown, remove it cleanly before appending the new message
+    const placeholder = feed.querySelector('#chat-empty-placeholder');
+    if (placeholder) {
+      placeholder.remove();
+    }
+
+    const shouldScroll = options.forceScroll === true || this.isFeedAtBottom(feed);
+    const messages = chatStore.getMessages(this.currentChannelId);
+    const prevMsg = messages.length > 1 ? messages[messages.length - 2] : null;
+    const currKey = this.dateKey(msg.createdAt);
+    const prevKey = prevMsg ? this.dateKey(prevMsg.createdAt) : '';
+
+    const fragment = document.createDocumentFragment();
+
+    if (currKey !== prevKey) {
+      const dividerWrapper = document.createElement('div');
+      dividerWrapper.innerHTML = this.renderDateDivider(msg.createdAt);
+      if (dividerWrapper.firstElementChild) {
+        fragment.appendChild(dividerWrapper.firstElementChild);
+      }
+    }
+
+    const rowWrapper = document.createElement('div');
+    rowWrapper.innerHTML = this.renderMessageRow(msg);
+    const rowEl = rowWrapper.firstElementChild as HTMLElement;
+    if (rowEl) {
+      this.bindMessageElementEvents(rowEl);
+      fragment.appendChild(rowEl);
+    }
+
+    feed.appendChild(fragment);
+
+    this.pinnedToBottom = shouldScroll;
+    if (shouldScroll) {
+      this.scrollToBottom();
+      if (rowEl) {
+        this.repinWhileMediaLoads(rowEl);
+      }
+    }
+  }
+
+  private bindMessageElementEvents(container: HTMLElement): void {
     // Open markdown links in the external browser instead of navigating the app.
-    feed.querySelectorAll('a.md-link').forEach((link) => {
+    container.querySelectorAll('a.md-link').forEach((link) => {
       link.addEventListener('click', (e) => {
         e.preventDefault();
         const url = link.getAttribute('data-external-link');
@@ -169,10 +229,14 @@ export class ChatView {
       });
     });
 
-    linkPreviewService.initializePreviews(feed);
+    linkPreviewService.initializePreviews(container);
 
     // Attach right-click context menu on message rows (when not selecting text)
-    feed.querySelectorAll('.chat-message-row').forEach((row) => {
+    const rows = container.classList.contains('chat-message-row')
+      ? [container]
+      : Array.from(container.querySelectorAll<HTMLElement>('.chat-message-row'));
+
+    rows.forEach((row) => {
       row.addEventListener('contextmenu', (e: Event) => {
         const mouseEvent = e as MouseEvent;
         // If text is currently highlighted / selected, allow normal browser selection copy
@@ -195,14 +259,8 @@ export class ChatView {
       });
     });
 
-    this.bindMediaInteractions(feed);
-    initializeCustomVideoPlayers(feed);
-
-    this.pinnedToBottom = shouldScroll;
-    if (shouldScroll) {
-      this.scrollToBottom();
-      this.repinWhileMediaLoads(feed);
-    }
+    this.bindMediaInteractions(container);
+    initializeCustomVideoPlayers(container);
   }
 
   /** Whether the feed is scrolled close enough to the end to count as "at the end" (#270). */
@@ -215,15 +273,16 @@ export class ChatView {
    * grows the feed and would leave the view above the newest message. Re-pin it
    * while the user hasn't scrolled away (#270).
    */
-  private repinWhileMediaLoads(feed: HTMLElement): void {
+  private repinWhileMediaLoads(target: HTMLElement): void {
     const repin = () => {
-      if (this.pinnedToBottom) feed.scrollTop = feed.scrollHeight;
+      const feed = document.getElementById('chat-messages-feed');
+      if (feed && this.pinnedToBottom) feed.scrollTop = feed.scrollHeight;
     };
-    feed.querySelectorAll('img, iframe').forEach((el) => {
+    target.querySelectorAll('img, iframe').forEach((el) => {
       el.addEventListener('load', repin, { once: true });
     });
     // Media elements never fire "load"; their box only settles once metadata arrives.
-    feed.querySelectorAll('video').forEach((el) => {
+    target.querySelectorAll('video').forEach((el) => {
       el.addEventListener('loadedmetadata', repin, { once: true });
       el.addEventListener('loadeddata', repin, { once: true });
     });
@@ -826,7 +885,7 @@ export class ChatView {
       if (msg.channelId === this.currentChannelId) {
         // Sending a message always brings the author back to the end (#270).
         const isOwnMessage = msg.userId === serverStore.currentUser?.id;
-        this.renderMessages({ forceScroll: isOwnMessage });
+        this.appendMessage(msg, { forceScroll: isOwnMessage });
       }
     });
 
