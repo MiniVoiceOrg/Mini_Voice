@@ -10,6 +10,7 @@ dist-electron/
 !apps/client/build/**
 out/
 release/
+release-server/
 artifacts/
 *.tsbuildinfo
 

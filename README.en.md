@@ -25,6 +25,7 @@
 - [Using the app day to day](#-using-the-app-day-to-day)
 - [Settings worth adjusting](#️-settings-worth-adjusting)
 - [Hosting on a VPS (or Linux/Docker)](#-hosting-on-a-vps-or-linuxdocker)
+- [Monky Server (host control panel)](#️-monky-server-host-control-panel)
 - [Common problems](#-common-problems)
 - [Features at a glance](#-features-at-a-glance)
 - [Release verification](#-release-verification)
@@ -255,7 +256,19 @@ Open them from the gear icon (on the connection screen or the bottom bar).
 ## 🖧 Hosting on a VPS (or Linux/Docker)
 
 If you want the server up 24/7, run the server alone (no graphical interface) on
-a Linux machine. Requires **Node.js 20 or newer** (the project's CI uses 22):
+a Linux machine. Requires **Node.js 20 or newer** (the project's CI uses 22).
+
+Install the **Monky CLI** straight from a release — no cloning, no building:
+
+```bash
+npm install -g https://github.com/MonkyOrg/Monky/releases/download/v2.3.0/monky-cli-2.3.0.tgz
+```
+
+> Replace `v2.3.0` with the version you want; the list is on the
+> [releases page](https://github.com/MonkyOrg/Monky/releases).
+
+<details>
+<summary>Prefer to install from source?</summary>
 
 ```bash
 git clone https://github.com/MonkyOrg/Monky.git
@@ -265,10 +278,12 @@ npm run build
 npm install -g ./apps/server
 ```
 
+</details>
+
 ### Initial setup with the CLI
 
 All VPS server administration is done through the **Monky CLI**. After
-`npm install -g ./apps/server`, use the `monky` command from anywhere.
+installing, use the `monky` command from anywhere.
 
 The CLI is **interactive** — just run the command and it asks the necessary
 questions:
@@ -320,6 +335,33 @@ monky --help           # all options
 > P2P media uses public STUN servers to traverse NAT. There is no TURN server:
 > on very restricted networks (CGNAT on both ends, corporate networks), the
 > simplest way out is for everyone to join a VPN.
+
+---
+
+## 🖥️ Monky Server (host control panel)
+
+If you'd rather administer the server without a terminal, use **Monky Server**,
+a desktop app dedicated to whoever hosts. It does the same as the CLI, but with
+a graphical interface.
+
+Download the installer from the
+[releases page](https://github.com/MonkyOrg/Monky/releases) — the files start
+with `Monky-Server-`:
+
+| System | File |
+|---|---|
+| Windows | `Monky-Server-<version>-win-x64-setup.exe` (or the portable build) |
+| macOS | `Monky-Server-<version>-mac-<arch>.dmg` |
+
+It has four screens:
+
+- **Dashboard** — server state, disk usage and start/stop buttons.
+- **Members** — registered members, roles and permissions.
+- **Settings** — server name, port, user limit and data directory.
+- **Logs** — real-time server output.
+
+> Monky Server is for whoever **hosts**. To talk to your friends, use the
+> regular Monky app.
 
 ---
 
@@ -448,10 +490,12 @@ Tools (MSVC)**.
 
 ```bash
 npm install          # installs every workspace
-npm run build        # builds shared + server + client
+npm run build        # builds shared + server + client + server-gui
 npm start            # opens the Electron app
 npm test             # runs the tests across all workspaces
 npm run package      # produces the executable/ZIP in release/
+npm run dist:server-gui  # builds the Monky Server installer into release-server/
+npm run pack:cli     # builds the CLI tarball into release/
 ```
 
 Repository layout:
@@ -462,7 +506,8 @@ Monky/
 │   └── shared/                 # Protocol, models, constants and validators
 ├── apps/
 │   ├── server/                 # Node.js + WebSocket + SQLite server (Clean Architecture)
-│   └── client/                 # Electron app (main + preload + renderer)
+│   ├── client/                 # Electron app (main + preload + renderer)
+│   └── server-gui/             # Host-side Electron app (Monky Server)
 ├── package.json                # NPM workspaces
 └── tsconfig.base.json          # Base TypeScript configuration
 ```
