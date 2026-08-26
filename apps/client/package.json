@@ -7,7 +7,7 @@
     "dev": "vite",
     "build": "tsc && vite build && tsc -p tsconfig.electron.json",
     "start": "electron .",
-    "test": "echo Client has no unit tests",
+    "test": "tsc -p tsconfig.test.json && node dist-test/test/utils.test.js",
     "package": "electron-builder --win --dir",
     "dist": "electron-builder --win"
   },

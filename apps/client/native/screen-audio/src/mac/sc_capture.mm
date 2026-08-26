@@ -50,12 +50,18 @@ static Napi::ThreadSafeFunction g_tsfn_mac;
       reinterpret_cast<uint8_t*>(dataPointer),
       reinterpret_cast<uint8_t*>(dataPointer) + totalLength);
 
-  g_tsfn_mac.NonBlockingCall(buf, [](Napi::Env env, Napi::Function jsCallback,
+  napi_status callStatus = g_tsfn_mac.NonBlockingCall(buf, [](Napi::Env env, Napi::Function jsCallback,
                                      std::vector<uint8_t>* bufData) {
-    auto nodeBuffer = Napi::Buffer<uint8_t>::Copy(env, bufData->data(), bufData->size());
-    jsCallback.Call({nodeBuffer});
+    if (env != nullptr && jsCallback != nullptr && bufData != nullptr) {
+      auto nodeBuffer = Napi::Buffer<uint8_t>::Copy(env, bufData->data(), bufData->size());
+      jsCallback.Call({nodeBuffer});
+    }
     delete bufData;
   });
+
+  if (callStatus != napi_ok) {
+    delete buf;
+  }
 }
 
 @end

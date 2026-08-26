@@ -118,56 +118,46 @@ export function setupIpcHandlers(
     trayManager?.updateVoiceStatus(status);
   });
 
-  ipcMain.handle('window:maximize', () => {
-    if (!mainWindow || mainWindow.isDestroyed()) return;
-    const { width: screenW, height: screenH } = require('electron').screen.getPrimaryDisplay().workAreaSize;
-    const w = Math.round(screenW * 0.8);
-    const h = Math.round(screenH * 0.85);
-    mainWindow.setSize(w, h);
-    mainWindow.center();
-    mainWindow.maximize();
-  });
-
   // Active UI language (#16): keeps native dialogs in the same language the
   // renderer is showing.
-  ipcMain.handle('app-set-language', (_event, language: string) => {
+  ipcMain.handle('app:set-language', (_event, language: string) => {
     setMainLanguage(language);
     // The tray builds its labels eagerly, so it needs a redraw to pick the
     // new language up (#16).
     trayManager?.refresh();
   });
 
-  ipcMain.handle('has-identity', async () => hasIdentity());
-  ipcMain.handle('get-identity', async () => getIdentity(true));
-  ipcMain.handle('get-client-id', async () => getClientId());
-  ipcMain.handle('sign-challenge', async (_event, nonceHex: string) => signChallenge(nonceHex));
-  ipcMain.handle('export-identity', async (_event, password: string) => exportIdentity(password));
-  ipcMain.handle('import-identity', async (_event, exportedIdentity: string, password: string) => importIdentity(exportedIdentity, password));
+  ipcMain.handle('identity:has', async () => hasIdentity());
+  ipcMain.handle('identity:get', async () => getIdentity(true));
+  ipcMain.handle('identity:get-client-id', async () => getClientId());
+  ipcMain.handle('identity:sign-challenge', async (_event, nonceHex: string) => signChallenge(nonceHex));
+  ipcMain.handle('identity:export', async (_event, password: string) => exportIdentity(password));
+  ipcMain.handle('identity:import', async (_event, exportedIdentity: string, password: string) => importIdentity(exportedIdentity, password));
 
   // Local Server Management
-  ipcMain.handle('host-server-start', async (_, options: HostServerOptions) => {
+  ipcMain.handle('server-host:start', async (_, options: HostServerOptions) => {
     return await serverManager.startServer(options);
   });
 
-  ipcMain.handle('host-server-stop', async () => {
+  ipcMain.handle('server-host:stop', async () => {
     serverManager.stopServer();
     return { success: true };
   });
 
-  ipcMain.handle('host-server-status', async () => {
+  ipcMain.handle('server-host:status', async () => {
     return serverManager.getStatus();
   });
 
-  ipcMain.handle('lan-discovery-start', async () => {
+  ipcMain.handle('lan:start', async () => {
     await lanDiscovery.start();
   });
 
-  ipcMain.handle('lan-discovery-stop', async () => {
+  ipcMain.handle('lan:stop', async () => {
     await lanDiscovery.stop();
   });
 
   // Desktop Screen Sharing sources
-  ipcMain.handle('get-desktop-sources', async () => {
+  ipcMain.handle('screen-share:get-sources', async () => {
     const sources = await desktopCapturer.getSources({
       types: ['screen', 'window'],
       thumbnailSize: { width: 320, height: 180 },
@@ -184,7 +174,7 @@ export function setupIpcHandlers(
   });
 
   // Avatar Image Selection Dialog
-  ipcMain.handle('dialog-select-image', async () => {
+  ipcMain.handle('dialog:select-image', async () => {
     const result = await dialog.showOpenDialog(mainWindow, {
       title: mt('dialog.selectProfilePhoto'),
       filters: [
@@ -211,7 +201,7 @@ export function setupIpcHandlers(
   });
 
   // Custom sound file selection (#7)
-  ipcMain.handle('dialog-select-sound-file', async () => {
+  ipcMain.handle('dialog:select-sound-file', async () => {
     const result = await dialog.showOpenDialog(mainWindow, {
       title: mt('dialog.selectSoundFile'),
       filters: [
@@ -229,7 +219,7 @@ export function setupIpcHandlers(
   });
 
   // Soundboard Folder Selection
-  ipcMain.handle('dialog-select-soundboard-folder', async () => {
+  ipcMain.handle('dialog:select-soundboard-folder', async () => {
     const result = await dialog.showOpenDialog(mainWindow, {
       title: mt('dialog.selectSoundboardFolder'),
       properties: ['openDirectory'],
@@ -242,7 +232,7 @@ export function setupIpcHandlers(
   });
 
   // Soundboard List Sounds
-  ipcMain.handle('soundboard-list-sounds', async (_, folderPath: string) => {
+  ipcMain.handle('soundboard:list-sounds', async (_, folderPath: string) => {
     if (!folderPath || typeof folderPath !== 'string' || !fs.existsSync(folderPath)) {
       return [];
     }
@@ -276,7 +266,7 @@ export function setupIpcHandlers(
   });
 
   // Soundboard Read Sound
-  ipcMain.handle('soundboard-read-sound', async (_, filePath: string) => {
+  ipcMain.handle('soundboard:read-sound', async (_, filePath: string) => {
     if (!filePath || typeof filePath !== 'string' || !fs.existsSync(filePath)) {
       return null;
     }
@@ -308,7 +298,7 @@ export function setupIpcHandlers(
   });
 
   // Soundboard Global Shortcuts Registration
-  ipcMain.handle('soundboard-register-shortcuts', (_, shortcuts: Array<{ soundName: string; accelerator: string }>) => {
+  ipcMain.handle('soundboard:register-shortcuts', (_, shortcuts: Array<{ soundName: string; accelerator: string }>) => {
     try {
       globalShortcut.unregisterAll();
       if (!Array.isArray(shortcuts)) return true;
@@ -318,7 +308,7 @@ export function setupIpcHandlers(
         try {
           globalShortcut.register(item.accelerator, () => {
             if (mainWindow && !mainWindow.isDestroyed()) {
-              mainWindow.webContents.send('soundboard-shortcut-triggered', item.soundName);
+              mainWindow.webContents.send('soundboard:shortcut-triggered', item.soundName);
             }
           });
         } catch (err) {
@@ -333,10 +323,10 @@ export function setupIpcHandlers(
   });
 
   // Window Controls
-  ipcMain.handle('window-minimize', () => {
+  ipcMain.handle('window:minimize', () => {
     mainWindow.minimize();
   });
-  ipcMain.handle('window-maximize', () => {
+  ipcMain.handle('window:toggle-maximize', () => {
     if (mainWindow.isMaximized()) {
       mainWindow.unmaximize();
     } else {
@@ -344,15 +334,15 @@ export function setupIpcHandlers(
     }
   });
 
-  ipcMain.handle('window-close', () => {
+  ipcMain.handle('window:close', () => {
     mainWindow.close();
   });
 
   // App version (for update checks)
-  ipcMain.handle('get-app-version', () => app.getVersion());
+  ipcMain.handle('app:get-version', () => app.getVersion());
 
   // Open an external URL in the default browser
-  ipcMain.handle('open-external', async (_, url: string) => {
+  ipcMain.handle('app:open-external', async (_, url: string) => {
     try {
       const parsed = new URL(url);
       if (!['http:', 'https:'].includes(parsed.protocol)) {
@@ -366,21 +356,21 @@ export function setupIpcHandlers(
     }
   });
 
-  ipcMain.handle('fetch-link-preview', async (_, url: string) => {
+  ipcMain.handle('link-preview:fetch', async (_, url: string) => {
     if (typeof url !== 'string') return null;
     return await fetchLinkPreview(url);
   });
 
   // Auto-start with OS (#245)
-  ipcMain.handle('get-auto-start', () => {
+  ipcMain.handle('app:get-auto-start', () => {
     return app.getLoginItemSettings().openAtLogin;
   });
 
-  ipcMain.handle('set-auto-start', (_, enabled: boolean) => {
+  ipcMain.handle('app:set-auto-start', (_, enabled: boolean) => {
     app.setLoginItemSettings({ openAtLogin: enabled });
   });
 
-  ipcMain.handle('download-file', async (_, url: string, fileName: string) => {
+  ipcMain.handle('app:download-file', async (_, url: string, fileName: string) => {
     try {
       const parsedUrl = new URL(url);
       if (!['http:', 'https:'].includes(parsedUrl.protocol)) {
@@ -409,7 +399,7 @@ export function setupIpcHandlers(
 
   // TCP reachability probe (#37): distinguishes an unreachable host (offline)
   // from a reachable host whose port refuses the connection (server closed).
-  ipcMain.handle('probe-server', async (_, host: string, port: number) => {
+  ipcMain.handle('net:probe-server', async (_, host: string, port: number) => {
     return await new Promise<{ reachable: boolean; reason: 'online' | 'refused' | 'timeout' | 'unreachable' }>(
       (resolve) => {
         const socket = new net.Socket();
@@ -446,11 +436,11 @@ export function setupIpcHandlers(
   });
 
   // Screen Audio Capture (native module)
-  ipcMain.handle('screen-audio-supported', () => {
+  ipcMain.handle('screen-audio:is-supported', () => {
     return screenAudio ? screenAudio.isSupported() : false;
   });
 
-  ipcMain.handle('screen-audio-diagnose', () => {
+  ipcMain.handle('screen-audio:diagnose', () => {
     const os = require('os');
     const release = os.release();
     return {
@@ -463,7 +453,7 @@ export function setupIpcHandlers(
     };
   });
 
-  ipcMain.handle('screen-audio-start', (_event, sourceId?: string) => {
+  ipcMain.handle('screen-audio:start', (_event, sourceId?: string) => {
     if (!screenAudio || !screenAudio.isSupported()) {
       return { success: false, error: 'Not supported on this platform' };
     }
@@ -491,7 +481,7 @@ export function setupIpcHandlers(
     return result;
   });
 
-  ipcMain.handle('screen-audio-stop', () => {
+  ipcMain.handle('screen-audio:stop', () => {
     if (!screenAudio) return { success: false };
     return screenAudio.stop();
   });

@@ -1,109 +1,68 @@
 import { contextBridge, ipcRenderer } from 'electron';
+import type {
+  AppIdentityResult,
+  DesktopSource,
+  DiscoveredLanServer,
+  HostServerOptions,
+  ImageSelectionResult,
+  LinkPreviewData,
+  ScreenAudioDiagnostics,
+  ServerProbeResult,
+  SoundboardShortcutBinding,
+  SoundboardSoundData,
+  SoundboardSoundEntry,
+  TrayVoiceStatus,
+  UpdateCheckResult,
+  UpdateSimpleResult,
+} from '@monky/shared';
 
-export interface LinkPreviewData {
-  url: string;
-  title: string;
-  description?: string;
-  image?: string;
-  siteName?: string;
-  favicon?: string;
-  embedType?: 'youtube' | 'spotify';
-  embedUrl?: string;
-}
+export type { LinkPreviewData } from '@monky/shared';
 
 export interface ElectronApi {
   startLanDiscovery: () => Promise<void>;
   stopLanDiscovery: () => Promise<void>;
-  onLanDiscoveryFound: (cb: (server: {
-    host: string;
-    port: number;
-    serverName: string;
-    version: string;
-  }) => void) => void;
-  onLanDiscoveryLost: (cb: (server: {
-    host: string;
-    port: number;
-    serverName: string;
-    version: string;
-  }) => void) => void;
+  onLanDiscoveryFound: (cb: (server: DiscoveredLanServer) => void) => () => void;
+  onLanDiscoveryLost: (cb: (server: DiscoveredLanServer) => void) => () => void;
   setLanguage: (language: string) => Promise<void>;
   hasIdentity: () => Promise<boolean>;
-  getIdentity: () => Promise<{ publicKey: string; clientId: string }>;
+  getIdentity: () => Promise<AppIdentityResult>;
   getClientId: () => Promise<string>;
   signChallenge: (nonceHex: string) => Promise<string>;
   exportIdentity: (password: string) => Promise<string>;
-  importIdentity: (exportedIdentity: string, password: string) => Promise<{ publicKey: string; clientId: string }>;
-  maximizeWindow: () => Promise<void>;
-  hostServerStart: (options: {
-    port: number;
-    serverName: string;
-    password?: string;
-    initialVoiceChannel?: string;
-    initialTextChannel?: string;
-  }) => Promise<{ success: boolean; error?: string }>;
+  importIdentity: (exportedIdentity: string, password: string) => Promise<AppIdentityResult>;
+  hostServerStart: (options: HostServerOptions) => Promise<{ success: boolean; error?: string }>;
   hostServerStop: () => Promise<{ success: boolean }>;
   hostServerStatus: () => Promise<{ isRunning: boolean }>;
-  getDesktopSources: () => Promise<
-    Array<{
-      id: string;
-      name: string;
-      type: 'screen' | 'window';
-      thumbnailDataUrl: string;
-      appIconDataUrl: string | null;
-    }>
-  >;
-  selectImageDialog: () => Promise<{ fileName: string; mimeType: string; base64: string } | null>;
+  getDesktopSources: () => Promise<DesktopSource[]>;
+  selectImageDialog: () => Promise<ImageSelectionResult | null>;
   selectSoundFile: () => Promise<string | null>;
   selectSoundboardFolder: () => Promise<string | null>;
-  listSoundboardSounds: (folderPath: string) => Promise<
-    Array<{
-      name: string;
-      fileName: string;
-      filePath: string;
-      sizeBytes: number;
-      ext: string;
-    }>
-  >;
-  readSoundboardSound: (filePath: string) => Promise<{
-    fileName: string;
-    soundName: string;
-    mimeType: string;
-    base64: string;
-    dataUrl: string;
-    sizeBytes: number;
-  } | null>;
-  registerSoundboardShortcuts: (shortcuts: Array<{ soundName: string; accelerator: string }>) => Promise<boolean>;
+  listSoundboardSounds: (folderPath: string) => Promise<SoundboardSoundEntry[]>;
+  readSoundboardSound: (filePath: string) => Promise<SoundboardSoundData | null>;
+  registerSoundboardShortcuts: (shortcuts: SoundboardShortcutBinding[]) => Promise<boolean>;
   onSoundboardShortcutTriggered: (cb: (soundName: string) => void) => () => void;
   minimize: () => Promise<void>;
   maximize: () => Promise<void>;
   close: () => Promise<void>;
   getAppVersion: () => Promise<string>;
-  checkForUpdates: () => Promise<{ ok: boolean; available?: boolean; version?: string; error?: string }>;
-  downloadUpdate: () => Promise<{ ok: boolean; error?: string }>;
-  installUpdate: () => Promise<{ ok: boolean; error?: string }>;
-  setUpdateChannel: (allowBeta: boolean) => Promise<{ ok: boolean; error?: string }>;
-  onUpdateProgress: (cb: (percent: number) => void) => void;
-  onUpdateDownloaded: (cb: (info: { manual: boolean }) => void) => void;
-  onUpdateError: (cb: (message: string) => void) => void;
+  checkForUpdates: () => Promise<UpdateCheckResult>;
+  downloadUpdate: () => Promise<UpdateSimpleResult>;
+  installUpdate: () => Promise<UpdateSimpleResult>;
+  setUpdateChannel: (allowBeta: boolean) => Promise<UpdateSimpleResult>;
+  onUpdateProgress: (cb: (percent: number) => void) => () => void;
+  onUpdateDownloaded: (cb: (info: { manual: boolean }) => void) => () => void;
+  onUpdateError: (cb: (message: string) => void) => () => void;
   openExternal: (url: string) => Promise<{ success: boolean }>;
   fetchLinkPreview: (url: string) => Promise<LinkPreviewData | null>;
   downloadFile: (url: string, fileName: string) => Promise<{ success: boolean; error?: string }>;
-  probeServer: (
-    host: string,
-    port: number
-  ) => Promise<{ reachable: boolean; reason: 'online' | 'refused' | 'timeout' | 'unreachable' }>;
+  probeServer: (host: string, port: number) => Promise<ServerProbeResult>;
   screenAudioSupported: () => Promise<boolean>;
-  screenAudioDiagnose: () => Promise<{ nativeModuleLoaded: boolean; platformSupported: boolean; osVersion: string; pid: number }>;
+  screenAudioDiagnose: () => Promise<ScreenAudioDiagnostics>;
   screenAudioStart: (sourceId?: string) => Promise<{ success: boolean; error?: string }>;
   screenAudioStop: () => Promise<{ success: boolean }>;
-  onScreenAudioFrame: (cb: (buffer: ArrayBuffer) => void) => void;
+  onScreenAudioFrame: (cb: (buffer: ArrayBuffer | Uint8Array) => void) => () => void;
   removeScreenAudioFrameListener: () => void;
-  updateTrayVoiceStatus: (status: {
-    inCall: boolean;
-    isMuted: boolean;
-    isDeafened: boolean;
-    isSpeaking: boolean;
-  }) => Promise<void>;
+  updateTrayVoiceStatus: (status: TrayVoiceStatus) => Promise<void>;
   onTrayToggleMute: (cb: () => void) => () => void;
   onTrayToggleDeafen: (cb: () => void) => () => void;
   getAutoStart: () => Promise<boolean>;
@@ -112,67 +71,108 @@ export interface ElectronApi {
 }
 
 const api: ElectronApi = {
-  startLanDiscovery: () => ipcRenderer.invoke('lan-discovery-start'),
-  stopLanDiscovery: () => ipcRenderer.invoke('lan-discovery-stop'),
-  onLanDiscoveryFound: (cb) => ipcRenderer.on('lan-discovery:found', (_e, server) => cb(server)),
-  onLanDiscoveryLost: (cb) => ipcRenderer.on('lan-discovery:lost', (_e, server) => cb(server)),
-  setLanguage: (language) => ipcRenderer.invoke('app-set-language', language),
-  hasIdentity: () => ipcRenderer.invoke('has-identity'),
-  getIdentity: () => ipcRenderer.invoke('get-identity'),
-  getClientId: () => ipcRenderer.invoke('get-client-id'),
-  signChallenge: (nonceHex) => ipcRenderer.invoke('sign-challenge', nonceHex),
-  exportIdentity: (password) => ipcRenderer.invoke('export-identity', password),
-  importIdentity: (exportedIdentity, password) => ipcRenderer.invoke('import-identity', exportedIdentity, password),
-  maximizeWindow: () => ipcRenderer.invoke('window:maximize'),
-  hostServerStart: (options) => ipcRenderer.invoke('host-server-start', options),
-  hostServerStop: () => ipcRenderer.invoke('host-server-stop'),
-  hostServerStatus: () => ipcRenderer.invoke('host-server-status'),
-  getDesktopSources: () => ipcRenderer.invoke('get-desktop-sources'),
-  selectImageDialog: () => ipcRenderer.invoke('dialog-select-image'),
-  selectSoundFile: () => ipcRenderer.invoke('dialog-select-sound-file'),
-  selectSoundboardFolder: () => ipcRenderer.invoke('dialog-select-soundboard-folder'),
-  listSoundboardSounds: (folderPath) => ipcRenderer.invoke('soundboard-list-sounds', folderPath),
-  readSoundboardSound: (filePath) => ipcRenderer.invoke('soundboard-read-sound', filePath),
-  registerSoundboardShortcuts: (shortcuts) => ipcRenderer.invoke('soundboard-register-shortcuts', shortcuts),
-  onSoundboardShortcutTriggered: (cb) => {
-    const listener = (_e: any, soundName: string) => cb(soundName);
-    ipcRenderer.on('soundboard-shortcut-triggered', listener);
-    return () => ipcRenderer.removeListener('soundboard-shortcut-triggered', listener);
+  startLanDiscovery: () => ipcRenderer.invoke('lan:start'),
+  stopLanDiscovery: () => ipcRenderer.invoke('lan:stop'),
+  onLanDiscoveryFound: (cb) => {
+    const listener = (_e: Electron.IpcRendererEvent, server: DiscoveredLanServer) => cb(server);
+    ipcRenderer.on('lan:found', listener);
+    return () => {
+      ipcRenderer.removeListener('lan:found', listener);
+    };
   },
-  minimize: () => ipcRenderer.invoke('window-minimize'),
-  maximize: () => ipcRenderer.invoke('window-maximize'),
-  close: () => ipcRenderer.invoke('window-close'),
-  getAppVersion: () => ipcRenderer.invoke('get-app-version'),
-  checkForUpdates: () => ipcRenderer.invoke('update-check'),
-  downloadUpdate: () => ipcRenderer.invoke('update-download'),
-  installUpdate: () => ipcRenderer.invoke('update-install'),
-  setUpdateChannel: (allowBeta) => ipcRenderer.invoke('update-set-channel', allowBeta),
-  onUpdateProgress: (cb) => ipcRenderer.on('update:progress', (_e, percent) => cb(percent)),
-  onUpdateDownloaded: (cb) => ipcRenderer.on('update:downloaded', (_e, info) => cb(info)),
-  onUpdateError: (cb) => ipcRenderer.on('update:error', (_e, message) => cb(message)),
-  openExternal: (url) => ipcRenderer.invoke('open-external', url),
-  fetchLinkPreview: (url) => ipcRenderer.invoke('fetch-link-preview', url),
-  downloadFile: (url, fileName) => ipcRenderer.invoke('download-file', url, fileName),
-  probeServer: (host, port) => ipcRenderer.invoke('probe-server', host, port),
-  screenAudioSupported: () => ipcRenderer.invoke('screen-audio-supported'),
-  screenAudioDiagnose: () => ipcRenderer.invoke('screen-audio-diagnose'),
-  screenAudioStart: (sourceId) => ipcRenderer.invoke('screen-audio-start', sourceId),
-  screenAudioStop: () => ipcRenderer.invoke('screen-audio-stop'),
-  onScreenAudioFrame: (cb) => ipcRenderer.on('screen-audio:frame', (_e, buffer) => cb(buffer)),
+  onLanDiscoveryLost: (cb) => {
+    const listener = (_e: Electron.IpcRendererEvent, server: DiscoveredLanServer) => cb(server);
+    ipcRenderer.on('lan:lost', listener);
+    return () => {
+      ipcRenderer.removeListener('lan:lost', listener);
+    };
+  },
+  setLanguage: (language) => ipcRenderer.invoke('app:set-language', language),
+  hasIdentity: () => ipcRenderer.invoke('identity:has'),
+  getIdentity: () => ipcRenderer.invoke('identity:get'),
+  getClientId: () => ipcRenderer.invoke('identity:get-client-id'),
+  signChallenge: (nonceHex) => ipcRenderer.invoke('identity:sign-challenge', nonceHex),
+  exportIdentity: (password) => ipcRenderer.invoke('identity:export', password),
+  importIdentity: (exportedIdentity, password) => ipcRenderer.invoke('identity:import', exportedIdentity, password),
+  hostServerStart: (options) => ipcRenderer.invoke('server-host:start', options),
+  hostServerStop: () => ipcRenderer.invoke('server-host:stop'),
+  hostServerStatus: () => ipcRenderer.invoke('server-host:status'),
+  getDesktopSources: () => ipcRenderer.invoke('screen-share:get-sources'),
+  selectImageDialog: () => ipcRenderer.invoke('dialog:select-image'),
+  selectSoundFile: () => ipcRenderer.invoke('dialog:select-sound-file'),
+  selectSoundboardFolder: () => ipcRenderer.invoke('dialog:select-soundboard-folder'),
+  listSoundboardSounds: (folderPath) => ipcRenderer.invoke('soundboard:list-sounds', folderPath),
+  readSoundboardSound: (filePath) => ipcRenderer.invoke('soundboard:read-sound', filePath),
+  registerSoundboardShortcuts: (shortcuts) => ipcRenderer.invoke('soundboard:register-shortcuts', shortcuts),
+  onSoundboardShortcutTriggered: (cb) => {
+    const listener = (_e: Electron.IpcRendererEvent, soundName: string) => cb(soundName);
+    ipcRenderer.on('soundboard:shortcut-triggered', listener);
+    return () => {
+      ipcRenderer.removeListener('soundboard:shortcut-triggered', listener);
+    };
+  },
+  minimize: () => ipcRenderer.invoke('window:minimize'),
+  maximize: () => ipcRenderer.invoke('window:toggle-maximize'),
+  close: () => ipcRenderer.invoke('window:close'),
+  getAppVersion: () => ipcRenderer.invoke('app:get-version'),
+  checkForUpdates: () => ipcRenderer.invoke('updater:check'),
+  downloadUpdate: () => ipcRenderer.invoke('updater:download'),
+  installUpdate: () => ipcRenderer.invoke('updater:install'),
+  setUpdateChannel: (allowBeta) => ipcRenderer.invoke('updater:set-channel', allowBeta),
+  onUpdateProgress: (cb) => {
+    const listener = (_e: Electron.IpcRendererEvent, percent: number) => cb(percent);
+    ipcRenderer.on('updater:progress', listener);
+    return () => {
+      ipcRenderer.removeListener('updater:progress', listener);
+    };
+  },
+  onUpdateDownloaded: (cb) => {
+    const listener = (_e: Electron.IpcRendererEvent, info: { manual: boolean }) => cb(info);
+    ipcRenderer.on('updater:downloaded', listener);
+    return () => {
+      ipcRenderer.removeListener('updater:downloaded', listener);
+    };
+  },
+  onUpdateError: (cb) => {
+    const listener = (_e: Electron.IpcRendererEvent, message: string) => cb(message);
+    ipcRenderer.on('updater:error', listener);
+    return () => {
+      ipcRenderer.removeListener('updater:error', listener);
+    };
+  },
+  openExternal: (url) => ipcRenderer.invoke('app:open-external', url),
+  fetchLinkPreview: (url) => ipcRenderer.invoke('link-preview:fetch', url),
+  downloadFile: (url, fileName) => ipcRenderer.invoke('app:download-file', url, fileName),
+  probeServer: (host, port) => ipcRenderer.invoke('net:probe-server', host, port),
+  screenAudioSupported: () => ipcRenderer.invoke('screen-audio:is-supported'),
+  screenAudioDiagnose: () => ipcRenderer.invoke('screen-audio:diagnose'),
+  screenAudioStart: (sourceId) => ipcRenderer.invoke('screen-audio:start', sourceId),
+  screenAudioStop: () => ipcRenderer.invoke('screen-audio:stop'),
+  onScreenAudioFrame: (cb) => {
+    const listener = (_e: Electron.IpcRendererEvent, buffer: ArrayBuffer | Uint8Array) => cb(buffer);
+    ipcRenderer.on('screen-audio:frame', listener);
+    return () => {
+      ipcRenderer.removeListener('screen-audio:frame', listener);
+    };
+  },
   removeScreenAudioFrameListener: () => ipcRenderer.removeAllListeners('screen-audio:frame'),
   updateTrayVoiceStatus: (status) => ipcRenderer.invoke('tray:update-voice-status', status),
   onTrayToggleMute: (cb) => {
     const listener = () => cb();
     ipcRenderer.on('tray:toggle-mute', listener);
-    return () => ipcRenderer.removeListener('tray:toggle-mute', listener);
+    return () => {
+      ipcRenderer.removeListener('tray:toggle-mute', listener);
+    };
   },
   onTrayToggleDeafen: (cb) => {
     const listener = () => cb();
     ipcRenderer.on('tray:toggle-deafen', listener);
-    return () => ipcRenderer.removeListener('tray:toggle-deafen', listener);
+    return () => {
+      ipcRenderer.removeListener('tray:toggle-deafen', listener);
+    };
   },
-  getAutoStart: () => ipcRenderer.invoke('get-auto-start'),
-  setAutoStart: (enabled: boolean) => ipcRenderer.invoke('set-auto-start', enabled),
+  getAutoStart: () => ipcRenderer.invoke('app:get-auto-start'),
+  setAutoStart: (enabled: boolean) => ipcRenderer.invoke('app:set-auto-start', enabled),
   platform: process.platform,
 };
 

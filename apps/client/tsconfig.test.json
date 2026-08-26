@@ -1,0 +1,15 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "module": "CommonJS",
+    "moduleResolution": "Node",
+    "outDir": "./dist-test",
+    "rootDir": "."
+  },
+  "include": [
+    "src/preload/preload.ts",
+    "src/renderer/utils/**/*",
+    "src/renderer/core/EventBus.ts",
+    "test/**/*"
+  ]
+}

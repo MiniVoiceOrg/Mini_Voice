@@ -351,12 +351,18 @@ static void CaptureThreadFunc(uint32_t targetPid, uint32_t loopbackMode, uint32_
           }
         }
 
-        g_tsfn_win.NonBlockingCall(outBuf, [](Napi::Env env, Napi::Function jsCallback,
+        napi_status callStatus = g_tsfn_win.NonBlockingCall(outBuf, [](Napi::Env env, Napi::Function jsCallback,
                                               std::vector<uint8_t>* bufData) {
-          auto nodeBuffer = Napi::Buffer<uint8_t>::Copy(env, bufData->data(), bufData->size());
-          jsCallback.Call({nodeBuffer});
+          if (env != nullptr && jsCallback != nullptr && bufData != nullptr) {
+            auto nodeBuffer = Napi::Buffer<uint8_t>::Copy(env, bufData->data(), bufData->size());
+            jsCallback.Call({nodeBuffer});
+          }
           delete bufData;
         });
+
+        if (callStatus != napi_ok) {
+          delete outBuf;
+        }
       }
 
       captureClient->ReleaseBuffer(numFrames);

@@ -6,6 +6,7 @@ node_modules/
 # Builds e Distribuição
 dist/
 dist-electron/
+dist-test/
 /build/
 !apps/client/build/**
 out/
