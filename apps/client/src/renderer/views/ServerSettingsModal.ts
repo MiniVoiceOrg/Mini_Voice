@@ -81,9 +81,9 @@ export class ServerSettingsModal {
         <div class="settings-main-container">
           <!-- Top Header -->
           <div class="settings-content-header">
-            <button id="modal-close" class="settings-back-btn" title="${t('common.back')}">
-              <span class="material-symbols-outlined md-18">arrow_back</span>
-              ${t('common.back')}
+            <button id="modal-close" class="settings-back-btn" title="${t('common.back')} (ESC)">
+              <span class="material-symbols-outlined md-18">close</span>
+              <span class="esc-hint">ESC</span>
             </button>
             <div id="server-settings-tab-title" style="font-size: 16px; font-weight: 700; color: var(--text-primary); display: flex; align-items: center; gap: 8px;">
               <span class="material-symbols-outlined" style="color: var(--accent-primary);">tune</span>
@@ -260,6 +260,13 @@ export class ServerSettingsModal {
 
     btnClose?.addEventListener('click', () => this.close());
     btnCancel?.addEventListener('click', () => this.close());
+
+    // Close on ESC key (#243)
+    const handleEsc = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') { this.close(); }
+    };
+    window.addEventListener('keydown', handleEsc);
+    (this.modalEl as any)._escHandler = handleEsc;
 
     // Tab Navigation
     const tabButtons = this.modalEl.querySelectorAll('.settings-tab-btn');
@@ -947,6 +954,16 @@ export class ServerSettingsModal {
         return;
       }
 
+      // Click-based submenu toggle for roles (#242)
+      const submenuTrigger = target.closest('.settings-action-submenu-wrap > .settings-action-menu-item:not([data-member-action])') as HTMLElement | null;
+      if (submenuTrigger) {
+        event.preventDefault();
+        event.stopPropagation();
+        const wrap = submenuTrigger.closest('.settings-action-submenu-wrap');
+        wrap?.classList.toggle('open');
+        return;
+      }
+
       const menuAction = target.closest('[data-member-action]') as HTMLElement | null;
       if (menuAction) {
         event.preventDefault();
@@ -1060,6 +1077,8 @@ export class ServerSettingsModal {
 
   public close(): void {
     if (this.modalEl) {
+      const handler = (this.modalEl as any)._escHandler;
+      if (handler) window.removeEventListener('keydown', handler);
       this.modalEl.remove();
       this.modalEl = null;
       this.shouldRemovePassword = false;

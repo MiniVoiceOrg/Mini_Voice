@@ -517,6 +517,8 @@ export const ptBR = {
   'settings.chatSoundMentionsOnly': 'Apenas quando eu for mencionado',
   'settings.betaChannel': 'Receber versões beta',
   'settings.betaChannelDesc': 'Recebe versões de teste (pré-lançamento) antes de virarem estáveis. Pode conter instabilidades.',
+  'settings.autoStart': 'Iniciar com o sistema',
+  'settings.autoStartDesc': 'Inicia o Monky automaticamente ao ligar o computador.',
   'settings.communitySection': 'Comunidade',
   'settings.communityDesc': 'O Monky é open source. As ideias mais votadas pela comunidade viram as próximas features.',
   'settings.suggestIdea': 'Sugerir uma ideia',

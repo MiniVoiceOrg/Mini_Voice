@@ -108,16 +108,22 @@ export class UserContextMenu {
           </div>
         ` : ''}
         ${canManageRoles ? `
-          <div style="display: flex; flex-direction: column; gap: 6px;">
-            <span style="font-size: 12px; color: var(--text-secondary);">${t('userMenu.manageRoles')}</span>
-            ${manageableRoles.map((role) => `
-              <button type="button" class="btn btn-secondary" data-action="toggle-role" data-role-id="${role.id}">
-                <span style="display: inline-flex; align-items: center; gap: 8px;">
+          <div class="ctx-submenu-wrap">
+            <button type="button" class="btn btn-secondary ctx-submenu-trigger">
+              <span style="display: inline-flex; align-items: center; gap: 8px; width: 100%;">
+                <span class="material-symbols-outlined md-16">admin_panel_settings</span>
+                <span>${t('userMenu.manageRoles')}</span>
+                <span class="material-symbols-outlined md-16" style="margin-left: auto;">chevron_right</span>
+              </span>
+            </button>
+            <div class="ctx-submenu">
+              ${manageableRoles.map((role) => `
+                <button type="button" class="ctx-submenu-item" data-action="toggle-role" data-role-id="${role.id}">
                   <span class="material-symbols-outlined md-16">${roleIds.has(role.id) ? 'check_box' : 'check_box_outline_blank'}</span>
                   <span style="${role.color ? `color: ${role.color};` : ''}">${escapeHtml(role.name)}</span>
-                </span>
-              </button>
-            `).join('')}
+                </button>
+              `).join('')}
+            </div>
           </div>
         ` : ''}
       </div>
@@ -243,14 +249,17 @@ export class UserContextMenu {
     });
 
     this.menuEl.querySelectorAll('[data-action="toggle-role"]').forEach((btn) => {
-      btn.addEventListener('click', () => {
+      btn.addEventListener('click', (e) => {
+        e.stopPropagation();
         const roleId = btn.getAttribute('data-role-id');
         if (!roleId) return;
         const hasRole = serverStore.getUserRoleIds(user.id).includes(roleId);
-        void this.runAdminAction(() => networkClient.sendRequest(
+        const icon = btn.querySelector('.material-symbols-outlined');
+        if (icon) icon.textContent = hasRole ? 'check_box_outline_blank' : 'check_box';
+        void networkClient.sendRequest(
           hasRole ? MessageType.ROLE_UNASSIGN : MessageType.ROLE_ASSIGN,
           { userId: user.id, roleId }
-        ));
+        ).catch(() => {});
       });
     });
 

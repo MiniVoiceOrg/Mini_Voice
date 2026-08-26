@@ -371,6 +371,15 @@ export function setupIpcHandlers(
     return await fetchLinkPreview(url);
   });
 
+  // Auto-start with OS (#245)
+  ipcMain.handle('get-auto-start', () => {
+    return app.getLoginItemSettings().openAtLogin;
+  });
+
+  ipcMain.handle('set-auto-start', (_, enabled: boolean) => {
+    app.setLoginItemSettings({ openAtLogin: enabled });
+  });
+
   ipcMain.handle('download-file', async (_, url: string, fileName: string) => {
     try {
       const parsedUrl = new URL(url);

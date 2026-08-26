@@ -604,7 +604,57 @@ export class MainView {
           userContextMenu.open(mouseEvent.clientX, mouseEvent.clientY, participant.user);
         }
       });
+
+      // Drag-and-drop users between voice channels (#248)
+      if (serverStore.hasPermission(Permission.MOVE_MEMBERS)) {
+        const el = miniEl as HTMLElement;
+        el.draggable = true;
+        el.addEventListener('dragstart', (e: Event) => {
+          const de = e as DragEvent;
+          const userId = el.getAttribute('data-user-id');
+          if (userId) {
+            de.dataTransfer?.setData('text/monky-user-id', userId);
+            de.dataTransfer!.effectAllowed = 'move';
+            el.classList.add('dragging');
+          }
+        });
+        el.addEventListener('dragend', () => { el.classList.remove('dragging'); });
+      }
     });
+
+    // Voice channel drop targets for user drag-and-drop (#248)
+    if (serverStore.hasPermission(Permission.MOVE_MEMBERS)) {
+      this.container.querySelectorAll('.channel-item[data-channel-type="VOICE"]').forEach((item) => {
+        const el = item as HTMLElement;
+        el.addEventListener('dragover', (e: Event) => {
+          const de = e as DragEvent;
+          if (de.dataTransfer?.types.includes('text/monky-user-id')) {
+            de.preventDefault();
+            de.dataTransfer!.dropEffect = 'move';
+            el.classList.add('drop-target');
+          }
+        });
+        el.addEventListener('dragleave', (e: Event) => {
+          const de = e as DragEvent;
+          const next = de.relatedTarget as Node | null;
+          if (next && el.contains(next)) return;
+          el.classList.remove('drop-target');
+        });
+        el.addEventListener('drop', (e: Event) => {
+          const de = e as DragEvent;
+          de.preventDefault();
+          el.classList.remove('drop-target');
+          const userId = de.dataTransfer?.getData('text/monky-user-id');
+          const channelId = el.getAttribute('data-channel-id');
+          if (userId && channelId) {
+            void networkClient.sendRequest(MessageType.ADMIN_MOVE_USER, {
+              targetUserId: userId,
+              channelId,
+            }).catch(() => {});
+          }
+        });
+      });
+    }
 
     // Attach click listeners to channel items
     this.container.querySelectorAll('.channel-item').forEach((item) => {
@@ -778,6 +828,8 @@ export class MainView {
   }
 
   public async rejoinVoiceChannel(channelId: string): Promise<void> {
+    // Close existing peer connections before moving (#248)
+    webRtcManager.closeAllPeers();
     // Reset the stored voice channel so handleJoinVoiceChannel performs a full
     // (re)join instead of early-returning, then reconnect the mesh.
     voiceStore.setChannel(null);
@@ -814,6 +866,16 @@ export class MainView {
     }
 
     networkClient.send(MessageType.CHANNEL_DELETE, { channelId });
+  }
+
+  // Re-evaluate UI elements that depend on the current user's permissions (#246)
+  private updatePermissionDependentUI(): void {
+    const canManageServer = serverStore.hasPermission(Permission.MANAGE_SERVER);
+    const canManageRoles = serverStore.hasPermission(Permission.MANAGE_ROLES);
+    const btnSettings = document.getElementById('btn-server-settings');
+    if (btnSettings) {
+      (btnSettings as HTMLElement).style.display = (canManageServer || canManageRoles) ? '' : 'none';
+    }
   }
 
   private renderMembers(): void {
@@ -1019,6 +1081,7 @@ export class MainView {
     const u1 = appEvents.on('server.updated', () => {
       this.renderChannels();
       this.renderMembers();
+      this.updatePermissionDependentUI();
     });
 
     const u2 = appEvents.on('participants.updated', () => {

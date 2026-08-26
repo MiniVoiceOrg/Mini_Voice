@@ -1,4 +1,4 @@
-import { app, BrowserWindow, Menu, screen } from 'electron';
+import { app, BrowserWindow, Menu, screen, session } from 'electron';
 import path from 'path';
 import { setupIpcHandlers } from './ipcHandlers';
 import { setupUpdater } from './updater';
@@ -110,6 +110,24 @@ if (!gotTheLock) {
   app.whenReady().then(() => {
     // Remove the default application menu (File / Edit / View ...).
     Menu.setApplicationMenu(null);
+
+    // Fix YouTube/Spotify embed iframes: set a valid Referer header so
+    // external embed providers don't reject requests from file:// origins (#237).
+    session.defaultSession.webRequest.onBeforeSendHeaders(
+      { urls: ['https://*.youtube.com/*', 'https://*.youtube-nocookie.com/*', 'https://*.googlevideo.com/*', 'https://*.spotify.com/*'] },
+      (details, callback) => {
+        const headers = { ...details.requestHeaders };
+        headers['Referer'] = 'https://www.youtube.com/';
+        headers['Origin'] = 'https://www.youtube.com';
+        callback({ requestHeaders: headers });
+      }
+    );
+
+    // Allow media/DRM permissions required by embedded players.
+    session.defaultSession.setPermissionRequestHandler((_webContents, permission, callback) => {
+      const allowed = ['media', 'mediaKeySystem', 'fullscreen', 'clipboard-read', 'clipboard-sanitized-write'];
+      callback(allowed.includes(permission));
+    });
 
     createWindow();
 

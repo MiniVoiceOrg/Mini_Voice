@@ -78,10 +78,13 @@ export class ScreenSharePickerModal {
               ${t('screenShare.stopSharing')}
             </button>
           ` : ''}
-          <label id="share-audio-label" style="display: flex; align-items: center; gap: 6px; margin-right: auto; cursor: pointer; font-size: 0.85rem; color: var(--text-secondary);">
-            <input type="checkbox" id="chk-share-audio" style="cursor: pointer;" ${!screenAudioService.getIsTestTone() ? 'checked' : ''} />
+          <label id="share-audio-label" style="display: flex; align-items: center; gap: 8px; margin-right: auto; cursor: pointer; font-size: 0.85rem; color: var(--text-secondary);">
             <span class="material-symbols-outlined md-16">volume_up</span>
             <span id="share-audio-text">${this.activeTab === 'window' ? t('screenShare.shareAppAudio') : t('screenShare.shareAudio')}</span>
+            <label class="toggle-switch" style="margin-left: 4px;">
+              <input type="checkbox" id="chk-share-audio" ${!screenAudioService.getIsTestTone() ? 'checked' : ''} />
+              <span class="toggle-slider"></span>
+            </label>
           </label>
           <button type="button" id="btn-cancel" class="btn btn-secondary">${t('common.cancel')}</button>
           <button type="button" id="btn-share" class="btn btn-primary" disabled>
