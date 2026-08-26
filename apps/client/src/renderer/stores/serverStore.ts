@@ -116,6 +116,11 @@ export class ServerStore {
     }
   }
 
+  public removeMemberCompletely(userId: string): void {
+    this.knownMembers.delete(userId);
+    this.removeMember(userId);
+  }
+
   public updateMember(user: UserSummary): void {
     this.addMember(user);
   }

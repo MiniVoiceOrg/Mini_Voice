@@ -23,6 +23,8 @@ import {
   ChatUploadTokenPayload,
   LIMITS,
   MessageType,
+  MemberKickPayload,
+  MemberKickedPayload,
   Permission,
   ProtocolErrorCode,
   ProtocolMessage,
@@ -152,6 +154,12 @@ export class WebSocketServer {
   private async handleMessage(session: ClientSession, message: ProtocolMessage): Promise<void> {
     const { type, requestId, payload } = message;
 
+    // A revoked session — one kicked from the server or replaced by a newer
+    // connection of the same user — must not mutate or observe any state.
+    if (session.replaced) {
+      return;
+    }
+
     // Heartbeat ping
     if (type === MessageType.PING) {
       session.isAlive = true;
@@ -278,6 +286,11 @@ export class WebSocketServer {
       case MessageType.ADMIN_MOVE_USER:
         if (!(await this.requirePermission(session, Permission.MOVE_MEMBERS, requestId))) return;
         await this.handleAdminMoveUser(session, payload as AdminMoveUserPayload, requestId);
+        break;
+
+      case MessageType.MEMBER_KICK:
+        if (!(await this.requirePermission(session, Permission.KICK_MEMBERS, requestId))) return;
+        await this.handleMemberKick(session, payload as MemberKickPayload, requestId);
         break;
 
       case MessageType.SERVER_GET_INVITE_INFO:
@@ -978,6 +991,79 @@ export class WebSocketServer {
         voiceState: joinResult.voiceState,
       },
     });
+  }
+
+  private async handleMemberKick(session: ClientSession, payload: MemberKickPayload, requestId?: string): Promise<void> {
+    if (!session.user) return;
+
+    const targetUserId = payload?.targetUserId;
+    if (!targetUserId) {
+      this.sendError(session.ws, ProtocolErrorCode.BAD_REQUEST, 'Usuário inválido.', requestId);
+      return;
+    }
+    if (targetUserId === session.user.id) {
+      this.sendError(session.ws, ProtocolErrorCode.BAD_REQUEST, 'Você não pode expulsar a si mesmo.', requestId);
+      return;
+    }
+    if (await this.permissionService.isOwner(targetUserId)) {
+      this.sendError(session.ws, ProtocolErrorCode.PERMISSION_DENIED, 'O dono do servidor não pode ser expulso.', requestId);
+      return;
+    }
+
+    const result = await this.userService.deleteMember(targetUserId);
+    if (!result.success) {
+      this.sendError(session.ws, result.errorCode ?? ProtocolErrorCode.BAD_REQUEST, result.errorMessage ?? 'Não foi possível expulsar o membro.', requestId);
+      return;
+    }
+
+    // Revoke the target's live session immediately (before any further await) so
+    // any concurrent in-flight message from them is dropped by handleMessage.
+    const targetWs = this.userSockets.get(targetUserId);
+    const targetSession = targetWs ? this.sessions.get(targetWs) : undefined;
+    if (targetSession) targetSession.replaced = true;
+
+    // Invalidate any outstanding HTTP upload tokens the member still holds.
+    this.attachmentService.revokeTokensForUser(targetUserId);
+
+    // Remove the target from any voice channel they were in.
+    const previousVoice = this.signalingService.leaveVoiceChannel(targetUserId);
+    if (previousVoice) {
+      this.broadcast({
+        type: MessageType.VOICE_USER_LEFT,
+        payload: { channelId: previousVoice.channelId, userId: targetUserId },
+      });
+    }
+
+    // Announce the removal. The initiator gets a direct reply carrying the
+    // requestId (resolving their pending request) while everyone else — the
+    // kicked user included — receives it via broadcast. Sent before closing the
+    // target socket so it still arrives.
+    const kickedPayload: MemberKickedPayload = { userId: targetUserId, nickname: result.nickname ?? '' };
+    this.send(session.ws, { type: MessageType.MEMBER_KICKED, requestId, payload: kickedPayload });
+    this.broadcast({ type: MessageType.MEMBER_KICKED, payload: kickedPayload }, session.ws);
+
+    // Cancel any pending reconnect-grace timer (the member may have been mid
+    // reconnect, in which case there is no live socket but a timer is armed).
+    const pendingTimer = this.reconnectTimers.get(targetUserId);
+    if (pendingTimer) {
+      clearTimeout(pendingTimer);
+      this.reconnectTimers.delete(targetUserId);
+    }
+
+    // Forcefully disconnect the kicked user's live session, if connected.
+    if (targetWs) {
+      this.userSockets.delete(targetUserId);
+      try {
+        targetWs.close();
+      } catch {
+        // ignore
+      }
+    }
+
+    // Role assignments were removed with the user, so refresh role state.
+    await this.broadcastRolesState();
+
+    Logger.info('NETWORK', `User ${result.nickname} was kicked from the server by ${session.user.nickname}`);
   }
 
   private handleDisconnect(session: ClientSession): void {

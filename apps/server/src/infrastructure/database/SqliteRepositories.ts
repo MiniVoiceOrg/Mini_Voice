@@ -155,6 +155,17 @@ export class SqliteUserRepository implements IUserRepository {
     this.db.prepare(`UPDATE users SET ${fields.join(', ')} WHERE id = ?`).run(...values);
   }
 
+  async delete(id: string): Promise<void> {
+    // sql.js does not enforce ON DELETE CASCADE, so related rows are removed
+    // explicitly. Chat messages are intentionally preserved (they gracefully
+    // render as an unknown author) to keep channel history intact.
+    this.db.transaction(() => {
+      this.db.prepare('DELETE FROM user_roles WHERE user_id = ?').run(id);
+      this.db.prepare('DELETE FROM mentions WHERE user_id = ?').run(id);
+      this.db.prepare('DELETE FROM users WHERE id = ?').run(id);
+    })();
+  }
+
   async listAll(): Promise<UserRecord[]> {
     return this.db.prepare(
       'SELECT id, client_id as clientId, public_key as publicKey, nickname, avatar_path as avatarPath, created_at as createdAt, last_seen_at as lastSeenAt FROM users'

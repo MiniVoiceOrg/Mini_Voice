@@ -563,9 +563,11 @@ export class ChatView {
         event.stopPropagation();
 
         const iframe = document.createElement('iframe');
-        iframe.src = embedUrl;
+        iframe.src = embedType === 'youtube' ? `${embedUrl}?autoplay=1&rel=0` : embedUrl;
         iframe.className = 'chat-embed-iframe';
-        iframe.setAttribute('sandbox', 'allow-scripts allow-same-origin allow-presentation allow-popups');
+        if (embedType !== 'youtube') {
+          iframe.setAttribute('sandbox', 'allow-scripts allow-same-origin allow-presentation allow-popups');
+        }
         iframe.setAttribute('allow', 'autoplay; encrypted-media; picture-in-picture; fullscreen');
         iframe.setAttribute('allowfullscreen', '');
 

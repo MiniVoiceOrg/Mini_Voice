@@ -13,6 +13,7 @@ export interface IUserRepository {
   findByNickname(nickname: string): Promise<UserRecord | null>;
   create(user: UserRecord): Promise<void>;
   update(id: string, updates: Partial<UserRecord>): Promise<void>;
+  delete(id: string): Promise<void>;
   findByIds(ids: string[]): Promise<UserRecord[]>;
   listAll(): Promise<UserRecord[]>;
 }

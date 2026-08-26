@@ -68,6 +68,28 @@ export class UserService {
     };
   }
 
+  public async deleteMember(
+    userId: string
+  ): Promise<{ success: boolean; errorCode?: ProtocolErrorCode; errorMessage?: string; nickname?: string }> {
+    const user = await this.userRepo.findById(userId);
+    if (!user) {
+      return {
+        success: false,
+        errorCode: ProtocolErrorCode.BAD_REQUEST,
+        errorMessage: 'Usuário não encontrado.',
+      };
+    }
+
+    if (user.avatarPath) {
+      this.avatarStorage.deleteAvatar(user.avatarPath);
+    }
+
+    await this.userRepo.delete(userId);
+    Logger.info('NETWORK', `Member ${user.nickname} (${userId}) removed from the server`);
+
+    return { success: true, nickname: user.nickname };
+  }
+
   public async updateAvatar(
     userId: string,
     avatarBase64OrDataUrl: string | null | undefined

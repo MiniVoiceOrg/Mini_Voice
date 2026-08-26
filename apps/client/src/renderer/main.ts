@@ -9,6 +9,7 @@ import {
   ChatHistoryPayload,
   ChatMessage,
   MessageType,
+  MemberKickedPayload,
   RolesListPayload,
   UserJoinedPayload,
   UserLeftPayload,
@@ -315,6 +316,18 @@ class App {
 
     appEvents.on(`message.${MessageType.USER_LEFT}`, (payload: UserLeftPayload) => {
       serverStore.removeMember(payload.userId);
+      participantManager.removeUser(payload.userId);
+      webRtcManager.removePeer(payload.userId);
+    });
+
+    appEvents.on(`message.${MessageType.MEMBER_KICKED}`, (payload: MemberKickedPayload) => {
+      if (payload.userId === serverStore.currentUser?.id) {
+        // We were removed from the server: return home with a notice.
+        appEvents.emit('network.server_shutdown', { reason: t('app.kickedFromServerMessage') });
+        networkClient.disconnect();
+        return;
+      }
+      serverStore.removeMemberCompletely(payload.userId);
       participantManager.removeUser(payload.userId);
       webRtcManager.removePeer(payload.userId);
     });

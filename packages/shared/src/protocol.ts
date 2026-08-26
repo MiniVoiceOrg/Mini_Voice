@@ -46,6 +46,7 @@ export enum MessageType {
   ADMIN_DEAFEN_USER = 'ADMIN_DEAFEN_USER',
   ADMIN_KICK_VOICE = 'ADMIN_KICK_VOICE',
   ADMIN_MOVE_USER = 'ADMIN_MOVE_USER',
+  MEMBER_KICK = 'MEMBER_KICK',
   RTC_SIGNAL = 'RTC_SIGNAL',
   PING = 'PING',
   USER_LOGOUT = 'USER_LOGOUT',
@@ -63,6 +64,7 @@ export enum MessageType {
   SERVER_SHUTDOWN = 'SERVER_SHUTDOWN',
   USER_JOINED = 'USER_JOINED',
   USER_LEFT = 'USER_LEFT',
+  MEMBER_KICKED = 'MEMBER_KICKED',
   USER_UPDATED = 'USER_UPDATED',
   USER_CONNECTION_STATE = 'USER_CONNECTION_STATE',
   CHANNEL_CREATED = 'CHANNEL_CREATED',
@@ -237,6 +239,15 @@ export interface AdminKickVoicePayload {
 export interface AdminMoveUserPayload {
   targetUserId: string;
   channelId: string;
+}
+
+export interface MemberKickPayload {
+  targetUserId: string;
+}
+
+export interface MemberKickedPayload {
+  userId: string;
+  nickname: string;
 }
 
 // Server Responses & Broadcast Payloads
