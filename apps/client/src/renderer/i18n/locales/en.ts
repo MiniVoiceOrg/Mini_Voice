@@ -367,6 +367,7 @@ export const en: TranslationMap = {
   'main.reconnectingTitle': 'Lost connection, trying to reconnect',
   'main.inVoiceChannel': 'In a voice channel',
   'main.mentionBadge': 'You were mentioned',
+  'main.unreadBadge': 'Unread messages',
   'main.rnnoiseOn': 'Noise Suppression (RNNoise): On (Click to turn off)',
   'main.rnnoiseOff': 'Noise Suppression (RNNoise): Off (Click to turn on)',
 
@@ -658,6 +659,7 @@ export const en: TranslationMap = {
   'chatSound.mentions': 'Mentions only',
   'chatSound.none': 'Mute',
   'channelMenu.notifications': 'Message notifications',
+  'channelMenu.markAsRead': 'Mark as read',
   'screenAudio.unsupportedWindows': 'Screen audio capture is not supported on this Windows version (build 19041+ required).',
   'screenAudio.noFrames': 'No audio frames were received. Native capture may have failed. Check that the selected app/screen is actually playing sound.',
   'keybind.space': 'Space',

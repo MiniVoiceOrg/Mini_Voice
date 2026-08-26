@@ -13,8 +13,30 @@ export class ServerSettingsModal {
   private shouldRemovePassword = false;
   private pendingIconBase64: string | null | undefined = undefined;
   private draggedRoleId: string | null = null;
+  private activeTab = 'general';
 
   public open(): void {
+    this.activeTab = 'general';
+    this.render();
+  }
+
+  /**
+   * Rebuilds the modal after a role/member mutation while staying on the tab the
+   * user was working in, instead of dropping them back on General (#260).
+   */
+  private reopenPreservingTab(): void {
+    const tab = this.activeTab;
+    this.render();
+    this.activeTab = tab;
+    this.applyActiveTab();
+  }
+
+  private applyActiveTab(): void {
+    const btn = this.modalEl?.querySelector<HTMLElement>(`.settings-tab-btn[data-tab="${this.activeTab}"]`);
+    btn?.click();
+  }
+
+  private render(): void {
     this.close();
     this.shouldRemovePassword = false;
     this.pendingIconBase64 = undefined;
@@ -81,15 +103,14 @@ export class ServerSettingsModal {
         <div class="settings-main-container">
           <!-- Top Header -->
           <div class="settings-content-header">
-            <button id="modal-close" class="settings-back-btn" title="${t('common.back')} (ESC)">
-              <span class="material-symbols-outlined md-18">close</span>
-              <span class="esc-hint">ESC</span>
-            </button>
             <div id="server-settings-tab-title" style="font-size: 16px; font-weight: 700; color: var(--text-primary); display: flex; align-items: center; gap: 8px;">
               <span class="material-symbols-outlined" style="color: var(--accent-primary);">tune</span>
               <span>${t('serverSettings.tabGeneral')}</span>
             </div>
-            <div></div>
+            <button id="modal-close" class="settings-back-btn" title="${t('common.back')} (ESC)">
+              <span class="material-symbols-outlined md-18">close</span>
+              <span class="esc-hint">ESC</span>
+            </button>
           </div>
 
           <!-- Form wraps body and footer -->
@@ -287,6 +308,7 @@ export class ServerSettingsModal {
     };
 
     const switchTab = (tabName: string) => {
+      this.activeTab = tabName;
       tabButtons.forEach((btn) => {
         const isTarget = btn.getAttribute('data-tab') === tabName;
         btn.classList.toggle('active', isTarget);
@@ -435,8 +457,9 @@ export class ServerSettingsModal {
 
   private renderMembersTab(): string {
     const roles = [...serverStore.roles].sort((a, b) => b.position - a.position);
-    const manageableRoles = roles.filter((role) => !role.isDefault);
-    const adminRole = roles.find((role) => role.name === 'Admin');
+    // Admin is toggled through its own action, never listed as a role (#265).
+    const manageableRoles = roles.filter((role) => !role.isDefault && !serverStore.isAdminRole(role));
+    const adminRole = serverStore.getAdminRole();
     const members = [...(serverStore.serverDetails?.members ?? [])].sort((a, b) => a.nickname.localeCompare(b.nickname));
     const canKickMembers = serverStore.hasPermission(Permission.KICK_MEMBERS);
 
@@ -543,7 +566,8 @@ export class ServerSettingsModal {
   }
 
   private renderRolesTab(): string {
-    const roles = [...serverStore.roles].sort((a, b) => b.position - a.position);
+    // Admin is a permission state, not a listable role (#265).
+    const roles = serverStore.getVisibleRoles().sort((a, b) => b.position - a.position);
     const members = serverStore.serverDetails?.members ?? [];
 
     return `
@@ -577,7 +601,6 @@ export class ServerSettingsModal {
                           <span style="width: 12px; height: 12px; border-radius: 50%; background: ${role.color || 'var(--text-muted)'}; border: 1px solid rgba(255, 255, 255, 0.12); flex-shrink: 0;"></span>
                           <span style="font-size: 13px; font-weight: 600; color: var(--text-primary); min-width: 0; overflow: hidden; text-overflow: ellipsis;">${escapeHtml(role.name)}</span>
                           ${role.isDefault ? `<span class="member-badge-you" style="background: rgba(35, 165, 90, 0.18); color: var(--success);">${t('roles.autoBadge')}</span>` : ''}
-                          ${role.name === 'Admin' ? `<span class="member-badge-you">${t('roles.adminBadge')}</span>` : ''}
                         </div>
                       </td>
                       <td style="font-size: 12px; color: var(--text-secondary);">${escapeHtml(this.describeRolePermissions(role))}</td>
@@ -850,7 +873,7 @@ export class ServerSettingsModal {
       if (editorMembersPanel) editorMembersPanel.innerHTML = this.renderRoleMembersEditorPanel(role.id);
       if (btnSave) btnSave.innerText = t('roles.updateRole');
       if (btnDelete) {
-        const isProtected = role.isDefault || role.name === 'Admin';
+        const isProtected = role.isDefault || serverStore.isAdminRole(role);
         btnDelete.disabled = isProtected && serverStore.currentUser?.id !== serverStore.ownerId;
       }
       switchEditorTab('display');
@@ -871,7 +894,9 @@ export class ServerSettingsModal {
       row.addEventListener('drop', async () => {
         const targetRoleId = row.getAttribute('data-role-id');
         if (!this.draggedRoleId || !targetRoleId || this.draggedRoleId === targetRoleId) return;
-        const ordered = [...serverStore.roles].sort((a, b) => b.position - a.position);
+        // Reorder only the roles actually listed, so the hidden Admin role never
+        // shifts around as a side effect (#262, #265).
+        const ordered = serverStore.getVisibleRoles().sort((a, b) => b.position - a.position);
         const from = ordered.findIndex((role) => role.id === this.draggedRoleId);
         const to = ordered.findIndex((role) => role.id === targetRoleId);
         if (from < 0 || to < 0) return;
@@ -883,8 +908,7 @@ export class ServerSettingsModal {
             position: ordered.length - i,
           });
         }
-        this.close();
-        this.open();
+        this.reopenPreservingTab();
       });
     });
 
@@ -911,16 +935,14 @@ export class ServerSettingsModal {
       } else {
         await networkClient.sendRequest(MessageType.ROLE_CREATE, payload);
       }
-      this.close();
-      this.open();
+      this.reopenPreservingTab();
     });
 
     btnDelete?.addEventListener('click', async () => {
       const roleId = inputId?.value?.trim();
       if (!roleId || btnDelete.disabled) return;
       await networkClient.sendRequest(MessageType.ROLE_DELETE, { roleId });
-      this.close();
-      this.open();
+      this.reopenPreservingTab();
     });
 
     this.modalEl.addEventListener('click', (event) => {
@@ -986,8 +1008,7 @@ export class ServerSettingsModal {
             const assigned = serverStore.getUserRoleIds(userId).includes(roleId);
             await networkClient.sendRequest(assigned ? MessageType.ROLE_UNASSIGN : MessageType.ROLE_ASSIGN, { userId, roleId });
           }
-          this.close();
-          this.open();
+          this.reopenPreservingTab();
         })();
         return;
       }
@@ -1006,8 +1027,7 @@ export class ServerSettingsModal {
       if (!userId || !roleId) return;
       void (async () => {
         await networkClient.sendRequest(target.checked ? MessageType.ROLE_ASSIGN : MessageType.ROLE_UNASSIGN, { userId, roleId });
-        this.close();
-        this.open();
+        this.reopenPreservingTab();
       })();
     });
   }

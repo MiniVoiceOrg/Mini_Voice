@@ -536,7 +536,11 @@ export class MainView {
         <div class="channel-item ${c.id === serverStore.activeTextChannelId && this.activeContentView === 'chat' ? 'active' : ''}" data-channel-id="${c.id}" data-channel-type="TEXT">
           <span class="material-symbols-outlined md-16 channel-icon" style="color: var(--text-muted);">tag</span>
           <span class="channel-name">${escapeHtml(c.name)}</span>
-          ${chatStore.hasMention(c.id) ? `<span class="channel-mention-badge" title="${t('main.mentionBadge')}">@</span>` : ''}
+          ${chatStore.hasMention(c.id)
+            ? `<span class="channel-mention-badge" title="${t('main.mentionBadge')}">@</span>`
+            : chatStore.hasUnread(c.id)
+              ? `<span class="channel-unread-dot" title="${t('main.unreadBadge')}"></span>`
+              : ''}
           <button class="channel-menu-btn" data-menu-channel="${c.id}" title="${t('common.moreOptions')}">
             <span class="material-symbols-outlined md-16">more_vert</span>
           </button>
@@ -754,6 +758,21 @@ export class MainView {
         icon: 'notifications',
         onClick: () => this.openChannelNotificationMenu(channelId, x, y),
       });
+
+      // Only offered when there is actually something to clear (#263).
+      if (chatStore.hasUnread(channelId) || chatStore.hasMention(channelId)) {
+        items.push({
+          label: t('channelMenu.markAsRead'),
+          icon: 'mark_chat_read',
+          onClick: () => {
+            chatStore.clearUnread(channelId);
+            if (chatStore.hasMention(channelId)) {
+              chatStore.clearMention(channelId);
+              networkClient.send(MessageType.CHAT_MENTIONS_READ, { channelId });
+            }
+          },
+        });
+      }
     }
 
     if (serverStore.hasPermission(Permission.MANAGE_CHANNELS)) {
@@ -884,7 +903,7 @@ export class MainView {
     const listEl = document.getElementById('members-list-items');
     const countEl = document.getElementById('members-count-label');
 
-    const members = serverStore.serverDetails.members;
+    const members = serverStore.getMembersInDisplayOrder();
 
     if (countEl) {
       countEl.innerText = t('main.membersCount', { count: members.length });
@@ -1220,7 +1239,12 @@ export class MainView {
       this.renderChannels();
     });
 
-    this.unbindEvents.push(u1, u2, u3, u4, u5, u6, u7, u8, u9, u10, u11, u12);
+    // Same for the unread-messages dot (#263).
+    const u13 = appEvents.on('chat.unread_updated', () => {
+      this.renderChannels();
+    });
+
+    this.unbindEvents.push(u1, u2, u3, u4, u5, u6, u7, u8, u9, u10, u11, u12, u13);
   }
 
   /** True when the given text channel is the one currently visible on screen (#14). */

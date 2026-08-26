@@ -165,6 +165,23 @@ export class ServerStore {
     return this.roles.find((role) => role.id === roleId);
   }
 
+  /**
+   * The built-in Admin role, which every server has. It is a permission state
+   * rather than a user-facing role, so it is hidden from role listings (#265).
+   */
+  public getAdminRole(): Role | undefined {
+    return this.roles.find((role) => this.isAdminRole(role));
+  }
+
+  public isAdminRole(role: Role): boolean {
+    return role.name === 'Admin';
+  }
+
+  /** Roles that should be listed and assigned as regular roles in the UI (#265). */
+  public getVisibleRoles(): Role[] {
+    return this.roles.filter((role) => !this.isAdminRole(role));
+  }
+
   public getUserRoleIds(userId: string): string[] {
     return this.userRoles.find((entry) => entry.userId === userId)?.roleIds ?? [];
   }
@@ -172,6 +189,28 @@ export class ServerStore {
   public getUserRoles(userId: string): Role[] {
     const roleIds = new Set(this.getUserRoleIds(userId));
     return this.roles.filter((role) => roleIds.has(role.id)).sort((a, b) => b.position - a.position);
+  }
+
+  /**
+   * Highest role position held by a user, used to order the member list in the
+   * sidebar according to the role ranking defined by drag-and-drop (#262).
+   * Users with no role rank last.
+   */
+  public getUserHighestRolePosition(userId: string): number {
+    return this.getUserRoles(userId).reduce(
+      (highest, role) => Math.max(highest, role.position),
+      -1
+    );
+  }
+
+  /** Members ordered by role ranking first, then alphabetically (#262). */
+  public getMembersInDisplayOrder(): UserSummary[] {
+    const members = [...(this.serverDetails?.members ?? [])];
+    return members.sort((a, b) => {
+      const diff = this.getUserHighestRolePosition(b.id) - this.getUserHighestRolePosition(a.id);
+      if (diff !== 0) return diff;
+      return a.nickname.localeCompare(b.nickname);
+    });
   }
 
   public recalculateMyPermissions(): number {

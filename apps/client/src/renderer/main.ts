@@ -373,6 +373,14 @@ class App {
           const shouldPlay = soundMode === 'all' || (soundMode === 'mentions' && isMention);
           if (shouldPlay) soundEffects.play('chat_message');
 
+          // Unread dot in the sidebar, following the same notification settings
+          // as the sound: 'none' never marks, 'mentions' only marks mentions
+          // (which render as the @-badge instead) and 'all' marks everything
+          // (#263).
+          if (shouldPlay && !this.mainView.isViewingTextChannel(message.channelId)) {
+            chatStore.markUnread(message.channelId);
+          }
+
           // Mark the text channel in the sidebar until the user opens it (#14).
           if (isMention) {
             if (this.mainView.isViewingTextChannel(message.channelId)) {

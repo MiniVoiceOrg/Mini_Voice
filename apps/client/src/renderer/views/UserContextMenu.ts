@@ -38,7 +38,9 @@ export class UserContextMenu {
     const targetState = participantManager.get(user.id)?.voiceState;
     const voiceChannels = (serverStore.serverDetails?.channels ?? []).filter((channel) => channel.type === 'VOICE');
     const roleIds = new Set(serverStore.getUserRoleIds(user.id));
-    const manageableRoles = serverStore.roles.filter((role) => !role.isDefault).sort((a, b) => b.position - a.position);
+    const manageableRoles = serverStore.roles
+      .filter((role) => !role.isDefault && !serverStore.isAdminRole(role))
+      .sort((a, b) => b.position - a.position);
 
     const canMuteMembers = !!targetState && serverStore.hasPermission(Permission.MUTE_MEMBERS);
     const canDeafenMembers = !!targetState && serverStore.hasPermission(Permission.DEAFEN_MEMBERS);
@@ -100,13 +102,22 @@ export class UserContextMenu {
         ${canDeafenMembers ? `<button type="button" class="btn btn-secondary" data-action="server-deafen">${targetState?.serverDeafened ? t('userMenu.serverUndeafen') : t('userMenu.serverDeafen')}</button>` : ''}
         ${canKickMembers ? `<button type="button" class="btn btn-secondary" data-action="kick-voice">${t('userMenu.kickFromVoice')}</button>` : ''}
         ${canMoveMembers ? `
-          <div style="display: flex; flex-direction: column; gap: 6px;">
-            <span style="font-size: 12px; color: var(--text-secondary);">${t('userMenu.moveToChannel')}</span>
-            ${voiceChannels.map((channel) => `
-              <button type="button" class="btn btn-secondary" data-action="move-user" data-channel-id="${channel.id}">
-                ${escapeHtml(channel.name)}
-              </button>
-            `).join('')}
+          <div class="ctx-submenu-wrap">
+            <button type="button" class="btn btn-secondary ctx-submenu-trigger">
+              <span style="display: inline-flex; align-items: center; gap: 8px; width: 100%;">
+                <span class="material-symbols-outlined md-16">move_down</span>
+                <span>${t('userMenu.moveToChannel')}</span>
+                <span class="material-symbols-outlined md-16" style="margin-left: auto;">chevron_right</span>
+              </span>
+            </button>
+            <div class="ctx-submenu">
+              ${voiceChannels.map((channel) => `
+                <button type="button" class="ctx-submenu-item" data-action="move-user" data-channel-id="${channel.id}">
+                  <span class="material-symbols-outlined md-16">volume_up</span>
+                  <span>${escapeHtml(channel.name)}</span>
+                </button>
+              `).join('')}
+            </div>
           </div>
         ` : ''}
         ${canManageRoles ? `
@@ -169,6 +180,19 @@ export class UserContextMenu {
 
       wrap.classList.toggle('flip-left', needsFlip);
     });
+  }
+
+  /**
+   * Nudges an open submenu up when it would run past the bottom of the window,
+   * which long voice-channel lists easily do (#258).
+   */
+  private syncSubmenuVerticalOffset(wrap: HTMLElement): void {
+    const submenu = wrap.querySelector<HTMLElement>('.ctx-submenu');
+    if (!submenu) return;
+
+    submenu.style.top = '0px';
+    const overflow = submenu.getBoundingClientRect().bottom - (window.innerHeight - 12);
+    if (overflow > 0) submenu.style.top = `${-overflow}px`;
   }
 
   private getVolumeIcon(volume: number): string {
@@ -235,12 +259,19 @@ export class UserContextMenu {
     this.menuEl.querySelector('#ctx-vol-0')?.addEventListener('click', () => this.applyVolume(user, 0));
     this.menuEl.querySelector('#ctx-vol-50')?.addEventListener('click', () => this.applyVolume(user, 50));
     this.menuEl.querySelector('#ctx-vol-100')?.addEventListener('click', () => this.applyVolume(user, 100));
-    const submenuWrap = this.menuEl.querySelector('.ctx-submenu-wrap') as HTMLElement | null;
-    const submenuTrigger = this.menuEl.querySelector('.ctx-submenu-trigger') as HTMLButtonElement | null;
-    submenuTrigger?.addEventListener('click', (e) => {
-      e.preventDefault();
-      e.stopPropagation();
-      submenuWrap?.classList.toggle('open');
+    // Each submenu toggles on click and closes its siblings, so opening "Move"
+    // never leaves "Roles" hanging open next to it (#258).
+    this.menuEl.querySelectorAll<HTMLElement>('.ctx-submenu-wrap').forEach((wrap) => {
+      const trigger = wrap.querySelector<HTMLButtonElement>('.ctx-submenu-trigger');
+      trigger?.addEventListener('click', (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        const willOpen = !wrap.classList.contains('open');
+        this.menuEl?.querySelectorAll('.ctx-submenu-wrap').forEach((other) => other.classList.remove('open'));
+        wrap.classList.toggle('open', willOpen);
+        if (willOpen) this.syncSubmenuVerticalOffset(wrap);
+      });
+      wrap.addEventListener('mouseenter', () => this.syncSubmenuVerticalOffset(wrap));
     });
 
     this.menuEl.querySelector('[data-action="server-mute"]')?.addEventListener('click', () => {

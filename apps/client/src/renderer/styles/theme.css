@@ -880,6 +880,17 @@ input:focus, textarea:focus, select:focus {
   line-height: 1;
 }
 
+/* Discreet unread-messages indicator; the @-mention badge takes its place
+   whenever both apply (#263). */
+.channel-unread-dot {
+  flex-shrink: 0;
+  margin-left: auto;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background-color: var(--text-primary);
+}
+
 .channel-delete-btn {
   display: none;
   align-items: center;
@@ -969,11 +980,24 @@ input:focus, textarea:focus, select:focus {
   border-radius: var(--radius-sm);
   font-size: 13px;
   color: var(--text-secondary);
+  cursor: pointer;
+  transition: background-color 0.12s, color 0.12s;
 }
 
 .voice-participant-mini.speaking {
   color: var(--success);
   font-weight: 600;
+}
+
+/* Same background/text highlight the channel rows use (#267). */
+.voice-participant-mini:hover {
+  background-color: var(--bg-panel);
+  color: var(--text-primary);
+}
+
+/* Speaking users keep their accent colour while hovered. */
+.voice-participant-mini.speaking:hover {
+  color: var(--success);
 }
 
 .voice-mini-avatar {
@@ -3823,14 +3847,14 @@ button[data-loading="1"]::after {
 
 .settings-content-header {
   display: grid;
-  grid-template-columns: auto minmax(0, 1fr) auto;
+  grid-template-columns: minmax(0, 1fr) auto;
   align-items: center;
   gap: 12px;
   padding: 14px 24px;
   border-bottom: 1px solid var(--border-color);
 }
 
-.settings-content-header > :nth-child(2) {
+.settings-content-header > :first-child {
   min-width: 0;
 }
 
@@ -4317,6 +4341,11 @@ button[data-loading="1"]::after {
   flex-direction: column;
   gap: 2px;
   z-index: 10001;
+  /* Servers can have dozens of voice channels, so the list scrolls instead of
+     running past the window (#258). */
+  max-height: 320px;
+  overflow-y: auto;
+  overscroll-behavior: contain;
 }
 .ctx-submenu-wrap:hover > .ctx-submenu,
 .ctx-submenu-wrap.open > .ctx-submenu {

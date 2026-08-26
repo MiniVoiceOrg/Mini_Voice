@@ -1108,17 +1108,13 @@ export class VoiceStageView {
 
   private async handleStopStreaming(): Promise<void> {
     if (voiceStore.isScreenSharing) {
-      const confirmed = await showConfirm({
-        title: t('stage.stopSharingTitle'),
-        message: t('stage.stopSharingMessage'),
-        confirmLabel: t('stage.stop'),
-        variant: 'warning',
-      });
-      if (!confirmed) return;
       videoService.stopScreenShare();
       await webRtcManager.setLocalScreenTrack(null);
       voiceStore.setScreenSharing(false);
       networkClient.send(MessageType.VOICE_STATE_UPDATE, { isScreenSharing: false });
+      if (screenAudioService.getIsCapturing()) {
+        await screenAudioService.stop();
+      }
     } else if (voiceStore.isCameraOn) {
       videoService.stopCamera();
       await webRtcManager.setLocalCameraTrack(null);
@@ -1224,8 +1220,8 @@ export class VoiceStageView {
       // Show a loading state until the picker modal is actually open (#48).
       setButtonLoading(btnScreen, true);
       window.setTimeout(() => setButtonLoading(btnScreen, false), 10000);
-      // Always open the picker: when not sharing, to start; when already sharing,
-      // to switch source or stop (handled inside the modal).
+      // Always open the picker: when not sharing, to start; when already
+      // sharing, to switch source. Stopping lives on the dedicated button (#264).
       appEvents.emit('modal.open_screenshare_picker');
     });
 

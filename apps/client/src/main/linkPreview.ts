@@ -31,15 +31,6 @@ function detectEmbedProvider(url: string): 'youtube' | 'spotify' | null {
   return null;
 }
 
-function extractYouTubeId(url: string): string | null {
-  try {
-    const u = new URL(url);
-    if (u.hostname.includes('youtube.com')) return u.searchParams.get('v');
-    if (u.hostname === 'youtu.be') return u.pathname.slice(1).split('?')[0] || null;
-  } catch {}
-  return null;
-}
-
 function extractSpotifyInfo(url: string): { type: string; id: string } | null {
   try {
     const u = new URL(url);
@@ -76,12 +67,11 @@ async function fetchOEmbed(rawUrl: string, provider: 'youtube' | 'spotify'): Pro
           const data = JSON.parse(Buffer.concat(chunks).toString('utf8'));
 
           let embedUrl: string | undefined;
-          if (provider === 'youtube') {
-            const videoId = extractYouTubeId(rawUrl);
-            if (videoId && /^[a-zA-Z0-9_-]{11}$/.test(videoId)) {
-              embedUrl = `https://www.youtube-nocookie.com/embed/${videoId}`;
-            }
-          } else {
+          // YouTube is intentionally not embedded: its player rejects the app's
+          // file:// origin (errors 152/153), so YouTube links keep the regular
+          // rich preview and open in the default browser like any other link
+          // (#266).
+          if (provider === 'spotify') {
             const info = extractSpotifyInfo(rawUrl);
             if (info) {
               embedUrl = `https://open.spotify.com/embed/${info.type}/${info.id}`;
@@ -95,7 +85,7 @@ async function fetchOEmbed(rawUrl: string, provider: 'youtube' | 'spotify'): Pro
             image: data.thumbnail_url || undefined,
             siteName: data.provider_name || (provider === 'youtube' ? 'YouTube' : 'Spotify'),
             favicon: undefined,
-            embedType: provider,
+            embedType: embedUrl ? provider : undefined,
             embedUrl,
           });
         } catch {
