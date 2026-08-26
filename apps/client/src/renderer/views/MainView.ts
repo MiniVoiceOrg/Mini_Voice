@@ -137,7 +137,7 @@ export class MainView {
                   <span class="material-symbols-outlined md-18">${voiceStore.getEffectiveDeafened() ? 'headset_off' : 'headphones'}</span>
                 </button>
                 <button id="bar-btn-settings" class="btn btn-icon" title="${t('connection.settingsTitle')}">
-                  <span class="material-symbols-outlined md-18">tune</span>
+                  <span class="material-symbols-outlined md-18">settings</span>
                 </button>
                 <button id="bar-btn-disconnect" class="btn btn-icon" style="color: var(--danger);" title="${t('main.disconnectTitle')}">
                   <span class="material-symbols-outlined md-18">logout</span>
