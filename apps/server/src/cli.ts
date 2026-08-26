@@ -52,9 +52,9 @@ Uso:
   monky roles unassign     Remove cargo de membro (interativo)
   monky roles delete       Remove um cargo (interativo)
   monky config             Mostra configuração do servidor
-  monky config set [k] [v] Altera uma configuração (interativo se sem args)
-  monky update             Atualiza o servidor para a última versão
-  monky update --check     Apenas verifica se há atualização
+  monky update             Atualiza o servidor para a última versão estável
+  monky update --beta      Atualiza o servidor para a última versão (incluindo beta)
+  monky update --check     Apenas verifica se há atualização (adicione --beta para checar betas)
   monky destroy            Apaga todos os dados do servidor (irreversível)
 
 Opções globais:

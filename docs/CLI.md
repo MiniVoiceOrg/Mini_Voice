@@ -435,12 +435,16 @@ Depois pergunta o novo valor com o valor atual como sugestão.
 
 ### `monky update`
 
-Atualiza o servidor Monky para a versão mais recente.
+Atualiza o servidor Monky para a versão mais recente (estável ou beta).
 
 #### Verificar se há atualização
 
 ```bash
+# Canal estável
 monky update --check
+
+# Incluindo canal beta/pré-release
+monky update --check --beta
 ```
 
 Consulta a API do GitHub Releases e compara com a versão local.
@@ -448,17 +452,24 @@ Consulta a API do GitHub Releases e compara com a versão local.
 #### Atualizar
 
 ```bash
+# Atualizar para a última versão estável
 monky update
+
+# Atualizar para a última versão beta
+monky update --beta
 ```
 
 O comando:
 
-1. Verifica a versão mais recente no GitHub.
+1. Verifica a versão mais recente no GitHub (canal estável ou beta).
 2. Pede confirmação.
-3. Executa `git pull --ff-only`.
-4. Executa `npm install`.
-5. Executa `npm run build`.
-6. Se o servidor estiver rodando, pergunta se deseja reiniciar.
+3. Se instalado via repositório Git:
+   - Executa `git pull` (ou checkout da tag beta correspondente).
+   - Executa `npm install`.
+   - Executa `npm run build:server` (compila apenas `@monky/shared` e o servidor, sem buildar o client gráfico).
+4. Se instalado standalone (`npm install -g monky-cli-*.tgz`):
+   - Atualiza o pacote global do npm baixando o tarball oficial da release.
+5. Se o servidor estiver rodando via PM2, pergunta se deseja reiniciar.
 
 #### Atualização automática
 
