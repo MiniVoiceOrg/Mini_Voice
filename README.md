@@ -26,6 +26,7 @@
 - [Configurações que valem a pena ajustar](#️-configurações-que-valem-a-pena-ajustar)
 - [Hospedar num VPS (ou Linux/Docker)](#-hospedar-num-vps-ou-linuxdocker)
 - [Administração via CLI](#-administração-via-cli)
+- [Monky Server (painel gráfico do anfitrião)](#️-monky-server-painel-gráfico-do-anfitrião)
 - [Problemas comuns](#-problemas-comuns)
 - [Recursos em resumo](#-recursos-em-resumo)
 - [Roadmap & Votação](#️-roadmap--votação)
@@ -257,7 +258,19 @@ Abra pelo ícone de engrenagem (na tela de conexão ou na barra inferior).
 ## 🖧 Hospedar num VPS (ou Linux/Docker)
 
 Se você quer o servidor no ar 24/7, rode só o servidor (sem interface gráfica)
-numa máquina Linux. Requer **Node.js 20 ou superior** (a CI do projeto usa a 22):
+numa máquina Linux. Requer **Node.js 20 ou superior** (a CI do projeto usa a 22).
+
+Instale o **Monky CLI** direto da release — sem clonar nem compilar nada:
+
+```bash
+npm install -g https://github.com/MonkyOrg/Monky/releases/download/v2.3.0/monky-cli-2.3.0.tgz
+```
+
+> Troque `v2.3.0` pela versão desejada; a lista está na
+> [página de releases](https://github.com/MonkyOrg/Monky/releases).
+
+<details>
+<summary>Prefere instalar a partir do código-fonte?</summary>
 
 ```bash
 git clone https://github.com/MonkyOrg/Monky.git
@@ -267,10 +280,12 @@ npm run build
 npm install -g ./apps/server
 ```
 
+</details>
+
 ### Configuração inicial com o CLI
 
-Toda administração do servidor em VPS é feita pelo **Monky CLI**. Depois do
-`npm install -g ./apps/server`, use o comando `monky` de qualquer lugar.
+Toda administração do servidor em VPS é feita pelo **Monky CLI**. Depois da
+instalação, use o comando `monky` de qualquer lugar.
 
 O CLI é **interativo** — basta executar o comando e ele faz as perguntas
 necessárias:
@@ -322,6 +337,33 @@ monky --help           # todas as opções
 > A mídia P2P usa servidores STUN públicos para atravessar o NAT. Não há
 > servidor TURN: em redes muito restritas (CGNAT dos dois lados, redes
 > corporativas), a saída mais simples é todo mundo entrar numa VPN.
+
+---
+
+## 🖥️ Monky Server (painel gráfico do anfitrião)
+
+Quem prefere administrar o servidor sem terminal pode usar o **Monky Server**,
+um aplicativo desktop dedicado a quem hospeda. Ele faz o mesmo que o CLI, só que
+com interface gráfica.
+
+Baixe o instalador na
+[página de releases](https://github.com/MonkyOrg/Monky/releases) — os arquivos
+começam com `Monky-Server-`:
+
+| Sistema | Arquivo |
+|---|---|
+| Windows | `Monky-Server-<versão>-win-x64-setup.exe` (ou a versão portátil) |
+| macOS | `Monky-Server-<versão>-mac-<arch>.dmg` |
+
+São quatro telas:
+
+- **Dashboard** — estado do servidor, uso de disco e botões de iniciar/parar.
+- **Members** — membros cadastrados, cargos e permissões.
+- **Settings** — nome do servidor, porta, limite de usuários e pasta de dados.
+- **Logs** — saída do servidor em tempo real.
+
+> O Monky Server é para quem **hospeda**. Para conversar com os amigos, use o
+> aplicativo Monky normal.
 
 ---
 
@@ -447,10 +489,12 @@ precisa de **Python 3.11** e das **Build Tools do Visual Studio (MSVC)**.
 
 ```bash
 npm install          # instala todos os workspaces
-npm run build        # compila shared + server + client
+npm run build        # compila shared + server + client + server-gui
 npm start            # abre o app Electron
 npm test             # roda os testes de todos os workspaces
 npm run package      # gera o executável/ZIP em release/
+npm run dist:server-gui  # gera o instalador do Monky Server em release-server/
+npm run pack:cli     # gera o tarball do CLI em release/
 ```
 
 Estrutura do repositório:
@@ -461,7 +505,8 @@ Monky/
 │   └── shared/                 # Protocolo, modelos, constantes e validadores
 ├── apps/
 │   ├── server/                 # Servidor Node.js + WebSocket + SQLite (Clean Architecture)
-│   └── client/                 # App Electron (main + preload + renderer)
+│   ├── client/                 # App Electron (main + preload + renderer)
+│   └── server-gui/             # App Electron do anfitrião (Monky Server)
 ├── package.json                # Workspaces NPM
 └── tsconfig.base.json          # Configuração base do TypeScript
 ```

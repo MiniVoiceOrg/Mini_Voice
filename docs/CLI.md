@@ -22,23 +22,38 @@ usado pelo servidor e funciona em dois modos:
 - Node.js 18+
 - npm
 
-### Compilar o monorepo
+### Instalar a partir da release (recomendado)
+
+Não é preciso clonar nem compilar nada. Cada release publica um pacote
+`monky-cli-<versão>.tgz` pronto para instalação global:
+
+```bash
+npm install -g https://github.com/MonkyOrg/Monky/releases/download/v2.3.0/monky-cli-2.3.0.tgz
+```
+
+> Troque `v2.3.0` pela versão desejada. A lista completa está na
+> [página de releases](https://github.com/MonkyOrg/Monky/releases).
+
+Depois disso, `monky` fica disponível globalmente no terminal — de qualquer
+pasta, sem `npx`. Confira com:
+
+```bash
+monky --help
+```
+
+Para atualizar, basta instalar a URL da versão nova por cima.
+
+### Instalar a partir do código-fonte
+
+Útil para desenvolvimento ou para rodar uma versão ainda não publicada:
 
 ```bash
 git clone https://github.com/MonkyOrg/Monky.git
 cd Monky
 npm install
 npm run build
-```
-
-### Instalar como comando do sistema
-
-```bash
 npm install -g ./apps/server
 ```
-
-Depois disso, `monky` fica disponível globalmente no terminal — de qualquer
-pasta, sem `npx`.
 
 ### Formas alternativas de execução
 

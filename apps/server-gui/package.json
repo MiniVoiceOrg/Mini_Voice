@@ -3,17 +3,90 @@
   "version": "2.0.0-beta.19",
   "private": true,
   "main": "dist/main/main.js",
+  "description": "Monky Server GUI - desktop host application",
+  "author": "MonkyOrg",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/MonkyOrg/Monky.git"
+  },
   "scripts": {
     "dev": "electron .",
-    "build": "tsc"
+    "build": "tsc",
+    "test": "echo Server GUI has no unit tests",
+    "package": "electron-builder --win --dir",
+    "dist": "electron-builder --win"
   },
-  "description": "Monky Server GUI - desktop host application",
   "dependencies": {
     "@monky/server": "*",
     "@monky/shared": "*"
   },
   "devDependencies": {
-    "electron": "^34.3.0",
+    "electron": "34.2.0",
+    "electron-builder": "^25.1.8",
     "typescript": "^5.5.0"
+  },
+  "build": {
+    "appId": "com.monky.server",
+    "productName": "Monky Server",
+    "electronVersion": "34.2.0",
+    "asar": false,
+    "directories": {
+      "output": "../../release-server",
+      "buildResources": "build"
+    },
+    "detectUpdateChannel": false,
+    "files": [
+      "dist/**/*",
+      "src/renderer/**/*",
+      "!src/renderer/**/*.ts",
+      "build/**/*",
+      "package.json"
+    ],
+    "win": {
+      "icon": "build/icon.ico",
+      "target": [
+        {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        },
+        {
+          "target": "portable",
+          "arch": [
+            "x64"
+          ]
+        }
+      ]
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "artifactName": "Monky-Server-${version}-win-${arch}-setup.${ext}"
+    },
+    "portable": {
+      "artifactName": "Monky-Server-${version}-win-${arch}-portable.${ext}"
+    },
+    "mac": {
+      "icon": "build/icon.png",
+      "category": "public.app-category.developer-tools",
+      "artifactName": "Monky-Server-${version}-mac-${arch}.${ext}",
+      "target": [
+        {
+          "target": "dmg",
+          "arch": [
+            "x64",
+            "arm64"
+          ]
+        },
+        {
+          "target": "zip",
+          "arch": [
+            "x64",
+            "arm64"
+          ]
+        }
+      ]
+    }
   }
 }

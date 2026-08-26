@@ -22,23 +22,38 @@ database used by the server and works in two modes:
 - Node.js 18+
 - npm
 
-### Build the monorepo
+### Install from a release (recommended)
+
+No need to clone or build anything. Every release publishes a
+`monky-cli-<version>.tgz` package ready for a global install:
+
+```bash
+npm install -g https://github.com/MonkyOrg/Monky/releases/download/v2.3.0/monky-cli-2.3.0.tgz
+```
+
+> Replace `v2.3.0` with the version you want. The full list is on the
+> [releases page](https://github.com/MonkyOrg/Monky/releases).
+
+After that, `monky` is available globally in the terminal — from any
+directory, no `npx` needed. Check it with:
+
+```bash
+monky --help
+```
+
+To upgrade, just install the new version's URL over it.
+
+### Install from source
+
+Useful for development or to run a version that has not been published yet:
 
 ```bash
 git clone https://github.com/MonkyOrg/Monky.git
 cd Monky
 npm install
 npm run build
-```
-
-### Install as a system command
-
-```bash
 npm install -g ./apps/server
 ```
-
-After that, `monky` is available globally in the terminal — from any
-directory, no `npx` needed.
 
 ### Alternative execution methods
 

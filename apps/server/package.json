@@ -8,8 +8,8 @@
     "monky": "./dist/cli.js"
   },
   "scripts": {
-    "build": "tsc",
-    "dev": "tsc --watch",
+    "build": "tsc && node scripts/copy-migrations.js",
+    "dev": "node scripts/copy-migrations.js && tsc --watch",
     "start": "node dist/index.js",
     "cli": "node dist/cli.js",
     "test": "node dist/test-server.js",

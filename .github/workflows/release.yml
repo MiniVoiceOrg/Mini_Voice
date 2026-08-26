@@ -105,21 +105,13 @@ jobs:
       - name: Build workspaces
         run: npm run build
 
-      # tsc does not copy the .sql migration files into the compiled server
-      # output, so we copy them next to the compiled DatabaseConnection.js. This
-      # ensures the migrations are bundled inside the packaged @monky/server.
-      - name: Copy database migrations into server dist
-        shell: bash
-        run: |
-          mkdir -p apps/server/dist/infrastructure/database/migrations
-          cp apps/server/src/infrastructure/database/migrations/*.sql \
-             apps/server/dist/infrastructure/database/migrations/
-
       - name: Set build version
         shell: bash
         run: |
           VERSION="${{ needs.version.outputs.version }}"
-          node -e "const f='apps/client/package.json';const p=require('./'+f);p.version='${VERSION}';require('fs').writeFileSync(f, JSON.stringify(p, null, 2)+'\n');"
+          for f in apps/client/package.json apps/server-gui/package.json; do
+            node -e "const f='$f';const p=require('./'+f);p.version='${VERSION}';require('fs').writeFileSync(f, JSON.stringify(p, null, 2)+'\n');"
+          done
           echo "Packaged version set to ${VERSION}"
 
       - name: Build ${{ matrix.platform }} distributables
@@ -129,6 +121,34 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           npm_config_node_gyp: ${{ env.NODE_GYP_PATH || '' }}
 
+      # The Server GUI is a separate Electron app (host-side administration).
+      # It writes to release-server/ so its artifacts never collide with the
+      # Client's, which shares the same file names for update metadata.
+      # Tags cut before #284 have no electron-builder config, so a promotion of
+      # an older beta simply skips this step.
+      - name: Detect Server GUI packaging support
+        id: gui
+        shell: bash
+        run: |
+          if node -e "process.exit(require('./apps/server-gui/package.json').build ? 0 : 1)" 2>/dev/null; then
+            echo "enabled=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "enabled=false" >> "$GITHUB_OUTPUT"
+            echo "This ref predates the Server GUI distribution; skipping."
+          fi
+
+      - name: Build Server GUI ${{ matrix.platform }} distributables
+        if: steps.gui.outputs.enabled == 'true'
+        working-directory: apps/server-gui
+        run: npx --no-install electron-builder --${{ matrix.platform }} --publish never
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          npm_config_node_gyp: ${{ env.NODE_GYP_PATH || '' }}
+
+      # Each artifact keeps a single root directory on purpose: upload-artifact
+      # resolves the artifact root as the common ancestor of the search paths,
+      # so mixing release/ and release-server/ here would nest every file under
+      # those folders and break the flat paths in checksums-sha256.txt.
       - name: Upload build artifacts
         uses: actions/upload-artifact@v4
         with:
@@ -142,9 +162,70 @@ jobs:
             release/*.blockmap
             release/latest*.yml
 
+      - name: Upload Server GUI artifacts
+        if: steps.gui.outputs.enabled == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: dist-server-${{ matrix.platform }}
+          if-no-files-found: error
+          retention-days: 7
+          path: |
+            release-server/*.exe
+            release-server/*.dmg
+            release-server/*.zip
+
+  cli:
+    name: Pack CLI tarball
+    needs: version
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.version.outputs.checkout_ref }}
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      # The tarball only needs shared + server, so the Electron/native download
+      # triggered by the Client's install scripts is skipped here.
+      - name: Install dependencies
+        run: npm ci --ignore-scripts
+
+      - name: Build shared and server
+        run: |
+          npm run build --workspace=packages/shared
+          npm run build --workspace=apps/server
+
+      - name: Pack CLI
+        id: pack
+        shell: bash
+        run: |
+          # Tags cut before #285 have no packer; a promotion of an older beta
+          # simply ships without the CLI tarball instead of failing the release.
+          if [ ! -f scripts/pack-cli.js ]; then
+            echo "packed=false" >> "$GITHUB_OUTPUT"
+            echo "This ref predates the CLI tarball; skipping."
+            exit 0
+          fi
+          node scripts/pack-cli.js "${{ needs.version.outputs.version }}"
+          echo "packed=true" >> "$GITHUB_OUTPUT"
+
+      - name: Upload CLI artifact
+        if: steps.pack.outputs.packed == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: dist-cli
+          if-no-files-found: error
+          retention-days: 7
+          path: release/monky-cli-*.tgz
+
   release:
     name: Publish GitHub Release
-    needs: [version, build]
+    needs: [version, build, cli]
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -203,7 +284,7 @@ jobs:
       - name: Generate checksums and sign artifacts
         run: |
           cd artifacts
-          find . -type f \( -name '*.exe' -o -name '*.dmg' -o -name '*.zip' \) \
+          find . -type f \( -name '*.exe' -o -name '*.dmg' -o -name '*.zip' -o -name '*.tgz' \) \
             -exec sha256sum {} + | sort > checksums-sha256.txt
           echo "=== Checksums ==="
           cat checksums-sha256.txt
@@ -222,8 +303,19 @@ jobs:
             Gerada a partir de `${{ needs.version.outputs.checkout_ref }}`.
 
             ### Downloads
+
+            **Monky (aplicativo)**
             - **Windows**: instalador `.exe` (NSIS) e `.exe` portátil
             - **macOS**: `.dmg` (Intel + Apple Silicon) e `.zip`
+
+            **Monky Server (painel do host)**
+            - `Monky-Server-*` — instalador desktop para administrar o servidor pela interface gráfica
+
+            **Monky CLI**
+            - `monky-cli-${{ needs.version.outputs.version }}.tgz` — instale com:
+              ```bash
+              npm install -g https://github.com/MonkyOrg/Monky/releases/download/v${{ needs.version.outputs.version }}/monky-cli-${{ needs.version.outputs.version }}.tgz
+              ```
 
             ### Verificação de autenticidade
             Todos os artefatos são assinados com [Sigstore Cosign](https://docs.sigstore.dev/) (keyless, via OIDC do GitHub Actions).
@@ -250,6 +342,7 @@ jobs:
             artifacts/**/*.exe
             artifacts/**/*.dmg
             artifacts/**/*.zip
+            artifacts/**/*.tgz
             artifacts/**/*.blockmap
             artifacts/**/latest*.yml
             artifacts/checksums-sha256.txt
