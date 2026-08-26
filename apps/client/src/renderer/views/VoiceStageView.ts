@@ -92,6 +92,19 @@ export class VoiceStageView {
     this.render();
   }
 
+  /**
+   * Opts into a remote screen share from outside the stage (#282). Clicking the
+   * sidebar notice is itself the explicit consent required by #150, so the
+   * broadcast starts unblurred and focused. Must run after the stage DOM exists
+   * (i.e. after `setChannel`), since it re-renders the participant tiles.
+   */
+  public watchScreenShare(userId: string): void {
+    this.watchingUserIds.add(userId);
+    this.mutedScreenUserIds.delete(userId);
+    this.focusedTileKey = `${userId}:screen`;
+    this.renderParticipants();
+  }
+
   public render(): void {
     this.stopPingMonitor();
     this.stopTelemetryMonitor(false);
