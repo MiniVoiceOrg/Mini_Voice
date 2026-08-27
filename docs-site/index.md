@@ -45,6 +45,7 @@ features:
 - [Configurações](/configuracoes)
 - [Hospedar em VPS](/hospedar-em-vps)
 - [Monky CLI](/cli)
+- [Monky Light](/monky-light)
 - [Solução de Problemas](/solucao-de-problemas)
 - [Verificar Releases](/verificar-releases)
 - [Recursos](/recursos)

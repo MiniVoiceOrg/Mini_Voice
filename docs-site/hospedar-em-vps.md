@@ -4,6 +4,8 @@ Para manter o servidor no ar 24/7, rode só o servidor em uma máquina Linux —
 sem interface gráfica e sem clonar o repositório. Todo o trabalho é feito pelo
 **Monky CLI**, que é distribuído pronto em cada release.
 
+> Essa é a metade servidor da configuração de máxima performance. A outra metade é o [Monky Light](/monky-light), o cliente nativo de voz e texto.
+
 Requer **Node.js 20 ou superior** (a CI usa 22).
 
 ## Passo a passo

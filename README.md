@@ -44,10 +44,13 @@ Se o Windows/macOS mostrar aviso de segurança, veja [Instalação](https://monk
 
 Manual completo de uso e hospedagem em **[monkyorg.github.io/Monky](https://monkyorg.github.io/Monky/)** — instalação, primeiros passos, criar servidor, hospedar em VPS e solução de problemas. ([English](https://monkyorg.github.io/Monky/en/))
 
-## 🧩 Os 2 produtos
+## 🧩 Os 3 produtos
 
 - **Monky** — app cliente para conversar com amigos. Ele também hospeda o servidor, com **Monitor do Servidor** para métricas e logs ao vivo.
 - **[Monky CLI](https://monkyorg.github.io/Monky/cli)** — administração por linha de comando, ideal para VPS. Instale pela release, rode `monky create` e pronto; a mesma máquina pode hospedar quantos servidores quiser.
+- **[Monky Light](https://monkyorg.github.io/Monky/monky-light)** — cliente nativo em C++, só voz e texto, para máquina fraca ou para quem não quer dividir o PC com o jogo. *Em desenvolvimento ([#119](https://github.com/MonkyOrg/Monky/issues/119)) — ainda sem download.*
+
+> **Performance ao máximo:** **Monky CLI** de um lado (servidor sem interface gráfica) e **Monky Light** do outro (cliente sem navegador embutido).
 
 ## 🏗️ Como funciona por dentro
 

@@ -44,10 +44,13 @@ If Windows/macOS shows a security warning, see [Installation](https://monkyorg.g
 
 Full usage and hosting manual at **[monkyorg.github.io/Monky/en](https://monkyorg.github.io/Monky/en/)** — installation, getting started, creating a server, hosting on a VPS and troubleshooting. ([Português](https://monkyorg.github.io/Monky/))
 
-## 🧩 The 2 products
+## 🧩 The 3 products
 
 - **Monky** — client app for talking to friends. It also hosts the server, with a **Server Monitor** for live metrics and logs.
 - **[Monky CLI](https://monkyorg.github.io/Monky/en/cli)** — command-line administration, ideal for VPS. Install it from the release, run `monky create` and you are done; a single machine can host as many servers as you want.
+- **[Monky Light](https://monkyorg.github.io/Monky/en/monky-light)** — native C++ client, voice and text only, for weak machines or for people who won't share the PC with their game. *In development ([#119](https://github.com/MonkyOrg/Monky/issues/119)) — no download yet.*
+
+> **Maximum performance:** **Monky CLI** on one end (headless server) and **Monky Light** on the other (no embedded browser).
 
 ## 🏗️ How it works inside
 
