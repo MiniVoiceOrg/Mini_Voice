@@ -1,4 +1,4 @@
-[🏠 Home](Home) · [English](en/Criar-Seu-Servidor)
+[🏠 Home](Home) · [English](en-Criar-Seu-Servidor)
 
 # Criar Seu Servidor
 

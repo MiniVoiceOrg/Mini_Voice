@@ -1,4 +1,4 @@
-[🏠 Home](Home) · [Português](../Hospedar-em-VPS)
+[🏠 Home](en-Home) · [Português](Hospedar-em-VPS)
 
 # Host on a VPS
 

@@ -1,4 +1,4 @@
-[🏠 Home](Home) · [English](en/Solucao-de-Problemas)
+[🏠 Home](Home) · [English](en-Solucao-de-Problemas)
 
 # Solução de Problemas
 

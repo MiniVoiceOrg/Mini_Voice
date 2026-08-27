@@ -1,4 +1,4 @@
-[🏠 Home](Home) · [English](en/Monky-Server)
+[🏠 Home](Home) · [English](en-Monky-Server)
 
 # Monky Server
 

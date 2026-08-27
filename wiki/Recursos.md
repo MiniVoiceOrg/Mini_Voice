@@ -1,4 +1,4 @@
-[🏠 Home](Home) · [English](en/Recursos)
+[🏠 Home](Home) · [English](en-Recursos)
 
 # Recursos
 

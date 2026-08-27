@@ -1,4 +1,4 @@
-[🏠 Home](Home) · [Português](../Recursos)
+[🏠 Home](en-Home) · [Português](Recursos)
 
 # Features
 

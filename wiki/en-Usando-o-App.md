@@ -1,4 +1,4 @@
-[🏠 Home](Home) · [Português](../Usando-o-App)
+[🏠 Home](en-Home) · [Português](Usando-o-App)
 
 # Using the App
 

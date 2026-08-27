@@ -1,4 +1,4 @@
-[🏠 Home](Home) · [English](en/Hospedar-em-VPS)
+[🏠 Home](Home) · [English](en-Hospedar-em-VPS)
 
 # Hospedar em VPS
 

@@ -1,4 +1,4 @@
-[🏠 Home](Home) · [English](en/_Sidebar)
+[🏠 Home](Home) · [English](en-_Sidebar)
 
 # Navegação
 
@@ -14,7 +14,7 @@
 - [Solução de Problemas](Solucao-de-Problemas)
 - [Verificar Releases](Verificar-Releases)
 - [Recursos](Recursos)
-- [English](en/Home)
+- [English](en-Home)
 
 ---
 <sub>📝 Esta página é gerada a partir de [`wiki/`](https://github.com/MonkyOrg/Monky/tree/main/wiki) no repositório. Edições feitas direto na Wiki serão sobrescritas — abra um Pull Request.</sub>

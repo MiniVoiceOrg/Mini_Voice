@@ -83,22 +83,24 @@ jobs:
           check_pair "CONTRIBUTING.md" "CONTRIBUTING.en.md"
           check_pair "docs/CLI.md" "docs/CLI.en.md"
 
-          # A Wiki publicada tambem nasce deste repositorio. Como ela tem PT na
-          # raiz e EN em wiki/en, cada pagina precisa manter o par no mesmo PR.
+          # A Wiki publicada nasce deste repositorio. Paginas PT ficam na raiz
+          # (wiki/*.md sem prefixo en-) e EN ficam com prefixo en- (wiki/en-*.md).
           shopt -s nullglob
           for pt in wiki/*.md; do
             base=$(basename "$pt")
-            if [ ! -f "wiki/en/$base" ]; then
-              echo "::error file=$pt::$pt nao tem pagina correspondente em wiki/en/$base."
+            [[ "$base" == en-* ]] && continue
+            if [ ! -f "wiki/en-$base" ]; then
+              echo "::error file=$pt::$pt nao tem pagina correspondente em wiki/en-$base."
               fail=1
             fi
-            check_pair "$pt" "wiki/en/$base"
+            check_pair "$pt" "wiki/en-$base"
           done
 
-          for en in wiki/en/*.md; do
+          for en in wiki/en-*.md; do
             base=$(basename "$en")
-            if [ ! -f "wiki/$base" ]; then
-              echo "::error file=$en::$en nao tem pagina correspondente em wiki/$base."
+            pt_base="${base#en-}"
+            if [ ! -f "wiki/$pt_base" ]; then
+              echo "::error file=$en::$en nao tem pagina correspondente em wiki/$pt_base."
               fail=1
             fi
           done

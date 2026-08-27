@@ -1,4 +1,4 @@
-[🏠 Home](Home) · [Português](../Verificar-Releases)
+[🏠 Home](en-Home) · [Português](Verificar-Releases)
 
 # Verify Releases
 

@@ -1,4 +1,4 @@
-[🏠 Home](Home) · [English](en/Entrar-Em-Um-Servidor)
+[🏠 Home](Home) · [English](en-Entrar-Em-Um-Servidor)
 
 # Entrar Em Um Servidor
 

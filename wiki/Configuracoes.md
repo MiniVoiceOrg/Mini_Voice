@@ -1,4 +1,4 @@
-[🏠 Home](Home) · [English](en/Configuracoes)
+[🏠 Home](Home) · [English](en-Configuracoes)
 
 # Configurações
 

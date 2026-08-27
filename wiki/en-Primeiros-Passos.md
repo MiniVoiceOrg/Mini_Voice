@@ -1,4 +1,4 @@
-[🏠 Home](Home) · [Português](../Primeiros-Passos)
+[🏠 Home](en-Home) · [Português](Primeiros-Passos)
 
 # Getting Started
 
@@ -8,9 +8,9 @@ Before anything else, pick your **nickname** and, if you want, a **profile pictu
 
 ## Pick your path
 
-- 👥 A friend already has a server: see [Join a Server](Entrar-Em-Um-Servidor).
-- 🏠 You want to host: see [Create Your Server](Criar-Seu-Servidor).
-- 🖧 You want a 24/7 Linux/VPS server: see [Host on a VPS](Hospedar-em-VPS).
+- 👥 A friend already has a server: see [Join a Server](en-Entrar-Em-Um-Servidor).
+- 🏠 You want to host: see [Create Your Server](en-Criar-Seu-Servidor).
+- 🖧 You want a 24/7 Linux/VPS server: see [Host on a VPS](en-Hospedar-em-VPS).
 
 ---
 <sub>📝 This page is generated from [`wiki/`](https://github.com/MonkyOrg/Monky/tree/main/wiki) in the repository. Edits made directly in the Wiki will be overwritten — please open a Pull Request.</sub>

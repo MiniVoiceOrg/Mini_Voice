@@ -1,4 +1,4 @@
-[🏠 Home](Home) · [Português](../Entrar-Em-Um-Servidor)
+[🏠 Home](en-Home) · [Português](Entrar-Em-Um-Servidor)
 
 # Join a Server
 
@@ -16,7 +16,7 @@ Every server you join is saved. The dot shows whether it is **online** or **offl
 
 Fill in **Your Nickname**, **Server IP / Host**, **Port** (usually `3000`) and **Server Password** if one exists. Then click **Join Server**.
 
-If anything fails, see [Troubleshooting](Solucao-de-Problemas).
+If anything fails, see [Troubleshooting](en-Solucao-de-Problemas).
 
 ---
 <sub>📝 This page is generated from [`wiki/`](https://github.com/MonkyOrg/Monky/tree/main/wiki) in the repository. Edits made directly in the Wiki will be overwritten — please open a Pull Request.</sub>
