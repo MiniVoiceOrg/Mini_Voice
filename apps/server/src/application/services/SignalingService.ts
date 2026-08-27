@@ -58,6 +58,7 @@ export class SignalingService {
       isCameraOn: previousState?.isCameraOn ?? false,
       isScreenSharing: previousState?.isScreenSharing ?? false,
       isSharingScreenAudio: previousState?.isSharingScreenAudio ?? false,
+      screenShareIds: previousState?.screenShareIds ?? [],
     };
 
     this.voiceStates.set(userId, newState);
@@ -93,6 +94,17 @@ export class SignalingService {
       userId: current.userId,
       channelId: current.channelId,
     };
+
+    // #253: a participant may broadcast more than one screen at a time, so
+    // `screenShareIds` is the real state and `isScreenSharing` is derived from
+    // it. Normalising here keeps the two in sync regardless of which field the
+    // client sent, and keeps the boolean correct for clients that predate the
+    // list.
+    if (updates.screenShareIds !== undefined) {
+      updated.isScreenSharing = (updated.screenShareIds ?? []).length > 0;
+    } else if (updates.isScreenSharing === false) {
+      updated.screenShareIds = [];
+    }
 
     this.voiceStates.set(userId, updated);
     return updated;

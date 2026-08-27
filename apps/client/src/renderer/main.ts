@@ -26,6 +26,7 @@ import { participantManager } from './core/ParticipantManager';
 import { soundEffects } from './core/SoundEffects';
 import { soundboardService } from './core/SoundboardService';
 import { updateService } from './core/UpdateService';
+import { videoService } from './core/VideoService';
 import { webRtcManager } from './core/WebRtcManager';
 import { chatStore } from './stores/chatStore';
 import { connectionStore } from './stores/connectionStore';
@@ -508,20 +509,23 @@ class App {
     });
     appEvents.on('local.screen_stopped', () => {
       soundEffects.play('screen_share_stop');
-      // Auto-stop screen audio when screen share ends
-      if (screenAudioService.getIsCapturing()) {
+      // Auto-stop screen audio only when the last share is gone (#253).
+      if (videoService.getScreenShareCount() === 0 && screenAudioService.getIsCapturing()) {
         screenAudioService.stop();
       }
     });
 
     // The shared window/app was closed (or the OS "stop sharing" button was
-    // used): finish tearing down the screen share so peers stop seeing a
-    // frozen frame and the local controls return to the idle state (#159).
-    appEvents.on('local.screen_ended_externally', async () => {
-      if (!voiceStore.isScreenSharing) return;
-      await webRtcManager.setLocalScreenTrack(null);
-      voiceStore.setScreenSharing(false);
-      networkClient.send(MessageType.VOICE_STATE_UPDATE, { isScreenSharing: false });
+    // used): finish tearing down that one screen share so peers stop seeing a
+    // frozen frame and the local controls return to the idle state (#159, #253).
+    appEvents.on('local.screen_ended_externally', async (shareId: string) => {
+      if (!voiceStore.screenShareIds.includes(shareId)) return;
+      await webRtcManager.removeLocalScreenTrack(shareId);
+      voiceStore.removeScreenShare(shareId);
+      networkClient.send(MessageType.VOICE_STATE_UPDATE, {
+        screenShareIds: voiceStore.screenShareIds,
+        isScreenSharing: voiceStore.isScreenSharing,
+      });
     });
 
     // Host closed the server: show a friendly notice (the network layer already

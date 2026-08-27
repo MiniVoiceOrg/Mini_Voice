@@ -5,7 +5,7 @@ import { enableBackdropClose } from '../utils/modal';
 import { networkClient } from '../core/NetworkClient';
 import { screenAudioService } from '../core/ScreenAudioService';
 import { videoService } from '../core/VideoService';
-import { voiceStore } from '../stores/voiceStore';
+import { voiceStore, VoiceStore } from '../stores/voiceStore';
 import { webRtcManager } from '../core/WebRtcManager';
 import { showAlert } from './Dialog';
 import { t } from '../i18n';
@@ -81,6 +81,12 @@ export class ScreenSharePickerModal {
             </label>
           </label>
           <button type="button" id="btn-cancel" class="btn btn-secondary">${t('common.cancel')}</button>
+          ${alreadySharing && voiceStore.canAddScreenShare() ? `
+            <button type="button" id="btn-share-add" class="btn btn-secondary" disabled>
+              <span class="material-symbols-outlined md-16" style="margin-right: 4px;">add_to_queue</span>
+              ${t('screenShare.confirmAdd')}
+            </button>
+          ` : ''}
           <button type="button" id="btn-share" class="btn btn-primary" disabled>
             <span class="material-symbols-outlined md-16" style="margin-right: 4px;">present_to_all</span>
             ${alreadySharing ? t('screenShare.confirmSwitch') : t('screenShare.confirm')}
@@ -133,7 +139,9 @@ export class ScreenSharePickerModal {
 
   private attachSourceEvents(): void {
     if (!this.modalEl) return;
-    const btnShare = this.modalEl.querySelector('#btn-share') as HTMLButtonElement;
+    const confirmButtons = this.modalEl.querySelectorAll(
+      '#btn-share, #btn-share-add'
+    ) as NodeListOf<HTMLButtonElement>;
     const sourceItems = this.modalEl.querySelectorAll('.source-item');
 
     sourceItems.forEach((item) => {
@@ -141,12 +149,13 @@ export class ScreenSharePickerModal {
         sourceItems.forEach((i) => i.classList.remove('selected'));
         item.classList.add('selected');
         this.selectedSourceId = item.getAttribute('data-source-id');
-        if (btnShare) btnShare.disabled = false;
+        confirmButtons.forEach((btn) => { btn.disabled = false; });
       });
 
       item.addEventListener('dblclick', () => {
         this.selectedSourceId = item.getAttribute('data-source-id');
-        this.startSharing();
+        // Double-click keeps the historical "switch source" shortcut (#264).
+        this.startSharing('replace');
       });
     });
   }
@@ -157,18 +166,21 @@ export class ScreenSharePickerModal {
     const btnClose = this.modalEl.querySelector('#modal-close');
     const btnCancel = this.modalEl.querySelector('#btn-cancel');
     const btnShare = this.modalEl.querySelector('#btn-share') as HTMLButtonElement;
+    const btnShareAdd = this.modalEl.querySelector('#btn-share-add') as HTMLButtonElement | null;
     const tabScreen = this.modalEl.querySelector('#share-tab-screen');
     const tabWindow = this.modalEl.querySelector('#share-tab-window');
 
     btnClose?.addEventListener('click', () => this.close());
     enableBackdropClose(this.modalEl, () => this.close());
     btnCancel?.addEventListener('click', () => this.close());
-    btnShare?.addEventListener('click', () => this.startSharing());
+    btnShare?.addEventListener('click', () => this.startSharing('replace'));
+    btnShareAdd?.addEventListener('click', () => this.startSharing('add'));
 
     const switchTab = (tab: 'screen' | 'window') => {
       this.activeTab = tab;
       this.selectedSourceId = null;
       if (btnShare) btnShare.disabled = true;
+      if (btnShareAdd) btnShareAdd.disabled = true;
       tabScreen?.classList.toggle('active', tab === 'screen');
       tabWindow?.classList.toggle('active', tab === 'window');
       const audioText = this.modalEl?.querySelector('#share-audio-text');
@@ -182,25 +194,52 @@ export class ScreenSharePickerModal {
     tabWindow?.addEventListener('click', () => switchTab('window'));
   }
 
-  private async startSharing(): Promise<void> {
+  /**
+   * Starts a screen share. 'replace' keeps the historical behaviour of swapping
+   * the current source (#264); 'add' broadcasts an extra screen alongside the
+   * existing ones, up to VoiceStore.MAX_SCREEN_SHARES (#253).
+   */
+  private async startSharing(mode: 'add' | 'replace'): Promise<void> {
+    if (mode === 'add' && !voiceStore.canAddScreenShare()) {
+      await showAlert({
+        title: t('screenShare.limitTitle'),
+        message: t('screenShare.limitMessage', { max: String(VoiceStore.MAX_SCREEN_SHARES) }),
+        variant: 'warning',
+      });
+      return;
+    }
+
     try {
+      if (mode === 'replace' && voiceStore.isScreenSharing) {
+        videoService.stopScreenShare();
+        await webRtcManager.removeAllLocalScreenTracks();
+        voiceStore.setScreenSharing(false);
+      }
+
       const stream = await videoService.startScreenShare(this.selectedSourceId || undefined);
-      const track = stream.getVideoTracks()[0];
-      await webRtcManager.setLocalScreenTrack(track);
-      voiceStore.setScreenSharing(true);
+      await webRtcManager.addLocalScreenTrack(stream);
+      voiceStore.addScreenShare(stream.id);
       // Camera and screen are independent (#26) — do not disturb camera state.
-      networkClient.send(MessageType.VOICE_STATE_UPDATE, { isScreenSharing: true });
+      networkClient.send(MessageType.VOICE_STATE_UPDATE, {
+        screenShareIds: voiceStore.screenShareIds,
+        isScreenSharing: true,
+      });
 
       // Start or stop screen audio capture based on checkbox. When sharing a
       // single window, pass its source id so only that app's audio is captured.
+      // Only one share may carry system audio at a time (#253), so starting it
+      // for a new share replaces whatever was capturing before.
       const chk = this.modalEl?.querySelector('#chk-share-audio') as HTMLInputElement | null;
-      if (chk?.checked && !screenAudioService.getIsCapturing()) {
+      if (chk?.checked) {
+        if (screenAudioService.getIsCapturing()) {
+          await screenAudioService.stop();
+        }
         const audioTrack = await screenAudioService.start(this.selectedSourceId || undefined);
-        if (!audioTrack) {
+        if (audioTrack) {
+          voiceStore.setScreenAudioShare(stream.id);
+        } else {
           console.warn('[ScreenShare] Screen audio capture not available or failed to start');
         }
-      } else if (!chk?.checked && screenAudioService.getIsCapturing()) {
-        await screenAudioService.stop();
       }
 
       this.close();

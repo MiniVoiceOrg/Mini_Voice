@@ -220,6 +220,8 @@ export interface VoiceStateUpdatePayload {
   isCameraOn?: boolean;
   isScreenSharing?: boolean;
   isSharingScreenAudio?: boolean;
+  /** See VoiceParticipantState.screenShareIds (#253). */
+  screenShareIds?: string[];
 }
 
 export interface AdminMuteUserPayload {

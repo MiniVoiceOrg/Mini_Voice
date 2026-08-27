@@ -5,7 +5,8 @@ export interface ParticipantViewModel {
   user: UserSummary;
   voiceState?: VoiceParticipantState;
   remoteStream?: MediaStream;
-  remoteScreenStream?: MediaStream;
+  /** Remote screen streams keyed by share id (#253). */
+  remoteScreenStreams: Map<string, MediaStream>;
   isSpeaking: boolean;
   isReconnecting?: boolean;
 }
@@ -49,6 +50,7 @@ export class ParticipantManager {
       this.participants.set(user.id, {
         user,
         isSpeaking: false,
+        remoteScreenStreams: new Map(),
       });
     }
     this.scheduleUpdate();
@@ -97,10 +99,17 @@ export class ParticipantManager {
     }
   }
 
-  public setRemoteScreenStream(userId: string, stream: MediaStream): void {
+  public setRemoteScreenStream(userId: string, shareId: string, stream: MediaStream): void {
     const participant = this.participants.get(userId);
     if (participant) {
-      participant.remoteScreenStream = stream;
+      participant.remoteScreenStreams.set(shareId, stream);
+      this.scheduleUpdate();
+    }
+  }
+
+  public removeRemoteScreenStream(userId: string, shareId: string): void {
+    const participant = this.participants.get(userId);
+    if (participant && participant.remoteScreenStreams.delete(shareId)) {
       this.scheduleUpdate();
     }
   }

@@ -2911,6 +2911,20 @@ input:focus, textarea:focus, select:focus {
   min-height: 0;
 }
 
+/* Focus area holds one pane, or two side by side in split focus (#253). */
+.stage-focused-stack {
+  flex: 1;
+  display: flex;
+  gap: 12px;
+  min-height: 0;
+  min-width: 0;
+}
+
+.stage-focused-stack--split > .stage-focused-main {
+  flex: 1 1 0;
+  min-width: 0;
+}
+
 .stage-focused-main {
   flex: 1;
   position: relative;

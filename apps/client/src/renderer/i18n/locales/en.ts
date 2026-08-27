@@ -207,6 +207,9 @@ export const en: TranslationMap = {
   'screenShare.noScreens': 'No screen detected.',
   'screenShare.noWindows': 'No open application window was detected.',
   'screenShare.errorTitle': 'Screen sharing failed',
+  'screenShare.limitTitle': 'Screen limit reached',
+  'screenShare.confirmAdd': 'Add screen',
+  'screenShare.limitMessage': 'You are already sharing {max} screens. Stop one of them before sharing another.',
   'screenShare.errorMessage': 'Could not start screen sharing: {error}',
   'screenShare.shareAppAudio': 'Share app audio',
 
@@ -422,6 +425,8 @@ export const en: TranslationMap = {
   'stage.stopScreenShareWithAudio': 'Stop Screen Share (with audio)',
   'stage.bannerScreenWithAudio': 'Screen Share Live 🔊 with Audio • Visible to everyone in the call',
   'stage.watchBroadcast': 'Watch broadcast',
+  'stage.screenLabel': 'Screen',
+  'stage.screenLabelNumbered': 'Screen {index}',
   'stage.watchCaption': '{name} is sharing their screen',
   'stage.stopWatching': 'Stop watching',
   'stage.volumeAria': 'Volume',
