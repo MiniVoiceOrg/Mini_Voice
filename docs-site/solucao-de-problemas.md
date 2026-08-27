@@ -68,11 +68,12 @@ app insiste que falta autorização. Desligar e ligar a chave não adianta.
 
 O motivo: o macOS **não guarda essa permissão pelo nome do app**, e sim pela
 **assinatura de código** do binário. Como o Monky ainda não é assinado com um
-certificado Apple Developer ID, cada build recebe uma identidade diferente
-(assinatura *ad-hoc*). Depois de atualizar, o sistema enxerga um app com
-identidade nova, e a autorização concedida à versão anterior não se aplica a
-ele. Como o nome e o caminho continuam idênticos, a entrada antiga permanece
-listada e marcada — daí a impressão de que já está tudo liberado.
+certificado Apple Developer ID, o sistema acaba identificando o app pelo
+conteúdo do próprio binário — que muda a cada versão. Depois de atualizar, o
+macOS enxerga um app com identidade nova, e a autorização concedida à versão
+anterior não se aplica a ele. Como o nome e o caminho continuam idênticos, a
+entrada antiga permanece listada e marcada — daí a impressão de que já está tudo
+liberado.
 
 ### Como voltar a compartilhar a tela
 
