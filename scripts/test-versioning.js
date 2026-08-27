@@ -1,6 +1,15 @@
-import { bumpVersion, determineBumpType, calculateNextVersion, getNextBetaNumber, promoteBetaTag } from './calculate-version.js';
+import { bumpVersion, determineBumpType, calculateNextVersion, getNextBetaNumber, promoteBetaTag, formatBetaSuffix } from './calculate-version.js';
 
 console.log('=== Início dos Testes de Versionamento SemVer (#122) ===');
+
+// console.assert nao muda o exit code no Node: sem este contador o script
+// terminaria com sucesso mesmo com asserções quebradas e o CI nao veria nada.
+let failures = 0;
+const nativeAssert = console.assert.bind(console);
+console.assert = (condition, ...args) => {
+  if (!condition) failures += 1;
+  nativeAssert(condition, ...args);
+};
 
 // 1. Test bumpVersion
 console.assert(bumpVersion('1.0.55', 'patch') === '1.0.56', 'Patch bump: 1.0.55 -> 1.0.56');
@@ -57,8 +66,8 @@ const betaFirst = calculateNextVersion({
   channel: 'beta',
   betaNumber: 1,
 });
-console.assert(betaFirst.nextVersion === '1.8.0-beta.1', 'beta channel deve gerar 1.8.0-beta.1');
-console.assert(betaFirst.nextTag === 'v1.8.0-beta.1', 'nextTag beta deve ser v1.8.0-beta.1');
+console.assert(betaFirst.nextVersion === '1.8.0-beta001', 'beta channel deve gerar 1.8.0-beta001');
+console.assert(betaFirst.nextTag === 'v1.8.0-beta001', 'nextTag beta deve ser v1.8.0-beta001');
 console.assert(betaFirst.prerelease === true, 'beta deve marcar prerelease=true');
 console.assert(betaFirst.baseVersion === '1.8.0', 'baseVersion deve ser 1.8.0');
 
@@ -68,7 +77,31 @@ const betaPatch = calculateNextVersion({
   channel: 'beta',
   betaNumber: 3,
 });
-console.assert(betaPatch.nextVersion === '1.7.1-beta.3', 'beta patch deve gerar 1.7.1-beta.3');
+console.assert(betaPatch.nextVersion === '1.7.1-beta003', 'beta patch deve gerar 1.7.1-beta003');
+
+// O GitHub ordena a pagina de releases pelo nome da tag, entao o numero e
+// zero-padded para que a ordem textual bata com a numerica (#338).
+const beta14 = calculateNextVersion({
+  prevTag: 'v1.7.0',
+  commits: ['feat: x'],
+  channel: 'beta',
+  betaNumber: 14,
+});
+console.assert(beta14.nextTag === 'v1.8.0-beta014', 'beta 14 deve virar v1.8.0-beta014');
+console.assert(
+  ['v1.8.0-beta009', 'v1.8.0-beta014'].sort()[1] === 'v1.8.0-beta014',
+  'beta014 deve ordenar depois de beta009 alfabeticamente'
+);
+console.assert(
+  formatBetaSuffix(7) === 'beta007' && formatBetaSuffix(123) === 'beta123',
+  'formatBetaSuffix deve preencher com zeros ate 3 digitos'
+);
+// SemVer proibe zero a esquerda em identificador numerico, entao o sufixo e um
+// unico identificador alfanumerico (beta014) e nao beta.014.
+console.assert(
+  !/-beta\.\d/.test(beta14.nextVersion),
+  'o sufixo nao pode usar identificador numerico separado por ponto'
+);
 
 // Stable channel (default) permanece inalterado
 const stableStill = calculateNextVersion({ prevTag: 'v1.7.0', commits: ['fix: x'] });
@@ -77,21 +110,40 @@ console.assert(stableStill.prerelease === false, 'stable deve marcar prerelease=
 
 // getNextBetaNumber com lista de tags injetada
 console.assert(
-  getNextBetaNumber('1.8.0', ['v1.7.0', 'v1.8.0-beta.1', 'v1.8.0-beta.2']) === 3,
-  'getNextBetaNumber deve retornar 3 após beta.1 e beta.2'
+  getNextBetaNumber('1.8.0', ['v1.7.0', 'v1.8.0-beta001', 'v1.8.0-beta002']) === 3,
+  'getNextBetaNumber deve retornar 3 após beta001 e beta002'
 );
 console.assert(
-  getNextBetaNumber('1.8.0', ['v1.7.0', 'v1.9.0-beta.1']) === 1,
+  getNextBetaNumber('1.8.0', ['v1.7.0', 'v1.9.0-beta001']) === 1,
   'getNextBetaNumber deve retornar 1 quando não há beta para a base'
 );
 console.assert(
-  getNextBetaNumber('1.8.0', ['v1.8.0-beta.9', 'v1.8.0-beta.10']) === 11,
+  getNextBetaNumber('1.8.0', ['v1.8.0-beta009', 'v1.8.0-beta010']) === 11,
   'getNextBetaNumber deve tratar números corretamente (10 -> 11)'
+);
+// A contagem tem que enxergar as tags do formato antigo, senão o contador
+// reiniciaria em 1 na virada de nomenclatura (#338).
+console.assert(
+  getNextBetaNumber('1.8.0', ['v1.8.0-beta.9', 'v1.8.0-beta.14']) === 15,
+  'getNextBetaNumber deve continuar a contagem das tags no formato antigo'
+);
+console.assert(
+  getNextBetaNumber('1.8.0', ['v1.8.0-beta.14', 'v1.8.0-beta015']) === 16,
+  'getNextBetaNumber deve considerar os dois formatos ao mesmo tempo'
 );
 
 // promoteBetaTag
-console.assert(promoteBetaTag('v1.8.0-beta.3') === '1.8.0', 'promoteBetaTag deve extrair 1.8.0');
-console.assert(promoteBetaTag('1.8.0-beta.12') === '1.8.0', 'promoteBetaTag sem prefixo v');
+console.assert(promoteBetaTag('v1.8.0-beta003') === '1.8.0', 'promoteBetaTag deve extrair 1.8.0');
+console.assert(promoteBetaTag('1.8.0-beta012') === '1.8.0', 'promoteBetaTag sem prefixo v');
+console.assert(
+  promoteBetaTag('v1.8.0-beta.3') === '1.8.0',
+  'promoteBetaTag deve aceitar o formato antigo'
+);
 console.log('✔ Canal beta e promoção validados com sucesso!');
+
+if (failures > 0) {
+  console.error(`=== ${failures} asserção(ões) de versionamento falharam ===`);
+  process.exit(1);
+}
 
 console.log('=== Todos os testes de versionamento passaram com sucesso! ===');
