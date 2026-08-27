@@ -206,11 +206,29 @@ restarts, memória e CPU.
 Exibe os logs do servidor em tempo real (tail).
 
 ```bash
-monky logs
+monky logs                              # segue os logs, começando pelas últimas 100 linhas
+monky logs --lines 500                  # começa exibindo as últimas 500 linhas
+monky logs --level WARN                 # só avisos e erros
+monky logs --level ERROR --no-follow    # imprime os erros recentes e sai
 ```
 
-Pressione `Ctrl+C` para sair. Exibe as últimas 50 linhas e acompanha
-novas entradas.
+| Flag                | Descrição                                              | Padrão |
+|---------------------|--------------------------------------------------------|--------|
+| `--lines <n>`       | Quantas linhas de histórico exibir antes de acompanhar | `100`  |
+| `--level <nível>`   | Nível mínimo: `INFO`, `WARN` ou `ERROR`                | `INFO` |
+| `--no-follow`       | Imprime o histórico e encerra, sem acompanhar          | —      |
+
+`--level` filtra por nível mínimo: `INFO` mostra tudo, `WARN` mostra avisos e
+erros, `ERROR` mostra só erros. Linhas de continuação (como stack traces)
+acompanham o nível da linha acima delas.
+
+Pressione `Ctrl+C` para sair.
+
+::: tip
+`monky logs` lê os logs do servidor iniciado com `monky start`, que roda via
+PM2. Se o servidor estiver rodando dentro do app Monky, use o **Monitor do
+Servidor** no próprio app — veja [Criar Seu Servidor](/criar-seu-servidor).
+:::
 
 ---
 

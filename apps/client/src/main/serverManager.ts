@@ -1,8 +1,8 @@
 import path from 'path';
 import fs from 'fs';
-import { app } from 'electron';
-import { MonkyServer, ServerConfig } from '@monky/server';
-import type { HostServerOptions } from '@monky/shared';
+import { app, BrowserWindow } from 'electron';
+import { MonkyServer, ServerConfig, Logger } from '@monky/server';
+import type { HostServerOptions, LogEntry, ServerStats } from '@monky/shared';
 import { mt } from './i18n';
 
 export type { HostServerOptions };
@@ -12,6 +12,7 @@ export class ServerManager {
   private isRunning: boolean = false;
   private currentPort: number | null = null;
   private currentServerId: string | null = null;
+  private unsubscribeLogs: (() => void) | null = null;
 
   public async startServer(options: HostServerOptions): Promise<{ success: boolean; error?: string }> {
     if (this.isRunning && this.serverInstance) {
@@ -45,6 +46,7 @@ export class ServerManager {
       this.isRunning = true;
       this.currentPort = options.port;
       this.currentServerId = options.serverId ?? null;
+      this.startForwardingLogs();
       console.log(`[ServerManager] Local server started successfully on port ${options.port}`);
       return { success: true };
     } catch (err: any) {
@@ -60,12 +62,43 @@ export class ServerManager {
   public async stopServer(): Promise<void> {
     if (this.serverInstance) {
       console.log('[ServerManager] Stopping local server...');
+      this.unsubscribeLogs?.();
+      this.unsubscribeLogs = null;
       await this.serverInstance.stop();
       this.serverInstance = null;
       this.isRunning = false;
       this.currentPort = null;
       this.currentServerId = null;
     }
+  }
+
+  /**
+   * Streams the hosted server's log entries to the renderer as they happen, so
+   * the log view does not have to poll. The subscription is dropped on stop:
+   * starting and stopping repeatedly would otherwise stack listeners.
+   */
+  private startForwardingLogs(): void {
+    this.unsubscribeLogs?.();
+    this.unsubscribeLogs = Logger.subscribe((entry: LogEntry) => {
+      for (const window of BrowserWindow.getAllWindows()) {
+        if (!window.isDestroyed()) {
+          window.webContents.send('server-host:log', entry);
+        }
+      }
+    });
+  }
+
+  public getLogs(): LogEntry[] {
+    return Logger.getRecent();
+  }
+
+  public clearLogs(): void {
+    Logger.clearBuffer();
+  }
+
+  public async getStats(): Promise<ServerStats | null> {
+    if (!this.serverInstance) return null;
+    return this.serverInstance.getStats();
   }
 
   /**

@@ -3,12 +3,15 @@ import path from 'path';
 import fs from 'fs';
 import { RawData, WebSocket } from 'ws';
 import {
+  LIMITS,
+  LogEntry,
   MessageType,
   ProtocolErrorCode,
   ProtocolMessage,
   PROTOCOL_VERSION,
 } from '@monky/shared';
 import { MonkyServer } from './server';
+import { Logger } from './infrastructure/logger/Logger';
 import { compareVersions, pickNewestRelease } from './cli/commands/update';
 
 function withTimeout<T>(promise: Promise<T>, ms: number, label: string): Promise<T> {
@@ -350,6 +353,98 @@ async function runTests() {
       throw new Error('Teste 10: lista vazia deveria devolver null');
     }
     console.log('✔ Teste 10 passou: A release mais nova é escolhida por comparação, não pela ordem da API');
+
+    // Teste 11: o buffer do Logger e o subscribe substituem o monkey patch que
+    // o Server GUI fazia em Logger.log/warn/error para capturar os registros.
+    Logger.clearBuffer();
+    const capturados: LogEntry[] = [];
+    const cancelar = Logger.subscribe((entry) => capturados.push(entry));
+
+    Logger.info('INFO', 'mensagem de teste');
+    Logger.warn('NETWORK', 'aviso de teste');
+    Logger.error('DATABASE', 'erro de teste');
+
+    if (capturados.length !== 3) {
+      throw new Error(`Teste 11: esperava 3 entradas no subscribe, recebi ${capturados.length}`);
+    }
+    if (capturados.map((e) => e.level).join(',') !== 'INFO,WARN,ERROR') {
+      throw new Error(`Teste 11: níveis errados: ${capturados.map((e) => e.level).join(',')}`);
+    }
+    if (capturados[1].category !== 'NETWORK') {
+      throw new Error(`Teste 11: categoria errada: ${capturados[1].category}`);
+    }
+
+    // Um listener que explode nao pode derrubar o servidor nem impedir os demais.
+    const depoisDoQuebrado: LogEntry[] = [];
+    const cancelarQuebrado = Logger.subscribe(() => {
+      throw new Error('listener quebrado');
+    });
+    const cancelarSadio = Logger.subscribe((entry) => depoisDoQuebrado.push(entry));
+    Logger.info('INFO', 'apesar do listener quebrado');
+    if (depoisDoQuebrado.length !== 1) {
+      throw new Error('Teste 11: um listener com erro impediu a notificação dos outros');
+    }
+    cancelarQuebrado();
+    cancelarSadio();
+
+    // Cancelar precisa realmente remover a inscricao.
+    cancelar();
+    const antesDoCancelamento = capturados.length;
+    Logger.info('INFO', 'depois de cancelar');
+    if (capturados.length !== antesDoCancelamento) {
+      throw new Error('Teste 11: o unsubscribe não removeu o listener');
+    }
+
+    // O buffer e limitado: um servidor longo nao pode crescer sem limite.
+    Logger.clearBuffer();
+    for (let i = 0; i < LIMITS.LOG_BUFFER_SIZE + 25; i++) {
+      Logger.info('INFO', `entrada ${i}`);
+    }
+    const buffer = Logger.getRecent();
+    if (buffer.length !== LIMITS.LOG_BUFFER_SIZE) {
+      throw new Error(`Teste 11: buffer deveria ter ${LIMITS.LOG_BUFFER_SIZE} entradas, tem ${buffer.length}`);
+    }
+    if (!buffer[buffer.length - 1].message.includes(`entrada ${LIMITS.LOG_BUFFER_SIZE + 24}`)) {
+      throw new Error('Teste 11: o buffer deveria manter as entradas mais recentes');
+    }
+    if (!buffer[0].message.includes('entrada 25')) {
+      throw new Error(`Teste 11: as entradas mais antigas deveriam sair primeiro, achei "${buffer[0].message}"`);
+    }
+
+    // getRecent devolve uma copia: mexer no retorno nao pode corromper o buffer.
+    buffer.length = 0;
+    if (Logger.getRecent().length !== LIMITS.LOG_BUFFER_SIZE) {
+      throw new Error('Teste 11: getRecent() expôs o buffer interno');
+    }
+
+    Logger.clearBuffer();
+    if (Logger.getRecent().length !== 0) {
+      throw new Error('Teste 11: clearBuffer() não esvaziou o buffer');
+    }
+    console.log('✔ Teste 11 passou: Buffer e assinaturas do Logger substituem o monkey patch do Server GUI');
+
+    // Teste 12: metricas do servidor expostas sem alcancar internas por cast,
+    // que era exatamente como o Server GUI quebrava em silencio.
+    const stats = await server.getStats();
+    if (stats.port !== 3999) {
+      throw new Error(`Teste 12: esperava porta 3999, recebi ${stats.port}`);
+    }
+    if (stats.startedAt === null || stats.uptimeMs <= 0) {
+      throw new Error('Teste 12: servidor em execução deveria ter startedAt e uptime positivos');
+    }
+    if (stats.channels < 2) {
+      throw new Error(`Teste 12: esperava ao menos 2 canais (texto e voz), recebi ${stats.channels}`);
+    }
+    if (stats.members < 1) {
+      throw new Error(`Teste 12: esperava ao menos 1 membro registrado, recebi ${stats.members}`);
+    }
+    if (stats.messages < 1) {
+      throw new Error(`Teste 12: o Teste 4 enviou uma mensagem, então esperava ao menos 1, recebi ${stats.messages}`);
+    }
+    if (stats.onlineUsers > stats.maxUsers) {
+      throw new Error('Teste 12: conectados não pode passar do limite do servidor');
+    }
+    console.log('✔ Teste 12 passou: Métricas do servidor expostas por API pública (uptime, membros, canais, mensagens)');
 
     console.log('=== Todos os testes do servidor passaram com sucesso! ===');
   } finally {

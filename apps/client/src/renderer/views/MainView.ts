@@ -15,6 +15,7 @@ import { VoiceStageView } from './VoiceStageView';
 import { createChannelModal } from './CreateChannelModal';
 import { settingsModal } from './SettingsModal';
 import { serverSettingsModal } from './ServerSettingsModal';
+import { serverMonitorModal } from './ServerMonitorModal';
 import { inviteModal } from './InviteModal';
 import { contextMenu, ContextMenuItem } from './ContextMenu';
 import { showConfirm, showAlert } from './Dialog';
@@ -81,6 +82,10 @@ export class MainView {
                 <span>${t('serverSettings.title')}</span>
               </button>
               ` : ''}
+              <button id="btn-server-monitor" class="server-dropdown-item" title="${t('serverMonitor.title')}" style="display: none;">
+                <span class="material-symbols-outlined md-18">monitoring</span>
+                <span>${t('serverMonitor.title')}</span>
+              </button>
               <button id="btn-invite-friends" class="server-dropdown-item" title="${t('main.inviteTitle')}">
                 <span class="material-symbols-outlined md-18">person_add</span>
                 <span>${t('invite.title')}</span>
@@ -947,6 +952,21 @@ export class MainView {
     }
   }
 
+  private async refreshServerMonitorVisibility(): Promise<void> {
+    const btn = document.getElementById('btn-server-monitor');
+    if (!btn) return;
+
+    // Only makes sense for the server this machine is hosting (#GUI retirement).
+    let isHosting = false;
+    try {
+      const status = await window.api?.hostServerStatus?.();
+      isHosting = Boolean(status?.isRunning);
+    } catch {
+      isHosting = false;
+    }
+    btn.style.display = isHosting ? '' : 'none';
+  }
+
   private attachEvents(): void {
     this.unbindEvents.forEach((u) => u());
     this.unbindEvents = [];
@@ -955,6 +975,7 @@ export class MainView {
     const btnAddVoice = document.getElementById('btn-add-voice-channel');
     const btnInvite = document.getElementById('btn-invite-friends');
     const btnServerSettings = document.getElementById('btn-server-settings');
+    const btnServerMonitor = document.getElementById('btn-server-monitor');
     const btnProfile = document.getElementById('user-profile-btn');
     const btnSettings = document.getElementById('bar-btn-settings');
     const btnMic = document.getElementById('bar-btn-mic');
@@ -965,6 +986,8 @@ export class MainView {
     btnAddVoice?.addEventListener('click', (e) => withButtonLoading(e.currentTarget as HTMLElement, () => createChannelModal.open('VOICE')));
     btnInvite?.addEventListener('click', (e) => { this.closeServerDropdown(); withButtonLoading(e.currentTarget as HTMLElement, () => inviteModal.open()); });
     btnServerSettings?.addEventListener('click', (e) => { this.closeServerDropdown(); withButtonLoading(e.currentTarget as HTMLElement, () => serverSettingsModal.open()); });
+    btnServerMonitor?.addEventListener('click', (e) => { this.closeServerDropdown(); withButtonLoading(e.currentTarget as HTMLElement, () => serverMonitorModal.open()); });
+    void this.refreshServerMonitorVisibility();
     btnProfile?.addEventListener('click', (e) => withButtonLoading(e.currentTarget as HTMLElement, () => settingsModal.open()));
     btnSettings?.addEventListener('click', (e) => withButtonLoading(e.currentTarget as HTMLElement, () => settingsModal.open()));
 

@@ -23,3 +23,14 @@ Allow the port through the firewall, forward port `3000` (or the one you chose) 
 ## Administer
 
 Under **Server Settings** you can rename the server, change/remove the password and allow or block the soundboard. Channel headers have **+** to create and a bin icon to delete.
+
+## Server Monitor
+
+While the server is running on your machine, the app shows what is going on inside it. Open it from the **monitoring** icon next to the *Stop* button under *My Servers*, or from the **server name › Server Monitor** once you are connected.
+
+The panel shows:
+
+- **Live metrics**, refreshed every 3 seconds: uptime, people online (and the limit), registered members, channels and messages.
+- **Live logs**, with a level filter (`INFO`, `WARN`, `ERROR`), text search, auto-scroll, a button to copy what is visible and a button to clear.
+
+The app keeps the most recent entries in memory — restarting the server starts the list over. For servers running on a VPS, use [`monky logs`](/en/hospedar-em-vps).

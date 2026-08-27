@@ -44,11 +44,10 @@ If Windows/macOS shows a security warning, see [Installation](https://monkyorg.g
 
 Full usage and hosting manual at **[monkyorg.github.io/Monky/en](https://monkyorg.github.io/Monky/en/)** — installation, getting started, creating a server, hosting on a VPS and troubleshooting. ([Português](https://monkyorg.github.io/Monky/))
 
-## 🧩 The 3 products
+## 🧩 The 2 products
 
-- **Monky** — client app for talking to friends.
-- **[Monky Server](https://monkyorg.github.io/Monky/en/monky-server)** — graphical panel for hosts.
-- **[Monky CLI](docs/CLI.en.md)** — command-line administration, ideal for VPS.
+- **Monky** — client app for talking to friends. It also hosts the server, with a **Server Monitor** for live metrics and logs.
+- **[Monky CLI](https://monkyorg.github.io/Monky/en/cli)** — command-line administration, ideal for VPS.
 
 ## 🗳️ Roadmap & voting
 
@@ -69,7 +68,7 @@ npm start
 npm test
 ```
 
-Architecture and full commands live in [CONTRIBUTING.en.md](CONTRIBUTING.en.md), [docs/CLI.en.md](docs/CLI.en.md) and [docs/especificacao-tecnica.md](docs/especificacao-tecnica.md).
+Architecture and full commands live in [CONTRIBUTING.en.md](CONTRIBUTING.en.md), the [Monky CLI manual](https://monkyorg.github.io/Monky/en/cli) and [docs/especificacao-tecnica.md](docs/especificacao-tecnica.md).
 
 ## 📄 License
 

@@ -159,6 +159,18 @@ export function setupIpcHandlers(
     return serverManager.getStatus();
   });
 
+  ipcMain.handle('server-host:logs', async () => {
+    return serverManager.getLogs();
+  });
+
+  ipcMain.handle('server-host:clear-logs', async () => {
+    serverManager.clearLogs();
+  });
+
+  ipcMain.handle('server-host:stats', async () => {
+    return serverManager.getStats();
+  });
+
   ipcMain.handle('lan:start', async () => {
     await lanDiscovery.start();
   });

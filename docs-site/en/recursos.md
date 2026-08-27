@@ -10,3 +10,5 @@
 - Automatic server discovery on the local network.
 - Quality profiles: Economy, Normal, High Quality and Gaming.
 - Self-hosted server with SQLite, `scrypt` password hashing and strict avatar upload validation.
+- Server Monitor in the app: live metrics (uptime, online users, members, channels, messages) and logs with a level filter.
+- Command-line administration through the [Monky CLI](/en/cli), for VPS and headless servers.

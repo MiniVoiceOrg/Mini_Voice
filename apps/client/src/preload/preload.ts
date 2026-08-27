@@ -7,8 +7,10 @@ import type {
   HostServerOptions,
   ImageSelectionResult,
   LinkPreviewData,
+  LogEntry,
   ScreenAudioDiagnostics,
   ServerProbeResult,
+  ServerStats,
   SoundboardShortcutBinding,
   SoundboardSoundData,
   SoundboardSoundEntry,
@@ -34,6 +36,10 @@ export interface ElectronApi {
   hostServerStart: (options: HostServerOptions) => Promise<{ success: boolean; error?: string }>;
   hostServerStop: () => Promise<{ success: boolean }>;
   hostServerStatus: () => Promise<{ isRunning: boolean; port: number | null; serverId: string | null }>;
+  hostServerLogs: () => Promise<LogEntry[]>;
+  hostServerClearLogs: () => Promise<void>;
+  hostServerStats: () => Promise<ServerStats | null>;
+  onHostServerLog: (callback: (entry: LogEntry) => void) => () => void;
   getDesktopSources: () => Promise<DesktopSource[]>;
   selectImageDialog: () => Promise<ImageSelectionResult | null>;
   selectSoundFile: () => Promise<string | null>;
@@ -102,6 +108,14 @@ const api: ElectronApi = {
   hostServerStart: (options) => ipcRenderer.invoke('server-host:start', options),
   hostServerStop: () => ipcRenderer.invoke('server-host:stop'),
   hostServerStatus: () => ipcRenderer.invoke('server-host:status'),
+  hostServerLogs: () => ipcRenderer.invoke('server-host:logs'),
+  hostServerClearLogs: () => ipcRenderer.invoke('server-host:clear-logs'),
+  hostServerStats: () => ipcRenderer.invoke('server-host:stats'),
+  onHostServerLog: (callback) => {
+    const listener = (_event: unknown, entry: LogEntry) => callback(entry);
+    ipcRenderer.on('server-host:log', listener);
+    return () => ipcRenderer.removeListener('server-host:log', listener);
+  },
   getDesktopSources: () => ipcRenderer.invoke('screen-share:get-sources'),
   selectImageDialog: () => ipcRenderer.invoke('dialog:select-image'),
   selectSoundFile: () => ipcRenderer.invoke('dialog:select-sound-file'),

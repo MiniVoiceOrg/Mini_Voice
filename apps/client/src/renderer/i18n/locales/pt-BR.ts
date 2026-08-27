@@ -97,6 +97,24 @@ export const ptBR = {
   'invite.tipLoopback': '<b>Localhost:</b> Este endereço só funciona no mesmo computador onde o servidor está em execução.',
   'invite.tipCustom': '<b>Endereço personalizado:</b> Certifique-se de que o host e a porta <b>{port}</b> estão acessíveis pelos seus amigos.',
 
+  // ── Monitor do servidor hospedado (ServerMonitorModal.ts) ────────────────
+  'serverMonitor.title': 'Monitor do Servidor',
+  'serverMonitor.uptime': 'Ativo há',
+  'serverMonitor.online': 'Conectados',
+  'serverMonitor.members': 'Membros',
+  'serverMonitor.channels': 'Canais',
+  'serverMonitor.messages': 'Mensagens',
+  'serverMonitor.port': 'Porta',
+  'serverMonitor.levelAll': 'Todos',
+  'serverMonitor.searchPlaceholder': 'Filtrar logs...',
+  'serverMonitor.autoScroll': 'Rolagem automática',
+  'serverMonitor.loading': 'Carregando logs...',
+  'serverMonitor.empty': 'Nenhum log registrado ainda.',
+  'serverMonitor.noMatches': 'Nenhum log corresponde ao filtro.',
+  'serverMonitor.entryCount': 'Exibindo {shown} de {total} registros',
+  'serverMonitor.copy': 'Copiar',
+  'serverMonitor.clear': 'Limpar',
+
   // ── Chat (ChatView.ts) ───────────────────────────────────────────────────
   'chat.selectChannel': 'Selecione um canal para conversar',
   'chat.textChannelBadge': 'Canal de Texto',

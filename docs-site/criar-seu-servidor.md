@@ -23,3 +23,14 @@ Libere a porta no firewall, faça port forwarding da porta `3000` (ou a escolhid
 ## Administrar
 
 Em **Configurações do Servidor** é possível renomear o servidor, alterar/remover senha e permitir ou bloquear o soundboard. Os cabeçalhos de canais têm **+** para criar e lixeira para apagar.
+
+## Monitor do Servidor
+
+Enquanto o servidor está rodando na sua máquina, o app mostra o que está acontecendo dentro dele. Abra pelo ícone de **monitoramento** ao lado do botão *Parar*, na aba *Meus Servidores*, ou pelo **nome do servidor › Monitor do Servidor** quando já estiver conectado.
+
+O painel traz:
+
+- **Métricas ao vivo**, atualizadas a cada 3 segundos: tempo ativo, pessoas conectadas (e o limite), membros registrados, canais e mensagens.
+- **Logs em tempo real**, com filtro por nível (`INFO`, `WARN`, `ERROR`), busca por texto, rolagem automática, botão para copiar o que está visível e botão para limpar.
+
+O app guarda os registros mais recentes em memória — ao reiniciar o servidor, a lista recomeça. Para servidores rodando numa VPS, use [`monky logs`](/hospedar-em-vps).

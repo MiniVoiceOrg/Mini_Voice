@@ -44,11 +44,10 @@ Se o Windows/macOS mostrar aviso de segurança, veja [Instalação](https://monk
 
 Manual completo de uso e hospedagem em **[monkyorg.github.io/Monky](https://monkyorg.github.io/Monky/)** — instalação, primeiros passos, criar servidor, hospedar em VPS e solução de problemas. ([English](https://monkyorg.github.io/Monky/en/))
 
-## 🧩 Os 3 produtos
+## 🧩 Os 2 produtos
 
-- **Monky** — app cliente para conversar com amigos.
-- **[Monky Server](https://monkyorg.github.io/Monky/monky-server)** — painel gráfico para quem hospeda.
-- **[Monky CLI](docs/CLI.md)** — administração por linha de comando, ideal para VPS.
+- **Monky** — app cliente para conversar com amigos. Ele também hospeda o servidor, com **Monitor do Servidor** para métricas e logs ao vivo.
+- **[Monky CLI](https://monkyorg.github.io/Monky/cli)** — administração por linha de comando, ideal para VPS.
 
 ## 🗳️ Roadmap & Votação
 
@@ -69,7 +68,7 @@ npm start
 npm test
 ```
 
-A arquitetura e comandos completos ficam em [CONTRIBUTING.md](CONTRIBUTING.md), [docs/CLI.md](docs/CLI.md) e [docs/especificacao-tecnica.md](docs/especificacao-tecnica.md).
+A arquitetura e comandos completos ficam em [CONTRIBUTING.md](CONTRIBUTING.md), no [manual do Monky CLI](https://monkyorg.github.io/Monky/cli) e em [docs/especificacao-tecnica.md](docs/especificacao-tecnica.md).
 
 ## 📄 Licença
 

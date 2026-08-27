@@ -224,6 +224,13 @@ interface SqliteMessageRow {
 export class SqliteMessageRepository implements IMessageRepository {
   constructor(private db: IDatabaseDriver) {}
 
+  async countAll(): Promise<number> {
+    const row = this.db.prepare('SELECT COUNT(*) as count FROM messages').get() as
+      | { count?: number }
+      | undefined;
+    return Number(row?.count ?? 0);
+  }
+
   async create(message: MessageRecord): Promise<void> {
     this.db.prepare(
       'INSERT INTO messages (id, channel_id, user_id, content, created_at, is_system) VALUES (?, ?, ?, ?, ?, ?)'

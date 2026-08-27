@@ -3,6 +3,8 @@
  * Define as mensagens e eventos trafegados entre o Main Process e o Renderer Process.
  */
 
+import type { LogEntry } from './logging.js';
+
 export interface DesktopSource {
   id: string;
   name: string;
@@ -105,6 +107,25 @@ export interface HostServerOptions {
   serverId?: string;
 }
 
+/**
+ * Snapshot of a locally hosted server, shown to whoever is running it.
+ * Deliberately cheap to produce: it is polled by the UI.
+ */
+export interface ServerStats {
+  serverName: string;
+  port: number;
+  dataDir: string;
+  /** Epoch ms of the last successful start, or null when stopped. */
+  startedAt: number | null;
+  uptimeMs: number;
+  /** People currently connected, not sessions — one person may use several devices. */
+  onlineUsers: number;
+  maxUsers: number;
+  members: number;
+  channels: number;
+  messages: number;
+}
+
 export interface AppIdentityResult {
   publicKey: string;
   clientId: string;
@@ -140,6 +161,9 @@ export interface IpcInvokeChannels {
   'server-host:start': { args: [options: HostServerOptions]; returnType: { success: boolean; error?: string } };
   'server-host:stop': { args: []; returnType: { success: boolean } };
   'server-host:status': { args: []; returnType: { isRunning: boolean; port: number | null; serverId: string | null } };
+  'server-host:logs': { args: []; returnType: LogEntry[] };
+  'server-host:clear-logs': { args: []; returnType: void };
+  'server-host:stats': { args: []; returnType: ServerStats | null };
 
   // LAN Discovery
   'lan:start': { args: []; returnType: void };
@@ -197,6 +221,7 @@ export interface IpcEvents {
   'updater:progress': [percent: number];
   'updater:downloaded': [info: { manual: boolean }];
   'updater:error': [message: string];
+  'server-host:log': [entry: LogEntry];
 }
 
 export type IpcInvokeChannel = keyof IpcInvokeChannels;

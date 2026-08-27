@@ -300,7 +300,7 @@ fs.writeFileSync(path.join(buildDir, 'icon.ico'), icoBuf);
 
 const mac = buildMacIcon(srcLogo);
 const macPng = encodePNG(1024, 1024, mac.rgba);
-for (const target of ['../apps/client/build', '../apps/server-gui/build']) {
+for (const target of ['../apps/client/build']) {
   const dir = path.join(__dirname, target);
   fs.mkdirSync(dir, { recursive: true });
   fs.writeFileSync(path.join(dir, 'icon-mac.png'), macPng);
