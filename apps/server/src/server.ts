@@ -280,7 +280,8 @@ export class MonkyServer {
                 name: server?.name || config.serverName || 'Monky Server',
                 hasPassword: !!(server?.passwordHash && server.passwordHash.length > 0),
                 iconUrl: avatarStorage.getPublicUrl(server?.iconPath),
-                userCount: online.size,
+                // Distinct people, matching the per-person maxUsers semantics (#309).
+                userCount: seenUserIds.size,
                 maxUsers: server?.maxUsers || LIMITS.MAX_USERS_DEFAULT,
                 users,
               })

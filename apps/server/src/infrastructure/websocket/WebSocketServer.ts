@@ -121,6 +121,31 @@ export class WebSocketServer {
     return map;
   }
 
+  /**
+   * Disconnects every device of a person. Used by the server GUI host, which
+   * addresses people by user id and must not leave the other devices online
+   * (#309). Returns how many live sessions were closed.
+   */
+  public closeSessionsOfUser(userId: string): number {
+    for (const [pendingSessionId, pendingTimer] of this.reconnectTimers.entries()) {
+      if (pendingSessionId.startsWith(`${userId}:`)) {
+        clearTimeout(pendingTimer);
+        this.reconnectTimers.delete(pendingSessionId);
+      }
+    }
+
+    const targets = this.getSessionsOfUser(userId);
+    for (const target of targets) {
+      if (target.sessionId) this.sessionSockets.delete(target.sessionId);
+      try {
+        target.ws.close();
+      } catch {
+        // ignore
+      }
+    }
+    return targets.length;
+  }
+
   private setupWss(): void {
     this.wss.on('connection', (ws: WebSocket, req: http.IncomingMessage) => {
       const ip = req.socket.remoteAddress || 'unknown';
@@ -1066,25 +1091,9 @@ export class WebSocketServer {
     this.send(session.ws, { type: MessageType.MEMBER_KICKED, requestId, payload: kickedPayload });
     this.broadcast({ type: MessageType.MEMBER_KICKED, payload: kickedPayload }, session.ws);
 
-    // Cancel any pending reconnect-grace timers (a device may have been mid
-    // reconnect, with no live socket but an armed timer). Session ids are
-    // prefixed with the user id, so this catches devices with no live session.
-    for (const [pendingSessionId, pendingTimer] of this.reconnectTimers.entries()) {
-      if (pendingSessionId.startsWith(`${targetUserId}:`)) {
-        clearTimeout(pendingTimer);
-        this.reconnectTimers.delete(pendingSessionId);
-      }
-    }
-
-    // Forcefully disconnect every live session of the kicked user.
-    for (const targetSession of targetSessions) {
-      if (targetSession.sessionId) this.sessionSockets.delete(targetSession.sessionId);
-      try {
-        targetSession.ws.close();
-      } catch {
-        // ignore
-      }
-    }
+    // Cancel pending reconnect-grace timers and forcefully disconnect every
+    // live session of the kicked user.
+    this.closeSessionsOfUser(targetUserId);
 
     // Role assignments were removed with the user, so refresh role state.
     await this.broadcastRolesState();

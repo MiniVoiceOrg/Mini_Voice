@@ -188,15 +188,31 @@ export class AuthService {
     // already here must not eat another slot (#309).
     const distinctUserIds = new Set<string>();
     let sameIdentityOnline = false;
+    let otherDevicesOfIdentity = 0;
     for (const session of onlineMap.values()) {
       distinctUserIds.add(session.user.id);
-      if (session.user.clientId === pending.clientId) sameIdentityOnline = true;
+      if (session.user.clientId !== pending.clientId) continue;
+      sameIdentityOnline = true;
+      // A reconnect from the same device replaces its own session instead of
+      // adding one, so it must not count towards the device cap.
+      if (session.user.sessionId !== `${session.user.id}:${pending.deviceId}`) {
+        otherDevicesOfIdentity++;
+      }
     }
     if (!sameIdentityOnline && distinctUserIds.size >= server.maxUsers) {
       return {
         success: false,
         errorCode: ProtocolErrorCode.SERVER_FULL,
         errorMessage: `O servidor atingiu a capacidade máxima (${server.maxUsers} usuários).`,
+      };
+    }
+    // Waiving the capacity check for an already-online identity would otherwise
+    // let one person open unlimited connections, so cap their devices (#309).
+    if (otherDevicesOfIdentity >= LIMITS.MAX_SESSIONS_PER_USER) {
+      return {
+        success: false,
+        errorCode: ProtocolErrorCode.SERVER_FULL,
+        errorMessage: `Você já está conectado em ${LIMITS.MAX_SESSIONS_PER_USER} dispositivos. Desconecte um deles para entrar deste.`,
       };
     }
 
