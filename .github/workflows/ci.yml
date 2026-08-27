@@ -108,6 +108,17 @@ jobs:
           fi
           exit $fail
 
+      # Subir o PROTOCOL_VERSION faz cliente e servidor se recusarem (validators
+      # exige igualdade exata), entao e breaking change e precisa sair como
+      # major. Ja passou como `feat:` uma vez e publicou uma minor (#338).
+      - name: Mudanca de protocolo exige release major
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          PR_TITLE: ${{ github.event.pull_request.title }}
+        shell: bash
+        run: node scripts/check-protocol-bump.js
+
   build:
     name: Build check (${{ matrix.platform }})
     strategy:

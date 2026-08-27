@@ -84,8 +84,26 @@ export function getLatestSemverTag() {
 }
 
 /**
+ * Width the beta counter is zero-padded to. GitHub orders the releases page by
+ * tag name, so unpadded numbers sorted `beta.9` above `beta.14` and buried the
+ * newest build in the middle of the list (#338). Padding makes the textual
+ * order match the numeric one. SemVer forbids leading zeroes in *numeric*
+ * identifiers, hence `beta014` (a single alphanumeric identifier) instead of
+ * the invalid `beta.014`.
+ */
+export const BETA_PAD_WIDTH = 3;
+
+/** Formats a beta iteration as the zero-padded suffix used in tags (#338). */
+export function formatBetaSuffix(betaNumber) {
+  const n = Math.max(1, parseInt(betaNumber, 10) || 1);
+  return `beta${String(n).padStart(BETA_PAD_WIDTH, '0')}`;
+}
+
+/**
  * Given a base stable version (e.g. "1.8.0"), returns the next beta iteration
- * number by inspecting existing `vX.Y.Z-beta.N` git tags for that base.
+ * number by inspecting existing beta git tags for that base. Recognises both
+ * the padded `vX.Y.Z-betaNNN` form and the legacy `vX.Y.Z-beta.N` one, so the
+ * counter keeps climbing across the rename instead of restarting (#338).
  * Returns 1 when no beta exists yet for the base. A `tagList` may be injected
  * (used by tests) to avoid shelling out to git.
  */
@@ -100,7 +118,7 @@ export function getNextBetaNumber(baseVersion, tagList = null) {
       return 1;
     }
   }
-  const re = new RegExp(`^v?${clean.replace(/\./g, '\\.')}-beta\\.(\\d+)$`);
+  const re = new RegExp(`^v?${clean.replace(/\./g, '\\.')}-beta\\.?(\\d+)$`);
   let maxN = 0;
   for (const raw of tags) {
     const m = re.exec(String(raw).trim());
@@ -113,13 +131,15 @@ export function getNextBetaNumber(baseVersion, tagList = null) {
 }
 
 /**
- * Strips the `v` prefix and `-beta.N` suffix from a beta tag, yielding the clean
- * stable version to publish when promoting (e.g. "v1.8.0-beta.3" -> "1.8.0").
+ * Strips the `v` prefix and the beta suffix from a beta tag, yielding the clean
+ * stable version to publish when promoting (e.g. "v1.8.0-beta003" -> "1.8.0").
+ * Accepts the legacy `-beta.N` form too, so betas published before the rename
+ * can still be promoted (#338).
  */
 export function promoteBetaTag(betaTag) {
   return String(betaTag || '')
     .replace(/^v/, '')
-    .replace(/-beta\.\d+$/i, '')
+    .replace(/-beta\.?\d+$/i, '')
     .trim();
 }
 
@@ -160,7 +180,7 @@ export function calculateNextVersion(options = {}) {
   if (channel === 'beta') {
     const betaNumber =
       options.betaNumber != null ? options.betaNumber : getNextBetaNumber(baseVersion);
-    const nextVersion = `${baseVersion}-beta.${betaNumber}`;
+    const nextVersion = `${baseVersion}-${formatBetaSuffix(betaNumber)}`;
     return {
       prevTag,
       bumpType,

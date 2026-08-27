@@ -108,6 +108,9 @@ flowchart TD
      - **Patch** (`1.0.X`): Correções de bugs (`fix:`, `fix(...)`, `bugfix:`).
      - **Minor** (`1.X.0`): Novas funcionalidades (`feat:`, `feat(...)`, `feature:`).
      - **Major** (`X.0.0`): Breaking changes / refatorações arquiteturais (`BREAKING CHANGE:`, `feat!:`, `major:`).
+   - ⚠️ **Toda mudança de compatibilidade entre cliente e servidor é `major`.** Um cliente e um servidor com `PROTOCOL_VERSION` diferentes se recusam a conectar (`packages/shared/src/validators.ts` exige igualdade exata), então quem não atualizar os dois lados fica sem conseguir entrar. Ao mexer em `PROTOCOL_VERSION` (`packages/shared/src/constants.ts`), no formato das mensagens do WebSocket ou no schema esperado pelo outro lado, use `feat!:`/`major:` no título do PR ou um parágrafo `BREAKING CHANGE:` na mensagem de um commit. O CI (`scripts/check-protocol-bump.js`) reprova o PR que mudar o `PROTOCOL_VERSION` sem esse marcador.
+   - A versão é sempre recalculada a partir da **última tag estável** (betas são ignoradas), avaliando todos os commits desde ela. Ou seja, um único commit com marcador de breaking change eleva toda a linha em aberto para a próxima major.
+   - Betas saem como `v<MAJOR>.<MINOR>.<PATCH>-beta<NNN>` com 3 dígitos (`v3.0.0-beta001`). O zero à esquerda é obrigatório porque a página de releases do GitHub ordena pelo **nome da tag**: sem o padding, `beta9` apareceria depois de `beta14` (#338). O ponto não pode ser usado (`beta.014` é SemVer inválido).
    - ⚠️ **Só mova o card para `QA` após a release ser publicada com sucesso**, pois a validação do QA ocorre sobre o build compilado.
 9. **Não mova para Done automaticamente.** O card deve permanecer em `QA` até a validação do responsável, que solicitará a movimentação para **Done** ou o fará manualmente.
 
