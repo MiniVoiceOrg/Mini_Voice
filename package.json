@@ -42,8 +42,10 @@
   "author": "",
   "license": "MIT",
   "devDependencies": {
+    "mermaid": "^11.17.2",
     "rimraf": "^6.0.1",
     "typescript": "^5.9.3",
-    "vitepress": "^1.6.4"
+    "vitepress": "^1.6.4",
+    "vitepress-plugin-mermaid": "^2.0.17"
   }
 }

@@ -115,11 +115,22 @@ npm run dev:server   # WebSocket + SQLite server
 npm run dev:client   # Electron app with rebuild
 ```
 
-Server tests:
+Tests:
 
 ```bash
-npm run test --workspace=apps/server
+npm run test --workspace=apps/server   # server tests
+npm test                               # everything, including the versioning tests
 ```
+
+The Monky CLI lives in `apps/server/src/cli/` and is packaged separately:
+
+```bash
+npm run pack:cli     # builds the tarball that ships with the release
+```
+
+To try the CLI out without touching your real servers, point the `MONKY_HOME`
+variable at a throwaway folder — that is where the machine's server registry
+lives.
 
 ### Before you start coding
 
@@ -156,9 +167,41 @@ Branch and commit prefixes follow [Conventional Commits](https://www.conventiona
 `feat:`, `fix:`, `refactor:`, `docs:`, `chore:`, `ci:`. Reference the issue in
 the title when there is one: `fix(voice): restore microphone on undeafen (#89)`.
 
-Every PR runs the **CI** workflow, which builds and packages the app on Windows
-and macOS (`electron-builder --dir`, without publishing). That catches native
-build regressions before the merge — if it fails, the merge does not happen.
+**The commit type decides the published version** — it is not just a naming
+convention. The release workflow reads the messages since the last tag and works
+out the SemVer on its own:
+
+| Commit message | Version effect |
+|---|---|
+| `feat:`, `feature:`, `minor:` | **minor** — `1.X.0` |
+| any type with `!` (`feat!:`, `fix!:`, …), `major:`, or `BREAKING CHANGE:` in the body | **major** — `X.0.0` |
+| anything else (`fix:`, `docs:`, `chore:`, `refactor:`…) | **patch** — `1.0.X` |
+
+Note that **patch is the default**: every merge into `main` publishes some
+version, even if it is a documentation commit.
+
+If your change breaks compatibility between client and server, it **must** ship
+as a major. Labelling a breaking change as `feat:` publishes a minor, and anyone
+who updates only one of the two sides can no longer connect.
+
+### What CI checks
+
+Every PR runs the **CI** workflow. Beyond the build, it has checks that block the
+merge and tend to catch people off guard:
+
+- **Build check (win/mac)** — build and packaging with `electron-builder --dir`,
+  without publishing. Catches native build regressions before the merge.
+- **Docs traduzidos em sincronia** — every page in `docs-site/` needs its PT/EN
+  counterpart. Adding only one of the languages fails the PR.
+- **Mudanca de protocolo exige release major** — touching `PROTOCOL_VERSION`
+  without marking the change as major fails. Client and server require an exact
+  match, so bumping the protocol is always a breaking change.
+- **Discussion template slugs** — checks that the templates still point at
+  categories that exist.
+
+One known limitation: **macOS signing configuration cannot be validated by CI**,
+because `Build check (mac)` runs `--dir`, which skips signing entirely. Only the
+release exercises that path.
 
 ### Describe how to test it
 
