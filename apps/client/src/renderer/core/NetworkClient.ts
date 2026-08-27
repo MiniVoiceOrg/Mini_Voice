@@ -251,8 +251,19 @@ export class NetworkClient {
       // the brand new socket (#312).
       this.detachSocket(this.ws);
     }
+    // Detaching skips `handleSocketClosed`, so in-flight requests are rejected
+    // here instead of lingering until their own 8s timeout.
+    this.rejectPendingRequests();
     this.setStatus('DISCONNECTED');
     appEvents.emit('network.disconnected');
+  }
+
+  private rejectPendingRequests(): void {
+    for (const pending of this.pendingRequests.values()) {
+      clearTimeout(pending.timer);
+      pending.reject(new Error(t('network.connectionClosed')));
+    }
+    this.pendingRequests.clear();
   }
 
   /** Drops every handler of a socket and closes it, so it can no longer affect state. */
@@ -377,12 +388,7 @@ export class NetworkClient {
     this.ws = null;
     this.stopHeartbeat();
     this.clearPendingAuth();
-
-    for (const pending of this.pendingRequests.values()) {
-      clearTimeout(pending.timer);
-      pending.reject(new Error(t('network.connectionClosed')));
-    }
-    this.pendingRequests.clear();
+    this.rejectPendingRequests();
 
     if (this.manualDisconnect) {
       this.setStatus('DISCONNECTED');
