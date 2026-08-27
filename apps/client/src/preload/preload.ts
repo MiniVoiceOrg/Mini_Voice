@@ -33,7 +33,7 @@ export interface ElectronApi {
   importIdentity: (exportedIdentity: string, password: string) => Promise<AppIdentityResult>;
   hostServerStart: (options: HostServerOptions) => Promise<{ success: boolean; error?: string }>;
   hostServerStop: () => Promise<{ success: boolean }>;
-  hostServerStatus: () => Promise<{ isRunning: boolean }>;
+  hostServerStatus: () => Promise<{ isRunning: boolean; port: number | null; serverId: string | null }>;
   getDesktopSources: () => Promise<DesktopSource[]>;
   selectImageDialog: () => Promise<ImageSelectionResult | null>;
   selectSoundFile: () => Promise<string | null>;

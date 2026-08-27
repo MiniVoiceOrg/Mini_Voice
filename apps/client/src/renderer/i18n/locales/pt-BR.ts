@@ -326,6 +326,7 @@ export const ptBR = {
   'connection.voiceChannelLabel': 'Canal de Voz',
   'connection.createAndStart': 'Criar e Iniciar Servidor',
   'connection.startingServer': 'Iniciando servidor local...',
+  'connection.stoppingServer': 'Parando servidor local...',
   'connection.createServerError': 'Erro ao criar e conectar ao servidor local.',
   'connection.createServerButton': 'Criar e Iniciar Servidor',
 

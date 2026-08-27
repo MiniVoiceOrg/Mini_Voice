@@ -44,12 +44,42 @@ export class ConnectionView {
     try {
       const status = await window.api.hostServerStatus();
       this.isHostedServerRunning = !!status.isRunning;
-      if (!this.isHostedServerRunning) {
-        this.runningCreatedServerId = null;
-      }
+      this.runningCreatedServerId = this.isHostedServerRunning
+        ? this.resolveRunningCreatedServerId(status.serverId, status.port)
+        : null;
     } catch {
       this.isHostedServerRunning = false;
       this.runningCreatedServerId = null;
+    }
+  }
+
+  /**
+   * Maps the running instance back to an entry of "Meus Servidores". Falls back
+   * to the port because only one hosted server runs at a time, which also covers
+   * instances started before the id was reported (#333).
+   */
+  private resolveRunningCreatedServerId(serverId: string | null, port: number | null): string | null {
+    const createdServers = connectionStore.createdServers || [];
+    if (serverId && createdServers.some((server) => server.id === serverId)) {
+      return serverId;
+    }
+    if (port !== null) {
+      return createdServers.find((server) => server.port === port)?.id ?? null;
+    }
+    return null;
+  }
+
+  /**
+   * Re-reads the hosted server state and repaints only when it actually moved,
+   * so returning to this screen never shows a stale "Iniciar" on a server that
+   * is already up (#333). The change guard keeps it from looping.
+   */
+  private async refreshHostedServerStatus(): Promise<void> {
+    const wasRunning = this.isHostedServerRunning;
+    const previousId = this.runningCreatedServerId;
+    await this.syncHostedServerStatus();
+    if (wasRunning !== this.isHostedServerRunning || previousId !== this.runningCreatedServerId) {
+      this.render();
     }
   }
 
@@ -348,13 +378,18 @@ export class ConnectionView {
     `;
 
     this.attachEvents();
+    void this.refreshHostedServerStatus();
   }
 
   private async startHostedServer(server: CreatedServer, nickname: string): Promise<void> {
     connectionStore.saveUserProfile(nickname, this.selectedAvatarBase64);
 
     await this.syncHostedServerStatus();
-    if (this.isHostedServerRunning && window.api?.hostServerStop) {
+    // Only a *different* server needs to be swapped out. Restarting the one
+    // already serving this entry would drop everyone connected to it (#333).
+    const alreadyServingThis =
+      this.isHostedServerRunning && this.runningCreatedServerId === server.id;
+    if (this.isHostedServerRunning && !alreadyServingThis && window.api?.hostServerStop) {
       const confirmed = await showConfirm({
         title: t('connection.serverAlreadyRunningTitle'),
         message: t('connection.serverAlreadyRunningMessage'),
@@ -380,6 +415,7 @@ export class ConnectionView {
         password: server.password,
         initialTextChannel: server.textChannel,
         initialVoiceChannel: server.voiceChannel,
+        serverId: server.id,
       });
 
       if (!hostRes.success) {
@@ -423,7 +459,7 @@ export class ConnectionView {
     await window.api?.maximize?.();
   }
 
-  private async stopHostedServer(serverId?: string): Promise<void> {
+  private async stopHostedServer(): Promise<void> {
     if (!window.api?.hostServerStop) return;
 
     const stopRes = await window.api.hostServerStop();
@@ -431,10 +467,8 @@ export class ConnectionView {
       throw new Error(t('connection.stopServerError'));
     }
 
-    this.isHostedServerRunning = false;
-    if (!serverId || this.runningCreatedServerId === serverId) {
-      this.runningCreatedServerId = null;
-    }
+    // Re-derive instead of assuming: the main process owns this state now (#333).
+    await this.syncHostedServerStatus();
   }
 
   private async removeCreatedServer(server: CreatedServer): Promise<void> {
@@ -451,7 +485,7 @@ export class ConnectionView {
     if (!confirmed) return;
 
     if (needsStop) {
-      await this.stopHostedServer(server.id);
+      await this.stopHostedServer();
     }
 
     connectionStore.removeCreatedServer(server.id);
@@ -818,10 +852,10 @@ export class ConnectionView {
         const button = btn as HTMLButtonElement;
         const originalHtml = button.innerHTML;
         button.disabled = true;
-        button.textContent = 'Parando...';
+        button.textContent = t('connection.stoppingServer');
 
         try {
-          await this.stopHostedServer(btn.getAttribute('data-created-server-id') || undefined);
+          await this.stopHostedServer();
           this.render();
         } catch (err: any) {
           this.showError(err.message || t('connection.stopServerError'));

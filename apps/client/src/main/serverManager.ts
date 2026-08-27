@@ -2,20 +2,16 @@ import path from 'path';
 import fs from 'fs';
 import { app } from 'electron';
 import { MonkyServer, ServerConfig } from '@monky/server';
+import type { HostServerOptions } from '@monky/shared';
 import { mt } from './i18n';
 
-export interface HostServerOptions {
-  port: number;
-  serverName: string;
-  password?: string;
-  initialVoiceChannel?: string;
-  initialTextChannel?: string;
-}
+export type { HostServerOptions };
 
 export class ServerManager {
   private serverInstance: MonkyServer | null = null;
   private isRunning: boolean = false;
   private currentPort: number | null = null;
+  private currentServerId: string | null = null;
 
   public async startServer(options: HostServerOptions): Promise<{ success: boolean; error?: string }> {
     if (this.isRunning && this.serverInstance) {
@@ -48,6 +44,7 @@ export class ServerManager {
       this.serverInstance = server;
       this.isRunning = true;
       this.currentPort = options.port;
+      this.currentServerId = options.serverId ?? null;
       console.log(`[ServerManager] Local server started successfully on port ${options.port}`);
       return { success: true };
     } catch (err: any) {
@@ -55,6 +52,7 @@ export class ServerManager {
       this.isRunning = false;
       this.serverInstance = null;
       this.currentPort = null;
+      this.currentServerId = null;
       return { success: false, error: err.message || mt('error.startServerFailed') };
     }
   }
@@ -66,10 +64,16 @@ export class ServerManager {
       this.serverInstance = null;
       this.isRunning = false;
       this.currentPort = null;
+      this.currentServerId = null;
     }
   }
 
-  public getStatus(): { isRunning: boolean } {
-    return { isRunning: this.isRunning };
+  /**
+   * Single source of truth for the hosted server. The renderer used to track
+   * which of the user's servers was up in view state, which went stale as soon
+   * as it was started from somewhere else (#333).
+   */
+  public getStatus(): { isRunning: boolean; port: number | null; serverId: string | null } {
+    return { isRunning: this.isRunning, port: this.currentPort, serverId: this.currentServerId };
   }
 }

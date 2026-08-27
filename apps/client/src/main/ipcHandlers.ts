@@ -151,7 +151,7 @@ export function setupIpcHandlers(
   });
 
   ipcMain.handle('server-host:stop', async () => {
-    serverManager.stopServer();
+    await serverManager.stopServer();
     return { success: true };
   });
 

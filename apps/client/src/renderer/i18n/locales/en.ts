@@ -325,6 +325,7 @@ export const en: TranslationMap = {
   'connection.voiceChannelLabel': 'Voice channel',
   'connection.createAndStart': 'Create and Start Server',
   'connection.startingServer': 'Starting local server...',
+  'connection.stoppingServer': 'Stopping local server...',
   'connection.createServerError': 'Could not create and connect to the local server.',
   'connection.createServerButton': 'Create and Start Server',
 
