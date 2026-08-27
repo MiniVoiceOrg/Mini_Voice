@@ -10,7 +10,27 @@ Baixe a versão mais recente em [github.com/MonkyOrg/Monky/releases/latest](http
 
 ## Avisos de segurança
 
-Windows e macOS podem mostrar aviso porque os executáveis ainda não têm assinatura digital paga. No Windows, clique em *Mais informações › Executar assim mesmo*. No macOS, clique com o botão direito no app e escolha *Abrir*.
+Windows e macOS podem mostrar aviso porque os executáveis ainda não têm assinatura digital paga.
+
+- **Windows**: clique em *Mais informações › Executar assim mesmo*.
+- **macOS**: clique com o botão direito no app e escolha *Abrir*.
+
+### macOS: "O aplicativo está danificado e não pode ser aberto"
+
+No macOS (principalmente em Apple Silicon), o Gatekeeper pode bloquear o app com a mensagem **"está danificado e não pode ser aberto"**. O arquivo **não** está corrompido — é só a quarentena de segurança, porque o app ainda não é notarizado pela Apple.
+
+Depois de mover o **Monky.app** para a pasta *Aplicativos*, abra o Terminal e rode:
+
+```bash
+xattr -dr com.apple.quarantine /Applications/Monky.app
+```
+
+Depois é só abrir o app normalmente. Se ainda reclamar, force uma reassinatura local (ad-hoc):
+
+```bash
+sudo xattr -cr /Applications/Monky.app
+codesign --force --deep --sign - /Applications/Monky.app
+```
 
 ## Atualizações
 
