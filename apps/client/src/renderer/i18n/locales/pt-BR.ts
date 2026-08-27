@@ -379,6 +379,7 @@ export const ptBR = {
   'main.serverStartFailedTitle': 'Não foi possível iniciar o servidor',
   'main.serverStartFailedMessage': 'Ocorreu um erro ao iniciar o servidor. Verifique se a porta está livre e tente novamente.',
   'main.connect': 'Conectar',
+  'main.connectingTo': 'Conectando a {name}…',
   'main.rightClickVolume': 'Botão direito para ajustar volume',
   'main.rightClickVolumeShort': 'Clique c/ botão direito p/ ajustar volume',
   'main.micMuted': 'Microfone mutado',

@@ -12,22 +12,37 @@ import { getAvatarUrl, toAbsoluteServerIconUrl } from '../utils/avatar';
 import { t } from '../i18n';
 
 export class ServerRailView {
+  /**
+   * Server the user is currently connecting to, as `host:port`. Kept on the view
+   * (instead of poked straight into the DOM) because `render()` runs again on
+   * network events and would wipe any attribute set by hand (#332).
+   */
+  private connectingKey: string | null = null;
+
+  private static keyOf(host: string, port: number): string {
+    return `${host.trim().replace(/^wss?:\/\//, '')}:${port}`;
+  }
+
   public render(): void {
     const railEl = document.getElementById('server-rail');
     if (!railEl) return;
 
     const currentUrl = networkClient.getCurrentServerUrl();
     const saved = connectionStore.savedServers || [];
+    const busy = this.connectingKey !== null;
 
     const serverButtons = saved.map((srv) => {
       const url = `ws://${srv.host.trim().replace(/^wss?:\/\//, '')}:${srv.port}`;
       const isCurrent = url === currentUrl;
+      const isConnecting = this.connectingKey === ServerRailView.keyOf(srv.host, srv.port);
       const initial = (srv.name || srv.host || '?').trim().charAt(0).toUpperCase();
       const iconUrl = isCurrent && serverStore.serverDetails?.iconUrl ? serverStore.serverDetails.iconUrl : srv.iconUrl;
+      const label = srv.name || `${srv.host}:${srv.port}`;
+      const title = isConnecting ? t('main.connectingTo', { name: label }) : label;
       return `
         <div class="server-rail-item ${isCurrent ? 'active' : ''}">
           <span class="server-rail-pill" aria-hidden="true"></span>
-          <button class="server-rail-avatar ${isCurrent ? 'active' : ''}" data-host="${escapeHtml(srv.host)}" data-port="${srv.port}" title="${escapeHtml(srv.name || `${srv.host}:${srv.port}`)}" style="padding: 0;">
+          <button class="server-rail-avatar ${isCurrent ? 'active' : ''}" data-host="${escapeHtml(srv.host)}" data-port="${srv.port}" title="${escapeHtml(title)}" ${isConnecting ? 'data-loading="1" aria-busy="true"' : ''} ${busy ? 'disabled' : ''} style="padding: 0;">
             ${iconUrl ? `<img src="${getAvatarUrl(iconUrl)}" style="width: 100%; height: 100%; object-fit: cover; border-radius: inherit; display: block;">` : `<span>${escapeHtml(initial)}</span>`}
             <span class="server-rail-status-dot" data-status="${isCurrent ? 'online' : 'checking'}"></span>
           </button>
@@ -36,7 +51,7 @@ export class ServerRailView {
     }).join('');
 
     railEl.innerHTML = `
-      <button class="server-rail-home" id="server-rail-home" title="${t('main.homeTitle')}">
+      <button class="server-rail-home" id="server-rail-home" title="${t('main.homeTitle')}" ${busy ? 'disabled' : ''}>
         <span class="material-symbols-outlined md-22">home</span>
       </button>
       <div class="server-rail-divider"></div>
@@ -61,6 +76,7 @@ export class ServerRailView {
 
     railEl.querySelectorAll('.server-rail-avatar').forEach((btn) => {
       btn.addEventListener('click', () => {
+        if (this.connectingKey) return;
         const host = btn.getAttribute('data-host');
         const port = parseInt(btn.getAttribute('data-port') || '0', 10);
         if (!host || !port) return;
@@ -83,6 +99,9 @@ export class ServerRailView {
       dots.map(async (btn) => {
         const dot = btn.querySelector('.server-rail-status-dot') as HTMLElement | null;
         if (!dot || dot.getAttribute('data-status') === 'online') return;
+        // Leave the button being connected to alone: its dot is hidden behind the
+        // spinner and rewriting the title would clobber the progress text (#332).
+        if (btn.getAttribute('aria-busy') === 'true') return;
         const host = btn.getAttribute('data-host');
         const port = parseInt(btn.getAttribute('data-port') || '0', 10);
         if (!host || !port) return;
@@ -117,10 +136,30 @@ export class ServerRailView {
     return (connectionStore.createdServers || []).find((c) => c.port === server.port) || null;
   }
 
+  /** Flags the rail as busy and repaints it, so the click has a visible effect (#332). */
+  private setConnecting(key: string | null): void {
+    if (this.connectingKey === key) return;
+    this.connectingKey = key;
+    this.render();
+  }
+
   private async connectToSavedServer(server: SavedServer): Promise<void> {
     const targetUrl = `ws://${server.host.trim().replace(/^wss?:\/\//, '')}:${server.port}`;
     if (targetUrl === networkClient.getCurrentServerUrl()) return;
+    if (this.connectingKey) return;
 
+    // Everything below is async and used to happen with no feedback at all: the
+    // online probe alone can hang for 2.5s before the confirmation even shows up
+    // (#332). Hold the busy state for the whole attempt and always clear it.
+    this.setConnecting(ServerRailView.keyOf(server.host, server.port));
+    try {
+      await this.runConnectToSavedServer(server);
+    } finally {
+      this.setConnecting(null);
+    }
+  }
+
+  private async runConnectToSavedServer(server: SavedServer): Promise<void> {
     // Probe before tearing anything down: the old flow disconnected first, so a
     // failed connection dumped the user back on the home screen (#312).
     const online = await checkServerOnline(server.host, server.port);

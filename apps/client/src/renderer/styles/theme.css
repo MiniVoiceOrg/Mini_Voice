@@ -639,6 +639,19 @@ input:focus, textarea:focus, select:focus {
   background-color: var(--text-muted);
 }
 
+/* While a connection attempt is in flight the whole rail is locked. The button
+   being connected to keeps full opacity so the generic [data-loading] spinner
+   stays readable; the remaining ones dim to show they are on hold (#332). */
+.server-rail-avatar:disabled,
+.server-rail-home:disabled {
+  cursor: default;
+}
+
+.server-rail-avatar:disabled:not([data-loading='1']),
+.server-rail-home:disabled {
+  opacity: 0.45;
+}
+
 /* Online/offline indicator in the saved-servers list on the home screen (#37). */
 .server-status-dot {
   display: inline-block;
@@ -4042,8 +4055,9 @@ body > .reconnect-overlay {
 }
 
 /* Small windows: a centered card wastes the little space there is, so both the
-   app and the server settings take over the whole window and the tab sidebar
-   turns into a horizontal strip (#324). */
+   app and the server settings stop being a modal and take over the whole
+   window. The layout inside is deliberately left untouched — same vertical tab
+   sidebar, same content area — only the card framing goes away (#324). */
 @media (max-width: 900px), (max-height: 640px) {
   .settings-modal-card,
   .settings-modal-card.server-settings-modal-card {
@@ -4053,31 +4067,6 @@ body > .reconnect-overlay {
     max-height: 100vh !important;
     border: none !important;
     border-radius: 0 !important;
-    flex-direction: column !important;
-  }
-
-  .settings-modal-card .settings-sidebar {
-    width: 100%;
-    min-width: 0;
-    flex-direction: row;
-    align-items: center;
-    padding: 8px 10px;
-    border-right: none;
-    border-bottom: 1px solid var(--border-color);
-    overflow-x: auto;
-    overflow-y: hidden;
-    scrollbar-width: thin;
-  }
-
-  /* The section label and the separators only make sense stacked vertically. */
-  .settings-modal-card .settings-sidebar > div {
-    display: none;
-  }
-
-  .settings-modal-card .settings-tab-btn {
-    width: auto;
-    flex-shrink: 0;
-    white-space: nowrap;
   }
 }
 

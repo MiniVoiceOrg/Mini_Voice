@@ -378,6 +378,7 @@ export const en: TranslationMap = {
   'main.serverStartFailedTitle': 'Could not start the server',
   'main.serverStartFailedMessage': 'Something went wrong while starting the server. Check that the port is free and try again.',
   'main.connect': 'Connect',
+  'main.connectingTo': 'Connecting to {name}…',
   'main.rightClickVolume': 'Right-click to adjust volume',
   'main.rightClickVolumeShort': 'Right-click to adjust volume',
   'main.micMuted': 'Microphone muted',
