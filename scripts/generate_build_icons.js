@@ -214,6 +214,64 @@ function buildICO(pngBuffers) {
   return Buffer.concat([header, ...dirEntries, ...imageBodies]);
 }
 
+/**
+ * macOS icons follow Apple's icon grid: the artwork must sit inside an 824x824
+ * "safe area" on a 1024x1024 canvas. Our source logo is nearly full-bleed, so
+ * on macOS the dock icon renders visibly larger than every other app (#307).
+ * This crops the logo to its opaque bounds and re-centers it with that margin.
+ */
+function buildMacIcon(srcImg, canvasSize = 1024, safeSize = 824) {
+  let minX = srcImg.width, maxX = 0, minY = srcImg.height, maxY = 0;
+  for (let y = 0; y < srcImg.height; y++) {
+    for (let x = 0; x < srcImg.width; x++) {
+      if (srcImg.data[(y * srcImg.width + x) * 4 + 3] > 10) {
+        if (x < minX) minX = x;
+        if (x > maxX) maxX = x;
+        if (y < minY) minY = y;
+        if (y > maxY) maxY = y;
+      }
+    }
+  }
+
+  const boxW = maxX - minX + 1;
+  const boxH = maxY - minY + 1;
+  const scale = Math.min(safeSize / boxW, safeSize / boxH);
+  const scaledW = Math.round(boxW * scale);
+  const scaledH = Math.round(boxH * scale);
+  const offsetX = Math.round((canvasSize - scaledW) / 2);
+  const offsetY = Math.round((canvasSize - scaledH) / 2);
+
+  const out = Buffer.alloc(canvasSize * canvasSize * 4, 0);
+
+  for (let dy = 0; dy < scaledH; dy++) {
+    const sy = minY + (dy / scaledH) * boxH;
+    const sy0 = Math.floor(sy);
+    const sy1 = Math.min(srcImg.height - 1, sy0 + 1);
+    const yFrac = sy - sy0;
+
+    for (let dx = 0; dx < scaledW; dx++) {
+      const sx = minX + (dx / scaledW) * boxW;
+      const sx0 = Math.floor(sx);
+      const sx1 = Math.min(srcImg.width - 1, sx0 + 1);
+      const xFrac = sx - sx0;
+
+      const idx00 = (sy0 * srcImg.width + sx0) * 4;
+      const idx10 = (sy0 * srcImg.width + sx1) * 4;
+      const idx01 = (sy1 * srcImg.width + sx0) * 4;
+      const idx11 = (sy1 * srcImg.width + sx1) * 4;
+      const dstIdx = ((offsetY + dy) * canvasSize + (offsetX + dx)) * 4;
+
+      for (let c = 0; c < 4; c++) {
+        const top = srcImg.data[idx00 + c] * (1 - xFrac) + srcImg.data[idx10 + c] * xFrac;
+        const bot = srcImg.data[idx01 + c] * (1 - xFrac) + srcImg.data[idx11 + c] * xFrac;
+        out[dstIdx + c] = Math.round(top * (1 - yFrac) + bot * yFrac);
+      }
+    }
+  }
+
+  return { rgba: out, scaledW, scaledH };
+}
+
 const logoPath = path.join(__dirname, '../images/Logo.png');
 const srcLogo = parsePNG(fs.readFileSync(logoPath));
 console.log('Parsed source Logo:', srcLogo.width, 'x', srcLogo.height);
@@ -239,5 +297,14 @@ for (const size of sizes) {
 
 const icoBuf = buildICO(pngsForIco);
 fs.writeFileSync(path.join(buildDir, 'icon.ico'), icoBuf);
+
+const mac = buildMacIcon(srcLogo);
+const macPng = encodePNG(1024, 1024, mac.rgba);
+for (const target of ['../apps/client/build', '../apps/server-gui/build']) {
+  const dir = path.join(__dirname, target);
+  fs.mkdirSync(dir, { recursive: true });
+  fs.writeFileSync(path.join(dir, 'icon-mac.png'), macPng);
+}
+console.log(`macOS icon: artwork ${mac.scaledW}x${mac.scaledH} centered on 1024x1024 (824px safe area)`);
 
 console.log('Build resources generated successfully in', buildDir);

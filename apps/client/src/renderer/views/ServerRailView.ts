@@ -2,13 +2,13 @@ import { escapeHtml } from '../utils/html';
 import { appEvents } from '../core/EventBus';
 import { networkClient } from '../core/NetworkClient';
 import { serverStore } from '../stores/serverStore';
-import { connectionStore, SavedServer } from '../stores/connectionStore';
+import { connectionStore, SavedServer, CreatedServer } from '../stores/connectionStore';
 import { audioProcessor } from '../core/AudioProcessor';
 import { webRtcManager } from '../core/WebRtcManager';
-import { showConfirm } from './Dialog';
-import { checkServerOnline } from '../utils/serverStatus';
+import { showConfirm, showAlert } from './Dialog';
+import { checkServerOnline, fetchServerPreview } from '../utils/serverStatus';
 import { soundEffects } from '../core/SoundEffects';
-import { getAvatarUrl } from '../utils/avatar';
+import { getAvatarUrl, toAbsoluteServerIconUrl } from '../utils/avatar';
 import { t } from '../i18n';
 
 export class ServerRailView {
@@ -86,25 +86,69 @@ export class ServerRailView {
         const host = btn.getAttribute('data-host');
         const port = parseInt(btn.getAttribute('data-port') || '0', 10);
         if (!host || !port) return;
-        const online = await checkServerOnline(host, port);
+        const preview = await fetchServerPreview(host, port);
+        const online = preview !== null;
         dot.setAttribute('data-status', online ? 'online' : 'offline');
         const baseTitle = btn.getAttribute('title')?.split(' • ')[0] || '';
         btn.title = `${baseTitle} • ${online ? t('main.statusOnline') : t('main.statusOffline')}`;
+
+        // Pick up the icon of servers the user never connected to (#312). Only
+        // persist on change, otherwise the resulting re-render loops forever.
+        if (!preview) return;
+        const absolute = toAbsoluteServerIconUrl(host, port, preview.iconUrl);
+        const saved = (connectionStore.savedServers || []).find(
+          (s) => s.host === host && s.port === port
+        );
+        if (saved && absolute && absolute !== saved.iconUrl) {
+          connectionStore.updateSavedServerIcon(host, port, absolute);
+        }
       })
     );
+  }
+
+  /**
+   * Returns the created-server entry backing a saved server, when the user is the
+   * one hosting it (created servers always run on this machine).
+   */
+  private findCreatedServer(server: SavedServer): CreatedServer | null {
+    const host = server.host.trim().replace(/^wss?:\/\//, '');
+    const isLocal = host === '127.0.0.1' || host === 'localhost' || host === '::1';
+    if (!isLocal) return null;
+    return (connectionStore.createdServers || []).find((c) => c.port === server.port) || null;
   }
 
   private async connectToSavedServer(server: SavedServer): Promise<void> {
     const targetUrl = `ws://${server.host.trim().replace(/^wss?:\/\//, '')}:${server.port}`;
     if (targetUrl === networkClient.getCurrentServerUrl()) return;
 
+    // Probe before tearing anything down: the old flow disconnected first, so a
+    // failed connection dumped the user back on the home screen (#312).
+    const online = await checkServerOnline(server.host, server.port);
+    const mine = this.findCreatedServer(server);
+    const label = server.name || server.host;
+
+    if (!online && !mine) {
+      await showAlert({
+        title: t('main.serverOfflineTitle'),
+        message: t('main.serverOfflineMessage', { name: label }),
+      });
+      return;
+    }
+
     const confirmed = await showConfirm({
-      title: t('main.switchServerTitle'),
-      message: t('main.switchServerMessage', { name: server.name || server.host }),
-      confirmLabel: t('main.connect'),
+      title: online ? t('main.switchServerTitle') : t('main.serverOfflineStartTitle'),
+      message: online
+        ? t('main.switchServerMessage', { name: label })
+        : t('main.serverOfflineStartMessage', { name: label }),
+      confirmLabel: online ? t('main.connect') : t('main.serverOfflineStartConfirm'),
       variant: 'warning',
     });
     if (!confirmed) return;
+
+    if (!online && mine) {
+      const started = await this.startOwnServer(mine);
+      if (!started) return;
+    }
 
     audioProcessor.stopMicrophone();
     webRtcManager.closeAllPeers();
@@ -126,6 +170,43 @@ export class ServerRailView {
       });
     } catch (err: any) {
       appEvents.emit('network.disconnected');
+    }
+  }
+
+  /** Boots one of the user's own servers so they can hop straight into it (#312). */
+  private async startOwnServer(created: CreatedServer): Promise<boolean> {
+    if (!window.api?.hostServerStart) return false;
+
+    try {
+      const status = await window.api.hostServerStatus?.();
+      if (status?.isRunning) {
+        await window.api.hostServerStop?.();
+      }
+
+      const res = await window.api.hostServerStart({
+        port: created.port,
+        serverName: created.name,
+        password: created.password,
+        initialTextChannel: created.textChannel,
+        initialVoiceChannel: created.voiceChannel,
+      });
+
+      if (!res.success) {
+        await showAlert({
+          title: t('main.serverStartFailedTitle'),
+          message: res.error || t('main.serverStartFailedMessage'),
+        });
+        return false;
+      }
+
+      connectionStore.saveCreatedServer({ ...created, lastStarted: Date.now() });
+      return true;
+    } catch (err: any) {
+      await showAlert({
+        title: t('main.serverStartFailedTitle'),
+        message: err?.message || t('main.serverStartFailedMessage'),
+      });
+      return false;
     }
   }
 }

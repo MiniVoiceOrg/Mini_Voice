@@ -272,6 +272,7 @@ export class MonkyServer {
               JSON.stringify({
                 name: server?.name || config.serverName || 'Monky Server',
                 hasPassword: !!(server?.passwordHash && server.passwordHash.length > 0),
+                iconUrl: avatarStorage.getPublicUrl(server?.iconPath),
                 userCount: online.size,
                 maxUsers: server?.maxUsers || LIMITS.MAX_USERS_DEFAULT,
                 users,
