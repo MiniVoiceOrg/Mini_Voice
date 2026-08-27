@@ -61,6 +61,13 @@ interface StageTile {
 const LEGACY_SHARE_ID = 'legacy';
 
 /**
+ * Share ids come from other clients and are interpolated into DOM ids and data
+ * attributes, so only MediaStream-shaped ids are accepted. Anything else is
+ * treated as a hostile payload and ignored.
+ */
+const SAFE_SHARE_ID = /^[A-Za-z0-9_.-]{1,64}$/;
+
+/**
  * How many tiles can sit in the focus area at once (#253). Two side-by-side
  * panes stay readable on a normal screen; beyond that the grid is the better
  * layout anyway.
@@ -359,12 +366,17 @@ export class VoiceStageView {
    * Screen shares to render for a participant (#253). Falls back to a single
    * synthetic share when the peer only reports the legacy `isScreenSharing`
    * boolean, so older clients still show up as one tile.
+   *
+   * Share ids arrive from other clients and end up in DOM ids and attributes,
+   * so anything that isn't a plain MediaStream-style id is dropped here — this
+   * is the single choke point every tile goes through.
    */
   private getShareIds(p: ParticipantViewModel, isLocal: boolean): string[] {
     if (isLocal) return [...voiceStore.screenShareIds];
     const announced = p.voiceState?.screenShareIds;
     if (announced && announced.length > 0) {
-      return announced.slice(0, VoiceStore.MAX_SCREEN_SHARES);
+      const safe = announced.filter((id) => SAFE_SHARE_ID.test(id));
+      if (safe.length > 0) return safe.slice(0, VoiceStore.MAX_SCREEN_SHARES);
     }
     return p.voiceState?.isScreenSharing ? [LEGACY_SHARE_ID] : [];
   }
@@ -389,6 +401,20 @@ export class VoiceStageView {
 
     this.focusedTileKeys =
       isFocused && this.focusedTileKeys.length === 1 ? [] : [tileKey];
+  }
+
+  /**
+   * Resolves the remote stream backing a screen tile. Pre-#253 peers announce
+   * their real MediaStream id over `screen-video-meta` but never publish a
+   * `screenShareIds` list, so their tile is keyed by LEGACY_SHARE_ID and has to
+   * fall back to whichever single screen stream arrived for that user.
+   */
+  private getRemoteScreenStream(tile: StageTile): MediaStream | undefined {
+    const streams = tile.p.remoteScreenStreams;
+    if (tile.shareId === LEGACY_SHARE_ID) {
+      return streams.values().next().value;
+    }
+    return streams.get(tile.shareId!);
   }
 
   /** Stable, unique DOM id fragment for a tile — screens differ by share (#253). */
@@ -681,7 +707,7 @@ export class VoiceStageView {
       const isLocal = tile.p.user.id === currentUserId;
       const stream = isLocal
         ? (tile.kind === 'screen' ? videoService.getScreenStream(tile.shareId!) : videoService.getCameraStream())
-        : (tile.kind === 'screen' ? tile.p.remoteScreenStreams.get(tile.shareId!) : tile.p.remoteStream);
+        : (tile.kind === 'screen' ? this.getRemoteScreenStream(tile) : tile.p.remoteStream);
       if (!stream) return;
       const suffix = tile.kind === 'screen' ? `screen-${tile.shareId}` : tile.kind;
       const ids = [`video-${tile.p.user.id}-${suffix}`, `video-mini-${tile.p.user.id}-${suffix}`];
@@ -1358,6 +1384,7 @@ export class VoiceStageView {
     audioProcessor.stopMicrophone();
     videoService.stopCamera();
     videoService.stopScreenShare();
+    webRtcManager.clearLocalScreenTracks();
     webRtcManager.closeAllPeers();
     voiceStore.reset();
     this.setChannel(null);

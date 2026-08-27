@@ -210,13 +210,18 @@ export class ScreenSharePickerModal {
     }
 
     try {
-      if (mode === 'replace' && voiceStore.isScreenSharing) {
-        videoService.stopScreenShare();
-        await webRtcManager.removeAllLocalScreenTracks();
-        voiceStore.setScreenSharing(false);
+      // Acquire the new capture BEFORE tearing anything down: if the user
+      // cancels the OS picker or the source vanished, the current share must
+      // survive untouched instead of leaving local and server state disagreeing.
+      const previousShareIds = mode === 'replace' ? [...voiceStore.screenShareIds] : [];
+      const stream = await videoService.startScreenShare(this.selectedSourceId || undefined);
+
+      for (const previousId of previousShareIds) {
+        videoService.stopScreenShare(previousId);
+        await webRtcManager.removeLocalScreenTrack(previousId);
+        voiceStore.removeScreenShare(previousId);
       }
 
-      const stream = await videoService.startScreenShare(this.selectedSourceId || undefined);
       await webRtcManager.addLocalScreenTrack(stream);
       voiceStore.addScreenShare(stream.id);
       // Camera and screen are independent (#26) — do not disturb camera state.

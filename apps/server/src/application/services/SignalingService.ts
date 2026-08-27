@@ -7,6 +7,9 @@ import { IChannelRepository } from '../../domain/repositories';
 import { Logger } from '../../infrastructure/logger/Logger';
 
 export class SignalingService {
+  /** Hard cap on simultaneous screen shares per participant (#253). */
+  private static readonly MAX_SCREEN_SHARES = 2;
+
   // Map of userId -> VoiceParticipantState
   private voiceStates: Map<string, VoiceParticipantState> = new Map();
 
@@ -101,13 +104,26 @@ export class SignalingService {
     // client sent, and keeps the boolean correct for clients that predate the
     // list.
     if (updates.screenShareIds !== undefined) {
-      updated.isScreenSharing = (updated.screenShareIds ?? []).length > 0;
+      updated.screenShareIds = SignalingService.sanitizeShareIds(updates.screenShareIds);
+      updated.isScreenSharing = updated.screenShareIds.length > 0;
     } else if (updates.isScreenSharing === false) {
       updated.screenShareIds = [];
     }
 
     this.voiceStates.set(userId, updated);
     return updated;
+  }
+
+  /**
+   * Share ids are relayed verbatim to every other client, which uses them to
+   * build DOM ids and attributes. Only MediaStream-shaped ids are accepted so a
+   * malicious client cannot inject markup into other people's stage.
+   */
+  private static sanitizeShareIds(value: unknown): string[] {
+    if (!Array.isArray(value)) return [];
+    return value
+      .filter((id): id is string => typeof id === 'string' && /^[A-Za-z0-9_.-]{1,64}$/.test(id))
+      .slice(0, SignalingService.MAX_SCREEN_SHARES);
   }
 
   public getVoiceState(userId: string): VoiceParticipantState | undefined {

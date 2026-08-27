@@ -176,11 +176,18 @@ export class WebRtcManager {
     };
     attach(document.getElementById(`video-${peerUserId}-screen-${shareId}`) as HTMLVideoElement | null);
     attach(document.getElementById(`video-mini-${peerUserId}-screen-${shareId}`) as HTMLVideoElement | null);
+    // Pre-#253 peers don't publish a screenShareIds list, so their tile is keyed
+    // by the stage's legacy placeholder rather than by this stream id.
+    attach(document.getElementById(`video-${peerUserId}-screen-legacy`) as HTMLVideoElement | null);
+    attach(document.getElementById(`video-mini-${peerUserId}-screen-legacy`) as HTMLVideoElement | null);
 
     track.onended = () => {
       screenStream!.removeTrack(track);
       session.remoteScreenStreams.delete(shareId);
-      this.screenVideoStreamIds.delete(shareId);
+      // `screenVideoStreamIds` is the only durable record that this id is a
+      // screen and not a camera. A reconnect ends the track without the sender
+      // re-announcing the metadata, so dropping it here would make the share
+      // come back misclassified as the camera (#26).
       participantManager.removeRemoteScreenStream(peerUserId, shareId);
     };
   }
@@ -919,6 +926,18 @@ export class WebRtcManager {
     for (const shareId of [...this.localScreenTracks.keys()]) {
       await this.removeLocalScreenTrack(shareId);
     }
+  }
+
+  /**
+   * Drops the local screen bookkeeping without renegotiating, for paths where
+   * the call itself is over and the peer connections are being torn down
+   * (leaving voice, kicked, socket dropped). Without this the stale tracks
+   * would be re-announced and re-added to every peer on the next join (#253).
+   * Note this must NOT run on reconnect, where the share is meant to survive.
+   */
+  public clearLocalScreenTracks(): void {
+    this.localScreenTracks.clear();
+    this.localScreenStreams.clear();
   }
 
   /**

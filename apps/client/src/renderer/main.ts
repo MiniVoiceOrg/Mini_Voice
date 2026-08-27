@@ -295,6 +295,9 @@ class App {
       voiceStore.reset();
       participantManager.clear();
       audioProcessor.stopMicrophone();
+      videoService.stopCamera();
+      videoService.stopScreenShare();
+      webRtcManager.clearLocalScreenTracks();
       webRtcManager.closeAllPeers();
 
       this.connectionView.render();
@@ -479,6 +482,9 @@ class App {
     appEvents.on(`message.${MessageType.ADMIN_KICK_VOICE}`, (payload: AdminKickVoicePayload) => {
       if (payload.targetUserId !== serverStore.currentUser?.id) return;
       audioProcessor.stopMicrophone();
+      videoService.stopCamera();
+      videoService.stopScreenShare();
+      webRtcManager.clearLocalScreenTracks();
       webRtcManager.closeAllPeers();
       voiceStore.reset();
       this.mainView.render();
