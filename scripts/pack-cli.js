@@ -119,9 +119,13 @@ function main() {
     JSON.stringify(buildCliPackageJson(serverPkg, sharedPkg, version), null, 2) + '\n'
   );
 
-  const readme = path.join(ROOT, 'docs', 'CLI.md');
+  // The CLI reference lives in the documentation site, which is also what the
+  // published package shows on npm.
+  const readme = path.join(ROOT, 'docs-site', 'cli.md');
   if (fs.existsSync(readme)) {
     fs.copyFileSync(readme, path.join(staging, 'README.md'));
+  } else {
+    console.warn(`[pack-cli] README not found at ${readme}`);
   }
 
   fs.mkdirSync(args.out, { recursive: true });

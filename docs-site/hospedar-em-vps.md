@@ -1,72 +1,52 @@
 # Hospedar em VPS
 
-Para manter o servidor no ar 24/7, rode só o servidor em uma máquina Linux. Requer **Node.js 20 ou superior** (a CI usa 22).
+Para manter o servidor no ar 24/7, rode só o servidor em uma máquina Linux —
+sem interface gráfica e sem clonar o repositório. Todo o trabalho é feito pelo
+**Monky CLI**, que é distribuído pronto em cada release.
 
-Instale o **Monky CLI** pela release:
+Requer **Node.js 20 ou superior** (a CI usa 22).
 
-```bash
-npm install -g https://github.com/MonkyOrg/Monky/releases/download/v2.3.0/monky-cli-2.3.0.tgz
-```
-
-Troque `v2.3.0` pela versão desejada.
-
-## Configuração inicial
-
-O CLI é interativo:
+## Passo a passo
 
 ```bash
-monky bootstrap
-```
+# 1. Instale o CLI a partir da release
+npm install -g https://github.com/MonkyOrg/Monky/releases/download/v3.0.0-beta004/monky-cli-3.0.0-beta004.tgz
 
-Ele pergunta código de identidade, senha, nickname, nome do servidor, porta e senha do servidor. Ao final, oferece iniciar automaticamente.
+# 2. Crie o servidor (interativo)
+monky create
 
-## Iniciar e parar
-
-```bash
-monky start
-monky stop
-monky restart
+# 3. Confira se subiu
 monky status
-monky logs
 ```
 
-## Ver os logs
+O `monky create` pergunta onde guardar os dados, pede o código de identidade do
+dono e oferece iniciar o servidor ao final. Numa VPS, prefira um caminho fora do
+seu diretório pessoal, como `/srv/monky`.
 
-```bash
-monky logs                      # segue os logs em tempo real (Ctrl+C para sair)
-monky logs --lines 500          # começa exibindo as últimas 500 linhas
-monky logs --level WARN         # só avisos e erros
-monky logs --level ERROR --no-follow   # imprime os erros recentes e sai
-```
-
-`--level` filtra por nível mínimo: `INFO` mostra tudo, `WARN` mostra avisos e
-erros, `ERROR` mostra só erros. Linhas de continuação (como stack traces)
-acompanham o nível da linha acima delas.
-
-::: tip
-`monky logs` lê os logs do servidor iniciado com `monky start`, que roda via
-PM2. Se o servidor estiver rodando dentro do app Monky, use o **Monitor do
-Servidor** no próprio app (menu do servidor → Monitor do Servidor).
-:::
-
-## Administração
-
-```bash
-monky members
-monky admin add
-monky roles create
-monky config set
-monky --help
-```
-
-Documentação completa: [Monky CLI](/cli).
+O servidor roda como daemon do PM2 e volta sozinho depois de um reboot. A
+referência completa dos comandos está em [Monky CLI](/cli).
 
 ## Portas usadas
 
 | Porta | Protocolo | Para quê | Precisa liberar? |
 |---|---|---|---|
-| `3000` (ou escolhida) | TCP | Login, chat, canais e sinalização | Sim, no anfitrião |
-| `41234` | UDP | Descoberta na rede local | Só para achar servidores na LAN |
+| `3000` (ou escolhida) | TCP | Login, chat, canais e sinalização | Sim, no firewall da VPS |
+| `41234` | UDP | Descoberta na rede local | Não, numa VPS |
 | Altas dinâmicas | UDP | Voz, vídeo e tela P2P | Normalmente funciona via STUN |
 
 Não há servidor TURN; em redes muito restritas, use VPN.
+
+## Manutenção
+
+```bash
+monky logs --level WARN         # o que precisa de atenção
+monky config set port 3010      # muda a porta e oferece reiniciar
+monky update --check            # há versão nova?
+monky config set autoUpdate true  # atualiza sozinho, diariamente às 4h
+```
+
+::: tip Mais de um servidor na mesma VPS
+Basta rodar `monky create` de novo com outra pasta e outra porta. O CLI passa a
+perguntar a qual servidor cada comando se refere — ou você informa direto com
+`--data`. Veja [Múltiplos servidores](/cli#multiplos-servidores).
+:::

@@ -1,19 +1,24 @@
 import fs from 'fs';
 import { spawnSync } from 'child_process';
-import { ANSI, color, DEFAULT_DATA_INPUT } from '../constants';
-import { GlobalArgs, resolveInputPath } from '../context';
-import { isPm2Available, PM2_PROCESS_NAME, UPDATER_PROCESS_NAME } from '../pm2';
+import { ANSI, color } from '../constants';
+import { GlobalArgs } from '../context';
+import {
+  findLegacyProcessFor,
+  getPm2ProcessName,
+  getUpdaterProcessName,
+  isPm2Available,
+  LEGACY_PM2_PROCESS_NAME,
+} from '../pm2';
+import { unregisterServer } from '../registry';
+import { resolveTargetServer } from '../target';
 import { ask, confirm } from '../prompts';
 
 export async function destroyCommand(globalArgs: GlobalArgs): Promise<void> {
-  const dataDir = globalArgs.dataDirSpecified
-    ? globalArgs.dataDir
-    : resolveInputPath(await ask('Caminho dos dados do servidor a destruir', DEFAULT_DATA_INPUT));
-
-  if (!fs.existsSync(dataDir)) {
-    console.log(color(`Pasta não encontrada: ${dataDir}`, ANSI.yellow));
-    return;
-  }
+  // resolveTargetServer only returns directories that actually hold a Monky
+  // database, which keeps this "rm -rf" from ever pointing at an arbitrary
+  // folder someone typed by mistake.
+  const target = await resolveTargetServer(globalArgs, 'destruir');
+  const dataDir = target.dataDir;
 
   console.log(color('⚠️  ATENÇÃO: Esta ação é IRREVERSÍVEL!', ANSI.red));
   console.log(color(`Todos os dados do servidor em "${dataDir}" serão apagados:`, ANSI.red));
@@ -35,16 +40,21 @@ export async function destroyCommand(globalArgs: GlobalArgs): Promise<void> {
     return;
   }
 
-  // Stop server if running
   if (isPm2Available()) {
-    spawnSync('pm2', ['stop', PM2_PROCESS_NAME], { stdio: 'ignore', shell: true });
-    spawnSync('pm2', ['delete', PM2_PROCESS_NAME], { stdio: 'ignore', shell: true });
-    spawnSync('pm2', ['delete', UPDATER_PROCESS_NAME], { stdio: 'ignore', shell: true });
+    const names = [getPm2ProcessName(dataDir), getUpdaterProcessName(dataDir)];
+    // The pre-registry process is only removed when it belongs to this data
+    // directory — another server could be the one still using the old name.
+    if (findLegacyProcessFor(dataDir)) {
+      names.push(LEGACY_PM2_PROCESS_NAME);
+    }
+    for (const name of names) {
+      spawnSync('pm2', ['delete', name], { stdio: 'ignore', shell: true });
+    }
     spawnSync('pm2', ['save'], { stdio: 'ignore', shell: true });
   }
 
-  // Delete data directory
   await fs.promises.rm(dataDir, { recursive: true, force: true });
+  unregisterServer(dataDir);
 
   console.log(color('Servidor destruído com sucesso. Todos os dados foram apagados.', ANSI.green));
 }

@@ -49,10 +49,46 @@ export async function askChoiceArrows(question: string, choices: string[]): Prom
     stdin.setEncoding('utf8');
     stdin.setRawMode(true);
 
+    // Typing "1" used to select immediately, making entries 10 and up
+    // unreachable by number. Digits are buffered until no longer number can
+    // match, or briefly, so multi-digit input works.
+    let numericBuffer = '';
+    let numericTimer: NodeJS.Timeout | null = null;
+
+    const clearNumericTimer = () => {
+      if (numericTimer) {
+        clearTimeout(numericTimer);
+        numericTimer = null;
+      }
+    };
+
     const cleanup = () => {
+      clearNumericTimer();
       stdin.setRawMode(false);
       stdin.pause();
       stdin.removeListener('data', onData);
+    };
+
+    const select = (index: number) => {
+      cleanup();
+      clearLines(choices.length);
+      stdout.write(`${color('❯', ANSI.cyan)} ${choices[index]}\n`);
+      resolve(choices[index]);
+    };
+
+    const commitNumeric = () => {
+      const value = Number.parseInt(numericBuffer, 10);
+      numericBuffer = '';
+      clearNumericTimer();
+      if (Number.isInteger(value) && value >= 1 && value <= choices.length) {
+        select(value - 1);
+      }
+    };
+
+    const move = (delta: number) => {
+      clearLines(choices.length);
+      cursor = (cursor + delta + choices.length) % choices.length;
+      renderChoiceList(choices, cursor);
     };
 
     const onData = (data: string) => {
@@ -62,30 +98,35 @@ export async function askChoiceArrows(question: string, choices: string[]): Prom
         return;
       }
       if (data === '\r' || data === '\n') {
-        cleanup();
-        clearLines(choices.length);
-        stdout.write(`${color('❯', ANSI.cyan)} ${choices[cursor]}\n`);
-        resolve(choices[cursor]);
+        if (numericBuffer) {
+          commitNumeric();
+          return;
+        }
+        select(cursor);
         return;
       }
       if (data === '\u001b[A' || data === 'k') {
-        clearLines(choices.length);
-        cursor = (cursor - 1 + choices.length) % choices.length;
-        renderChoiceList(choices, cursor);
+        move(-1);
         return;
       }
       if (data === '\u001b[B' || data === 'j') {
-        clearLines(choices.length);
-        cursor = (cursor + 1) % choices.length;
-        renderChoiceList(choices, cursor);
+        move(1);
         return;
       }
-      const numeric = Number.parseInt(data, 10);
-      if (Number.isInteger(numeric) && numeric >= 1 && numeric <= choices.length) {
-        cleanup();
-        clearLines(choices.length);
-        stdout.write(`${color('❯', ANSI.cyan)} ${choices[numeric - 1]}\n`);
-        resolve(choices[numeric - 1]);
+      if (/^[0-9]$/.test(data)) {
+        const candidate = Number.parseInt(numericBuffer + data, 10);
+        if (candidate === 0 || candidate > choices.length) {
+          numericBuffer = '';
+          clearNumericTimer();
+          return;
+        }
+        numericBuffer += data;
+        if (candidate * 10 > choices.length) {
+          commitNumeric();
+          return;
+        }
+        clearNumericTimer();
+        numericTimer = setTimeout(commitNumeric, 700);
       }
     };
 

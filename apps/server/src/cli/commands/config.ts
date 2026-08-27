@@ -13,13 +13,13 @@ import {
 import { CliContext, readLocalConfig, writeLocalConfig } from '../context';
 import { formatBool, formatDate, parseBoolean, parsePositiveInt } from '../formatters';
 import {
-  generateEcosystem,
-  getEcosystemPath,
+  getPm2ProcessName,
   isMonkyServerRunning,
-  PM2_PROCESS_NAME,
+  writeEcosystem,
 } from '../pm2';
+import { registerServer } from '../registry';
 import { ask, askChoice, confirm, promptPassword } from '../prompts';
-import { disableAutoUpdate, enableAutoUpdate } from './update';
+import { disableAutoUpdate, enableAutoUpdate, isAutoUpdateEnabled } from './update';
 
 export async function showConfig(ctx: CliContext): Promise<void> {
   const server = await ctx.serverRepo.getServer();
@@ -42,6 +42,7 @@ export async function showConfig(ctx: CliContext): Promise<void> {
   console.log(`iconPath: ${server.iconPath ?? '-'}`);
   console.log(`maxAttachmentFileBytes: ${server.maxAttachmentFileBytes ?? '-'}`);
   console.log(`maxAttachmentStorageBytes: ${server.maxAttachmentStorageBytes ?? '-'}`);
+  console.log(`autoUpdate: ${formatBool(isAutoUpdateEnabled(ctx.dataDir))}`);
   console.log(`createdAt: ${formatDate(server.createdAt)}`);
 }
 
@@ -71,7 +72,7 @@ export async function setConfig(ctx: CliContext, key: string, value?: string): P
     allowSoundboard: String(server.allowSoundboard !== false),
     maxAttachmentFileBytes: String(server.maxAttachmentFileBytes ?? ''),
     maxAttachmentStorageBytes: String(server.maxAttachmentStorageBytes ?? ''),
-    autoUpdate: 'false',
+    autoUpdate: String(isAutoUpdateEnabled(ctx.dataDir)),
   };
 
   let nextValue = value;
@@ -94,8 +95,7 @@ export async function setConfig(ctx: CliContext, key: string, value?: string): P
         break;
       case 'autoUpdate':
         nextValue = await askChoice('Habilitar atualização automática?', ['true', 'false']);
-        break;
-      case 'maxUsers':
+        break;      case 'maxUsers':
       case 'maxAttachmentFileBytes':
       case 'maxAttachmentStorageBytes':
         nextValue = await ask(`Valor para ${normalizedKey}`, currentValues[normalizedKey]);
@@ -112,6 +112,7 @@ export async function setConfig(ctx: CliContext, key: string, value?: string): P
         throw new Error('O nome do servidor deve ter pelo menos 2 caracteres.');
       }
       await ctx.serverRepo.updateServer({ name: nextName });
+      registerServer(ctx.dataDir, { name: nextName });
       break;
     }
     case 'password': {
@@ -127,19 +128,17 @@ export async function setConfig(ctx: CliContext, key: string, value?: string): P
       const config = readLocalConfig(ctx.dataDir);
       config.port = portNum;
       writeLocalConfig(ctx.dataDir, config);
-      if (isMonkyServerRunning()) {
+
+      const processName = getPm2ProcessName(ctx.dataDir);
+      if (isMonkyServerRunning(processName)) {
         const shouldRestart = await confirm('Servidor está rodando. Deseja reiniciar agora para aplicar a nova porta?', true);
         if (shouldRestart) {
-          const ecosystemPath = getEcosystemPath(ctx.dataDir);
-          const ecosystemContent = generateEcosystem(ctx.dataDir, portNum, (await ctx.serverRepo.getServer())?.name || DEFAULT_SERVER_NAME);
-          fs.writeFileSync(ecosystemPath, ecosystemContent, 'utf8');
-          const legacyEcosystemPath = path.join(ctx.dataDir, 'ecosystem.config.js');
-          if (fs.existsSync(legacyEcosystemPath)) {
-            try {
-              fs.unlinkSync(legacyEcosystemPath);
-            } catch {}
-          }
-          spawnSync('pm2', ['restart', PM2_PROCESS_NAME], { stdio: 'inherit', shell: true });
+          const ecosystemPath = writeEcosystem({
+            dataDir: ctx.dataDir,
+            port: portNum,
+            serverName: (await ctx.serverRepo.getServer())?.name || DEFAULT_SERVER_NAME,
+          });
+          spawnSync('pm2', ['startOrRestart', ecosystemPath], { stdio: 'inherit', shell: true });
           console.log(color('Servidor reiniciado com a nova porta.', ANSI.green));
         } else {
           console.log(color('A nova porta será usada no próximo "monky start" ou "monky restart".', ANSI.dim));
@@ -147,6 +146,7 @@ export async function setConfig(ctx: CliContext, key: string, value?: string): P
       } else {
         console.log(color('A nova porta será usada no próximo "monky start".', ANSI.dim));
       }
+      registerServer(ctx.dataDir, { port: portNum });
       break;
     }
     case 'icon': {
@@ -185,7 +185,7 @@ export async function setConfig(ctx: CliContext, key: string, value?: string): P
       if (enabled) {
         await enableAutoUpdate(ctx.dataDir);
       } else {
-        await disableAutoUpdate();
+        await disableAutoUpdate(ctx.dataDir);
       }
       break;
     }

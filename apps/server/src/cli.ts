@@ -2,14 +2,15 @@
 
 import { ANSI, color } from './cli/constants';
 import {
-  ensureExistingDataDir,
   GlobalArgs,
   isHelpArg,
   parseGlobalArgs,
   withContext,
 } from './cli/context';
-import { bootstrapCommand } from './cli/commands/bootstrap';
+import { resolveTargetServer } from './cli/target';
+import { createCommand } from './cli/commands/create';
 import {
+  listServersCommand,
   logsServerCommand,
   restartServerCommand,
   startServerCommand,
@@ -33,38 +34,53 @@ import { destroyCommand } from './cli/commands/destroy';
 
 function printUsage(): void {
   console.log(`
-${color('Monky CLI - Ferramenta de administração do servidor Monky', ANSI.bold)}
+${color('monky', ANSI.bold)} — ferramenta de administração do servidor Monky
 
-Uso:
-  monky bootstrap          Configura um novo servidor (interativo)
-  monky start              Inicia o servidor (via PM2, daemon)
-  monky stop               Para o servidor
-  monky restart            Reinicia o servidor
-  monky status             Exibe o estado do servidor
-  monky logs               Exibe logs em tempo real
-                           (--lines N, --level INFO|WARN|ERROR, --no-follow)
-  monky members            Lista membros
-  monky members info <id>  Info detalhada de um membro
-  monky admin add [user]   Concede admin (interativo se sem arg)
-  monky admin remove [user] Remove admin
-  monky roles              Lista cargos
-  monky roles create       Cria um novo cargo (interativo)
-  monky roles assign       Atribui cargo a membro (interativo)
-  monky roles unassign     Remove cargo de membro (interativo)
-  monky roles delete       Remove um cargo (interativo)
-  monky config             Mostra configuração do servidor
-  monky update             Atualiza o servidor para a última versão estável
-  monky update --beta      Atualiza o servidor para a última versão (incluindo beta)
-  monky update --check     Apenas verifica se há atualização (adicione --beta para checar betas)
-  monky destroy            Apaga todos os dados do servidor (irreversível)
+${color('USO', ANSI.bold)}
+  monky <comando> [subcomando] [opções]
 
-Opções globais:
-  --data <pasta>   Caminho dos dados (padrão: ./data)
-  --help, -h       Mostra esta ajuda
+${color('SERVIDORES', ANSI.bold)}
+  create                   Cria um novo servidor (interativo)
+  list                     Lista os servidores desta máquina
+  start                    Inicia um servidor já criado
+  stop                     Para o servidor
+  restart                  Reinicia o servidor aplicando a configuração atual
+  status                   Exibe o estado do servidor
+  logs                     Exibe os logs do servidor
+  update                   Atualiza o Monky para a última versão
+  destroy                  Apaga todos os dados do servidor (irreversível)
 
-Instalação global:
-  cd apps/server && npm install -g .
-  Depois use "monky" de qualquer lugar.
+${color('MEMBROS E CARGOS', ANSI.bold)}
+  members                  Lista membros
+  members info <id>        Exibe um membro em detalhe
+  admin add [membro]       Concede admin (interativo se sem argumento)
+  admin remove [membro]    Remove admin
+  roles                    Lista cargos
+  roles create             Cria um cargo (interativo)
+  roles assign             Atribui um cargo a um membro
+  roles unassign           Remove um cargo de um membro
+  roles delete             Apaga um cargo
+
+${color('CONFIGURAÇÃO', ANSI.bold)}
+  config                   Exibe a configuração do servidor
+  config set <chave> [valor]  Altera uma configuração
+
+${color('OPÇÕES GLOBAIS', ANSI.bold)}
+  --data <pasta>           Servidor a usar (obrigatório se houver vários)
+  --help, -h               Exibe esta ajuda
+
+${color('OPÇÕES POR COMANDO', ANSI.bold)}
+  start   --port <n>
+  logs    --lines <n>  --level INFO|WARN|ERROR  --no-follow
+  update  --beta  --check  --yes
+
+${color('EXEMPLOS', ANSI.bold)}
+  monky create                        Cria e inicia o primeiro servidor
+  monky start                         Inicia o único servidor da máquina
+  monky logs --level ERROR --no-follow  Imprime os erros recentes e sai
+  monky --data /srv/monky restart     Reinicia um servidor específico
+
+Documentação completa: https://monkyorg.github.io/Monky/cli
 `.trim());
 }
 
@@ -72,8 +88,8 @@ async function runDataCommand(
   globalArgs: GlobalArgs,
   fn: (dataDir: string) => Promise<void>
 ): Promise<void> {
-  const dataDir = await ensureExistingDataDir(globalArgs.dataDir, globalArgs.dataDirSpecified);
-  await fn(dataDir);
+  const target = await resolveTargetServer(globalArgs, 'administrar');
+  await fn(target.dataDir);
 }
 
 export async function runCommand(globalArgs: GlobalArgs): Promise<void> {
@@ -84,8 +100,15 @@ export async function runCommand(globalArgs: GlobalArgs): Promise<void> {
     return;
   }
 
-  if (section === 'bootstrap') {
-    await bootstrapCommand(globalArgs, [action, ...rest].filter(Boolean));
+  // "bootstrap" is kept as a hidden alias so existing scripts and older
+  // documentation keep working after the rename to "create".
+  if (section === 'create' || section === 'bootstrap') {
+    await createCommand(globalArgs, [action, ...rest].filter(Boolean));
+    return;
+  }
+
+  if (section === 'list' || section === 'ls') {
+    await listServersCommand();
     return;
   }
 
@@ -95,27 +118,27 @@ export async function runCommand(globalArgs: GlobalArgs): Promise<void> {
   }
 
   if (section === 'stop') {
-    await stopServerCommand(globalArgs.dataDir);
+    await stopServerCommand(globalArgs);
     return;
   }
 
   if (section === 'restart') {
-    await restartServerCommand(globalArgs.dataDir);
+    await restartServerCommand(globalArgs, [action, ...rest].filter(Boolean));
     return;
   }
 
   if (section === 'logs') {
-    logsServerCommand([action, ...rest].filter(Boolean));
+    await logsServerCommand(globalArgs, [action, ...rest].filter(Boolean));
     return;
   }
 
   if (section === 'status') {
-    statusServerCommand();
+    await statusServerCommand(globalArgs);
     return;
   }
 
   if (section === 'update') {
-    await updateCommand([action, ...rest].filter(Boolean));
+    await updateCommand(globalArgs, [action, ...rest].filter(Boolean));
     return;
   }
 
@@ -207,7 +230,7 @@ export async function runCommand(globalArgs: GlobalArgs): Promise<void> {
     return;
   }
 
-  throw new Error('Comando inválido.');
+  throw new Error(`Comando inválido: ${section}`);
 }
 
 async function main(): Promise<void> {
@@ -217,8 +240,9 @@ async function main(): Promise<void> {
 
 if (require.main === module) {
   main().catch((error) => {
-    console.error(color(`Erro: ${error instanceof Error ? error.message : String(error)}`, ANSI.red));
-    printUsage();
+    const message = error instanceof Error ? error.message : String(error);
+    console.error(color(`Erro: ${message}`, ANSI.red));
+    console.error(color('Use "monky --help" para ver os comandos disponíveis.', ANSI.dim));
     process.exit(1);
   });
 }

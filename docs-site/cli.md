@@ -1,504 +1,417 @@
 # Monky CLI
 
-O `monky` é a ferramenta de administração do servidor Monky para VPS, Docker
-ou qualquer ambiente sem cliente gráfico. Ele abre o mesmo banco `server.db`
-usado pelo servidor e funciona em dois modos:
+Ferramenta de linha de comando para criar e administrar servidores Monky.
 
-- **Modo interativo** — execute o comando sem argumentos e o CLI faz as
-  perguntas necessárias passo a passo.
-- **Modo direto** — passe todos os argumentos na linha de comando para
-  execução imediata (útil para scripts e automação).
+```
+monky <comando> [subcomando] [opções]
+```
 
-> **Nota:** para comandos administrativos (`members`, `roles`, `admin`,
-> `config`), prefira usar o CLI com o servidor parado para evitar duas
-> instâncias gravando o mesmo SQLite ao mesmo tempo.
-
----
+O CLI é instalado globalmente e não depende do diretório em que você está: ele
+mantém um registro dos servidores desta máquina em `~/.monky/servers.json` e
+usa esse registro para saber a qual servidor cada comando se aplica.
 
 ## Instalação
 
-### Pré-requisitos
-
-- Node.js 18+
-- npm
-
-### Instalar a partir da release (recomendado)
-
-Não é preciso clonar nem compilar nada. Cada release publica um pacote
-`monky-cli-<versão>.tgz` pronto para instalação global:
+Requer **Node.js 20 ou superior**. Instale direto da release, sem clonar o
+repositório:
 
 ```bash
-npm install -g https://github.com/MonkyOrg/Monky/releases/download/v2.3.0/monky-cli-2.3.0.tgz
+npm install -g https://github.com/MonkyOrg/Monky/releases/download/v3.0.0-beta004/monky-cli-3.0.0-beta004.tgz
 ```
 
-> Troque `v2.3.0` pela versão desejada. A lista completa está na
-> [página de releases](https://github.com/MonkyOrg/Monky/releases).
+Troque a versão pela desejada. Confira a lista em
+[Releases](https://github.com/MonkyOrg/Monky/releases).
 
-Depois disso, `monky` fica disponível globalmente no terminal — de qualquer
-pasta, sem `npx`. Confira com:
+Para rodar o servidor como daemon (`monky start`), o CLI usa o
+[PM2](https://pm2.keymetrics.io/). Se ele não estiver instalado, `monky start`
+instala automaticamente. Os demais comandos apenas avisam:
 
 ```bash
-monky --help
+npm install -g pm2
 ```
 
-Para atualizar, basta instalar a URL da versão nova por cima.
-
-### Instalar a partir do código-fonte
-
-Útil para desenvolvimento ou para rodar uma versão ainda não publicada:
+## Início rápido
 
 ```bash
-git clone https://github.com/MonkyOrg/Monky.git
-cd Monky
-npm install
-npm run build
-npm install -g ./apps/server
+monky create     # cria o servidor e oferece iniciá-lo
+monky status     # confere se está no ar
+monky logs       # acompanha os logs
 ```
 
-### Formas alternativas de execução
+## Múltiplos servidores
 
-Se não quiser instalar globalmente:
+Uma mesma máquina pode hospedar quantos servidores quiser — cada um com sua
+pasta de dados, sua porta e seu processo PM2 próprio.
+
+Quando existe **um único** servidor, os comandos agem sobre ele diretamente.
+Quando existe **mais de um**, o CLI pergunta qual você quer usar:
+
+```
+Há 2 servidores Monky nesta máquina.
+Qual servidor deseja reiniciar?
+❯ Amigos — porta 3000 — /srv/monky-amigos
+  Trabalho — porta 3100 — /srv/monky-trabalho
+```
+
+Em scripts e cron (terminal não interativo) a pergunta não é possível, então
+informe `--data` explicitamente:
 
 ```bash
-# Via npx (na raiz do monorepo)
-npx monky <comando>
-
-# Via node direto
-node apps/server/dist/cli.js <comando>
-
-# Via npm workspace
-npm run cli --workspace=apps/server -- <comando>
+monky --data /srv/monky-amigos restart
 ```
-
----
 
 ## Opções globais
 
-| Opção            | Descrição                                | Padrão   |
-|------------------|------------------------------------------|----------|
-| `--data <pasta>` | Caminho da pasta de dados do servidor    | `./data` |
-| `--help`, `-h`   | Exibe a ajuda                            | —        |
+| Opção | Descrição |
+|---|---|
+| `--data <pasta>` | Pasta de dados do servidor alvo. Obrigatório quando há vários servidores e o terminal não é interativo. |
+| `--help`, `-h` | Exibe a ajuda. |
 
-A opção `--data` pode ser usada em qualquer comando. Quando omitida, o CLI
-usa `./data` como padrão. Se a pasta não existir (em comandos que precisam
-de um servidor existente), o CLI pergunta o caminho interativamente.
+## Estrutura da pasta de dados
 
----
+| Caminho | Conteúdo |
+|---|---|
+| `server.db` | Banco SQLite: membros, cargos, canais e mensagens. |
+| `monky.json` | Porta do servidor. |
+| `ecosystem.config.cjs` | Configuração do PM2, regravada a cada `start`/`restart`. |
+| `attachments/`, `avatars/`, `icons/` | Arquivos enviados. |
+| `auto-update.cjs` | Criado apenas quando o auto-update está ligado. |
 
-## Referência de comandos
+## Códigos de saída
 
-### `monky bootstrap`
-
-Configura um novo servidor definindo o dono/administrador inicial. É o
-primeiro comando a executar numa VPS nova.
-
-#### Modo interativo
-
-```bash
-monky bootstrap
-```
-
-O CLI pergunta passo a passo:
-
-1. **Caminho dos dados do servidor** (padrão: `./data`)
-2. **Código de identidade do dono** (`MONKY-ID:...`) — obtido no app Monky
-   em Configurações → Exportar Identidade
-3. **Senha da identidade** (entrada oculta)
-4. **Nickname do dono** (padrão: `Owner`)
-5. **Nome do servidor** (padrão: `Servidor dos Amigos`)
-6. **Porta do servidor** (padrão: `3001`)
-7. **Senha do servidor** (deixe vazio para sem senha)
-8. **Confirmação** — exibe um resumo antes de aplicar
-9. **Iniciar o servidor agora?** — opcionalmente já inicia após o bootstrap
-
-#### Modo direto
-
-```bash
-monky bootstrap --identity "MONKY-ID:..." --nickname "MeuNick" --name "Servidor" --port 3001 --password "senhaDoServidor"
-```
-
-| Flag           | Descrição                                      | Obrigatório |
-|----------------|-------------------------------------------------|-------------|
-| `--identity`   | Código de identidade exportado (`MONKY-ID:...`) | Sim*        |
-| `--nickname`   | Nickname do dono no servidor                    | Não         |
-| `--name`       | Nome do servidor                                | Não         |
-| `--port`       | Porta do servidor                               | Não         |
-| `--password`   | Senha do servidor                               | Não         |
-
-\* A senha da identidade é sempre solicitada interativamente (entrada oculta).
-
-**Exemplo completo:**
-
-```bash
-monky --data /var/monky bootstrap --identity "MONKY-ID:1:eyJ..." --nickname Admin --name "QG da Galera" --port 4000
-```
+| Código | Significado |
+|---|---|
+| `0` | Sucesso. |
+| `1` | Erro. A mensagem é impressa em `stderr`. |
 
 ---
 
-### `monky start`
+# Referência de comandos
 
-Inicia o servidor Monky como daemon via **PM2** (process manager). O servidor
-roda em background com auto-restart automático em caso de crash.
+## `monky create`
+
+Cria um novo servidor: prepara o banco, define o dono e salva a porta.
+Substitui o antigo `monky bootstrap`, que continua funcionando como apelido.
 
 ```bash
-monky start
-monky start --port 3001
-monky start --data /var/monky --port 4000 --name "Meu Servidor"
+monky create [opções]
 ```
 
-| Flag               | Descrição                          | Padrão                |
-|--------------------|------------------------------------|-----------------------|
-| `--port`           | Porta do servidor                  | `3001`                |
-| `--name`           | Nome do servidor                   | Valor salvo no banco  |
-| `--password`       | Senha (só se não tiver no banco)   | —                     |
-| `--max-users`      | Máximo de usuários                 | Valor salvo ou `100`  |
-| `--voice-channel`  | Nome do canal de voz inicial       | `Geral`               |
-| `--text-channel`   | Nome do canal de texto inicial     | `geral`               |
+O comando é interativo e pergunta, nesta ordem:
 
-O comando:
+1. **Onde guardar os dados** — sugere `./data`, mas você pode informar qualquer
+   caminho. Se já houver um servidor na pasta escolhida, ele pede outra.
+2. **Código de identidade do dono** (`MONKY-ID:...`) — exporte pelo app Monky em
+   *Configurações → Identidade → Exportar*.
+3. **Senha da identidade** — a que você definiu ao exportar.
+4. **Nickname do dono**
+5. **Nome do servidor**
+6. **Porta do servidor** (padrão: `3000`)
+7. **Senha do servidor** — deixe vazio para um servidor aberto.
 
-- Instala PM2 globalmente se não estiver disponível.
-- Cria a pasta de dados se não existir.
-- Gera um arquivo `ecosystem.config.cjs` na pasta de dados.
-- Inicia o processo via PM2 como daemon (background).
-- Auto-restart: se o servidor crashar, PM2 reinicia automaticamente.
-- Limite de memória: 512 MB (reinicia se exceder).
+Ao final, exibe um resumo, pede confirmação e oferece iniciar o servidor.
+
+### Opções
+
+| Opção | Descrição | Padrão |
+|---|---|---|
+| `--identity <código>` | Código de identidade do dono | perguntado |
+| `--nickname <nome>` | Nickname do dono | `Owner` |
+| `--name <nome>` | Nome do servidor | `Servidor dos Amigos` |
+| `--port <n>` | Porta do servidor | `3000` |
+| `--password <senha>` | Senha do servidor (vazio = sem senha) | perguntado |
+
+A senha da identidade nunca é aceita por opção: ela é sempre digitada de forma
+oculta no terminal.
+
+### Exemplos
+
+```bash
+# Totalmente interativo
+monky create
+
+# Pasta definida por opção, o resto perguntado
+monky create --data /srv/monky-amigos
+
+# Não interativo, exceto a senha da identidade
+monky create --data /srv/monky-amigos \
+  --identity "MONKY-ID:..." --nickname "Lucas" \
+  --name "Servidor dos Amigos" --port 3000 --password "senhaDoServidor"
+```
 
 ---
 
-### `monky stop`
+## `monky list`
 
-Para o servidor Monky.
+Lista os servidores desta máquina e o estado de cada um. Também aceito como
+`monky ls`.
+
+```bash
+monky list
+```
+
+```
+NOME       STATUS   PORTA  PASTA DE DADOS
+Amigos     online   3000   /srv/monky-amigos
+Trabalho   stopped  3100   /srv/monky-trabalho
+```
+
+---
+
+## `monky start`
+
+Inicia um servidor **já criado**, como daemon do PM2.
+
+```bash
+monky start [--port <n>]
+```
+
+Se não houver nenhum servidor na máquina, o comando falha e aponta o
+`monky create` — ele nunca cria um servidor por conta própria.
+
+Antes de subir, o arquivo `ecosystem.config.cjs` é regravado, então a porta e o
+nome atuais valem a partir daí.
+
+### Opções
+
+| Opção | Descrição | Padrão |
+|---|---|---|
+| `--port <n>` | Porta só para esta execução | valor de `monky.json`, ou `3000` |
+
+Para mudar a porta de forma permanente use `monky config set port`.
+
+::: warning Opções removidas
+`--password`, `--max-users`, `--name`, `--voice-channel` e `--text-channel` não
+são mais aceitos aqui. Eles só tinham efeito na criação do banco e eram
+silenciosamente ignorados em servidores já existentes. Hoje o comando falha
+indicando a alternativa: `monky create` ou `monky config set`.
+:::
+
+---
+
+## `monky stop`
+
+Para o servidor, mantendo-o registrado no PM2.
 
 ```bash
 monky stop
 ```
 
-Remove o processo do PM2.
+O processo continua listado no PM2 de propósito: removê-lo descartaria os logs
+justamente quando eles mais importam, logo depois de uma queda ou parada.
+`monky logs` continua funcionando com o servidor parado.
 
 ---
 
-### `monky restart`
+## `monky restart`
 
-Reinicia o servidor Monky sem downtime.
+Reinicia o servidor aplicando a configuração atual.
 
 ```bash
-monky restart
+monky restart [--port <n>]
 ```
+
+O `ecosystem.config.cjs` é regravado antes do reinício, então uma porta ou nome
+alterados desde o último `start` passam a valer.
 
 ---
 
-### `monky status`
+## `monky status`
 
-Exibe o estado atual do servidor.
+Exibe o estado do servidor.
 
 ```bash
-monky status
+monky status [--data <pasta>]
 ```
 
-Mostra: status (online/stopped/errored), PID, uptime, quantidade de
-restarts, memória e CPU.
+Com um único servidor (ou com `--data`), mostra o detalhe:
+
+```
+Estado do servidor: Amigos
+status: online
+dataDir: /srv/monky-amigos
+porta: 3000
+processo PM2: monky-server-a1b2c3d4
+pid: 21877
+uptime: 2026-08-27T18:02:11.000Z
+restarts: 0
+memória: 88 MB
+cpu: 0%
+```
+
+Com vários servidores e sem `--data`, imprime a mesma tabela do `monky list` —
+uma consulta não tem efeito colateral, então não faz sentido perguntar.
 
 ---
 
-### `monky logs`
+## `monky logs`
 
-Exibe os logs do servidor em tempo real (tail).
+Exibe os logs do servidor iniciado com `monky start`.
 
 ```bash
-monky logs                              # segue os logs, começando pelas últimas 100 linhas
-monky logs --lines 500                  # começa exibindo as últimas 500 linhas
-monky logs --level WARN                 # só avisos e erros
-monky logs --level ERROR --no-follow    # imprime os erros recentes e sai
+monky logs [--lines <n>] [--level <nível>] [--no-follow]
 ```
 
-| Flag                | Descrição                                              | Padrão |
-|---------------------|--------------------------------------------------------|--------|
-| `--lines <n>`       | Quantas linhas de histórico exibir antes de acompanhar | `100`  |
-| `--level <nível>`   | Nível mínimo: `INFO`, `WARN` ou `ERROR`                | `INFO` |
-| `--no-follow`       | Imprime o histórico e encerra, sem acompanhar          | —      |
+### Opções
+
+| Opção | Descrição | Padrão |
+|---|---|---|
+| `--lines <n>` | Quantidade de linhas anteriores a exibir | `100` |
+| `--level <nível>` | Nível mínimo: `INFO`, `WARN` ou `ERROR` | sem filtro |
+| `--no-follow` | Imprime e sai, em vez de seguir em tempo real | segue |
 
 `--level` filtra por nível mínimo: `INFO` mostra tudo, `WARN` mostra avisos e
 erros, `ERROR` mostra só erros. Linhas de continuação (como stack traces)
 acompanham o nível da linha acima delas.
 
-Pressione `Ctrl+C` para sair.
+### Exemplos
+
+```bash
+monky logs                              # segue em tempo real (Ctrl+C para sair)
+monky logs --lines 500                  # começa com as últimas 500 linhas
+monky logs --level WARN                 # só avisos e erros
+monky logs --level ERROR --no-follow    # imprime os erros recentes e sai
+```
 
 ::: tip
-`monky logs` lê os logs do servidor iniciado com `monky start`, que roda via
-PM2. Se o servidor estiver rodando dentro do app Monky, use o **Monitor do
-Servidor** no próprio app — veja [Criar Seu Servidor](/criar-seu-servidor).
+`monky logs` lê os logs do PM2. Se o servidor estiver rodando dentro do app
+Monky, use o **Monitor do Servidor** no próprio app (menu do servidor → Monitor
+do Servidor).
 :::
 
 ---
 
-### `monky members`
+## `monky members`
 
-Gerencia membros do servidor.
-
-#### Listar membros
+Lista os membros do servidor e seus cargos.
 
 ```bash
 monky members
-monky members list
+monky members info <nickname|clientId>
 ```
 
-Exibe tabela com ID, Nickname, Client ID e Roles de cada membro.
-
-#### Informações de um membro
-
-```bash
-# Modo interativo — pergunta o nickname/clientId
-monky members info
-
-# Modo direto — por nickname
-monky members info lucas
-
-# Modo direto — por clientId
-monky members info abcd1234efgh5678
-```
-
-Exibe informações detalhadas: id, clientId, publicKey, avatar, datas de
-criação e último acesso, se é owner, e cargos atribuídos.
+`members info` exibe id, clientId, chave pública, datas de criação e último
+acesso, se é o dono e a lista de cargos.
 
 ---
 
-### `monky admin`
+## `monky admin`
 
-Gerencia o cargo de administrador.
-
-#### Adicionar admin
+Concede ou remove o cargo Admin.
 
 ```bash
-# Modo interativo — lista membros numerados para escolher
-monky admin add
-
-# Modo direto — por nickname
-monky admin add lucas
-
-# Modo direto — por clientId
-monky admin add abcd1234efgh5678
+monky admin add [nickname|clientId]
+monky admin remove [nickname|clientId]
 ```
 
-No modo interativo, o CLI exibe uma lista navegável:
-
-```
-Membros do servidor:
-  Use ↑↓ para navegar, Enter para selecionar
-❯ Alice (abc123...)
-  Bob (def456...)
-  Carlos (ghi789...)
-```
-
-#### Remover admin
-
-```bash
-monky admin remove lucas
-monky admin remove abcd1234efgh5678
-```
+Sem argumento, o comando lista os membros para você escolher.
 
 ---
 
-### `monky roles`
+## `monky roles`
 
-Gerencia cargos (roles) do servidor.
-
-#### Listar cargos
+Administra os cargos do servidor.
 
 ```bash
-monky roles
-monky roles list
+monky roles                       # lista
+monky roles create [nome] [cor] [permissões]
+monky roles assign [membro] [cargo]
+monky roles unassign [membro] [cargo]
+monky roles delete [cargo]
 ```
 
-Exibe cada cargo com: nome, ID, cor, posição, permissões (valor numérico),
-se é padrão, e quantidade de membros atribuídos.
-
-#### Criar cargo
-
-```bash
-# Modo interativo — pergunta nome, cor e permissões
-monky roles create
-
-# Modo direto
-monky roles create "Moderador" "#00ff88" MANAGE_CHANNELS,MUTE_MEMBERS
-```
-
-No modo interativo, as permissões são exibidas como lista navegável com
-seleção múltipla:
-
-```
-Permissões do cargo:
-  Use ↑↓ para navegar, Espaço para marcar/desmarcar, Enter para confirmar
-❯   Administrator (ADMINISTRATOR)
-    Manage Server (MANAGE_SERVER)
-    Manage Channels (MANAGE_CHANNELS)
-    Mute Members (MUTE_MEMBERS)
-    Deafen Members (DEAFEN_MEMBERS)
-    Move Members (MOVE_MEMBERS)
-    Kick Members (KICK_MEMBERS)
-  ✔ Speak (SPEAK)
-  ✔ Send Messages (SEND_MESSAGES)
-  ✔ Read Messages (READ_MESSAGES)
-    Attach Files (ATTACH_FILES)
-```
-
-Use `A` para selecionar/desmarcar tudo.
-
-#### Atribuir cargo a membro
-
-```bash
-# Modo interativo — escolhe membro e cargo nas listas
-monky roles assign
-
-# Modo direto
-monky roles assign lucas Moderador
-```
-
-No modo interativo, primeiro seleciona o membro (lista navegável com setas),
-depois o cargo (lista navegável com setas).
-
-#### Remover cargo de membro
-
-```bash
-# Modo interativo — escolhe membro e cargo a remover
-monky roles unassign
-
-# Modo direto
-monky roles unassign lucas Moderador
-```
-
-Cargos marcados como padrão não podem ser removidos.
-
-#### Excluir cargo
-
-```bash
-# Modo interativo — lista cargos e pede confirmação
-monky roles delete
-
-# Modo direto
-monky roles delete Moderador
-```
-
-O CLI pede confirmação antes de excluir (`Confirma a remoção do cargo X? (s/N)`).
+Sem argumentos, cada subcomando é interativo. As permissões podem ser passadas
+por nome, separadas por vírgula. A cor usa o formato `#RRGGBB`. O cargo padrão
+do servidor não pode ser removido de um membro.
 
 ---
 
-### `monky config`
+## `monky config`
 
-Gerencia a configuração do servidor.
+Exibe ou altera a configuração do servidor.
 
-#### Exibir configuração
+```bash
+monky config                        # exibe tudo
+monky config set                    # escolhe a chave interativamente
+monky config set <chave> [valor]    # altera direto
+```
+
+### Chaves
+
+| Chave | Descrição | Padrão |
+|---|---|---|
+| `name` | Nome do servidor (mínimo 2 caracteres) | `Servidor dos Amigos` |
+| `password` | Senha de entrada. Vazio, `none` ou `clear` remove a senha | sem senha |
+| `port` | Porta TCP | `3000` |
+| `icon` | Caminho de uma imagem, copiada para a pasta de dados. Vazio ou `clear` remove | sem ícone |
+| `maxUsers` | Máximo de usuários simultâneos | `20` |
+| `allowSoundboard` | Permite o soundboard (`true`/`false`) | `true` |
+| `maxAttachmentFileBytes` | Tamanho máximo por anexo, em bytes | sem limite |
+| `maxAttachmentStorageBytes` | Espaço total para anexos, em bytes | sem limite |
+| `autoUpdate` | Liga a atualização automática diária (`true`/`false`) | `false` |
+
+Alterar `port` com o servidor no ar oferece reiniciar na hora para aplicar.
+
+### Exemplos
 
 ```bash
 monky config
-monky config show
-```
-
-Exibe: dataDir, id, name, hasPassword, maxUsers, ownerUserId, ownerNickname,
-allowSoundboard, iconPath, maxAttachmentFileBytes, maxAttachmentStorageBytes
-e createdAt.
-
-#### Alterar configuração
-
-```bash
-# Modo interativo — menu com as chaves disponíveis
-monky config set
-
-# Modo direto
 monky config set name "Servidor dos Amigos"
+monky config set password           # digitada de forma oculta
+monky config set password clear     # remove a senha
 monky config set maxUsers 50
-monky config set password "novasenha"
-monky config set password clear
-monky config set allowSoundboard false
-monky config set maxAttachmentFileBytes 10485760
-monky config set maxAttachmentStorageBytes 1073741824
 monky config set autoUpdate true
 ```
-
-No modo interativo sem argumentos, o CLI exibe um menu navegável:
-
-```
-Qual configuração deseja alterar?
-  Use ↑↓ para navegar, Enter para selecionar
-❯ name
-  password
-  maxUsers
-  allowSoundboard
-  maxAttachmentFileBytes
-  maxAttachmentStorageBytes
-  autoUpdate
-```
-
-Depois pergunta o novo valor com o valor atual como sugestão.
-
-#### Chaves suportadas
-
-| Chave                        | Descrição                                            | Tipo     |
-|------------------------------|------------------------------------------------------|----------|
-| `name`                       | Nome do servidor (mín. 2 caracteres)                 | texto    |
-| `password`                   | Senha do servidor                                    | texto    |
-| `maxUsers`                   | Número máximo de usuários                            | inteiro  |
-| `allowSoundboard`            | Habilitar soundboard                                 | booleano |
-| `maxAttachmentFileBytes`     | Tamanho máximo por arquivo anexado (bytes)           | inteiro  |
-| `maxAttachmentStorageBytes`  | Armazenamento máximo total de anexos (bytes)         | inteiro  |
-| `autoUpdate`                 | Atualização automática diária via PM2                | booleano |
-
-**Valores especiais para `password`:** `clear`, `none`, `null`, `empty` ou
-`remove` removem a senha do servidor.
-
-**Valores booleanos aceitos:** `true`/`false`, `1`/`0`, `yes`/`no`,
-`sim`/`nao`, `on`/`off`.
 
 ---
 
-### `monky update`
+## `monky update`
 
-Atualiza o servidor Monky para a versão mais recente (estável ou beta).
-
-#### Verificar se há atualização
+Atualiza o Monky para a última versão publicada.
 
 ```bash
-# Canal estável
-monky update --check
-
-# Incluindo canal beta/pré-release
-monky update --check --beta
+monky update [--beta] [--check] [--yes]
 ```
 
-Consulta a API do GitHub Releases e compara com a versão local.
+### Opções
 
-#### Atualizar
+| Opção | Descrição |
+|---|---|
+| `--beta`, `-b` | Considera também as prereleases |
+| `--check` | Apenas verifica e sai, sem atualizar |
+| `--yes`, `-y` | Não pergunta nada — para uso em scripts e no auto-update |
+
+O comando detecta como o Monky foi instalado:
+
+- **Instalação pela release** (recomendada): baixa e instala o novo pacote com
+  `npm install -g`.
+- **Clone do repositório**: busca as tags, faz checkout da versão de destino,
+  instala as dependências e compila o servidor. Alterações locais não
+  commitadas interrompem a atualização com um aviso.
+
+Ao final, o servidor é reiniciado (com confirmação, exceto com `--yes`).
+
+### Exemplos
 
 ```bash
-# Atualizar para a última versão estável
-monky update
-
-# Atualizar para a última versão beta
-monky update --beta
+monky update --check           # há atualização estável?
+monky update --check --beta    # e considerando betas?
+monky update                   # atualiza para a última estável
+monky update --beta            # atualiza para a última, incluindo betas
 ```
 
-O comando:
-
-1. Verifica a versão mais recente no GitHub (canal estável ou beta).
-2. Pede confirmação.
-3. Se instalado via repositório Git:
-   - Executa `git pull` (ou checkout da tag beta correspondente).
-   - Executa `npm install`.
-   - Executa `npm run build:server` (compila apenas `@monky/shared` e o servidor, sem buildar o client gráfico).
-4. Se instalado standalone (`npm install -g monky-cli-*.tgz`):
-   - Atualiza o pacote global do npm baixando o tarball oficial da release.
-5. Se o servidor estiver rodando via PM2, pergunta se deseja reiniciar.
-
-#### Atualização automática
+### Atualização automática
 
 ```bash
 monky config set autoUpdate true
 ```
 
-Habilita um processo PM2 (`monky-updater`) que roda diariamente às 4h da
-manhã. Se houver nova versão, faz pull + build + restart automaticamente.
+Registra no PM2 uma tarefa diária, às 4h, que roda `monky update --yes` para
+aquele servidor. O canal segue a versão instalada: se você está numa beta, o
+auto-update acompanha o canal beta.
 
-Para desabilitar:
+Funciona tanto na instalação pela release quanto no clone do repositório, em
+Linux, macOS e Windows. Para desligar:
 
 ```bash
 monky config set autoUpdate false
@@ -506,73 +419,21 @@ monky config set autoUpdate false
 
 ---
 
-## Fluxo completo para VPS
+## `monky destroy`
 
-### 1. Preparar o servidor
-
-```bash
-git clone https://github.com/MonkyOrg/Monky.git
-cd Monky
-npm install
-npm run build
-npm install -g ./apps/server
-```
-
-### 2. Exportar identidade no app Monky
-
-No cliente Monky, vá em **Configurações → Exportar Identidade** e copie o
-código `MONKY-ID:...`.
-
-### 3. Configurar o servidor
+Apaga **permanentemente** todos os dados de um servidor.
 
 ```bash
-monky bootstrap
+monky destroy [--data <pasta>]
 ```
 
-Siga as perguntas. Ao final, o CLI oferece iniciar o servidor automaticamente.
-
-### 4. Iniciar manualmente (quando necessário)
-
-```bash
-monky start
-```
-
-### 5. Parar o servidor
-
-```bash
-monky stop
-```
-
-### 6. Administrar
-
-```bash
-monky members          # ver quem está registrado
-monky admin add        # promover alguém a admin
-monky roles create     # criar um novo cargo
-monky roles assign     # atribuir cargo a membro
-monky config set       # alterar configurações
-```
+Remove o banco, anexos, avatares e configurações, encerra o processo PM2 e tira
+o servidor do registro. Pede duas confirmações: digitar `DESTROY` e um "sim"
+final. Só aceita pastas que realmente contenham um servidor Monky.
 
 ---
 
-## Exemplos rápidos
+## Ver também
 
-```bash
-# Bootstrap completo inline
-monky bootstrap --identity "MONKY-ID:1:..." --nickname Admin --port 3001
-
-# Iniciar servidor na porta 4000 com dados em outra pasta
-monky --data /var/monky start --port 4000
-
-# Listar membros de um servidor com dados em pasta customizada
-monky --data /var/monky members
-
-# Criar cargo Moderador com cor verde e permissão de gerenciar canais
-monky roles create "Moderador" "#00ff88" MANAGE_CHANNELS
-
-# Alterar nome do servidor
-monky config set name "QG da Galera"
-
-# Remover senha do servidor
-monky config set password clear
-```
+- [Hospedar em VPS](/hospedar-em-vps) — deixar o servidor no ar 24/7
+- [Verificar Releases](/verificar-releases) — conferir a autenticidade dos downloads

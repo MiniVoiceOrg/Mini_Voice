@@ -2,14 +2,17 @@ import fs from 'fs';
 import path from 'path';
 import { execSync, spawnSync } from 'child_process';
 import { ANSI, color } from '../constants';
+import { GlobalArgs } from '../context';
 import {
   AUTO_UPDATE_CRON,
   ensurePm2,
+  findPm2Process,
+  getCliEntryPath,
+  getUpdaterProcessName,
   isPm2Available,
-  PM2_PROCESS_NAME,
-  UPDATER_PROCESS_NAME,
+  LEGACY_UPDATER_PROCESS_NAME,
 } from '../pm2';
-import { confirm } from '../prompts';
+import { confirm } from '../prompts';import { restartServerCommand } from './serverLifecycle';
 
 export const GITHUB_RELEASES_URL =
   'https://api.github.com/repos/MonkyOrg/Monky/releases?per_page=100';
@@ -38,43 +41,58 @@ export function getRepoRoot(): string | null {
   return null;
 }
 
-export function getLocalVersion(): string {
-  // 1. Try from apps/server/package.json (bundled or installed standalone package)
+/**
+ * Version stamped into the published CLI package.
+ *
+ * `pack-cli.js` writes the release version into the tarball's package.json, so
+ * this is authoritative for the recommended install. The placeholder versions
+ * checked out in the repository are ignored on purpose.
+ */
+function readPackagedVersion(): string | null {
   const candidatePkgs = [
     path.resolve(__dirname, '..', '..', 'package.json'),
     path.resolve(__dirname, '..', '..', '..', 'package.json'),
   ];
   for (const pkgFile of candidatePkgs) {
-    if (fs.existsSync(pkgFile)) {
-      try {
-        const pkg = JSON.parse(fs.readFileSync(pkgFile, 'utf8'));
-        if (pkg.version && pkg.version !== '1.0.0' && pkg.version !== '0.0.0') {
-          return pkg.version;
-        }
-      } catch {}
-    }
+    if (!fs.existsSync(pkgFile)) continue;
+    try {
+      const pkg = JSON.parse(fs.readFileSync(pkgFile, 'utf8'));
+      if (pkg.version && pkg.version !== '1.0.0' && pkg.version !== '0.0.0') {
+        return pkg.version;
+      }
+    } catch {}
   }
+  return null;
+}
 
-  // 2. Try from root package.json if in a git repo
+/**
+ * Version of the checked-out repository, taken from the nearest tag.
+ *
+ * The repository never bumps `package.json` — releases exist only as tags — so
+ * reading it here always returned `1.0.0` and made every check report an
+ * update as available.
+ */
+function readGitVersion(repoRoot: string): string | null {
+  try {
+    const described = execSync('git describe --tags --abbrev=0', {
+      encoding: 'utf8',
+      cwd: repoRoot,
+      stdio: ['pipe', 'pipe', 'ignore'],
+    }).trim();
+    return described ? described.replace(/^v/, '') : null;
+  } catch {
+    return null;
+  }
+}
+
+export function getLocalVersion(): string {
+  const packaged = readPackagedVersion();
+  if (packaged) return packaged;
+
   const repoRoot = getRepoRoot();
   if (repoRoot) {
-    const pkgPath = path.join(repoRoot, 'package.json');
-    if (fs.existsSync(pkgPath)) {
-      try {
-        const pkg = JSON.parse(fs.readFileSync(pkgPath, 'utf8'));
-        return pkg.version || '0.0.0';
-      } catch {}
-    }
-  }
-
-  // 3. Fallback to package.json in server dir
-  for (const pkgFile of candidatePkgs) {
-    if (fs.existsSync(pkgFile)) {
-      try {
-        const pkg = JSON.parse(fs.readFileSync(pkgFile, 'utf8'));
-        if (pkg.version) return pkg.version;
-      } catch {}
-    }
+    const fromGit = readGitVersion(repoRoot);
+    if (fromGit) return fromGit;
   }
 
   return '0.0.0';
@@ -247,6 +265,14 @@ export async function checkForUpdate(
   };
 }
 
+/**
+ * Whether the checkout has changes that a tag switch would clobber.
+ */
+function hasLocalChanges(repoRoot: string): boolean {
+  const result = spawnSync('git', ['status', '--porcelain'], { encoding: 'utf8', cwd: repoRoot, shell: true });
+  return result.status === 0 && result.stdout.trim().length > 0;
+}
+
 export async function performUpdate(
   options: { beta?: boolean; targetVersion?: string; tgzUrl?: string } = {}
 ): Promise<boolean> {
@@ -258,23 +284,32 @@ export async function performUpdate(
   if (repoRoot) {
     // Mode A: Git clone / monorepo installation
     console.log(color('Ambiente: Repositório Git local', ANSI.dim));
-    console.log(color('1/3 Baixando atualizações...', ANSI.cyan));
 
-    let pullResult;
-    if (options.beta && options.targetVersion) {
-      spawnSync('git', ['fetch', '--tags', 'origin'], { cwd: repoRoot, stdio: 'inherit', shell: true });
-      pullResult = spawnSync('git', ['checkout', `v${options.targetVersion}`], {
-        cwd: repoRoot,
-        stdio: 'inherit',
-        shell: true,
-      });
-    } else {
-      pullResult = spawnSync('git', ['pull', '--ff-only'], { cwd: repoRoot, stdio: 'inherit', shell: true });
+    if (!options.targetVersion) {
+      console.log(color('Versão de destino desconhecida — não há o que atualizar.', ANSI.red));
+      return false;
     }
 
-    if (pullResult.status !== 0) {
-      console.log(color('Falha ao baixar atualizações do Git. Verifique se não há alterações locais.', ANSI.red));
-      console.log(color('Dica: use "git stash" para guardar alterações antes de atualizar.', ANSI.dim));
+    if (hasLocalChanges(repoRoot)) {
+      console.log(color('O repositório tem alterações locais não commitadas.', ANSI.red));
+      console.log(color('Dica: use "git stash" para guardá-las antes de atualizar.', ANSI.dim));
+      return false;
+    }
+
+    console.log(color(`1/3 Buscando a versão v${options.targetVersion}...`, ANSI.cyan));
+    spawnSync('git', ['fetch', '--tags', 'origin'], { cwd: repoRoot, stdio: 'inherit', shell: true });
+
+    // Checking out the tag works the same from a branch or from a previous
+    // update's detached HEAD; "git pull" only worked from a branch and failed
+    // on every update after the first.
+    const checkout = spawnSync(
+      'git',
+      ['-c', 'advice.detachedHead=false', 'checkout', `v${options.targetVersion}`],
+      { cwd: repoRoot, stdio: 'inherit', shell: true }
+    );
+
+    if (checkout.status !== 0) {
+      console.log(color(`Falha ao alternar para a tag v${options.targetVersion}.`, ANSI.red));
       return false;
     }
 
@@ -330,9 +365,10 @@ export async function performUpdate(
   return true;
 }
 
-export async function updateCommand(args: string[]): Promise<void> {
+export async function updateCommand(globalArgs: GlobalArgs, args: string[]): Promise<void> {
   const checkOnly = args.includes('--check');
   const includeBeta = args.includes('--beta') || args.includes('-b');
+  const assumeYes = args.includes('--yes') || args.includes('-y');
 
   const { hasUpdate, remote, tgzUrl, isPrerelease } = await checkForUpdate(includeBeta);
 
@@ -341,15 +377,20 @@ export async function updateCommand(args: string[]): Promise<void> {
   }
 
   if (!hasUpdate) {
+    if (assumeYes) {
+      return;
+    }
     const force = await confirm('Deseja forçar a reinstalação/atualização mesmo assim?', false);
     if (!force) return;
   }
 
   const channelLabel = isPrerelease || includeBeta ? ' (Beta)' : '';
-  const accepted = await confirm(`Deseja atualizar para a versão ${remote}${channelLabel} agora?`, true);
-  if (!accepted) {
-    console.log(color('Atualização cancelada.', ANSI.yellow));
-    return;
+  if (!assumeYes) {
+    const accepted = await confirm(`Deseja atualizar para a versão ${remote}${channelLabel} agora?`, true);
+    if (!accepted) {
+      console.log(color('Atualização cancelada.', ANSI.yellow));
+      return;
+    }
   }
 
   const success = await performUpdate({
@@ -359,85 +400,98 @@ export async function updateCommand(args: string[]): Promise<void> {
   });
   if (!success) return;
 
-  // Restart server if running via PM2
-  if (isPm2Available()) {
-    const listResult = spawnSync('pm2', ['jlist'], { encoding: 'utf8', shell: true });
-    if (listResult.status === 0) {
-      try {
-        const processes = JSON.parse(listResult.stdout);
-        const running = processes.find(
-          (p: any) => p.name === PM2_PROCESS_NAME && p.pm2_env?.status === 'online'
-        );
-        if (running) {
-          const shouldRestart = await confirm(
-            'Servidor está rodando via PM2. Deseja reiniciar para aplicar a atualização?',
-            true
-          );
-          if (shouldRestart) {
-            spawnSync('pm2', ['restart', PM2_PROCESS_NAME], { stdio: 'inherit', shell: true });
-            console.log(color('Servidor reiniciado com a nova versão.', ANSI.green));
-          }
-        }
-      } catch {
-        /* ignore */
-      }
-    }
+  if (!isPm2Available()) return;
+
+  // Restarting goes through the lifecycle command so the ecosystem file is
+  // rewritten and the right server is picked when the machine hosts several.
+  if (assumeYes) {
+    await restartServerCommand(globalArgs);
+    return;
+  }
+
+  const shouldRestart = await confirm('Deseja reiniciar o servidor para aplicar a atualização?', true);
+  if (shouldRestart) {
+    await restartServerCommand(globalArgs);
   }
 }
 
 export function getUpdaterScriptPath(dataDir: string): string {
+  return path.join(dataDir, 'auto-update.cjs');
+}
+
+function getLegacyUpdaterScriptPath(dataDir: string): string {
   return path.join(dataDir, 'auto-update.sh');
 }
 
-export function generateUpdaterScript(repoRoot: string, _dataDir: string): string {
-  return `#!/bin/bash
-# Monky auto-updater — generated by monky CLI
-cd "${repoRoot}"
-CURRENT=$(node -p "require('./package.json').version" 2>/dev/null || echo "0.0.0")
-LATEST=$(curl -sf https://api.github.com/repos/MonkyOrg/Monky/releases/latest | node -p "JSON.parse(require('fs').readFileSync('/dev/stdin','utf8')).tag_name.replace('v','')" 2>/dev/null || echo "$CURRENT")
+/**
+ * Auto-updater run by PM2 on a schedule.
+ *
+ * It shells out to the CLI itself instead of reimplementing the update, which
+ * is what lets it work for tarball installs too — the previous bash script
+ * hardcoded `git pull`, so it required a Git checkout and never ran on Windows.
+ */
+export function generateUpdaterScript(options: { dataDir: string; cliEntry: string; beta: boolean }): string {
+  const args = [options.cliEntry, '--data', options.dataDir, 'update', '--yes'];
+  if (options.beta) args.push('--beta');
 
-if [ "$CURRENT" != "$LATEST" ]; then
-  echo "[monky-updater] Nova versão $LATEST encontrada (atual: $CURRENT). Atualizando servidor..."
-  git pull --ff-only && npm install && npm run build:server
-  if [ $? -eq 0 ]; then
-    pm2 restart ${PM2_PROCESS_NAME} 2>/dev/null || true
-    echo "[monky-updater] Atualizado para $LATEST e servidor reiniciado."
-  else
-    echo "[monky-updater] Falha na atualização do servidor."
-  fi
-else
-  echo "[monky-updater] Versão $CURRENT está atualizada."
-fi
+  return `// Monky auto-updater — gerado pelo "monky config set autoUpdate true".
+// Não edite: o arquivo é reescrito sempre que o auto-update é reabilitado.
+const { spawnSync } = require('child_process');
+
+const args = ${JSON.stringify(args, null, 2)};
+
+console.log('[monky-updater] Verificando atualizações...');
+const result = spawnSync(process.execPath, args, { stdio: 'inherit' });
+process.exit(result.status === null ? 1 : result.status);
 `;
+}
+
+/**
+ * Whether PM2 has an updater registered for this server.
+ */
+export function isAutoUpdateEnabled(dataDir: string): boolean {
+  if (!isPm2Available()) return false;
+  return (
+    findPm2Process(getUpdaterProcessName(dataDir)) !== null ||
+    findPm2Process(LEGACY_UPDATER_PROCESS_NAME) !== null
+  );
 }
 
 export async function enableAutoUpdate(dataDir: string): Promise<void> {
   ensurePm2();
 
-  const repoRoot = getRepoRoot();
-  if (!repoRoot) {
-    throw new Error('Auto-update automático via PM2 requer instalação via repositório Git.');
+  const scriptPath = getUpdaterScriptPath(dataDir);
+  const beta = parseSemver(getLocalVersion()).isBeta;
+  await fs.promises.writeFile(
+    scriptPath,
+    generateUpdaterScript({ dataDir, cliEntry: getCliEntryPath(), beta }),
+    'utf8'
+  );
+
+  const legacyScript = getLegacyUpdaterScriptPath(dataDir);
+  if (fs.existsSync(legacyScript)) {
+    try {
+      await fs.promises.unlink(legacyScript);
+    } catch {}
   }
 
-  const scriptPath = getUpdaterScriptPath(dataDir);
-  await fs.promises.writeFile(scriptPath, generateUpdaterScript(repoRoot, dataDir), { mode: 0o755 });
+  const processName = getUpdaterProcessName(dataDir);
+  for (const name of [processName, LEGACY_UPDATER_PROCESS_NAME]) {
+    spawnSync('pm2', ['delete', name], { stdio: 'ignore', shell: true });
+  }
 
-  // Remove existing updater if any
-  spawnSync('pm2', ['delete', UPDATER_PROCESS_NAME], { stdio: 'ignore', shell: true });
-
-  // Register as PM2 cron
   const result = spawnSync(
     'pm2',
     [
       'start',
       scriptPath,
       '--name',
-      UPDATER_PROCESS_NAME,
+      processName,
       '--cron',
       AUTO_UPDATE_CRON,
       '--no-autorestart',
       '--interpreter',
-      'bash',
+      'node',
     ],
     { stdio: 'inherit', shell: true }
   );
@@ -450,17 +504,20 @@ export async function enableAutoUpdate(dataDir: string): Promise<void> {
 
   console.log(color('Auto-update habilitado!', ANSI.green));
   console.log(`Verificação diária às 4h da manhã.`);
+  console.log(`Canal: ${beta ? 'beta (inclui prereleases)' : 'estável'}`);
   console.log(`Script: ${scriptPath}`);
   console.log(color('Use "monky config set autoUpdate false" para desabilitar.', ANSI.dim));
 }
 
-export async function disableAutoUpdate(): Promise<void> {
+export async function disableAutoUpdate(dataDir: string): Promise<void> {
   if (!isPm2Available()) {
     console.log(color('PM2 não encontrado. Auto-update já está desabilitado.', ANSI.yellow));
     return;
   }
 
-  spawnSync('pm2', ['delete', UPDATER_PROCESS_NAME], { stdio: 'ignore', shell: true });
+  for (const name of [getUpdaterProcessName(dataDir), LEGACY_UPDATER_PROCESS_NAME]) {
+    spawnSync('pm2', ['delete', name], { stdio: 'ignore', shell: true });
+  }
   spawnSync('pm2', ['save'], { stdio: 'ignore', shell: true });
   console.log(color('Auto-update desabilitado.', ANSI.green));
 }

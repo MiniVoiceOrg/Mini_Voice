@@ -1,10 +1,24 @@
 import { Permission } from '@monky/shared';
 import { ANSI, color, PERMISSION_OPTIONS } from './constants';
 
+/**
+ * Value of a `--flag value` pair.
+ *
+ * A value that looks like another flag is rejected instead of accepted, so
+ * `monky start --port --name x` fails clearly rather than parsing `--name` as
+ * the port.
+ */
 export function parseOption(args: string[], name: string): string | undefined {
   const index = args.indexOf(name);
   if (index < 0) return undefined;
-  return args[index + 1];
+  const value = args[index + 1];
+  if (value === undefined) {
+    throw new Error(`Informe um valor após ${name}.`);
+  }
+  if (value.startsWith('--')) {
+    throw new Error(`Informe um valor após ${name} (recebido: ${value}).`);
+  }
+  return value;
 }
 
 export function parseBoolean(value: string): boolean {
