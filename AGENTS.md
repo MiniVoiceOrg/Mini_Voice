@@ -1,76 +1,158 @@
-# Instruções para Agentes de IA
+# Diretrizes e Fluxo de Trabalho para Agentes de IA
 
-Este documento define o fluxo de trabalho obrigatório para agentes de IA que
-desenvolvem neste repositório a partir do board do GitHub.
+Este documento define os princípios de engenharia de software, padrões de arquitetura e o fluxo de trabalho obrigatório para agentes de IA que desenvolvem no repositório **Monky**.
 
-## Fluxo de trabalho a partir do board
+---
 
-O board fica em: https://github.com/orgs/MonkyOrg/projects/1
+## 🏛️ Princípios de Engenharia de Software & Arquitetura
 
-Sempre que iniciar um desenvolvimento a partir de uma issue/card do board, siga
-exatamente estas etapas, nesta ordem:
+Todo código produzido deve seguir as melhores práticas da indústria, com foco em **clareza, robustez, performance e manutenibilidade**, evitando complexidade desnecessária (_sem overengineering_).
+
+### 1. Diretrizes Técnicas por Área do Projeto
+
+#### 🔹 Electron, IPC & Segurança
+
+- **Isolamento Total:** Mantenha `contextIsolation: true` e `nodeIntegration: false`. Nunca exponha módulos inteiros do Node.js ou Electron diretamente no `window` via Preload.
+- **Tipagem Estrita de IPC:** Utilize sempre os contratos centralizados em `packages/shared/src/ipc.ts`. Proibido utilizar strings literais soltas ou tipos `any` em chamadas `ipcMain.handle` / `ipcRenderer.invoke`.
+- **Prevenção de Memory Leaks no IPC:** Remova listeners e evite registrar handlers IPC repetidamente durante o ciclo de vida da aplicação.
+- **Sanitização no Main Process:** Valide todos os payloads recebidos do Renderer antes de executar operações de I/O, rede, arquivos ou navegação externa (`shell.openExternal`).
+
+#### 🔹 WebRTC & Processamento de Áudio/Vídeo
+
+- **Gerenciamento de Ciclo de Vida:** Sempre execute o teardown completo de `RTCPeerConnection` e interrompa trilhas de mídia (`MediaStreamTrack.stop()`) ao encerrar chamadas, desativar câmeras ou mutar microfones.
+- **Web Audio API Cleanup:** Feche e desconecte instâncias de `AudioContext`, `MediaStreamAudioSourceNode`, `GainNode` e `AudioWorkletNode` para evitar consumo fantasma de CPU e memória.
+- **Resiliência de Rede:** Trate _race conditions_ em trocas de ofertas/respostas SDP e candidatos ICE, garantindo reconexão graciosa em instabilidades de rede.
+
+#### 🔹 Módulos Nativos C++ / Node-API (`@monky/screen-audio`)
+
+- **Memory & Thread Safety:** Garanta a liberação correta de buffers e recursos de áudio do sistema operacional (WASAPI no Windows, CoreAudio no macOS). Nunca trave a thread principal do Node.js — utilize `napi_threadsafe_function` para callbacks assíncronos.
+- **Resiliência a Falhas:** Isole erros de captura de áudio com tratamento de exceções robusto para que falhas em dispositivos de som não causem crash no processo Main.
+
+#### 🔹 Renderer Vanilla TypeScript & DOM
+
+- **Limpeza de Event Listeners:** Sempre remova listeners vinculados a `window`, `document`, elementos do DOM ou ao `EventBus` quando uma view, modal ou componente for desmontado/fechado.
+- **Gerenciamento de Estado Previsível:** Concentre estados nas Stores dedicadas (`chatStore`, `voiceStore`, `serverStore`, `settingsStore`, `connectionStore`), aplicando mutações claras e sem dependências circulares.
+- **Performance de Renderização:** Evite reflows e repaints desnecessários no DOM; prefira mutações cirúrgicas a recriações massivas de HTML.
+
+#### 🔹 Backend / Servidor (Clean Architecture Pragmática)
+
+- **Separação de Responsabilidades:** Respeite a divisão entre `domain` (regras puras), `application` (casos de uso) e `infrastructure` (SQLite, WebSocket, rede).
+- **Persistência Segura:** No SQLite, utilize transações para operações em lote e prepare queries parametrizadas para evitar corrupção e injeção de dados.
+- **WebSocket Resiliente:** Mantenha rotinas de heartbeat (ping/pong) para identificar conexões zumbis e limpar recursos associados.
+
+#### 🔹 Rigor em TypeScript
+
+- **Sem `any`:** Não utilize `any` nem asserções forçadas (`as unknown as Type`). Modele tipos e interfaces no `@monky/shared` sempre que forem compartilhados.
+- **Tratamento Seguro de Nulos/Erros:** Trate explicitamente `null`, `undefined` e exceções com blocos `try/catch` e tipos discriminados.
+
+---
+
+### 2. Pragmatismo & Anti-Overengineering
+
+- **KISS (Keep It Simple, Stupid):** Prefira sempre a solução mais simples e legível que resolva o problema com eficácia.
+- **YAGNI (You Aren't Gonna Need It):** Não crie abstrações prematuras, camadas intermediárias vazias, fábricas ou padrões complexos para funcionalidades que não existem no escopo atual.
+- **Legibilidade em Primeiro Lugar:** Código limpo é autoexplicativo, bem nomeado e com comentários focados no _porquê_ das decisões não óbvias.
+
+---
+
+## 👨‍🏫 Didática & Comunicação com o Desenvolvedor
+
+A comunicação do agente deve ser sempre **clara, didática, transparente e respeitosa**:
+
+1. **Explique o Raciocínio:** Não se limite a entregar código pronto. Explique de forma didática o que causava o problema anterior e por que a solução adotada é a ideal.
+2. **Ensine o Conceito:** Ao corrigir bugs ou aplicar refatorações complexas (ex.: memory leaks, gerenciamento de eventos, concorrência WebRTC), contextualize a causa raiz e a boa prática envolvida.
+3. **Transparência em Decisões:** Caso precise escolher entre diferentes abordagens, exponha brevemente os trade-offs (prós e contras) para o desenvolvedor.
+
+---
+
+## 🔄 Fluxo de Trabalho a partir do Board
+
+O board oficial fica em: https://github.com/orgs/MonkyOrg/projects/1
+
+Sempre que iniciar o desenvolvimento a partir de uma issue/card do board, siga rigorosamente as etapas abaixo:
+
+```mermaid
+flowchart TD
+    A[Entender a Issue / Tirar Dúvidas] --> B[Mover Card para 'In progress']
+    B --> C[Criar Branch a partir da 'main' atualizada]
+    C --> D[Desenvolver com Boas Práticas & Tipagem]
+    D --> E[Solicitar Validação do Dev / Testes Locais]
+    E --> F[Após Confirmação do Dev -> Abrir PR para 'main']
+    F --> G[Comentar na Issue em PT-BR: Didático + Testes]
+    G --> H[Aguardar Release Automática do GitHub Actions]
+    H --> I[Mover Card para 'QA']
+```
+
+### Etapas Detalhadas:
 
 1. **Antes de começar a codar**: mova o card para **In progress**.
-   - **Nunca desenvolva cards que estejam na coluna `Blocked`.** Cards
-     bloqueados não devem ser trabalhados enquanto estiverem nessa coluna. Se o
-     desenvolvedor quiser que algo em `Blocked` seja desenvolvido, **solicite
-     que ele (ou alguém com permissão) mova o card para fora de `Blocked`**
-     (ex.: `Backlog`/`In progress`) antes de qualquer implementação. Não mova o
-     card para fora de `Blocked` por conta própria — peça a autorização/ação de
-     quem tem permissão.
-2. **Entenda a issue por completo antes de codar.** Se a issue **não estiver
-   totalmente clara** (requisitos ambíguos, escopo indefinido, critérios de
-   aceite vagos, decisões de design em aberto), **tire dúvidas com o
-   desenvolvedor** antes de prosseguir. **Nunca assuma nada** — pergunte e só
-   comece a implementar depois de esclarecer.
-3. **Crie a branch a partir da `main` atualizada.** Sempre
-   `git checkout main && git pull` **antes** de `git checkout -b <branch>` —
-   nunca ramifique da branch em que você estava. Ramificar de uma branch com PR
-   aberto faz o seu PR arrastar os commits dela no diff, e os dois passam a
-   depender um do outro para mergear. Se a issue realmente depender de outro PR
-   aberto, **combine o empilhamento com o desenvolvedor antes de ramificar**.
-4. **Desenvolva** a solução completa da issue.
-5. **Ao terminar**: abra um Pull Request para o branch padrão (`main`).
-   - O `main` é protegido; todo merge deve passar por PR.
-   - Faça o merge com squash e delete do branch após aprovação.
-6. **Comente na issue/card do board (em PT-BR)** descrevendo:
-   - **Como foi implementado**: resumo técnico da solução (arquivos/áreas
-     alteradas, decisões relevantes).
-   - **Como testar**: passo a passo claro para o QA validar (cenários,
-     resultados esperados e casos de borda).
-   - Objetivo: facilitar o trabalho do QA.
-7. **Após o merge, aguarde a release ser gerada.** O push na `main` dispara
-   automaticamente o workflow **Release** (GitHub Actions), que calcula a versão
-   SemVer (`v<MAJOR>.<MINOR>.<PATCH>`) baseada nas convenções de commit, builda e publica
-   uma nova release com os artefatos Win/Mac:
-   - **Patch** (ex: `1.0.X`): correções de bugs (`fix:`, `fix(...)`, `bugfix:`, etc.).
-   - **Minor** (ex: `1.X.0`): novas funcionalidades (`feat:`, `feat(...)`, `feature:`).
-   - **Major** (ex: `X.0.0`): mudanças com breaking changes / refatoração arquitetural (`BREAKING CHANGE:`, `feat!:`, `major:`).
-   **Só mova o card para `QA` depois que a release estiver publicada** (run do
-   workflow concluída com sucesso), pois o QA valida a partir do build publicado
-   — nunca apenas após o merge.
-8. **Não mova para Done automaticamente.** Após o QA ser concluído, o
-   desenvolvedor pode pedir ao agente para mover para **Done** ou fazer isso
-   manualmente.
+   - ⛔ **Nunca desenvolva cards na coluna `Blocked`.** Se um card estiver bloqueado, solicite que o desenvolvedor responsável o mova para fora de `Blocked` (ex.: `Backlog` ou `In progress`). Nunca altere o status de um item bloqueado sem autorização explícita.
+2. **Entenda a issue por completo antes de codar.** Se houver requisitos ambíguos, escopo indefinido ou critérios de aceite vagos, **tire dúvidas com o desenvolvedor** antes de prosseguir. Nunca assuma nada — pergunte e só inicie a implementação após os esclarecimentos.
+3. **Crie a branch a partir da `main` atualizada.**
+   - Sempre execute `git checkout main && git pull` antes de `git checkout -b <branch>`.
+   - Nunca ramifique a partir de uma branch com PR aberto sem combinar previamente o empilhamento (_stacked PRs_) com o desenvolvedor.
+4. **Desenvolva a solução completa**, respeitando os princípios de arquitetura e qualidade de código.
+5. **Solicitar Confirmação e Validação do Desenvolvedor (Ponto de Parada Obrigatório):**
+   - ⛔ **Nunca suba código nem abra PR imediatamente após concluir a edição.**
+   - Ao finalizar os ajustes, apresente o que foi implementado, os arquivos modificados e oriente o desenvolvedor a realizar os testes locais.
+   - Envie a solicitação de confirmação:
+     > _"Os ajustes foram implementados com sucesso. Por favor, realize os testes locais e, se estiver tudo certo, me dê o comando para continuar o fluxo de publicação."_
+   - **Aguarde a aprovação/comando explícito do desenvolvedor** antes de prosseguir para as próximas etapas (Push / PR / Merge).
+6. **Após a Confirmação: Abra um Pull Request para a branch padrão (`main`).**
+   - O branch `main` é protegido; todo merge deve passar por PR com squash e deleção da branch de trabalho.
+7. **Comente na Issue/Card do board (em PT-BR)** com explicação didática e passo a passo de validação:
+   - **O que foi implementado & Por quê (Explicação Didática):** Resumo claro da solução, motivação técnica e arquivos/módulos alterados.
+   - **Como testar (Guia para QA/Dev):** Passo a passo reprodutível, cenários principais, casos de borda e resultados esperados.
+8. **Após o merge, aguarde a release ser gerada.**
+   - O push na `main` dispara automaticamente o workflow **Release** (GitHub Actions), que gera a versão SemVer (`v<MAJOR>.<MINOR>.<PATCH>`) baseada na convenção de commits:
+     - **Patch** (`1.0.X`): Correções de bugs (`fix:`, `fix(...)`, `bugfix:`).
+     - **Minor** (`1.X.0`): Novas funcionalidades (`feat:`, `feat(...)`, `feature:`).
+     - **Major** (`X.0.0`): Breaking changes / refatorações arquiteturais (`BREAKING CHANGE:`, `feat!:`, `major:`).
+   - ⚠️ **Só mova o card para `QA` após a release ser publicada com sucesso**, pois a validação do QA ocorre sobre o build compilado.
+9. **Não mova para Done automaticamente.** O card deve permanecer em `QA` até a validação do responsável, que solicitará a movimentação para **Done** ou o fará manualmente.
 
-> Resumo: (esclarecer dúvidas se necessário) → `In progress` → (branch a partir
-> da `main` atualizada) → (PR para `main`) → (comentário PT-BR: como foi feito +
-> como testar) → (release publicada automaticamente) → `QA` → (após QA) `Done`.
+---
 
-### Comando para comentar na issue
+## 📝 Modelo de Comentário Obrigatório na Issue
+
+Utilize o comando:
 
 ```bash
 gh issue comment <NÚMERO_DA_ISSUE> --body "<comentário em PT-BR>"
 ```
 
-O comentário deve conter, no mínimo, uma seção **"Como foi implementado"** e uma
-seção **"Como testar"**.
+### Estrutura do Comentário:
 
-## Referência do board (org `MonkyOrg`, projeto #1)
+```markdown
+### 💡 Como foi implementado & Decisões Técnicas
 
-- Project ID: `PVT_kwDOEws3wM4BhD7I`
-- Campo Status (field ID): `PVTSSF_lADOEws3wM4BhD7IzhgBIGI`
-- Opções de Status (single-select-option-id):
+- **Resumo Didático:** [Explicação clara do que foi resolvido e do conceito aplicado]
+- **Arquivos & Camadas Alteradas:**
+  - `apps/client/src/...`: [Mudanças realizadas e motivo]
+  - `packages/shared/src/...`: [Tipos/contratos ajustados]
+- **Boas Práticas Aplicadas:** [Ex.: remoção de event listeners para evitar memory leaks, tipagem estrita de IPC, isolamento de camadas]
+
+---
+
+### 🧪 Como testar (Guia de Validação para QA)
+
+1. **Pré-requisitos:** [Ex.: Iniciar servidor local / conectar 2 clientes]
+2. **Cenário Principal:**
+   - Passo 1: [Ação]
+   - Passo 2: [Ação]
+   - **Resultado Esperado:** [Comportamento correto do app]
+3. **Casos de Borda & Resiliência:**
+   - [Ex.: Testar desconexão de rede, fechar modal repetidamente, mutar/desmutar rápido]
+   - **Resultado Esperado:** [Ausência de erros no console ou travamentos]
+```
+
+---
+
+## 🛠️ Referência do Board & Comandos Úteis
+
+- **Project ID:** `PVT_kwDOEws3wM4BhD7I`
+- **Campo Status (Field ID):** `PVTSSF_lADOEws3wM4BhD7IzhgBIGI`
+- **Opções de Status (`single-select-option-id`):**
   - Discussing: `146d7ce6`
   - Backlog: `f75ad846`
   - Blocked: `7a1e61fe`
@@ -80,7 +162,7 @@ seção **"Como testar"**.
   - Done: `98236657`
   - Ideias descartadas: `6eeb0bfb`
 
-### Comando para mover um card
+### Mover Card no Board:
 
 ```bash
 gh project item-edit \
@@ -90,28 +172,25 @@ gh project item-edit \
   --single-select-option-id <OPTION_ID>
 ```
 
-O `<ITEM_ID>` é o ID do item do projeto (não o número da issue). Liste os itens
-e seus IDs com:
+_(Para obter o `<ITEM_ID>`, liste os itens com: `gh project item-list 1 --owner MonkyOrg --format json`)_
 
-```bash
-gh project item-list 1 --owner MonkyOrg --format json
-```
-
-## Fluxo de PR (branch protegido)
+### Fluxo Git & Pull Request:
 
 ```bash
 export GIT_SSH_COMMAND='ssh -o BatchMode=yes'
-git checkout main && git pull      # toda branch nova sai da main atualizada
-git checkout -b <branch>
-# ... commits ...
-git push -u origin <branch>
-gh pr create --title "<título>" --body "<descrição>"
-gh pr merge <branch> --squash --delete-branch
+git checkout main && git pull
+git checkout -b <nome-da-branch>
+
+# ... desenvolvimento e commits semânticos ...
+
+git push -u origin <nome-da-branch>
+gh pr create --title "<tipo>: <descrição>" --body "<descrição didática das alterações>"
+gh pr merge <nome-da-branch> --squash --delete-branch
 git checkout main && git pull
 ```
 
-Inclua sempre o trailer de co-autoria nos commits:
+### Trailer Obrigatório de Co-autoria nos Commits:
 
-```
+```text
 Co-authored-by: Copilot <223556219+Copilot@users.noreply.github.com>
 ```

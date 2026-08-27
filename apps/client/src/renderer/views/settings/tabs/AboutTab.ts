@@ -57,6 +57,21 @@ export class AboutTab {
             <span class="toggle-slider"></span>
           </label>
         </div>
+        <div style="display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-top: 12px; padding-top: 12px; border-top: 1px dashed var(--border-color);">
+          <div>
+            <label style="display: flex; align-items: center; gap: 6px; margin-bottom: 2px; cursor: pointer; font-weight: 600;" for="checkbox-minimize-to-tray">
+              <span class="material-symbols-outlined md-16" style="color: var(--accent-primary);">dock_to_bottom</span>
+              ${t('settings.minimizeToTray')}
+            </label>
+            <div style="font-size: 11px; color: var(--text-muted);">
+              ${t('settings.minimizeToTrayDesc')}
+            </div>
+          </div>
+          <label class="toggle-switch" aria-label="${t('settings.minimizeToTray')}">
+            <input id="checkbox-minimize-to-tray" type="checkbox" ${settingsStore.minimizeToTrayOnClose ? 'checked' : ''}>
+            <span class="toggle-slider"></span>
+          </label>
+        </div>
       </div>
 
       <!-- Community -->
@@ -101,6 +116,7 @@ export class AboutTab {
     const updateStatus = container.querySelector<HTMLElement>('#settings-update-status');
     const checkboxBeta = container.querySelector<HTMLInputElement>('#checkbox-update-beta');
     const checkboxAutoStart = container.querySelector<HTMLInputElement>('#checkbox-auto-start');
+    const checkboxMinimizeToTray = container.querySelector<HTMLInputElement>('#checkbox-minimize-to-tray');
     const btnSuggest = container.querySelector<HTMLButtonElement>('#btn-suggest-idea');
     const btnVote = container.querySelector<HTMLButtonElement>('#btn-vote-ideas');
     const btnReport = container.querySelector<HTMLButtonElement>('#btn-report-bug');
@@ -137,6 +153,15 @@ export class AboutTab {
         window.api?.setAutoStart?.(checkboxAutoStart.checked);
       });
     }
+
+    checkboxMinimizeToTray?.addEventListener('change', () => {
+      const enabled = checkboxMinimizeToTray.checked;
+      settingsStore.minimizeToTrayOnClose = enabled;
+      settingsStore.save();
+      if (window.api?.setMinimizeToTray) {
+        window.api.setMinimizeToTray(enabled).catch(() => {});
+      }
+    });
 
     const openLink = (url: string) => {
       if (window.api?.openExternal) {

@@ -8,6 +8,7 @@ import { t, tCount } from '../i18n';
 import { formatKeyCombo } from '../utils/keybind';
 import { showConfirm } from './Dialog';
 import { enableBackdropClose } from '../utils/modal';
+import { matchesSearch as matchesSoundSearch } from '../utils/search';
 
 function formatTime(seconds: number): string {
   if (isNaN(seconds) || seconds < 0) return '0:00';
@@ -19,9 +20,11 @@ function formatTime(seconds: number): string {
 export class SoundboardModal {
   private modalEl: HTMLElement | null = null;
   private unbindEvents: Array<() => void> = [];
+  private searchQuery: string = '';
 
   public async open(): Promise<void> {
     this.close();
+    this.searchQuery = '';
 
     // Ensure sounds are loaded
     await soundboardService.loadSounds();
@@ -75,6 +78,23 @@ export class SoundboardModal {
           </div>
         </div>
 
+        <!-- Search Bar (#288) -->
+        <div style="padding: 10px 20px 6px; background: var(--bg-card); display: flex; align-items: center;">
+          <div style="position: relative; width: 100%; display: flex; align-items: center;">
+            <span class="material-symbols-outlined md-18" style="position: absolute; left: 10px; color: var(--text-muted); pointer-events: none;">search</span>
+            <input
+              id="sb-search-input"
+              type="text"
+              placeholder="${t('soundboard.searchPlaceholder')}"
+              value="${escapeHtml(this.searchQuery)}"
+              style="width: 100%; height: 32px; padding: 0 32px 0 34px; font-size: 12px; background: var(--bg-input); border: 1px solid var(--border-color); border-radius: var(--radius-md); color: var(--text-primary);"
+            />
+            <button id="sb-search-clear" type="button" class="btn btn-icon" style="position: absolute; right: 6px; width: 20px; height: 20px; padding: 0; color: var(--text-muted); display: ${this.searchQuery ? 'inline-flex' : 'none'};" title="${t('common.clear')}">
+              <span class="material-symbols-outlined md-16">close</span>
+            </button>
+          </div>
+        </div>
+
         <!-- Active Sounds Playback Multi-Player Container -->
         <div id="sb-players-container" class="sb-players-container" style="display: ${activePlaybacks.length > 0 ? 'flex' : 'none'};">
           ${activePlaybacks
@@ -107,7 +127,7 @@ export class SoundboardModal {
         ` : ''}
 
         <!-- Sounds Grid Area -->
-        <div id="sb-sounds-container" style="flex: 1; overflow-y: auto; padding: 16px 20px; min-height: 220px;">
+        <div id="sb-sounds-container" style="flex: 1; overflow-y: auto; padding: 10px 20px 16px; min-height: 220px;">
           ${this.renderSoundsGrid(sounds)}
         </div>
 
@@ -207,11 +227,30 @@ export class SoundboardModal {
       `;
     }
 
+    const filteredSounds = this.searchQuery.trim()
+      ? sounds.filter((s) => matchesSoundSearch(s.name, this.searchQuery))
+      : sounds;
+
+    if (filteredSounds.length === 0) {
+      return `
+        <div style="display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100%; min-height: 180px; text-align: center; color: var(--text-muted); gap: 10px;">
+          <span class="material-symbols-outlined" style="font-size: 40px; color: var(--text-dim);">search_off</span>
+          <div>
+            <div style="font-size: 14px; font-weight: 600; color: var(--text-primary); margin-bottom: 4px;">${t('soundboard.noSearchResultsTitle')}</div>
+            <div style="font-size: 12px; max-width: 320px;">${t('soundboard.noSearchResultsDesc', { query: escapeHtml(this.searchQuery) })}</div>
+          </div>
+          <button type="button" id="sb-btn-clear-search" class="btn btn-secondary" style="font-size: 11px; padding: 4px 12px; margin-top: 4px;">
+            ${t('common.clear')}
+          </button>
+        </div>
+      `;
+    }
+
     const shortcuts = settingsStore.soundboardShortcuts || {};
 
     return `
       <div style="display: grid; grid-template-columns: repeat(auto-fill, minmax(130px, 1fr)); gap: 10px;">
-        ${sounds
+        ${filteredSounds
           .map((s) => {
             const isPlaying = activeSoundName === s.name;
             const shortcut = shortcuts[s.name];
@@ -254,12 +293,42 @@ export class SoundboardModal {
   private refreshGrid(): void {
     if (!this.modalEl) return;
     const container = this.modalEl.querySelector('#sb-sounds-container');
+    const countBadge = this.modalEl.querySelector('#sb-sound-count');
     if (container) {
       const sounds = soundboardService.getSounds();
       const currentPlayback = soundboardService.getCurrentPlayback();
+      const filteredSounds = this.searchQuery.trim()
+        ? sounds.filter((s) => matchesSoundSearch(s.name, this.searchQuery))
+        : sounds;
+
+      if (countBadge) {
+        if (this.searchQuery.trim() && filteredSounds.length !== sounds.length) {
+          countBadge.textContent = `${filteredSounds.length} / ${sounds.length}`;
+        } else {
+          countBadge.textContent = tCount('soundboard.soundCount', sounds.length);
+        }
+      }
+
       container.innerHTML = this.renderSoundsGrid(sounds, currentPlayback.soundName);
       this.attachSoundClickEvents();
+
+      const btnClearSearch = container.querySelector('#sb-btn-clear-search');
+      btnClearSearch?.addEventListener('click', () => {
+        this.clearSearch();
+      });
     }
+  }
+
+  private clearSearch(): void {
+    this.searchQuery = '';
+    const input = this.modalEl?.querySelector('#sb-search-input') as HTMLInputElement | null;
+    if (input) {
+      input.value = '';
+      input.focus();
+    }
+    const clearBtn = this.modalEl?.querySelector('#sb-search-clear') as HTMLElement | null;
+    if (clearBtn) clearBtn.style.display = 'none';
+    this.refreshGrid();
   }
 
   private async openKeyCaptureModal(soundName: string): Promise<void> {
@@ -386,11 +455,25 @@ export class SoundboardModal {
     const sliderVol = this.modalEl.querySelector('#sb-slider-volume') as HTMLInputElement | null;
     const volLabel = this.modalEl.querySelector('#sb-volume-label');
     const playersContainer = this.modalEl.querySelector('#sb-players-container');
+    const searchInput = this.modalEl.querySelector('#sb-search-input') as HTMLInputElement | null;
+    const searchClear = this.modalEl.querySelector('#sb-search-clear') as HTMLElement | null;
 
     const handleClose = () => this.close();
     btnClose?.addEventListener('click', handleClose);
     btnFooterClose?.addEventListener('click', handleClose);
     enableBackdropClose(this.modalEl, handleClose);
+
+    searchInput?.addEventListener('input', () => {
+      this.searchQuery = searchInput.value;
+      if (searchClear) {
+        searchClear.style.display = this.searchQuery ? 'inline-flex' : 'none';
+      }
+      this.refreshGrid();
+    });
+
+    searchClear?.addEventListener('click', () => {
+      this.clearSearch();
+    });
 
     const handleChangeFolder = async () => {
       const folder = await soundboardService.selectFolder();

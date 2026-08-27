@@ -63,6 +63,7 @@ export class WebRtcManager {
   private screenAudioStreamId: string | null = null;
   private currentPreset: QualityPresetType = 'NORMAL';
   private currentUserId: string = '';
+  private isDeafened: boolean = false;
 
   private rtcConfig: RTCConfiguration = {
     iceServers: [
@@ -108,6 +109,7 @@ export class WebRtcManager {
    */
   private routeScreenAudioTrack(peerUserId: string, track: MediaStreamTrack): void {
     let screenAudioEl = this.screenAudioElements.get(peerUserId);
+    const isDeaf = this.isDeafened || voiceStore.getEffectiveDeafened();
     if (!screenAudioEl) {
       screenAudioEl = document.createElement('audio');
       screenAudioEl.autoplay = true;
@@ -117,6 +119,9 @@ export class WebRtcManager {
       screenAudioEl.setAttribute('data-screen-audio-user', peerUserId);
       document.body.appendChild(screenAudioEl);
       this.screenAudioElements.set(peerUserId, screenAudioEl);
+    }
+    if (isDeaf) {
+      screenAudioEl.muted = true;
     }
     const screenStream = new MediaStream([track]);
     screenAudioEl.srcObject = screenStream;
@@ -502,12 +507,15 @@ export class WebRtcManager {
         const participant = participantManager.get(peerUserId);
         const clientId = participant?.user.clientId;
         const volume = clientId ? settingsStore.getUserVolume(clientId) : 100;
+        const isDeaf = this.isDeafened || voiceStore.getEffectiveDeafened();
         if (!audioEl) {
           audioEl = document.createElement('audio');
           audioEl.autoplay = true;
+          audioEl.muted = isDeaf;
           document.body.appendChild(audioEl);
           this.audioElements.set(peerUserId, audioEl);
         }
+        audioEl.muted = isDeaf;
         audioEl.volume = volume / 100;
         audioEl.srcObject = remoteStream;
         // Route voice to the user-selected speaker (not the OS default) BEFORE
@@ -549,6 +557,7 @@ export class WebRtcManager {
         if (event.track.kind === 'audio') {
           const audioEl = this.audioElements.get(peerUserId);
           if (audioEl) {
+            audioEl.muted = this.isDeafened || voiceStore.getEffectiveDeafened();
             // Only (re)assign srcObject if it actually changed: reassigning the
             // same stream can reset the element's audio output sink back to the
             // OS default in Chromium, sending voice to the wrong device (#46).
@@ -1026,6 +1035,7 @@ export class WebRtcManager {
   }
 
   public setDeafened(deafened: boolean): void {
+    this.isDeafened = deafened;
     for (const audioEl of this.audioElements.values()) {
       audioEl.muted = deafened;
     }

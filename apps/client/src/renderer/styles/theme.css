@@ -4740,6 +4740,12 @@ button:hover .role-option-check:not(.checked) {
   width: 100%;
   border-collapse: collapse;
   min-width: 640px;
+  position: relative;
+}
+
+.settings-data-table thead {
+  position: relative;
+  z-index: 1;
 }
 
 .settings-data-table th {
@@ -4758,8 +4764,19 @@ button:hover .role-option-check:not(.checked) {
   vertical-align: middle;
 }
 
+.settings-data-table tbody tr {
+  position: relative;
+  z-index: 2;
+}
+
 .settings-data-table tbody tr:hover {
   background: rgba(255, 255, 255, 0.03);
+}
+
+.settings-data-table tbody tr.row-menu-open,
+.settings-data-table tbody tr:has(.settings-action-menu.show),
+.settings-data-table tbody tr:focus-within {
+  z-index: 100;
 }
 
 /* Reorderable role rows: the row being dragged stays visible but dimmed while
@@ -4823,6 +4840,13 @@ button:hover .role-option-check:not(.checked) {
   display: inline-flex;
   justify-content: flex-end;
   overflow: visible;
+  z-index: 5;
+}
+
+.settings-action-menu-wrap.menu-open,
+.settings-action-menu-wrap:has(.settings-action-menu.show),
+.settings-action-menu-wrap:focus-within {
+  z-index: 1000;
 }
 
 .settings-action-menu,
@@ -4831,14 +4855,15 @@ button:hover .role-option-check:not(.checked) {
   background: var(--bg-panel);
   border: 1px solid var(--border-color);
   border-radius: var(--radius-md);
-  box-shadow: 0 12px 28px rgba(0, 0, 0, 0.35);
+  box-shadow: 0 12px 28px rgba(0, 0, 0, 0.45);
   padding: 6px;
-  z-index: 20;
+  z-index: 1001;
 }
 
 .settings-action-menu {
   position: absolute;
   top: calc(100% + 6px);
+  bottom: auto;
   right: 0;
   display: none;
   flex-direction: column;
@@ -4857,11 +4882,13 @@ button:hover .role-option-check:not(.checked) {
 .settings-action-submenu {
   position: absolute;
   top: -6px;
+  bottom: auto;
   right: calc(100% + 2px);
   display: none;
   flex-direction: column;
   gap: 4px;
   padding: 6px;
+  z-index: 1002;
 }
 
 /* Bridge the gap between trigger and submenu to prevent hover loss */
@@ -4884,12 +4911,13 @@ button:hover .role-option-check:not(.checked) {
   display: flex;
 }
 
-.settings-data-table tbody tr:nth-last-child(-n + 2) .settings-action-menu {
+/* Only flip upwards for rows near the bottom of longer tables, never on top rows (#281) */
+.settings-data-table tbody tr:not(:first-child):not(:nth-child(2)):nth-last-child(-n + 2) .settings-action-menu {
   top: auto;
   bottom: calc(100% + 6px);
 }
 
-.settings-data-table tbody tr:nth-last-child(-n + 2) .settings-action-submenu {
+.settings-data-table tbody tr:not(:first-child):not(:nth-child(2)):nth-last-child(-n + 2) .settings-action-submenu {
   top: auto;
   bottom: 0;
 }

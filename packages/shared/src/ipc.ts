@@ -39,6 +39,11 @@ export interface SoundboardShortcutBinding {
   accelerator: string;
 }
 
+export interface ActionShortcutBinding {
+  action: string;
+  accelerator: string;
+}
+
 export interface LinkPreviewData {
   url: string;
   title: string;
@@ -118,6 +123,7 @@ export interface IpcInvokeChannels {
   'app:open-external': { args: [url: string]; returnType: { success: boolean } };
   'app:get-auto-start': { args: []; returnType: boolean };
   'app:set-auto-start': { args: [enabled: boolean]; returnType: void };
+  'app:set-minimize-to-tray': { args: [enabled: boolean]; returnType: void };
   'app:download-file': { args: [url: string, fileName: string]; returnType: { success: boolean; error?: string } };
 
   // Identidade
@@ -150,6 +156,9 @@ export interface IpcInvokeChannels {
   'soundboard:read-sound': { args: [filePath: string]; returnType: SoundboardSoundData | null };
   'soundboard:register-shortcuts': { args: [shortcuts: SoundboardShortcutBinding[]]; returnType: boolean };
 
+  // Atalhos Globais (Keybinds)
+  'shortcuts:register-actions': { args: [shortcuts: ActionShortcutBinding[]]; returnType: boolean };
+
   // Link Preview
   'link-preview:fetch': { args: [url: string]; returnType: LinkPreviewData | null };
 
@@ -179,6 +188,7 @@ export interface IpcEvents {
   'lan:found': [server: DiscoveredLanServer];
   'lan:lost': [server: DiscoveredLanServer];
   'soundboard:shortcut-triggered': [soundName: string];
+  'shortcut:action-triggered': [action: string];
   'screen-audio:frame': [buffer: ArrayBuffer | Uint8Array];
   'tray:toggle-mute': [];
   'tray:toggle-deafen': [];

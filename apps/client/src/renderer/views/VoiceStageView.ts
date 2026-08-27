@@ -537,7 +537,7 @@ export class VoiceStageView {
       if (this.getShareIds(p, false).length === 0) return;
       const audioEl = document.querySelector(`audio[data-screen-audio-user="${p.user.id}"]`) as HTMLAudioElement | null;
       if (!audioEl) return;
-      audioEl.muted = !this.isWatchingAnyShare(p) || this.mutedScreenUserIds.has(p.user.id);
+      audioEl.muted = voiceStore.getEffectiveDeafened() || !this.isWatchingAnyShare(p) || this.mutedScreenUserIds.has(p.user.id);
     });
 
     // Attach click listeners to cards for focus toggle & right-click for volume adjustment
@@ -656,7 +656,7 @@ export class VoiceStageView {
         const icon = btn.querySelector('.material-symbols-outlined');
         if (this.mutedScreenUserIds.has(userId)) {
           this.mutedScreenUserIds.delete(userId);
-          if (audioEl) audioEl.muted = false;
+          if (audioEl) audioEl.muted = voiceStore.getEffectiveDeafened() ? true : false;
           if (icon) icon.textContent = 'volume_up';
           btn.title = t('stage.screenAudioVolume');
           wrapper?.classList.remove('screen-audio-muted');
@@ -878,10 +878,11 @@ export class VoiceStageView {
     const isLocal = p.user.id === serverStore.currentUser?.id;
     const isCamOn = isLocal ? voiceStore.isCameraOn : (p.voiceState?.isCameraOn ?? false);
     const isScreenOn = isLocal ? voiceStore.isScreenSharing : (p.voiceState?.isScreenSharing ?? false);
-    const isMuted = isLocal ? voiceStore.isMuted : (p.voiceState?.isMuted ?? false);
-    const isDeafened = isLocal ? voiceStore.isDeafened : (p.voiceState?.isDeafened ?? false);
     const isServerMuted = isLocal ? voiceStore.serverMuted : (p.voiceState?.serverMuted ?? false);
     const isServerDeafened = isLocal ? voiceStore.serverDeafened : (p.voiceState?.serverDeafened ?? false);
+    const isSelfMuted = isLocal ? voiceStore.isMuted : (p.voiceState?.isMuted ?? false);
+    const isSelfDeafened = isLocal ? voiceStore.isDeafened : (p.voiceState?.isDeafened ?? false);
+    const isMicMuted = isSelfMuted || isServerMuted || isSelfDeafened || isServerDeafened;
     const avatarSrc = getAvatarUrl(p.user.avatarUrl);
 
     const isVideoTile = tile.kind === 'camera' || tile.kind === 'screen';
@@ -960,10 +961,10 @@ export class VoiceStageView {
 
       <div class="stage-badges-overlay">
         <span>${label}</span>
-        ${isServerMuted ? `<span class="material-symbols-outlined md-14" style="color: #f0b232;" title="${t('permissions.serverMuted')}">admin_panel_settings</span>` : ''}
         ${isServerDeafened ? `<span class="material-symbols-outlined md-14" style="color: #f0b232;" title="${t('permissions.serverDeafened')}">hearing_disabled</span>` : ''}
-        ${isMuted ? '<span class="material-symbols-outlined md-14" style="color: var(--danger);">mic_off</span>' : ''}
-        ${isDeafened ? '<span class="material-symbols-outlined md-14" style="color: var(--danger);">headset_off</span>' : ''}
+        ${isServerMuted ? `<span class="material-symbols-outlined md-14" style="color: #f0b232;" title="${t('permissions.serverMuted')}">admin_panel_settings</span>` : ''}
+        ${isMicMuted ? `<span class="material-symbols-outlined md-14" style="color: var(--danger);" title="${t('main.micMuted')}">mic_off</span>` : ''}
+        ${isSelfDeafened ? `<span class="material-symbols-outlined md-14" style="color: var(--danger);" title="${t('main.audioMuted')}">headset_off</span>` : ''}
         ${isCamOn ? '<span class="material-symbols-outlined md-14" style="color: var(--accent-primary);">videocam</span>' : ''}
         ${isScreenOn ? '<span class="material-symbols-outlined md-14" style="color: var(--success);">screen_share</span>' : ''}
       </div>

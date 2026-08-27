@@ -1,5 +1,6 @@
 import { contextBridge, ipcRenderer } from 'electron';
 import type {
+  ActionShortcutBinding,
   AppIdentityResult,
   DesktopSource,
   DiscoveredLanServer,
@@ -41,6 +42,8 @@ export interface ElectronApi {
   readSoundboardSound: (filePath: string) => Promise<SoundboardSoundData | null>;
   registerSoundboardShortcuts: (shortcuts: SoundboardShortcutBinding[]) => Promise<boolean>;
   onSoundboardShortcutTriggered: (cb: (soundName: string) => void) => () => void;
+  registerActionShortcuts: (shortcuts: ActionShortcutBinding[]) => Promise<boolean>;
+  onActionShortcutTriggered: (cb: (action: string) => void) => () => void;
   minimize: () => Promise<void>;
   maximize: () => Promise<void>;
   toggleMaximize: () => Promise<void>;
@@ -68,6 +71,7 @@ export interface ElectronApi {
   onTrayToggleDeafen: (cb: () => void) => () => void;
   getAutoStart: () => Promise<boolean>;
   setAutoStart: (enabled: boolean) => Promise<void>;
+  setMinimizeToTray: (enabled: boolean) => Promise<void>;
   platform: string;
 }
 
@@ -110,6 +114,14 @@ const api: ElectronApi = {
     ipcRenderer.on('soundboard:shortcut-triggered', listener);
     return () => {
       ipcRenderer.removeListener('soundboard:shortcut-triggered', listener);
+    };
+  },
+  registerActionShortcuts: (shortcuts) => ipcRenderer.invoke('shortcuts:register-actions', shortcuts),
+  onActionShortcutTriggered: (cb) => {
+    const listener = (_e: Electron.IpcRendererEvent, action: string) => cb(action);
+    ipcRenderer.on('shortcut:action-triggered', listener);
+    return () => {
+      ipcRenderer.removeListener('shortcut:action-triggered', listener);
     };
   },
   minimize: () => ipcRenderer.invoke('window:minimize'),
@@ -175,6 +187,7 @@ const api: ElectronApi = {
   },
   getAutoStart: () => ipcRenderer.invoke('app:get-auto-start'),
   setAutoStart: (enabled: boolean) => ipcRenderer.invoke('app:set-auto-start', enabled),
+  setMinimizeToTray: (enabled: boolean) => ipcRenderer.invoke('app:set-minimize-to-tray', enabled),
   platform: process.platform,
 };
 
