@@ -49,6 +49,36 @@ Manual completo de uso e hospedagem em **[monkyorg.github.io/Monky](https://monk
 - **Monky** — app cliente para conversar com amigos. Ele também hospeda o servidor, com **Monitor do Servidor** para métricas e logs ao vivo.
 - **[Monky CLI](https://monkyorg.github.io/Monky/cli)** — administração por linha de comando, ideal para VPS. Instale pela release, rode `monky create` e pronto; a mesma máquina pode hospedar quantos servidores quiser.
 
+## 🏗️ Como funciona por dentro
+
+O Monky separa **o que o servidor controla** do **que trafega entre as pessoas**:
+
+```mermaid
+flowchart TB
+    subgraph MP["Plano de mídia — P2P, não passa pelo servidor"]
+        direction LR
+        A2["Ana"] <-->|"voz · vídeo · tela"| B2["Bruno"]
+        B2 <-->|"voz · vídeo · tela"| C2["Carla"]
+        A2 <-->|"voz · vídeo · tela"| C2
+    end
+
+    S[("Servidor Monky<br/>WebSocket + SQLite")]
+    A["Ana"] <-->|"login, canais, chat, sinalização"| S
+    B["Bruno"] <--> S
+    C["Carla"] <--> S
+
+    S -.->|"apresenta os pares<br/>uns aos outros"| MP
+```
+
+O servidor cuida de login, canais, chat, cargos e sinalização — e sai da frente.
+Voz, vídeo e tela vão **direto de uma pessoa para a outra** via WebRTC, em mesh.
+Duas consequências: a banda do servidor quase não importa (um VPS baratinho dá
+conta) e **nem quem hospeda consegue ouvir a conversa**.
+
+O detalhe completo — protocolo, autenticação por chave pública, banco, permissões,
+plano de mídia, perfis de qualidade e limites conhecidos — está em
+**[Arquitetura](https://monkyorg.github.io/Monky/arquitetura)**.
+
 ## 🗳️ Roadmap & Votação
 
 A comunidade decide as próximas versões: [sugira ideias](https://github.com/MonkyOrg/Monky/discussions/new?category=ideas), [vote nas ideias abertas](https://github.com/MonkyOrg/Monky/discussions/categories/ideas) ou acompanhe as [issues](https://github.com/MonkyOrg/Monky/issues).
@@ -59,7 +89,7 @@ Bugs começam em [Discussions › Bug Reports](https://github.com/MonkyOrg/Monky
 
 ## 💻 Para desenvolvedores
 
-Requisitos: Node.js 20+ (CI usa 22) e npm. No Windows, o módulo nativo de áudio de tela precisa de Python 3.11 e Build Tools do Visual Studio (MSVC).
+Requisitos: Node.js 22+ (versão usada pelo CI) e npm. No Windows, o módulo nativo de áudio de tela precisa de Python 3.11 e Build Tools do Visual Studio (MSVC).
 
 ```bash
 npm install
@@ -68,7 +98,7 @@ npm start
 npm test
 ```
 
-A arquitetura e comandos completos ficam em [CONTRIBUTING.md](CONTRIBUTING.md), no [manual do Monky CLI](https://monkyorg.github.io/Monky/cli) e em [docs/especificacao-tecnica.md](docs/especificacao-tecnica.md).
+Detalhes de arquitetura estão em [Arquitetura](https://monkyorg.github.io/Monky/arquitetura), o fluxo de contribuição em [CONTRIBUTING.md](CONTRIBUTING.md) e os comandos do servidor no [manual do Monky CLI](https://monkyorg.github.io/Monky/cli). A especificação original do projeto — com MVP e roadmap — ficou registrada em [docs/especificacao-tecnica.md](docs/especificacao-tecnica.md).
 
 ## 📄 Licença
 

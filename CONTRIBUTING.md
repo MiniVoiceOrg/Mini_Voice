@@ -113,11 +113,22 @@ npm run dev:server   # servidor WebSocket + SQLite
 npm run dev:client   # app Electron com rebuild
 ```
 
-Testes do servidor:
+Testes:
 
 ```bash
-npm run test --workspace=apps/server
+npm run test --workspace=apps/server   # testes do servidor
+npm test                               # tudo, incluindo os testes de versionamento
 ```
+
+O Monky CLI vive em `apps/server/src/cli/` e é empacotado à parte:
+
+```bash
+npm run pack:cli     # gera o tarball que vai para a release
+```
+
+Para experimentar o CLI sem mexer nos seus servidores reais, aponte a variável
+`MONKY_HOME` para uma pasta descartável — é lá que fica o registro de servidores
+da máquina.
 
 ### Antes de começar a codar
 
@@ -153,9 +164,41 @@ Prefixos de branch e commit seguem [Conventional Commits](https://www.convention
 `feat:`, `fix:`, `refactor:`, `docs:`, `chore:`, `ci:`. Referencie a issue no
 título quando houver: `fix(voice): restaura microfone ao des-ensurdecer (#89)`.
 
-Todo PR roda o workflow de **CI**, que faz o build e empacota o app em
-Windows e macOS (`electron-builder --dir`, sem publicar). Isso pega regressões
-de build nativo antes do merge — se falhar, o merge não acontece.
+**O tipo do commit decide a versão publicada** — não é só convenção de nome. O
+workflow de release lê as mensagens desde a última tag e calcula o SemVer
+sozinho:
+
+| Mensagem do commit | Efeito na versão |
+|---|---|
+| `feat:`, `feature:`, `minor:` | **minor** — `1.X.0` |
+| qualquer tipo com `!` (`feat!:`, `fix!:`, …), `major:`, ou `BREAKING CHANGE:` no corpo | **major** — `X.0.0` |
+| qualquer outra coisa (`fix:`, `docs:`, `chore:`, `refactor:`…) | **patch** — `1.0.X` |
+
+Repare que **patch é o padrão**: todo merge na `main` publica alguma versão, nem
+que seja um commit de documentação.
+
+Se a sua mudança quebra a compatibilidade entre cliente e servidor, ela
+**precisa** sair como major. Marcar uma breaking change como `feat:` publica uma
+minor, e quem atualizar só um dos lados fica sem conseguir conectar.
+
+### O que o CI verifica
+
+Todo PR roda o workflow de **CI**. Além do build, ele tem verificações que barram
+o merge e costumam pegar de surpresa quem não as conhece:
+
+- **Build check (win/mac)** — build e empacotamento com `electron-builder --dir`,
+  sem publicar. Pega regressão de módulo nativo antes do merge.
+- **Docs traduzidos em sincronia** — toda página em `docs-site/` precisa do par
+  PT/EN. Adicionar só um dos idiomas reprova o PR.
+- **Mudança de protocolo exige release major** — mexer no `PROTOCOL_VERSION` sem
+  marcar a mudança como major reprova. Cliente e servidor exigem igualdade
+  exata, então subir o protocolo é sempre breaking change.
+- **Slug dos templates de discussão** — confere que os templates continuam
+  apontando para categorias que existem.
+
+Um limite conhecido: **configuração de assinatura do macOS não é validável pelo
+CI**, porque o `Build check (mac)` roda `--dir`, que pula a assinatura por
+completo. Só a release exercita esse caminho.
 
 ### Descreva como testar
 

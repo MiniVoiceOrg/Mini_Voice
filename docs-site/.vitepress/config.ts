@@ -1,4 +1,5 @@
 import { defineConfig } from 'vitepress';
+import { withMermaid } from 'vitepress-plugin-mermaid';
 
 const ptSidebar = [
   {
@@ -30,6 +31,7 @@ const ptSidebar = [
     text: 'Referência',
     items: [
       { text: 'Recursos', link: '/recursos' },
+      { text: 'Arquitetura', link: '/arquitetura' },
       { text: 'Solução de Problemas', link: '/solucao-de-problemas' },
     ],
   },
@@ -65,12 +67,13 @@ const enSidebar = [
     text: 'Reference',
     items: [
       { text: 'Features', link: '/en/recursos' },
+      { text: 'Architecture', link: '/en/arquitetura' },
       { text: 'Troubleshooting', link: '/en/solucao-de-problemas' },
     ],
   },
 ];
 
-export default defineConfig({
+export default withMermaid(defineConfig({
   title: 'Monky',
   description: 'Voz, vídeo, tela e chat entre amigos — no seu próprio servidor.',
   base: '/Monky/',
@@ -125,4 +128,4 @@ export default defineConfig({
       provider: 'local',
     },
   },
-});
+}));
