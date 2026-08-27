@@ -3,6 +3,27 @@ name: Release
 on:
   push:
     branches: [main]
+    # Release so faz sentido quando o software muda. Documentacao, imagens e
+    # arquivos de configuracao do GitHub nao entram no binario — gerar release
+    # para eles queima numero de versao e confunde quem acompanha o changelog.
+    #
+    # O GitHub so pula o workflow quando TODOS os arquivos do push casam com a
+    # lista: commit que mexe em documentacao e codigo junto continua gerando
+    # release, como deve.
+    #
+    # release.yml esta deliberadamente de fora: mudar o proprio pipeline
+    # precisa ser exercitado.
+    paths-ignore:
+      - '**.md'
+      - 'docs/**'
+      - 'docs-site/**'
+      - 'images/**'
+      - 'LICENSE'
+      - '.github/ISSUE_TEMPLATE/**'
+      - '.github/DISCUSSION_TEMPLATE/**'
+      - '.github/FUNDING.yml'
+      - '.github/workflows/ci.yml'
+      - '.github/workflows/docs-deploy.yml'
   workflow_dispatch:
     inputs:
       promote_tag:
