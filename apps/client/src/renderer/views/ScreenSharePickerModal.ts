@@ -38,6 +38,7 @@ export class ScreenSharePickerModal {
     }
 
     const alreadySharing = voiceStore.isScreenSharing;
+    const audioAlreadyCaptured = screenAudioService.getIsCapturing();
 
     this.modalEl = document.createElement('div');
     this.modalEl.className = 'modal-backdrop';
@@ -72,11 +73,11 @@ export class ScreenSharePickerModal {
         <div id="share-sources-panel"></div>
 
         <div class="modal-footer">
-          <label id="share-audio-label" style="display: flex; align-items: center; gap: 8px; margin-right: auto; cursor: pointer; font-size: 0.85rem; color: var(--text-secondary);">
+          <label id="share-audio-label" style="display: flex; align-items: center; gap: 8px; margin-right: auto; cursor: ${audioAlreadyCaptured ? 'not-allowed' : 'pointer'}; font-size: 0.85rem; color: var(--text-secondary); ${audioAlreadyCaptured ? 'opacity: 0.5;' : ''}">
             <span class="material-symbols-outlined md-16">volume_up</span>
-            <span id="share-audio-text">${this.activeTab === 'window' ? t('screenShare.shareAppAudio') : t('screenShare.shareAudio')}</span>
+            <span id="share-audio-text">${audioAlreadyCaptured ? t('screenShare.audioAlreadySharing') : (this.activeTab === 'window' ? t('screenShare.shareAppAudio') : t('screenShare.shareAudio'))}</span>
             <label class="toggle-switch" style="margin-left: 4px;">
-              <input type="checkbox" id="chk-share-audio" ${!screenAudioService.getIsTestTone() ? 'checked' : ''} />
+              <input type="checkbox" id="chk-share-audio" ${audioAlreadyCaptured ? 'disabled' : (!screenAudioService.getIsTestTone() ? 'checked' : '')} />
               <span class="toggle-slider"></span>
             </label>
           </label>
@@ -108,8 +109,10 @@ export class ScreenSharePickerModal {
     if (!panel) return;
 
     const filtered = sources.filter((s) => s.type === this.activeTab);
+    const activeSourceIds = videoService.getActiveSourceIds();
+    const available = filtered.filter((s) => !activeSourceIds.has(s.id));
 
-    if (filtered.length === 0) {
+    if (available.length === 0) {
       panel.innerHTML = `
         <div style="padding: 24px; text-align: center; color: var(--text-muted);">
           ${this.activeTab === 'screen'
@@ -122,7 +125,7 @@ export class ScreenSharePickerModal {
 
     panel.innerHTML = `
       <div class="screen-sources-grid">
-        ${filtered.map((s) => `
+        ${available.map((s) => `
           <div class="source-item ${this.selectedSourceId === s.id ? 'selected' : ''}" data-source-id="${escapeHtml(s.id)}">
             <img class="source-thumbnail" src="${s.thumbnailDataUrl}" alt="${escapeHtml(s.name)}">
             <div class="source-name" title="${escapeHtml(s.name)}">

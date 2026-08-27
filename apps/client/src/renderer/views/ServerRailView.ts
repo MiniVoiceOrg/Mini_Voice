@@ -27,8 +27,8 @@ export class ServerRailView {
       return `
         <div class="server-rail-item ${isCurrent ? 'active' : ''}">
           <span class="server-rail-pill" aria-hidden="true"></span>
-          <button class="server-rail-avatar ${isCurrent ? 'active' : ''}" data-host="${escapeHtml(srv.host)}" data-port="${srv.port}" title="${escapeHtml(srv.name || `${srv.host}:${srv.port}`)}" style="overflow: hidden; padding: 0;">
-            ${iconUrl ? `<img src="${getAvatarUrl(iconUrl)}" style="width: 100%; height: 100%; object-fit: cover; border-radius: inherit;">` : `<span>${escapeHtml(initial)}</span>`}
+          <button class="server-rail-avatar ${isCurrent ? 'active' : ''}" data-host="${escapeHtml(srv.host)}" data-port="${srv.port}" title="${escapeHtml(srv.name || `${srv.host}:${srv.port}`)}" style="padding: 0;">
+            ${iconUrl ? `<img src="${getAvatarUrl(iconUrl)}" style="width: 100%; height: 100%; object-fit: cover; border-radius: inherit; display: block;">` : `<span>${escapeHtml(initial)}</span>`}
             <span class="server-rail-status-dot" data-status="${isCurrent ? 'online' : 'checking'}"></span>
           </button>
         </div>

@@ -382,25 +382,24 @@ export class VoiceStageView {
   }
 
   /**
-   * Focus toggle (#253). A plain click focuses a single tile (or leaves focus
-   * when it was the only one focused); Shift+click adds/removes a second pane
-   * so two screens can be watched side by side.
+   * Focus toggle (#253). When any tile is already focused, clicking another
+   * tile adds it to focus (multi-pane) instead of replacing. Clicking a
+   * focused tile removes it. This makes multi-pane the natural default
+   * without requiring Shift.
    */
-  private toggleFocus(tileKey: string, additive: boolean): void {
+  private toggleFocus(tileKey: string): void {
     const isFocused = this.focusedTileKeys.includes(tileKey);
 
-    if (additive) {
+    if (this.focusedTileKeys.length > 0) {
       if (isFocused) {
         this.focusedTileKeys = this.focusedTileKeys.filter((key) => key !== tileKey);
       } else {
-        // Keep the most recent selections when the cap is reached.
         this.focusedTileKeys = [...this.focusedTileKeys, tileKey].slice(-MAX_FOCUSED_TILES);
       }
       return;
     }
 
-    this.focusedTileKeys =
-      isFocused && this.focusedTileKeys.length === 1 ? [] : [tileKey];
+    this.focusedTileKeys = [tileKey];
   }
 
   /**
@@ -554,7 +553,7 @@ export class VoiceStageView {
         if (this.focusZoom.scale > 1 && card.classList.contains('stage-focused-main')) return;
         const tileKey = card.getAttribute('data-tile-key');
         if (tileKey) {
-          this.toggleFocus(tileKey, (e as MouseEvent).shiftKey);
+          this.toggleFocus(tileKey);
           this.renderParticipants();
         }
       });

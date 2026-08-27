@@ -212,6 +212,7 @@ export const en: TranslationMap = {
   'screenShare.limitMessage': 'You are already sharing {max} screens. Stop one of them before sharing another.',
   'screenShare.errorMessage': 'Could not start screen sharing: {error}',
   'screenShare.shareAppAudio': 'Share app audio',
+  'screenShare.audioAlreadySharing': 'Audio is already being shared on another screen',
 
   // ── Cryptographic identity ───────────────────────────────────────────────
   'identity.sectionTitle': 'Identity',
