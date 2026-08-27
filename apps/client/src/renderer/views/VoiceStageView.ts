@@ -770,24 +770,24 @@ export class VoiceStageView {
       ${isVideoTile ? `
         <video id="${videoId}" class="stage-video-element ${isScreenTile ? 'screen-share' : ''}${isLocked ? ' screen-locked' : ''}" autoplay playsinline muted></video>
         ${!isLocked ? `
-          <div class="stage-loading-overlay" id="loading-${videoId}">
+          <div class="stage-loading-overlay${isMini ? ' stage-loading-overlay--mini' : ''}" id="loading-${videoId}">
             <div class="reconnect-spinner"></div>
-            <span>${isScreenTile ? t('stage.loadingScreen') : t('stage.loadingCamera')}</span>
+            ${isMini ? '' : `<span>${isScreenTile ? t('stage.loadingScreen') : t('stage.loadingCamera')}</span>`}
           </div>
         ` : ''}
-        ${(isScreenTile && !isLocked) ? `
+        ${(isScreenTile && !isLocked && !isMini) ? `
           <div
             class="telemetry-overlay position-${settingsStore.screenShareTelemetryPosition}${settingsStore.screenShareTelemetryEnabled ? '' : ' is-hidden'}"
             data-telemetry-user-id="${p.user.id}"
           >${this.getTelemetryText(p.user.id)}</div>
         ` : ''}
         ${isLocked ? `
-          <div class="stage-watch-overlay">
-            <button class="stage-watch-btn" data-watch-user="${p.user.id}">
+          <div class="stage-watch-overlay${isMini ? ' stage-watch-overlay--mini' : ''}">
+            <button class="stage-watch-btn" data-watch-user="${p.user.id}"${isMini ? ` title="${t('stage.watchBroadcast')}" aria-label="${t('stage.watchBroadcast')}"` : ''}>
               <span class="material-symbols-outlined">smart_display</span>
-              <span>${t('stage.watchBroadcast')}</span>
+              ${isMini ? '' : `<span>${t('stage.watchBroadcast')}</span>`}
             </button>
-            <div class="stage-watch-caption">${t('stage.watchCaption', { name: escapeHtml(p.user.nickname) })}</div>
+            ${isMini ? '' : `<div class="stage-watch-caption">${t('stage.watchCaption', { name: escapeHtml(p.user.nickname) })}</div>`}
           </div>
         ` : `
           <div class="stage-card-controls">

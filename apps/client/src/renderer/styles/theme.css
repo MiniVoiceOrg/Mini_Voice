@@ -3143,6 +3143,24 @@ input:focus, textarea:focus, select:focus {
   font-size: 22px;
 }
 
+/* #292: inside the focus-mode strip the tile is only ~100px tall, so the full
+   button with label plus the caption overflowed it. The mini variant keeps just
+   the icon; the tooltip carries the label. */
+.stage-watch-overlay--mini {
+  gap: 0;
+  padding: 6px;
+}
+
+.stage-watch-overlay--mini .stage-watch-btn {
+  padding: 6px;
+  border-radius: 50%;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.45);
+}
+
+.stage-watch-overlay--mini .stage-watch-btn .material-symbols-outlined {
+  font-size: 18px;
+}
+
 .stage-watch-caption {
   pointer-events: none;
   color: #fff;
@@ -3190,6 +3208,12 @@ input:focus, textarea:focus, select:focus {
   background-color: rgba(0, 0, 0, 0.55);
   color: var(--text-normal);
   font-size: 13px;
+}
+
+/* #292: the focus-mode thumbnail has no room for the "loading" label, so it
+   keeps the spinner alone. */
+.stage-loading-overlay--mini {
+  gap: 0;
 }
 
 .stage-badges-overlay {
