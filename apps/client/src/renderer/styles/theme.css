@@ -663,7 +663,41 @@ input:focus, textarea:focus, select:focus {
 
 .server-rail-avatar.active {
   border-radius: 30%;
-  box-shadow: 0 0 0 2px var(--primary, #5865f2);
+}
+
+/* #287: Discord-style connection pill. It sits flush against the rail's left
+   wall and grows out from the centre on hover; the connected server keeps it
+   at full height. Lives on a wrapper because the avatar button clips its own
+   overflow to round the server icon. */
+.server-rail-item {
+  position: relative;
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.server-rail-pill {
+  position: absolute;
+  left: 0;
+  top: 50%;
+  width: 4px;
+  height: 0;
+  transform: translateY(-50%);
+  border-radius: 0 4px 4px 0;
+  background-color: #ffffff;
+  transition: height 0.2s ease;
+  pointer-events: none;
+}
+
+.server-rail-item:hover .server-rail-pill {
+  height: 20px;
+}
+
+/* Declared after the hover rule so the connected server stays at full height
+   even while hovered (same specificity, source order decides). */
+.server-rail-item.active .server-rail-pill {
+  height: 40px;
 }
 
 .server-rail-divider {
