@@ -1,4 +1,4 @@
-[🏠 Home](Home) · [Português](../Home)
+[🏠 Home](en-Home) · [Português](Home)
 
 # Monky Wiki
 
@@ -12,19 +12,19 @@ Monky is a desktop app for voice, video, screen sharing and chat with your frien
 
 ## Wiki map
 
-- [Installation](Instalacao)
-- [Getting Started](Primeiros-Passos)
-- [Create Your Server](Criar-Seu-Servidor)
-- [Join a Server](Entrar-Em-Um-Servidor)
-- [Using the App](Usando-o-App)
-- [Settings](Configuracoes)
-- [Host on a VPS](Hospedar-em-VPS)
-- [Monky Server](Monky-Server)
-- [Troubleshooting](Solucao-de-Problemas)
-- [Verify Releases](Verificar-Releases)
-- [Features](Recursos)
+- [Installation](en-Instalacao)
+- [Getting Started](en-Primeiros-Passos)
+- [Create Your Server](en-Criar-Seu-Servidor)
+- [Join a Server](en-Entrar-Em-Um-Servidor)
+- [Using the App](en-Usando-o-App)
+- [Settings](en-Configuracoes)
+- [Host on a VPS](en-Hospedar-em-VPS)
+- [Monky Server](en-Monky-Server)
+- [Troubleshooting](en-Solucao-de-Problemas)
+- [Verify Releases](en-Verificar-Releases)
+- [Features](en-Recursos)
 
-Versão em português: [Home](../Home).
+Versão em português: [Home](Home).
 
 ---
 <sub>📝 This page is generated from [`wiki/`](https://github.com/MonkyOrg/Monky/tree/main/wiki) in the repository. Edits made directly in the Wiki will be overwritten — please open a Pull Request.</sub>

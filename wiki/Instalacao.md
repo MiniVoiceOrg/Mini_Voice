@@ -1,4 +1,4 @@
-[🏠 Home](Home) · [English](en/Instalacao)
+[🏠 Home](Home) · [English](en-Instalacao)
 
 # Instalação
 

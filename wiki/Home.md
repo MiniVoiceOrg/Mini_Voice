@@ -1,4 +1,4 @@
-[🏠 Home](Home) · [English](en/Home)
+[🏠 Home](Home) · [English](en-Home)
 
 # Monky Wiki
 
@@ -24,7 +24,7 @@ Monky é um aplicativo desktop para conversar por voz, vídeo, tela e chat entre
 - [Verificar Releases](Verificar-Releases)
 - [Recursos](Recursos)
 
-English version: [Home](en/Home).
+English version: [Home](en-Home).
 
 ---
 <sub>📝 Esta página é gerada a partir de [`wiki/`](https://github.com/MonkyOrg/Monky/tree/main/wiki) no repositório. Edições feitas direto na Wiki serão sobrescritas — abra um Pull Request.</sub>

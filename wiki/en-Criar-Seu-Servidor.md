@@ -1,4 +1,4 @@
-[🏠 Home](Home) · [Português](../Criar-Seu-Servidor)
+[🏠 Home](en-Home) · [Português](Criar-Seu-Servidor)
 
 # Create Your Server
 

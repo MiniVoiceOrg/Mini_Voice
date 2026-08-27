@@ -1,4 +1,4 @@
-[🏠 Home](Home) · [Português](../Configuracoes)
+[🏠 Home](en-Home) · [Português](Configuracoes)
 
 # Settings
 

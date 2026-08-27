@@ -41,7 +41,7 @@ Se o Windows/macOS mostrar aviso de segurança, veja [Instalação](https://gith
 
 ## 📚 Documentação
 
-- [Wiki do Monky](https://github.com/MonkyOrg/Monky/wiki) — manual para usar e hospedar.
+- [Wiki do Monky](https://github.com/MonkyOrg/Monky/wiki) — manual para usar e hospedar. ([English](https://github.com/MonkyOrg/Monky/wiki/en-Home))
 - [Primeiros Passos](https://github.com/MonkyOrg/Monky/wiki/Primeiros-Passos)
 - [Criar Seu Servidor](https://github.com/MonkyOrg/Monky/wiki/Criar-Seu-Servidor)
 - [Entrar Em Um Servidor](https://github.com/MonkyOrg/Monky/wiki/Entrar-Em-Um-Servidor)

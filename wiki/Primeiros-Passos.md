@@ -1,4 +1,4 @@
-[🏠 Home](Home) · [English](en/Primeiros-Passos)
+[🏠 Home](Home) · [English](en-Primeiros-Passos)
 
 # Primeiros Passos
 

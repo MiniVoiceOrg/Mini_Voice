@@ -1,4 +1,4 @@
-[🏠 Home](Home) · [Português](../Solucao-de-Problemas)
+[🏠 Home](en-Home) · [Português](Solucao-de-Problemas)
 
 # Troubleshooting
 
