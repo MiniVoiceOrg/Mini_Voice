@@ -15,10 +15,17 @@ export interface HostServerOptions {
 export class ServerManager {
   private serverInstance: MonkyServer | null = null;
   private isRunning: boolean = false;
+  private currentPort: number | null = null;
 
   public async startServer(options: HostServerOptions): Promise<{ success: boolean; error?: string }> {
     if (this.isRunning && this.serverInstance) {
-      return { success: true };
+      // Already serving exactly what was asked for.
+      if (this.currentPort === options.port) {
+        return { success: true };
+      }
+      // A different server is up: reporting success here would leave the caller
+      // connecting to the wrong instance, so swap it out first.
+      await this.stopServer();
     }
 
     const dataDir = path.join(app.getPath('userData'), 'server-data');
@@ -40,12 +47,14 @@ export class ServerManager {
       await server.start();
       this.serverInstance = server;
       this.isRunning = true;
+      this.currentPort = options.port;
       console.log(`[ServerManager] Local server started successfully on port ${options.port}`);
       return { success: true };
     } catch (err: any) {
       console.error('[ServerManager] Error starting local server:', err);
       this.isRunning = false;
       this.serverInstance = null;
+      this.currentPort = null;
       return { success: false, error: err.message || mt('error.startServerFailed') };
     }
   }
@@ -56,6 +65,7 @@ export class ServerManager {
       await this.serverInstance.stop();
       this.serverInstance = null;
       this.isRunning = false;
+      this.currentPort = null;
     }
   }
 

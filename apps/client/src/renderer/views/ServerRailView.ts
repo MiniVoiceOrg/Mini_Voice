@@ -145,14 +145,18 @@ export class ServerRailView {
     });
     if (!confirmed) return;
 
+    // Tear the session down *before* touching the hosted server: startOwnServer may
+    // stop the very server we are connected to, and a socket that dies while
+    // `manualDisconnect` is false schedules an endless reconnect to a server that
+    // is never coming back (#312).
+    audioProcessor.stopMicrophone();
+    webRtcManager.closeAllPeers();
+    networkClient.disconnect();
+
     if (!online && mine) {
       const started = await this.startOwnServer(mine);
       if (!started) return;
     }
-
-    audioProcessor.stopMicrophone();
-    webRtcManager.closeAllPeers();
-    networkClient.disconnect();
 
     try {
       const identity = connectionStore.hasIdentity && connectionStore.clientId && connectionStore.publicKey

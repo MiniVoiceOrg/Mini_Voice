@@ -505,17 +505,17 @@ export function setupIpcHandlers(
       return { success: false, error: 'Not supported on this platform' };
     }
     const excludePid = process.pid;
-    // Electron encodes a window source id as `window:<HWND>:<n>`. When the user
-    // shares a single application window, capture only that app's audio
-    // (INCLUDE its process tree) instead of the whole PC.
-    let includeHwnd = 0;
+    // Electron encodes a window source id as `window:<id>:<n>` — the HWND on
+    // Windows, the CGWindowID on macOS. When the user shares a single application
+    // window, capture only that app's audio instead of the whole machine (#298).
+    let includeWindowId = 0;
     if (sourceId && sourceId.startsWith('window:')) {
       const parsed = Number.parseInt(sourceId.split(':')[1] ?? '', 10);
-      if (Number.isFinite(parsed) && parsed > 0) includeHwnd = parsed;
+      if (Number.isFinite(parsed) && parsed > 0) includeWindowId = parsed;
     }
     const opts: Record<string, number> = { excludePid, sampleRate: 48000, channels: 2 };
-    if (includeHwnd) opts.includeHwnd = includeHwnd;
-    console.log(`[ScreenAudio:Main] Starting capture (excludePid=${excludePid}, includeHwnd=${includeHwnd || 'none'}, source=${sourceId ?? 'screen'})`);
+    if (includeWindowId) opts.includeWindowId = includeWindowId;
+    console.log(`[ScreenAudio:Main] Starting capture (excludePid=${excludePid}, includeWindowId=${includeWindowId || 'none'}, source=${sourceId ?? 'screen'})`);
     const result = screenAudio.start(
       opts,
       (buffer: Buffer) => {

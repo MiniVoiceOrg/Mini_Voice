@@ -117,11 +117,18 @@ function createWindow(): void {
   });
 }
 
+// Windows groups taskbar buttons by AppUserModelID. The NSIS installer stamps the
+// shortcuts with `appId`, so the running process must declare the very same id --
+// otherwise Windows sees the live window as a different app and the pinned icon
+// stops matching it after every update (#323).
+if (process.platform === 'win32') {
+  app.setAppUserModelId('com.monky.app');
+}
+
 // Only allow a single running instance. If a second instance is launched,
 // focus the window of the instance that is already running instead of
 // opening a new one (option 1 from #154).
 const gotTheLock = app.requestSingleInstanceLock();
-
 if (!gotTheLock) {
   app.quit();
 } else {

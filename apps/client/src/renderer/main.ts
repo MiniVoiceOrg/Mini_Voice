@@ -226,7 +226,14 @@ class App {
   }
 
   private showReconnectOverlay(): void {
+    // Anchor to the server layout so the title bar and the server rail stay
+    // usable while reconnecting (#321).
+    const host = document.querySelector('.main-layout') || document.body;
     let overlay = document.getElementById('reconnect-overlay');
+    if (overlay && overlay.parentElement !== host) {
+      overlay.remove();
+      overlay = null;
+    }
     if (!overlay) {
       overlay = document.createElement('div');
       overlay.id = 'reconnect-overlay';
@@ -238,7 +245,7 @@ class App {
           <div id="reconnect-subtitle" class="reconnect-subtitle"></div>
         </div>
       `;
-      document.body.appendChild(overlay);
+      host.appendChild(overlay);
     }
     const subtitle = document.getElementById('reconnect-subtitle');
     if (subtitle) {

@@ -1,7 +1,11 @@
 export interface ScreenAudioOptions {
   excludePid?: number;
-  /** Windows only: capture only this window's process tree (INCLUDE mode). */
-  includeHwnd?: number;
+  /**
+   * Capture only the audio of the application owning this window.
+   * On Windows it is the HWND (resolved to a process tree); on macOS it is the
+   * CGWindowID (used as a ScreenCaptureKit window filter).
+   */
+  includeWindowId?: number;
   sampleRate?: number;
   channels?: number;
 }
