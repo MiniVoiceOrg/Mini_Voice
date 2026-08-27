@@ -123,6 +123,17 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           npm_config_node_gyp: ${{ env.NODE_GYP_PATH || '' }}
+          # macOS ties the Screen Recording permission to the app's code signing
+          # identity. Without a stable Developer ID the app is ad-hoc signed, its
+          # identity changes on every build, and a permission granted before an
+          # update stops applying to the new binary (#327). When these secrets are
+          # absent the variables are empty and electron-builder simply skips
+          # signing, so the current behaviour is unchanged.
+          CSC_LINK: ${{ secrets.MAC_CSC_LINK }}
+          CSC_KEY_PASSWORD: ${{ secrets.MAC_CSC_KEY_PASSWORD }}
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
 
       # The Server GUI is a separate Electron app (host-side administration).
       # It writes to release-server/ so its artifacts never collide with the

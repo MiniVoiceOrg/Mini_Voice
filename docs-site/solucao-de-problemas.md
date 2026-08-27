@@ -11,6 +11,7 @@
 | Nada em Servidores na Rede | A descoberta só funciona na mesma LAN; clique em Buscar de novo e verifique UDP `41234` no firewall |
 | Um participante ficou mudo só para mim | Clique com o botão direito nele e volte o volume individual para 100% |
 | O Avast (ou outro antivírus) apita ao instalar/atualizar | Falso positivo — veja [Antivírus: Avast e similares](#antivirus-avast-e-similares) |
+| No macOS, o compartilhamento de tela pede autorização mesmo já estando liberado | A permissão ficou presa na versão anterior — veja [macOS: a permissão de tela para de valer após atualizar](#macos-a-permissao-de-tela-para-de-valer-apos-atualizar) |
 
 ## Antivírus: Avast e similares
 
@@ -57,4 +58,42 @@ software, e não só contra o Monky.
 
 Não recomendamos essa exceção e ela **não é de responsabilidade do projeto**: se
 optar por fazê-la, é **por sua conta e risco**.
+:::
+
+## macOS: a permissão de tela para de valer após atualizar
+
+Você já autorizou o Monky em **Ajustes do Sistema › Privacidade e Segurança ›
+Gravação de Tela**, a chave continua ligada, mas ao tentar compartilhar a tela o
+app insiste que falta autorização. Desligar e ligar a chave não adianta.
+
+O motivo: o macOS **não guarda essa permissão pelo nome do app**, e sim pela
+**assinatura de código** do binário. Como o Monky ainda não é assinado com um
+certificado Apple Developer ID, cada build recebe uma identidade diferente
+(assinatura *ad-hoc*). Depois de atualizar, o sistema enxerga um app com
+identidade nova, e a autorização concedida à versão anterior não se aplica a
+ele. Como o nome e o caminho continuam idênticos, a entrada antiga permanece
+listada e marcada — daí a impressão de que já está tudo liberado.
+
+### Como voltar a compartilhar a tela
+
+1. Feche o Monky por completo (inclusive o ícone na barra de menus).
+2. No **Terminal**, rode:
+
+   ```bash
+   tccutil reset ScreenCapture com.monky.app
+   ```
+
+3. Abra o Monky e tente compartilhar a tela.
+4. Quando o macOS pedir a autorização, conceda novamente.
+
+Se o comando não resolver, remova a entrada na mão: **Ajustes do Sistema ›
+Privacidade e Segurança › Gravação de Tela**, selecione o Monky, clique em
+**−** para removê-lo, e então repita o passo 3 para que ele seja adicionado de
+novo.
+
+::: tip Correção definitiva
+A solução real é assinar o app com um certificado **Apple Developer ID**, que
+mantém a mesma identidade entre versões e faz a permissão sobreviver às
+atualizações. Isso depende de uma conta paga do Apple Developer Program; o
+projeto já está preparado para usá-la assim que estiver disponível.
 :::

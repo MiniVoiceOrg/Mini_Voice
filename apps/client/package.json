@@ -88,6 +88,13 @@
       "icon": "build/icon-mac.png",
       "category": "public.app-category.social-networking",
       "artifactName": "Monky-${version}-mac-${arch}.${ext}",
+      "hardenedRuntime": true,
+      "entitlements": "build/entitlements.mac.plist",
+      "entitlementsInherit": "build/entitlements.mac.plist",
+      "extendInfo": {
+        "NSMicrophoneUsageDescription": "O Monky precisa do microfone para transmitir sua voz nos canais de voz.",
+        "NSCameraUsageDescription": "O Monky precisa da câmera para transmitir seu vídeo nas chamadas."
+      },
       "target": [
         {
           "target": "dmg",

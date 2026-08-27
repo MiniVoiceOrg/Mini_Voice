@@ -11,6 +11,7 @@
 | Nothing under Servers on the Network | Discovery only works on the same LAN; click Scan again and check UDP `41234` in the firewall |
 | One participant is silent only for me | Right-click them and set individual volume back to 100% |
 | Avast (or another antivirus) flags the installer/updater | False positive — see [Antivirus: Avast and similar](#antivirus-avast-and-similar) |
+| On macOS, screen sharing keeps asking for permission even though it is already allowed | The permission is stuck on the previous version — see [macOS: screen permission stops working after an update](#macos-screen-permission-stops-working-after-an-update) |
 
 ## Antivirus: Avast and similar
 
@@ -56,4 +57,42 @@ weakens your antivirus protection against any other software, not just Monky.
 
 We do not recommend that exclusion and it is **not the project's
 responsibility**: if you choose to do it, you do so **at your own risk**.
+:::
+
+## macOS: screen permission stops working after an update
+
+You already allowed Monky under **System Settings › Privacy & Security › Screen
+Recording**, the toggle is still on, yet the app insists the permission is
+missing when you try to share your screen. Turning the toggle off and on again
+does not help.
+
+The reason: macOS **does not store that permission by app name**, it stores it
+against the binary's **code signature**. Since Monky is not signed with an Apple
+Developer ID certificate yet, every build gets a different identity (*ad-hoc*
+signing). After an update the system sees an app with a new identity, and the
+permission granted to the previous version no longer applies to it. Because the
+name and the path stay identical, the old entry remains listed and checked —
+hence the impression that everything is already allowed.
+
+### How to share your screen again
+
+1. Quit Monky completely (including the menu bar icon).
+2. In **Terminal**, run:
+
+   ```bash
+   tccutil reset ScreenCapture com.monky.app
+   ```
+
+3. Open Monky and try sharing your screen.
+4. When macOS asks for the permission, grant it again.
+
+If the command does not help, remove the entry by hand: **System Settings ›
+Privacy & Security › Screen Recording**, select Monky, click **−** to remove it,
+then repeat step 3 so it gets added again.
+
+::: tip Definitive fix
+The real solution is signing the app with an **Apple Developer ID** certificate,
+which keeps the same identity across versions and makes the permission survive
+updates. That depends on a paid Apple Developer Program account; the project is
+already wired to use one as soon as it is available.
 :::
