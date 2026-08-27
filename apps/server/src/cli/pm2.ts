@@ -39,7 +39,7 @@ export function ensurePm2(): void {
 }
 
 export function getEcosystemPath(dataDir: string): string {
-  return path.join(dataDir, 'ecosystem.config.js');
+  return path.join(dataDir, 'ecosystem.config.cjs');
 }
 
 export function getServerEntryPath(): string {

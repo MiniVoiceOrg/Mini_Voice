@@ -133,6 +133,12 @@ export async function setConfig(ctx: CliContext, key: string, value?: string): P
           const ecosystemPath = getEcosystemPath(ctx.dataDir);
           const ecosystemContent = generateEcosystem(ctx.dataDir, portNum, (await ctx.serverRepo.getServer())?.name || DEFAULT_SERVER_NAME);
           fs.writeFileSync(ecosystemPath, ecosystemContent, 'utf8');
+          const legacyEcosystemPath = path.join(ctx.dataDir, 'ecosystem.config.js');
+          if (fs.existsSync(legacyEcosystemPath)) {
+            try {
+              fs.unlinkSync(legacyEcosystemPath);
+            } catch {}
+          }
           spawnSync('pm2', ['restart', PM2_PROCESS_NAME], { stdio: 'inherit', shell: true });
           console.log(color('Servidor reiniciado com a nova porta.', ANSI.green));
         } else {
