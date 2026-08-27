@@ -32,9 +32,14 @@ async function authenticateSocket(
   requestId: string,
   nickname: string,
   password: string,
-  options?: { expectErrorCode?: ProtocolErrorCode }
+  options?: {
+    expectErrorCode?: ProtocolErrorCode;
+    /** Reuse an identity to simulate the same person on another device (#309). */
+    identity?: ReturnType<typeof createIdentity>;
+    deviceId?: string;
+  }
 ): Promise<any> {
-  const identity = createIdentity();
+  const identity = options?.identity ?? createIdentity();
 
   return await withTimeout(new Promise((resolve, reject) => {
     const onMessage = (data: RawData) => {
@@ -76,6 +81,7 @@ async function authenticateSocket(
           publicKey: identity.publicKeyHex,
           nickname,
           password,
+          deviceId: options?.deviceId,
         },
       };
       ws.send(JSON.stringify(connectMsg));
@@ -245,6 +251,62 @@ async function runTests() {
     }), 5000, 'Teste 7: obter dados de convite do servidor');
 
     ws2.close();
+
+    // #309: a mesma identidade em dois dispositivos deve gerar duas sessões
+    // vivas, em vez de uma derrubar a outra em loop de reconexão.
+    const sharedIdentity = createIdentity();
+    const wsDeviceA = new WebSocket('ws://127.0.0.1:3999');
+    const authA = await authenticateSocket(wsDeviceA, 'req-8a', 'UserMultiDevice', 'senha-secreta-123', {
+      identity: sharedIdentity,
+      deviceId: 'device-a',
+    });
+
+    let deviceAWasClosed = false;
+    wsDeviceA.on('close', () => { deviceAWasClosed = true; });
+
+    const wsDeviceB = new WebSocket('ws://127.0.0.1:3999');
+    const authB = await authenticateSocket(wsDeviceB, 'req-8b', 'UserMultiDevice', 'senha-secreta-123', {
+      identity: sharedIdentity,
+      deviceId: 'device-b',
+    });
+
+    const userId = authA.payload.currentUser.id;
+    if (authB.payload.currentUser.id !== userId) {
+      throw new Error('Teste 8: os dois dispositivos deveriam compartilhar o mesmo userId');
+    }
+
+    const sessionA = authA.payload.currentUser.sessionId;
+    const sessionB = authB.payload.currentUser.sessionId;
+    if (!sessionA || !sessionB || sessionA === sessionB) {
+      throw new Error(`Teste 8: sessionIds deveriam existir e ser distintos (A=${sessionA}, B=${sessionB})`);
+    }
+
+    const ownSessions = authB.payload.server.members.filter((m: any) => m.id === userId);
+    if (ownSessions.length !== 2) {
+      throw new Error(`Teste 8: esperava 2 sessões da mesma pessoa em members, encontrei ${ownSessions.length}`);
+    }
+
+    // Dá tempo de um eventual close chegar antes de afirmar que não houve.
+    await new Promise((resolve) => setTimeout(resolve, 300));
+    if (deviceAWasClosed) {
+      throw new Error('Teste 8: o primeiro dispositivo foi derrubado pelo segundo');
+    }
+    console.log('✔ Teste 8 passou: Dois dispositivos com a mesma identidade coexistem como sessões distintas');
+
+    // A proteção contra socket zumbi continua valendo por dispositivo: uma nova
+    // conexão do *mesmo* deviceId substitui a anterior.
+    const wsDeviceAAgain = new WebSocket('ws://127.0.0.1:3999');
+    const closedByReplacement = new Promise<void>((resolve) => wsDeviceA.on('close', () => resolve()));
+    await authenticateSocket(wsDeviceAAgain, 'req-9', 'UserMultiDevice', 'senha-secreta-123', {
+      identity: sharedIdentity,
+      deviceId: 'device-a',
+    });
+    await withTimeout(closedByReplacement, 5000, 'Teste 9: substituição do socket zumbi');
+    console.log('✔ Teste 9 passou: Reconexão do mesmo dispositivo substitui o socket anterior');
+
+    wsDeviceAAgain.close();
+    wsDeviceB.close();
+
     console.log('=== Todos os testes do servidor passaram com sucesso! ===');
   } finally {
     await server.stop();
