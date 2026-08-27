@@ -4,7 +4,9 @@
  * Captures system audio EXCLUDING the Monky process using SCStream with
  * excludesCurrentProcessAudio = YES.
  *
- * Output: PCM float32 interleaved, 48kHz stereo (configurable).
+ * Output: PCM float32 interleaved, 48kHz stereo (configurable). ScreenCaptureKit
+ * delivers planar (non-interleaved) float32, so frames are interleaved here
+ * before being handed to the renderer.
  * Delivers frames via Napi::ThreadSafeFunction to the Node.js event loop.
  */
 
@@ -33,22 +35,76 @@ static Napi::ThreadSafeFunction g_tsfn_mac;
                    ofType:(SCStreamOutputType)type {
   if (type != SCStreamOutputTypeAudio) return;
   if (!g_captureRunning_mac.load()) return;
+  if (!CMSampleBufferDataIsReady(sampleBuffer)) return;
 
-  CMBlockBufferRef blockBuffer = CMSampleBufferGetDataBuffer(sampleBuffer);
-  if (!blockBuffer) return;
+  CMFormatDescriptionRef formatDesc = CMSampleBufferGetFormatDescription(sampleBuffer);
+  if (!formatDesc) return;
 
-  size_t totalLength = 0;
-  size_t lengthAtOffset = 0;
-  char* dataPointer = nullptr;
+  const AudioStreamBasicDescription* asbd =
+      CMAudioFormatDescriptionGetStreamBasicDescription(
+          (CMAudioFormatDescriptionRef)formatDesc);
+  if (!asbd) return;
 
-  OSStatus status = CMBlockBufferGetDataPointer(blockBuffer, 0, &lengthAtOffset,
-                                                 &totalLength, &dataPointer);
-  if (status != kCMBlockBufferNoErr || !dataPointer || totalLength == 0) return;
+  // We only know how to convert 32-bit float PCM, which is what SCStream emits.
+  if (!(asbd->mFormatFlags & kAudioFormatFlagIsFloat) || asbd->mBitsPerChannel != 32) return;
 
-  // Deliver PCM data via TSFN
-  std::vector<uint8_t>* buf = new std::vector<uint8_t>(
-      reinterpret_cast<uint8_t*>(dataPointer),
-      reinterpret_cast<uint8_t*>(dataPointer) + totalLength);
+  const CMItemCount frames = CMSampleBufferGetNumSamples(sampleBuffer);
+  if (frames <= 0) return;
+
+  // ScreenCaptureKit hands us *planar* (non-interleaved) float32 — one buffer per
+  // channel. The renderer's ring buffer consumes interleaved frames, so reading the
+  // raw block buffer directly made it treat [L L L ...][R R R ...] as L/R pairs,
+  // playing everything back an octave up ("chipmunk" audio, #314).
+  size_t ablSize = 0;
+  OSStatus status = CMSampleBufferGetAudioBufferListWithRetainedBlockBuffer(
+      sampleBuffer, &ablSize, NULL, 0, kCFAllocatorDefault, kCFAllocatorDefault,
+      kCMSampleBufferFlag_AudioBufferList_Assure16ByteAlignment, NULL);
+  if (status != noErr || ablSize == 0) return;
+
+  std::vector<uint8_t> ablStorage(ablSize);
+  AudioBufferList* abl = reinterpret_cast<AudioBufferList*>(ablStorage.data());
+  CMBlockBufferRef retainedBlockBuffer = NULL;
+
+  status = CMSampleBufferGetAudioBufferListWithRetainedBlockBuffer(
+      sampleBuffer, NULL, abl, ablSize, kCFAllocatorDefault, kCFAllocatorDefault,
+      kCMSampleBufferFlag_AudioBufferList_Assure16ByteAlignment, &retainedBlockBuffer);
+  if (status != noErr) {
+    if (retainedBlockBuffer) CFRelease(retainedBlockBuffer);
+    return;
+  }
+
+  const uint32_t outChannels = self.channels > 0 ? self.channels : 2;
+  std::vector<uint8_t>* buf =
+      new std::vector<uint8_t>(static_cast<size_t>(frames) * outChannels * sizeof(float));
+  float* out = reinterpret_cast<float*>(buf->data());
+
+  if (abl->mNumberBuffers > 1) {
+    // Planar: mBuffers[ch] holds every sample for that channel.
+    for (uint32_t ch = 0; ch < outChannels; ch++) {
+      const uint32_t srcIdx = ch < abl->mNumberBuffers ? ch : abl->mNumberBuffers - 1;
+      const float* src = reinterpret_cast<const float*>(abl->mBuffers[srcIdx].mData);
+      const size_t srcFrames = abl->mBuffers[srcIdx].mDataByteSize / sizeof(float);
+      for (CMItemCount i = 0; i < frames; i++) {
+        out[i * outChannels + ch] =
+            (src && static_cast<size_t>(i) < srcFrames) ? src[i] : 0.0f;
+      }
+    }
+  } else {
+    // Single buffer: already interleaved (or mono, which we duplicate).
+    const float* src = reinterpret_cast<const float*>(abl->mBuffers[0].mData);
+    const uint32_t srcChannels =
+        abl->mBuffers[0].mNumberChannels > 0 ? abl->mBuffers[0].mNumberChannels : 1;
+    const size_t srcSamples = abl->mBuffers[0].mDataByteSize / sizeof(float);
+    for (CMItemCount i = 0; i < frames; i++) {
+      for (uint32_t ch = 0; ch < outChannels; ch++) {
+        const uint32_t sc = ch < srcChannels ? ch : srcChannels - 1;
+        const size_t idx = static_cast<size_t>(i) * srcChannels + sc;
+        out[i * outChannels + ch] = (src && idx < srcSamples) ? src[idx] : 0.0f;
+      }
+    }
+  }
+
+  if (retainedBlockBuffer) CFRelease(retainedBlockBuffer);
 
   napi_status callStatus = g_tsfn_mac.NonBlockingCall(buf, [](Napi::Env env, Napi::Function jsCallback,
                                      std::vector<uint8_t>* bufData) {

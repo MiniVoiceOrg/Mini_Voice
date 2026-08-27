@@ -16,3 +16,20 @@ export function getAvatarUrl(url?: string | null): string {
   }
   return DEFAULT_AVATAR_URL;
 }
+
+/**
+ * Saved-server icons must be persisted as absolute URLs. `getAvatarUrl` resolves
+ * relative `/avatars/...` paths against the *currently connected* server, so a
+ * stored relative path made every other server in the rail request its icon from
+ * the wrong host and render broken (#312).
+ */
+export function toAbsoluteServerIconUrl(
+  host: string,
+  port: number,
+  iconUrl?: string | null
+): string | null {
+  if (!iconUrl || iconUrl.trim().length === 0) return null;
+  if (!iconUrl.startsWith('/')) return iconUrl;
+  const cleanHost = host.trim().replace(/^wss?:\/\//, '').replace(/^https?:\/\//, '');
+  return `http://${cleanHost}:${port}${iconUrl}`;
+}

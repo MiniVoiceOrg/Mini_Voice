@@ -23,7 +23,7 @@ import { checkServerOnline } from '../utils/serverStatus';
 import { userContextMenu } from './UserContextMenu';
 import { soundboardModal } from './SoundboardModal';
 import { soundEffects } from '../core/SoundEffects';
-import { getAvatarUrl } from '../utils/avatar';
+import { getAvatarUrl, toAbsoluteServerIconUrl } from '../utils/avatar';
 import { serverRailView } from './ServerRailView';
 import logoUrl from '../assets/Logo.png';
 import { t, tCount } from '../i18n';
@@ -1185,7 +1185,14 @@ export class MainView {
       const url = networkClient.getCurrentServerUrl();
       if (url) {
         const match = url.match(/\/\/([^:]+):(\d+)/);
-        if (match) connectionStore.updateSavedServerIcon(match[1], parseInt(match[2], 10), payload.iconUrl ?? null);
+        if (match) {
+          const port = parseInt(match[2], 10);
+          connectionStore.updateSavedServerIcon(
+            match[1],
+            port,
+            toAbsoluteServerIconUrl(match[1], port, payload.iconUrl)
+          );
+        }
       }
       serverRailView.render();
     });

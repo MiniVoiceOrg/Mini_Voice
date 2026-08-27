@@ -188,7 +188,10 @@ export class ScreenSharePickerModal {
       tabWindow?.classList.toggle('active', tab === 'window');
       const audioText = this.modalEl?.querySelector('#share-audio-text');
       if (audioText) {
-        audioText.textContent = tab === 'window' ? t('screenShare.shareAppAudio') : t('screenShare.shareAudio');
+        // Keep the "audio already being shared" warning across tab switches (#315)
+        audioText.textContent = screenAudioService.getIsCapturing()
+          ? t('screenShare.audioAlreadySharing')
+          : tab === 'window' ? t('screenShare.shareAppAudio') : t('screenShare.shareAudio');
       }
       this.renderSources(sources);
     };

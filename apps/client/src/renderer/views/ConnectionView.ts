@@ -145,6 +145,10 @@ export class ConnectionView {
     const savedNick = connectionStore.savedNickname || '';
     const savedServers = connectionStore.savedServers || [];
     const createdServers = connectionStore.createdServers || [];
+    // Keep the password field in sync with the currently selected saved server (#308)
+    const selectedSaved = savedServers.find(
+      (s) => s.host === this.selectedSavedHost && s.port === this.selectedSavedPort
+    );
 
     this.container.innerHTML = `
       <div class="connection-layout">
@@ -257,7 +261,7 @@ export class ConnectionView {
             <div class="form-row">
               <div class="form-group" style="flex: 2;">
                 <label>${t('connection.hostLabel')}</label>
-                <input id="join-host" type="text" placeholder="${t('connection.hostPlaceholder')}" value="${this.selectedSavedHost || '127.0.0.1'}" required>
+                <input id="join-host" type="text" placeholder="${t('connection.hostPlaceholder')}" value="${escapeHtml(this.selectedSavedHost || '127.0.0.1')}" required>
               </div>
               <div class="form-group small-col">
                 <label>${t('connection.portLabel')}</label>
@@ -267,7 +271,7 @@ export class ConnectionView {
 
             <div class="form-group">
               <label>${t('connection.passwordLabel')}</label>
-              <input id="join-password" type="password" placeholder="••••••••">
+              <input id="join-password" type="password" placeholder="••••••••" value="${escapeHtml(selectedSaved?.password || '')}">
             </div>
 
             <button type="submit" id="btn-submit-join" class="btn btn-primary" style="width: 100%; margin-top: 8px;">

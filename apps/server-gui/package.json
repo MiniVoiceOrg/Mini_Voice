@@ -70,7 +70,7 @@
       "artifactName": "Monky-Server-${version}-win-${arch}-portable.${ext}"
     },
     "mac": {
-      "icon": "build/icon.png",
+      "icon": "build/icon-mac.png",
       "category": "public.app-category.developer-tools",
       "artifactName": "Monky-Server-${version}-mac-${arch}.${ext}",
       "target": [

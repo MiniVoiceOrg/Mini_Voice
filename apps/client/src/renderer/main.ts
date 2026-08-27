@@ -41,6 +41,7 @@ import { screenSharePickerModal } from './views/ScreenSharePickerModal';
 import { showAlert } from './views/Dialog';
 import { showIdentityImportDialog } from './views/IdentityDialogs';
 import { initI18n, t } from './i18n';
+import { toAbsoluteServerIconUrl } from './utils/avatar';
 
 class App {
   private appContainer: HTMLElement;
@@ -51,6 +52,10 @@ class App {
     this.appContainer = document.getElementById('app')!;
     this.connectionView = new ConnectionView(this.appContainer);
     this.mainView = new MainView(this.appContainer);
+
+    // Must run before any await in init(): otherwise the Windows-style window
+    // controls stay visible on macOS during onboarding/identity loading (#307)
+    this.setupTitleBar();
 
     this.init();
   }
@@ -75,7 +80,6 @@ class App {
     }
 
     this.setupGlobalEventListeners();
-    this.setupTitleBar();
     this.setupTraySync();
 
     // Render connection view initially
@@ -314,7 +318,14 @@ class App {
         const url = networkClient.getCurrentServerUrl();
         if (url) {
           const match = url.match(/\/\/([^:]+):(\d+)/);
-          if (match) connectionStore.updateSavedServerIcon(match[1], parseInt(match[2], 10), payload.server.iconUrl);
+          if (match) {
+            const port = parseInt(match[2], 10);
+            connectionStore.updateSavedServerIcon(
+              match[1],
+              port,
+              toAbsoluteServerIconUrl(match[1], port, payload.server.iconUrl)
+            );
+          }
         }
       }
 

@@ -85,7 +85,7 @@
       "artifactName": "Monky-${version}-win-${arch}-portable.${ext}"
     },
     "mac": {
-      "icon": "build/icon.png",
+      "icon": "build/icon-mac.png",
       "category": "public.app-category.social-networking",
       "artifactName": "Monky-${version}-mac-${arch}.${ext}",
       "target": [
