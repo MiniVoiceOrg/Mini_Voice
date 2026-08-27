@@ -35,9 +35,11 @@ export class SettingsStore {
   public screenShareTelemetryMode: 'simple' | 'complete' = 'simple';
   public customSounds: Partial<Record<string, string>> = {}; // key → file path
   public soundboardShortcuts: Record<string, { accelerator: string; display: string }> = {};
+  public keybindShortcuts: Record<string, { accelerator: string; display: string }> = {};
   public chatMessageSoundEnabled: boolean = true; // play a cue when a chat message arrives (#152)
   public chatMessageSoundMentionsOnly: boolean = false; // only play the cue when you are mentioned (#153)
   public updateBetaChannel: boolean = false; // opt into receiving beta (pre-release) updates
+  public minimizeToTrayOnClose: boolean = true; // minimize to tray when closing window (#256)
   // Per-server / per-channel overrides of the global chat-sound mode (#153).
   // A missing entry (or 'inherit') means "use the level above".
   public chatSoundServerOverrides: Record<string, ChatSoundMode> = {};
@@ -89,6 +91,9 @@ export class SettingsStore {
         if (!this.soundboardShortcuts || typeof this.soundboardShortcuts !== 'object') {
           this.soundboardShortcuts = {};
         }
+        if (!this.keybindShortcuts || typeof this.keybindShortcuts !== 'object') {
+          this.keybindShortcuts = {};
+        }
         if (typeof this.chatMessageSoundEnabled !== 'boolean') {
           this.chatMessageSoundEnabled = true;
         }
@@ -97,6 +102,9 @@ export class SettingsStore {
         }
         if (typeof this.updateBetaChannel !== 'boolean') {
           this.updateBetaChannel = false;
+        }
+        if (typeof this.minimizeToTrayOnClose !== 'boolean') {
+          this.minimizeToTrayOnClose = true;
         }
         this.chatSoundServerOverrides = this.sanitizeModeMap(this.chatSoundServerOverrides);
         this.chatSoundChannelOverrides = this.sanitizeModeMap(this.chatSoundChannelOverrides);

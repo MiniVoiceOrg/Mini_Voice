@@ -25,6 +25,7 @@ import { networkClient } from './core/NetworkClient';
 import { participantManager } from './core/ParticipantManager';
 import { soundEffects } from './core/SoundEffects';
 import { soundboardService } from './core/SoundboardService';
+import { keybindService } from './core/KeybindService';
 import { updateService } from './core/UpdateService';
 import { videoService } from './core/VideoService';
 import { webRtcManager } from './core/WebRtcManager';
@@ -82,6 +83,14 @@ class App {
 
     // Load soundboard sounds if configured
     soundboardService.loadSounds().catch(() => {});
+
+    // Sync minimize-to-tray preference to main process (#256)
+    if (window.api?.setMinimizeToTray) {
+      window.api.setMinimizeToTray(settingsStore.minimizeToTrayOnClose).catch(() => {});
+    }
+
+    // Initialize keybind service (#252)
+    keybindService.init();
 
     // Start checking for app updates (non-blocking)
     updateService.init();
@@ -238,6 +247,27 @@ class App {
   }
 
   private setupGlobalEventListeners(): void {
+    // Global Keybind Actions (#252)
+    appEvents.on('keybind.toggle_mute', () => {
+      this.toggleMuteFromTray();
+    });
+
+    appEvents.on('keybind.toggle_deafen', () => {
+      this.toggleDeafenFromTray();
+    });
+
+    appEvents.on('keybind.toggle_camera', () => {
+      if (voiceStore.currentVoiceChannelId) {
+        void this.mainView.voiceStageView?.toggleCamera();
+      }
+    });
+
+    appEvents.on('keybind.toggle_screen_share', () => {
+      if (voiceStore.currentVoiceChannelId) {
+        appEvents.emit('modal.open_screenshare_picker');
+      }
+    });
+
     // Language switch (#16): re-render whichever screen is on, so every label
     // built into the templates comes back in the new language.
     appEvents.on('i18n.language_changed', () => {
@@ -422,18 +452,22 @@ class App {
         payload.userId !== serverStore.currentUser?.id
       ) {
         webRtcManager.connectToPeer(payload.userId, false);
-        // Let everyone already in the channel hear that someone joined (#54).
-        soundEffects.play('join_voice');
+        // Let everyone already in the channel hear that someone joined (#54), unless deafened (#251).
+        if (!voiceStore.getEffectiveDeafened()) {
+          soundEffects.play('join_voice');
+        }
       }
     });
 
     appEvents.on(`message.${MessageType.VOICE_USER_LEFT}`, (payload: VoiceUserLeftPayload) => {
-      // Play a leave sound for everyone still in the same voice channel (#54).
+      // Play a leave sound for everyone still in the same voice channel (#54), unless deafened (#251).
       if (
         voiceStore.currentVoiceChannelId === payload.channelId &&
         payload.userId !== serverStore.currentUser?.id
       ) {
-        soundEffects.play('leave_voice');
+        if (!voiceStore.getEffectiveDeafened()) {
+          soundEffects.play('leave_voice');
+        }
       }
       participantManager.removeVoiceState(payload.userId);
       webRtcManager.removePeer(payload.userId);

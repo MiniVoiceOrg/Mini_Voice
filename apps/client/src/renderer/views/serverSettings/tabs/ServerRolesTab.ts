@@ -274,6 +274,9 @@ export class ServerRolesTab {
 
     const closeActionMenus = () => {
       container.querySelectorAll('.settings-action-menu.show').forEach((menu) => menu.classList.remove('show'));
+      container.querySelectorAll('.settings-action-submenu-wrap.open').forEach((wrap) => wrap.classList.remove('open'));
+      container.querySelectorAll('.settings-action-menu-wrap.menu-open').forEach((wrap) => wrap.classList.remove('menu-open'));
+      container.querySelectorAll('tr.row-menu-open').forEach((tr) => tr.classList.remove('row-menu-open'));
     };
 
     const syncColorState = (selectedColor: string) => {
@@ -466,10 +469,16 @@ export class ServerRolesTab {
       if (menuTrigger) {
         event.preventDefault();
         event.stopPropagation();
-        const menu = menuTrigger.parentElement?.querySelector('.settings-action-menu');
+        const wrap = menuTrigger.closest('.settings-action-menu-wrap');
+        const row = menuTrigger.closest('tr');
+        const menu = wrap?.querySelector('.settings-action-menu');
         const willShow = !menu?.classList.contains('show');
         closeActionMenus();
-        if (willShow) menu?.classList.add('show');
+        if (willShow) {
+          menu?.classList.add('show');
+          wrap?.classList.add('menu-open');
+          row?.classList.add('row-menu-open');
+        }
         return;
       }
 

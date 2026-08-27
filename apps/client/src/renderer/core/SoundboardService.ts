@@ -39,6 +39,13 @@ export class SoundboardService {
       this.handleIncomingSound(payload);
     });
 
+    // Stop active soundboard playbacks when local user deafens (#251)
+    appEvents.on('local.deafened', (deafened: boolean) => {
+      if (deafened) {
+        this.stopSound();
+      }
+    });
+
     // Update speaker device and active audio volume when settings change
     appEvents.on('settings.updated', () => {
       if (settingsStore.selectedSpeakerId && settingsStore.selectedSpeakerId !== this.sinkId) {
@@ -330,8 +337,8 @@ export class SoundboardService {
   public async handleIncomingSound(payload: SoundboardPlayedPayload): Promise<void> {
     appEvents.emit('soundboard.played', payload);
 
-    // If local user has muted soundboards or set volume to 0, do not play
-    if (settingsStore.soundboardMuted || settingsStore.soundboardVolume <= 0) {
+    // If local user is deafened, has muted soundboards or set volume to 0, do not play (#251)
+    if (voiceStore.getEffectiveDeafened() || settingsStore.soundboardMuted || settingsStore.soundboardVolume <= 0) {
       return;
     }
 

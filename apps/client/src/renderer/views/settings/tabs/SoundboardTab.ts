@@ -2,8 +2,11 @@ import { settingsStore } from '../../../stores/settingsStore';
 import { soundboardService, SoundItem } from '../../../core/SoundboardService';
 import { t, tCount } from '../../../i18n';
 import { escapeHtml } from '../../../utils/html';
+import { matchesSearch } from '../../../utils/search';
 
 export class SoundboardTab {
+  private searchQuery: string = '';
+
   public renderHtml(): string {
     return `
       <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px;">
@@ -84,7 +87,33 @@ export class SoundboardTab {
       `;
     }
 
-    const rows = sounds.map((sound: SoundItem) => {
+    const filteredSounds = this.searchQuery.trim()
+      ? sounds.filter((s) => matchesSearch(s.name, this.searchQuery))
+      : sounds;
+
+    const searchHtml = sounds.length > 3 ? `
+      <div style="margin-bottom: 8px; position: relative; display: flex; align-items: center;">
+        <span class="material-symbols-outlined md-16" style="position: absolute; left: 8px; color: var(--text-muted); pointer-events: none;">search</span>
+        <input
+          id="sb-shortcuts-search-input"
+          type="text"
+          placeholder="${t('soundboard.searchPlaceholder')}"
+          value="${escapeHtml(this.searchQuery)}"
+          style="width: 100%; height: 28px; padding: 0 10px 0 28px; font-size: 11px; background: var(--bg-input); border: 1px solid var(--border-color); border-radius: var(--radius-sm); color: var(--text-primary);"
+        />
+      </div>
+    ` : '';
+
+    if (filteredSounds.length === 0) {
+      return `
+        ${searchHtml}
+        <div style="padding: 12px; background: var(--bg-card); border: 1px solid var(--border-color); border-radius: var(--radius-md); text-align: center; color: var(--text-muted); font-size: 12px;">
+          ${t('soundboard.noSearchResultsTitle')}
+        </div>
+      `;
+    }
+
+    const rows = filteredSounds.map((sound: SoundItem) => {
       const shortcut = settingsStore.soundboardShortcuts[sound.name];
       const displayKey = shortcut ? shortcut.display : '—';
       const hasShortcut = Boolean(shortcut);
@@ -111,7 +140,10 @@ export class SoundboardTab {
       `;
     }).join('');
 
-    return `<div style="max-height: 200px; overflow-y: auto; padding-right: 2px;">${rows}</div>`;
+    return `
+      ${searchHtml}
+      <div style="max-height: 200px; overflow-y: auto; padding-right: 2px;">${rows}</div>
+    `;
   }
 
   public attachEvents(container: HTMLElement): void {
@@ -161,6 +193,21 @@ export class SoundboardTab {
   }
 
   public attachShortcutButtons(container: HTMLElement): void {
+    const searchInput = container.querySelector<HTMLInputElement>('#sb-shortcuts-search-input');
+    searchInput?.addEventListener('input', () => {
+      this.searchQuery = searchInput.value;
+      const tableContainer = container.querySelector<HTMLElement>('#soundboard-shortcuts-table-container');
+      if (tableContainer) {
+        tableContainer.innerHTML = this.renderShortcutsTable();
+        this.attachShortcutButtons(container);
+        const newInput = container.querySelector<HTMLInputElement>('#sb-shortcuts-search-input');
+        if (newInput) {
+          newInput.focus();
+          newInput.setSelectionRange(newInput.value.length, newInput.value.length);
+        }
+      }
+    });
+
     container.querySelectorAll('.btn-bind-shortcut').forEach((btn) => {
       btn.addEventListener('click', () => {
         const soundName = btn.getAttribute('data-sound-name');

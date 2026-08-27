@@ -107,10 +107,15 @@ try {
   screenAudio = null;
 }
 
+export interface SetupIpcOptions {
+  setMinimizeToTray?: (enabled: boolean) => void;
+}
+
 export function setupIpcHandlers(
   mainWindow: BrowserWindow,
   serverManager: ServerManager,
-  trayManager?: TrayManager
+  trayManager?: TrayManager,
+  options?: SetupIpcOptions
 ): void {
   const lanDiscovery = new LanDiscovery(mainWindow);
 
@@ -125,6 +130,12 @@ export function setupIpcHandlers(
     // The tray builds its labels eagerly, so it needs a redraw to pick the
     // new language up (#16).
     trayManager?.refresh();
+  });
+
+  ipcMain.handle('app:set-minimize-to-tray', (_event, enabled: boolean) => {
+    if (typeof enabled === 'boolean') {
+      options?.setMinimizeToTray?.(enabled);
+    }
   });
 
   ipcMain.handle('identity:has', async () => hasIdentity());
@@ -304,13 +315,14 @@ export function setupIpcHandlers(
     }
   });
 
-  // Soundboard Global Shortcuts Registration
-  ipcMain.handle('soundboard:register-shortcuts', (_, shortcuts: Array<{ soundName: string; accelerator: string }>) => {
+  let registeredSoundboardShortcuts: Array<{ soundName: string; accelerator: string }> = [];
+  let registeredActionShortcuts: Array<{ action: string; accelerator: string }> = [];
+
+  const syncAllGlobalShortcuts = (): boolean => {
     try {
       globalShortcut.unregisterAll();
-      if (!Array.isArray(shortcuts)) return true;
 
-      for (const item of shortcuts) {
+      for (const item of registeredSoundboardShortcuts) {
         if (!item.accelerator || !item.soundName) continue;
         try {
           globalShortcut.register(item.accelerator, () => {
@@ -319,14 +331,39 @@ export function setupIpcHandlers(
             }
           });
         } catch (err) {
-          console.warn(`[main] Failed to register global shortcut "${item.accelerator}" for "${item.soundName}":`, err);
+          console.warn(`[main] Failed to register soundboard shortcut "${item.accelerator}" for "${item.soundName}":`, err);
+        }
+      }
+
+      for (const item of registeredActionShortcuts) {
+        if (!item.accelerator || !item.action) continue;
+        try {
+          globalShortcut.register(item.accelerator, () => {
+            if (mainWindow && !mainWindow.isDestroyed()) {
+              mainWindow.webContents.send('shortcut:action-triggered', item.action);
+            }
+          });
+        } catch (err) {
+          console.warn(`[main] Failed to register action shortcut "${item.accelerator}" for "${item.action}":`, err);
         }
       }
       return true;
     } catch (e) {
-      console.warn('[main] Error in soundboard-register-shortcuts:', e);
+      console.warn('[main] Error in syncAllGlobalShortcuts:', e);
       return false;
     }
+  };
+
+  // Soundboard Global Shortcuts Registration
+  ipcMain.handle('soundboard:register-shortcuts', (_, shortcuts: Array<{ soundName: string; accelerator: string }>) => {
+    registeredSoundboardShortcuts = Array.isArray(shortcuts) ? shortcuts : [];
+    return syncAllGlobalShortcuts();
+  });
+
+  // Action Global Shortcuts Registration (#252)
+  ipcMain.handle('shortcuts:register-actions', (_, shortcuts: Array<{ action: string; accelerator: string }>) => {
+    registeredActionShortcuts = Array.isArray(shortcuts) ? shortcuts : [];
+    return syncAllGlobalShortcuts();
   });
 
   // Window Controls

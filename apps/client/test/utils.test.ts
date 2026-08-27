@@ -8,6 +8,7 @@ import { escapeHtml } from '../src/renderer/utils/html';
 import { renderMarkdown } from '../src/renderer/utils/markdown';
 import { formatBytes, fileIconName } from '../src/renderer/utils/attachment';
 import { EventBus } from '../src/renderer/core/EventBus';
+import { normalizeSearchString, matchesSearch } from '../src/renderer/utils/search';
 
 let passed = 0;
 let failed = 0;
@@ -133,6 +134,16 @@ function runTests() {
   bus.on('multi.event', () => { l2++; });
   bus.emit('multi.event', null);
   assert(l1 === 1 && l2 === 1, 'Múltiplos listeners no mesmo evento são invocados');
+
+  // 6. matchesSearch & normalizeSearchString (#288)
+  console.log('\n--- Testando matchesSearch (#288) ---');
+  assert(normalizeSearchString('Fáustão - Ô louco meu!') === 'faustao - o louco meu!', 'normalizeSearchString remove diacríticos e converte para minúsculas');
+  assert(matchesSearch('Faustão - Ô louco meu', 'faustao'), 'matchesSearch encontra substring ignorando acento');
+  assert(matchesSearch('Faustão - Ô louco meu', 'LOUCO'), 'matchesSearch é case-insensitive');
+  assert(matchesSearch('Airhorn (Meme #1)', 'airhorn 1'), 'matchesSearch ignora caracteres especiais e pontuação');
+  assert(matchesSearch('Galinha Pintadinha', 'pintadinha galinha'), 'matchesSearch combina múltiplos tokens fora de ordem');
+  assert(matchesSearch('Som de Tambor', ''), 'Busca vazia retorna true');
+  assert(!matchesSearch('Som de Tambor', 'buzina'), 'Busca não correspondente retorna false');
 
   console.log(`\n=== Relatório dos Testes ===`);
   console.log(`Total: ${passed + failed} | Passaram: ${passed} | Falharam: ${failed}`);

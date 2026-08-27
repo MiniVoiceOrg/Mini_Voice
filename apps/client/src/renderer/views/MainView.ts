@@ -31,7 +31,7 @@ import { t, tCount } from '../i18n';
 export class MainView {
   private container: HTMLElement;
   private chatView: ChatView | null = null;
-  private voiceStageView: VoiceStageView | null = null;
+  public voiceStageView: VoiceStageView | null = null;
   private unbindEvents: Array<() => void> = [];
   private activeContentView: 'chat' | 'stage' = 'chat';
   private sidebarPingInterval: number | null = null;
@@ -540,18 +540,21 @@ export class MainView {
                 ${inVoice.map((p) => {
                   const isLocal = p.user.id === serverStore.currentUser?.id;
                   const isSpeaking = isLocal ? voiceStore.isSpeaking : p.isSpeaking;
-                  const isMicMuted = isLocal ? voiceStore.isMuted : (p.voiceState?.isMuted ?? false);
-                  const isAudioMuted = isLocal ? voiceStore.isDeafened : (p.voiceState?.isDeafened ?? false);
+                  const isServerDeafened = isLocal ? voiceStore.serverDeafened : (p.voiceState?.serverDeafened ?? false);
+                  const isServerMuted = isLocal ? voiceStore.serverMuted : (p.voiceState?.serverMuted ?? false);
+                  const isSelfDeafened = isLocal ? voiceStore.isDeafened : (p.voiceState?.isDeafened ?? false);
+                  const isSelfMuted = isLocal ? voiceStore.isMuted : (p.voiceState?.isMuted ?? false);
+                  const isMicMuted = isSelfMuted || isServerMuted || isSelfDeafened || isServerDeafened;
                   const avatar = getAvatarUrl(p.user.avatarUrl);
 
                   return `
                     <div id="voice-mini-user-${p.user.id}" class="voice-participant-mini ${isSpeaking ? 'speaking' : ''}" data-user-id="${p.user.id}" title="${escapeHtml(p.user.nickname)} (${t('main.rightClickVolumeShort')})">
                       <img class="voice-mini-avatar" src="${avatar}">
                       <span class="voice-mini-name">${escapeHtml(p.user.nickname)}</span>
-                      ${p.voiceState?.serverMuted ? `<span class="material-symbols-outlined md-14 voice-mini-icon muted" title="${t('permissions.serverMuted')}">admin_panel_settings</span>` : ''}
-                      ${p.voiceState?.serverDeafened ? `<span class="material-symbols-outlined md-14 voice-mini-icon muted" title="${t('permissions.serverDeafened')}">hearing_disabled</span>` : ''}
+                      ${isServerDeafened ? `<span class="material-symbols-outlined md-14 voice-mini-icon muted" title="${t('permissions.serverDeafened')}">hearing_disabled</span>` : ''}
+                      ${isServerMuted ? `<span class="material-symbols-outlined md-14 voice-mini-icon muted" title="${t('permissions.serverMuted')}">admin_panel_settings</span>` : ''}
                       ${isMicMuted ? `<span class="material-symbols-outlined md-14 voice-mini-icon muted" title="${t('main.micMuted')}">mic_off</span>` : ''}
-                      ${isAudioMuted ? `<span class="material-symbols-outlined md-14 voice-mini-icon muted" title="${t('main.audioMuted')}">headset_off</span>` : ''}
+                      ${isSelfDeafened ? `<span class="material-symbols-outlined md-14 voice-mini-icon muted" title="${t('main.audioMuted')}">headset_off</span>` : ''}
                       ${p.voiceState?.isScreenSharing ? `<span class="material-symbols-outlined md-14 voice-mini-icon live" title="${t('main.sharingScreen')}">screen_share</span>` : ''}
                       ${p.voiceState?.isCameraOn ? `<span class="material-symbols-outlined md-14 voice-mini-icon" title="${t('main.cameraOn')}">videocam</span>` : ''}
                     </div>
@@ -888,6 +891,11 @@ export class MainView {
         const inVoice = !!voiceState;
         const isReconnecting = !!vm?.isReconnecting;
         const avatar = getAvatarUrl(m.avatarUrl);
+        const isServerDeafened = isLocal ? voiceStore.serverDeafened : (voiceState?.serverDeafened ?? false);
+        const isServerMuted = isLocal ? voiceStore.serverMuted : (voiceState?.serverMuted ?? false);
+        const isSelfDeafened = isLocal ? voiceStore.isDeafened : (voiceState?.isDeafened ?? false);
+        const isSelfMuted = isLocal ? voiceStore.isMuted : (voiceState?.isMuted ?? false);
+        const isMicMuted = inVoice && (isSelfMuted || isServerMuted || isSelfDeafened || isServerDeafened);
 
         return `
           <div class="member-item ${isReconnecting ? 'reconnecting' : ''}" data-user-id="${m.id}" title="${escapeHtml(m.nickname)} ${isLocal ? `(${t('common.you')})` : `(${t('main.rightClickVolume')})`}">
@@ -903,8 +911,10 @@ export class MainView {
                 ${isReconnecting ? `<span class="member-reconnecting-badge" title="${t('main.reconnectingTitle')}"><span class="material-symbols-outlined md-14 spin">sync</span></span>` : ''}
                 ${voiceState?.isScreenSharing ? `<span class="member-live-badge" title="${t('main.sharingScreen')}">LIVE</span>` : ''}
                 ${voiceState?.isCameraOn ? `<span class="material-symbols-outlined md-14 member-cam-icon" title="${t('main.cameraOn')}">videocam</span>` : ''}
-                ${voiceState?.serverMuted ? `<span class="material-symbols-outlined md-14 member-cam-icon" title="${t('permissions.serverMuted')}">admin_panel_settings</span>` : ''}
-                ${voiceState?.serverDeafened ? `<span class="material-symbols-outlined md-14 member-cam-icon" title="${t('permissions.serverDeafened')}">hearing_disabled</span>` : ''}
+                ${isServerDeafened ? `<span class="material-symbols-outlined md-14 member-cam-icon" title="${t('permissions.serverDeafened')}">hearing_disabled</span>` : ''}
+                ${isServerMuted ? `<span class="material-symbols-outlined md-14 member-cam-icon" title="${t('permissions.serverMuted')}">admin_panel_settings</span>` : ''}
+                ${isMicMuted ? `<span class="material-symbols-outlined md-14 member-cam-icon" title="${t('main.micMuted')}">mic_off</span>` : ''}
+                ${isSelfDeafened ? `<span class="material-symbols-outlined md-14 member-cam-icon" title="${t('main.audioMuted')}">headset_off</span>` : ''}
               </div>
               ${(() => {
                 const userRoles = serverStore.getUserRoles(m.id).filter((r) => !r.isDefault);

@@ -84,7 +84,13 @@ function createWindow(): void {
     trayManager = new TrayManager(mainWindow, quitApplication);
   }
 
-  setupIpcHandlers(mainWindow, serverManager, trayManager);
+  let minimizeToTray = true;
+
+  setupIpcHandlers(mainWindow, serverManager, trayManager, {
+    setMinimizeToTray: (enabled: boolean) => {
+      minimizeToTray = enabled;
+    },
+  });
   setupUpdater(mainWindow);
 
   // In dev, load Vite dev server if running, otherwise load dist/index.html
@@ -94,11 +100,15 @@ function createWindow(): void {
     mainWindow.loadFile(path.join(__dirname, '../../dist/index.html'));
   }
 
-  // Minimize to tray on close instead of quitting the application (#149)
+  // Minimize to tray on close instead of quitting the application (#149, #256)
   mainWindow.on('close', (event) => {
     if (!isQuitting) {
-      event.preventDefault();
-      mainWindow?.hide();
+      if (minimizeToTray) {
+        event.preventDefault();
+        mainWindow?.hide();
+      } else {
+        quitApplication();
+      }
     }
   });
 

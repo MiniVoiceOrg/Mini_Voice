@@ -65,7 +65,7 @@ export class VoiceStore {
   }
 
   public getEffectiveMuted(): boolean {
-    return this.isMuted || this.serverMuted;
+    return this.isMuted || this.serverMuted || this.isDeafened || this.serverDeafened;
   }
 
   public getEffectiveDeafened(): boolean {
