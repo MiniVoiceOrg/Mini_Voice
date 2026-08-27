@@ -340,6 +340,9 @@ export function setupIpcHandlers(
       mainWindow.maximize();
     }
   });
+  ipcMain.handle('window:maximize', () => {
+    mainWindow.maximize();
+  });
 
   ipcMain.handle('window:close', () => {
     mainWindow.close();

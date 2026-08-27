@@ -23,7 +23,7 @@ export class ServerRailView {
       const url = `ws://${srv.host.trim().replace(/^wss?:\/\//, '')}:${srv.port}`;
       const isCurrent = url === currentUrl;
       const initial = (srv.name || srv.host || '?').trim().charAt(0).toUpperCase();
-      const iconUrl = isCurrent && serverStore.serverDetails?.iconUrl ? serverStore.serverDetails.iconUrl : (srv as any).iconUrl;
+      const iconUrl = isCurrent && serverStore.serverDetails?.iconUrl ? serverStore.serverDetails.iconUrl : srv.iconUrl;
       return `
         <div class="server-rail-item ${isCurrent ? 'active' : ''}">
           <span class="server-rail-pill" aria-hidden="true"></span>

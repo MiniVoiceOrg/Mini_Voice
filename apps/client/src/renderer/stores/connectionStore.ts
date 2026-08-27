@@ -1,4 +1,5 @@
 import { ConnectionStatus } from '../core/NetworkClient';
+import { appEvents } from '../core/EventBus';
 
 export interface SavedServer {
   host: string;
@@ -6,6 +7,7 @@ export interface SavedServer {
   name: string;
   lastConnected: number;
   password?: string;
+  iconUrl?: string;
 }
 
 export interface CreatedServer {
@@ -81,9 +83,13 @@ export class ConnectionStore {
       (s) => s.host === server.host && s.port === server.port
     );
     if (existingIdx >= 0) {
-      // Preserve existing name if new one is default/empty
-      if (!server.name && this.savedServers[existingIdx].name) {
-        server.name = this.savedServers[existingIdx].name;
+      // Preserve existing fields if new values are default/empty
+      const existing = this.savedServers[existingIdx];
+      if (!server.name && existing.name) {
+        server.name = existing.name;
+      }
+      if (!server.iconUrl && existing.iconUrl) {
+        server.iconUrl = existing.iconUrl;
       }
       this.savedServers[existingIdx] = server;
     } else {
@@ -96,6 +102,7 @@ export class ConnectionStore {
     try {
       localStorage.setItem('monky_saved_servers', JSON.stringify(this.savedServers));
     } catch (e) {}
+    appEvents.emit('connection.saved_servers_changed');
   }
 
   public removeSavedServer(host: string, port: number): void {
@@ -103,6 +110,18 @@ export class ConnectionStore {
     try {
       localStorage.setItem('monky_saved_servers', JSON.stringify(this.savedServers));
     } catch (e) {}
+    appEvents.emit('connection.saved_servers_changed');
+  }
+
+  /** Updates the icon for the currently connected server in the saved list. */
+  public updateSavedServerIcon(host: string, port: number, iconUrl: string | null): void {
+    const srv = this.savedServers.find((s) => s.host === host && s.port === port);
+    if (!srv) return;
+    srv.iconUrl = iconUrl || undefined;
+    try {
+      localStorage.setItem('monky_saved_servers', JSON.stringify(this.savedServers));
+    } catch (e) {}
+    appEvents.emit('connection.saved_servers_changed');
   }
 
   public updateSavedServer(oldHost: string, oldPort: number, updated: SavedServer): void {

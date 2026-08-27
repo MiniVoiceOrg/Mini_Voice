@@ -202,7 +202,7 @@ class App {
     }
 
     document.getElementById('win-min')?.addEventListener('click', () => window.api?.minimize());
-    document.getElementById('win-max')?.addEventListener('click', () => window.api?.maximize());
+    document.getElementById('win-max')?.addEventListener('click', () => window.api?.toggleMaximize());
     document.getElementById('win-close')?.addEventListener('click', () => window.api?.close());
   }
 
@@ -277,6 +277,16 @@ class App {
 
       this.mainView.render();
       this.hideReconnectOverlay();
+
+      // Persist the server icon on the saved server entry so the rail shows it
+      // even when not connected (#301).
+      if (payload.server.iconUrl) {
+        const url = networkClient.getCurrentServerUrl();
+        if (url) {
+          const match = url.match(/\/\/([^:]+):(\d+)/);
+          if (match) connectionStore.updateSavedServerIcon(match[1], parseInt(match[2], 10), payload.server.iconUrl);
+        }
+      }
 
       const stillHasVoiceChannel =
         !!previousVoiceChannelId &&
