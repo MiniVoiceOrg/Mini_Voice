@@ -249,7 +249,7 @@ export class ChatView {
         if (!userId) return;
 
         const targetUser =
-          participantManager.get(userId)?.user ||
+          participantManager.getByUserId(userId)?.user ||
           serverStore.serverDetails?.members.find((m) => m.id === userId);
 
         if (targetUser && targetUser.id !== serverStore.currentUser?.id) {

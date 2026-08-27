@@ -254,8 +254,15 @@ export class MonkyServer {
         return;
       }
       if (req.url === '/preview') {
-        const online = getOnlineUsers() as Map<string, { user: { nickname: string; avatarUrl?: string | null } }>;
+        const online = getOnlineUsers() as Map<string, { user: { id: string; nickname: string; avatarUrl?: string | null } }>;
+        // Keyed per connection, so collapse a person's devices into one entry (#309).
+        const seenUserIds = new Set<string>();
         const users = Array.from(online.values())
+          .filter((entry) => {
+            if (seenUserIds.has(entry.user.id)) return false;
+            seenUserIds.add(entry.user.id);
+            return true;
+          })
           .slice(0, 10)
           .map((entry) => ({
             nickname: entry.user.nickname,

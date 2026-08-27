@@ -35,7 +35,7 @@ console.assert(QUALITY_PRESETS.GAMING.name === 'Gaming Mode', 'Preset Gaming Mod
 console.log('✔ Presets de Qualidade verificados');
 
 // Test Protocol Version
-console.assert(PROTOCOL_VERSION === 2, 'Versão do protocolo deve ser 2');
+console.assert(PROTOCOL_VERSION === 3, 'Versão do protocolo deve ser 3');
 console.log('✔ Versão do protocolo verificada');
 
 console.assert(hasPermission(DEFAULT_PERMISSIONS, Permission.SPEAK) === true, 'Cargo padrão deve poder falar');

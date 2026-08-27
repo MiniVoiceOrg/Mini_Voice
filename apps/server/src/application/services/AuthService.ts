@@ -37,6 +37,8 @@ interface PendingAuthChallenge {
   nickname: string;
   password: string;
   nonce: string;
+  /** Which installation is connecting, so two devices of the same person coexist (#309). */
+  deviceId: string;
 }
 
 export class AuthService {
@@ -107,6 +109,9 @@ export class AuthService {
       nickname: parseResult.data.nickname.trim(),
       password: parseResult.data.password || '',
       nonce,
+      // Clients that predate #309 send nothing; give them a random id so each of
+      // their connections is still a distinct session.
+      deviceId: parseResult.data.deviceId || randomBytes(16).toString('hex'),
     });
 
     return {
@@ -179,7 +184,15 @@ export class AuthService {
     }
 
     const onlineMap = this.getActiveOnlineUsers();
-    if (onlineMap.size >= server.maxUsers) {
+    // Capacity counts people, not connections: a second device of someone who is
+    // already here must not eat another slot (#309).
+    const distinctUserIds = new Set<string>();
+    let sameIdentityOnline = false;
+    for (const session of onlineMap.values()) {
+      distinctUserIds.add(session.user.id);
+      if (session.user.clientId === pending.clientId) sameIdentityOnline = true;
+    }
+    if (!sameIdentityOnline && distinctUserIds.size >= server.maxUsers) {
       return {
         success: false,
         errorCode: ProtocolErrorCode.SERVER_FULL,
@@ -237,18 +250,29 @@ export class AuthService {
       server.ownerUserId = userRecord.id;
     }
 
-    const userSummary = this.toUserSummary(userRecord, 'ONLINE', now);
+    const userSummary = this.toUserSummary(userRecord, 'ONLINE', now, {
+      sessionId: `${userRecord.id}:${pending.deviceId}`,
+      connectedAt: now,
+    });
 
     const channels = await this.channelRepo.listByServerId(server.id);
+    // One entry per live connection, so the other devices of this person are
+    // visible to the newcomer (#309).
     const members: UserSummary[] = Array.from(onlineMap.values()).map((s) => s.user);
-    if (!members.some((m) => m.id === userSummary.id)) {
+    if (!members.some((m) => m.sessionId === userSummary.sessionId)) {
       members.push(userSummary);
     }
 
     const allUsers = await this.userRepo.listAll();
+    // The known-members list describes people, so collapse a user's sessions to
+    // a single (online) record.
+    const onlineByUserId = new Map<string, UserSummary>();
+    for (const session of onlineMap.values()) {
+      if (!onlineByUserId.has(session.user.id)) onlineByUserId.set(session.user.id, session.user);
+    }
     const knownMembers: UserSummary[] = allUsers.map((user) => {
-      const online = onlineMap.get(user.id);
-      return online?.user ?? this.toUserSummary(user, 'DISCONNECTED', user.lastSeenAt);
+      const online = onlineByUserId.get(user.id);
+      return online ?? this.toUserSummary(user, 'DISCONNECTED', user.lastSeenAt);
     });
     if (!knownMembers.some((m) => m.id === userSummary.id)) {
       knownMembers.push(userSummary);
@@ -293,7 +317,12 @@ export class AuthService {
     };
   }
 
-  private toUserSummary(user: UserRecord, status: UserSummary['status'], joinedAt: number): UserSummary {
+  private toUserSummary(
+    user: UserRecord,
+    status: UserSummary['status'],
+    joinedAt: number,
+    session?: { sessionId: string; connectedAt: number }
+  ): UserSummary {
     return {
       id: user.id,
       clientId: user.clientId,
@@ -301,6 +330,8 @@ export class AuthService {
       avatarUrl: this.avatarStorage.getPublicUrl(user.avatarPath),
       status,
       joinedAt,
+      sessionId: session?.sessionId,
+      connectedAt: session?.connectedAt,
     };
   }
 

@@ -36,6 +36,28 @@ interface PendingAuthRequest {
 
 type ConnectState = AuthConnectPayload & ClientIdentity;
 
+const DEVICE_ID_STORAGE_KEY = 'monky_device_id';
+
+/**
+ * Stable id for this installation. It deliberately lives outside the identity
+ * file: copying an identity to another machine must still yield two distinct
+ * sessions, which is what lets the same person be online twice (#309).
+ */
+export function getDeviceId(): string {
+  try {
+    const stored = localStorage.getItem(DEVICE_ID_STORAGE_KEY);
+    if (stored) return stored;
+    const generated =
+      typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function'
+        ? crypto.randomUUID()
+        : `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 12)}`;
+    localStorage.setItem(DEVICE_ID_STORAGE_KEY, generated);
+    return generated;
+  } catch {
+    return 'default';
+  }
+}
+
 export class NetworkClient {
   private ws: WebSocket | null = null;
   private connectionTimeout: ReturnType<typeof setTimeout> | null = null;
@@ -192,6 +214,7 @@ export class NetworkClient {
             publicKey: identity.publicKey,
             nickname,
             password: password || '',
+            deviceId: getDeviceId(),
           },
           authRequestId
         );

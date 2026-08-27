@@ -9,6 +9,16 @@ export interface UserSummary {
   avatarUrl?: string | null;
   status: UserStatus;
   joinedAt: number;
+  /**
+   * Identifies one live connection of this user, as `userId:deviceId` (#309).
+   * The same person may be signed in from several devices at once, so anything
+   * that addresses a *connection* (voice participants, WebRTC peers, presence)
+   * keys off this instead of `id`. Absent on offline/known-member records,
+   * which describe a person rather than a connection.
+   */
+  sessionId?: string;
+  /** When this particular connection came up, used to order a user's devices (#309). */
+  connectedAt?: number;
 }
 
 export interface ChannelSummary {
@@ -80,6 +90,8 @@ export interface UserRoleSummary {
 }
 
 export interface VoiceParticipantState {
+  /** The connection this state belongs to (#309). Unique per device. */
+  sessionId: string;
   userId: string;
   channelId: string;
   isMuted: boolean;
@@ -109,6 +121,7 @@ export interface ServerDetails {
   allowSoundboard?: boolean;
   iconUrl?: string | null;
   channels: ChannelSummary[];
+  /** One entry per live connection: a user signed in from two devices appears twice (#309). */
   members: UserSummary[];
   // All users who have ever connected (online + offline), used to allow
   // mentioning users that are not currently in the server (#14). Offline users
@@ -117,7 +130,7 @@ export interface ServerDetails {
   // Channel ids in which the current user has unread @-mentions, so that a user
   // mentioned while offline sees the red @ badge when they reconnect (#14).
   mentionedChannelIds?: string[];
-  voiceStates: Record<string, VoiceParticipantState>; // key = userId
+  voiceStates: Record<string, VoiceParticipantState>; // key = sessionId (#309)
   roles?: Role[];
   userRoles?: UserRoleSummary[];
   ownerId?: string | null;
@@ -127,8 +140,9 @@ export interface ServerDetails {
 }
 
 export interface WebRtcSignalPayload {
-  targetUserId: string;
-  fromUserId: string;
+  /** Peers are addressed per connection, not per person (#309). */
+  targetSessionId: string;
+  fromSessionId: string;
   signalType: 'offer' | 'answer' | 'candidate' | 'user-left' | 'screen-audio-meta' | 'screen-video-meta';
   sdp?: any; // RTCSessionDescriptionInit
   candidate?: any; // RTCIceCandidateInit
