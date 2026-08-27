@@ -44,6 +44,12 @@ export const authConnectSchema = z.object({
     .regex(/^[a-fA-F0-9]+$/, 'Chave pública deve estar em hexadecimal'),
   nickname: nicknameSchema,
   password: z.string().optional().default(''),
+  // Per-installation id used to distinguish devices of the same person (#309).
+  // Optional so the field can be absent; the server falls back to a random one.
+  deviceId: z
+    .string()
+    .regex(/^[A-Za-z0-9_-]{1,64}$/, 'Identificador de dispositivo inválido')
+    .optional(),
 });
 
 export const authChallengeResponseSchema = z.object({

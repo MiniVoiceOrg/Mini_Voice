@@ -307,12 +307,14 @@ class App {
         participantManager.updateVoiceState(state);
       }
 
-      const myVoiceState = payload.server.voiceStates[payload.currentUser.id];
+      const myVoiceState = payload.currentUser.sessionId
+        ? payload.server.voiceStates[payload.currentUser.sessionId]
+        : undefined;
       voiceStore.setServerMuted(myVoiceState?.serverMuted ?? false);
       voiceStore.setServerDeafened(myVoiceState?.serverDeafened ?? false);
       this.syncLocalVoiceMediaState();
 
-      webRtcManager.setCurrentUserId(payload.currentUser.id);
+      webRtcManager.setCurrentSessionId(payload.currentUser.sessionId || payload.currentUser.id);
       // Drop any stale peer connections left over from a dropped session.
       webRtcManager.closeAllPeers();
 
@@ -377,9 +379,14 @@ class App {
     });
 
     appEvents.on(`message.${MessageType.USER_LEFT}`, (payload: UserLeftPayload) => {
-      serverStore.removeMember(payload.userId);
-      participantManager.removeUser(payload.userId);
-      webRtcManager.removePeer(payload.userId);
+      if (payload.sessionId) {
+        participantManager.removeUser(payload.sessionId);
+        webRtcManager.removePeer(payload.sessionId);
+      }
+      // Only drop the member row once the person has no device left online (#309).
+      if (participantManager.getSessionsOfUser(payload.userId).length === 0) {
+        serverStore.removeMember(payload.userId);
+      }
     });
 
     appEvents.on(`message.${MessageType.MEMBER_KICKED}`, (payload: MemberKickedPayload) => {
@@ -390,13 +397,19 @@ class App {
         return;
       }
       serverStore.removeMemberCompletely(payload.userId);
-      participantManager.removeUser(payload.userId);
-      webRtcManager.removePeer(payload.userId);
+      // A kick takes every device of that person down at once (#309).
+      for (const session of participantManager.getSessionsOfUser(payload.userId)) {
+        const key = session.user.sessionId || session.user.id;
+        participantManager.removeUser(key);
+        webRtcManager.removePeer(key);
+      }
     });
 
     appEvents.on(`message.${MessageType.USER_CONNECTION_STATE}`, (payload: UserConnectionStatePayload) => {
       // Reflect other users' temporary connection loss / recovery (#44).
-      participantManager.setReconnecting(payload.userId, payload.status === 'reconnecting');
+      if (payload.sessionId) {
+        participantManager.setReconnecting(payload.sessionId, payload.status === 'reconnecting');
+      }
     });
 
     appEvents.on(`message.${MessageType.USER_UPDATED}`, (payload: UserUpdatedPayload) => {
@@ -464,12 +477,12 @@ class App {
     appEvents.on(`message.${MessageType.VOICE_USER_JOINED}`, (payload: VoiceUserJoinedPayload) => {
       participantManager.updateVoiceState(payload.voiceState);
 
-      // If we are also in this voice channel and not the joining user, connect P2P Mesh
+      // If we are also in this voice channel and not the joining session, connect P2P Mesh
       if (
         voiceStore.currentVoiceChannelId === payload.channelId &&
-        payload.userId !== serverStore.currentUser?.id
+        !serverStore.isMySession(payload.sessionId)
       ) {
-        webRtcManager.connectToPeer(payload.userId, false);
+        webRtcManager.connectToPeer(payload.sessionId, false);
         // Let everyone already in the channel hear that someone joined (#54), unless deafened (#251).
         if (!voiceStore.getEffectiveDeafened()) {
           soundEffects.play('join_voice');
@@ -481,19 +494,19 @@ class App {
       // Play a leave sound for everyone still in the same voice channel (#54), unless deafened (#251).
       if (
         voiceStore.currentVoiceChannelId === payload.channelId &&
-        payload.userId !== serverStore.currentUser?.id
+        !serverStore.isMySession(payload.sessionId)
       ) {
         if (!voiceStore.getEffectiveDeafened()) {
           soundEffects.play('leave_voice');
         }
       }
-      participantManager.removeVoiceState(payload.userId);
-      webRtcManager.removePeer(payload.userId);
+      participantManager.removeVoiceState(payload.sessionId);
+      webRtcManager.removePeer(payload.sessionId);
     });
 
     appEvents.on(`message.${MessageType.VOICE_STATE_CHANGED}`, (payload: VoiceStateChangedPayload) => {
-      const previousVoiceState = participantManager.get(payload.voiceState.userId)?.voiceState;
-      const isRemoteUser = payload.voiceState.userId !== serverStore.currentUser?.id;
+      const previousVoiceState = participantManager.get(payload.voiceState.sessionId)?.voiceState;
+      const isRemoteUser = !serverStore.isMySession(payload.voiceState.sessionId);
       const isSameVoiceChannel =
         voiceStore.currentVoiceChannelId === payload.voiceState.channelId;
 
@@ -512,7 +525,7 @@ class App {
       }
 
       participantManager.updateVoiceState(payload.voiceState);
-      if (payload.voiceState.userId === serverStore.currentUser?.id) {
+      if (serverStore.isMySession(payload.voiceState.sessionId)) {
         voiceStore.setServerMuted(payload.voiceState.serverMuted);
         voiceStore.setServerDeafened(payload.voiceState.serverDeafened);
         this.syncLocalVoiceMediaState();
@@ -520,29 +533,29 @@ class App {
     });
 
     appEvents.on(`message.${MessageType.ADMIN_MUTE_USER}`, (payload: AdminMuteUserPayload) => {
-      const current = participantManager.get(payload.targetUserId)?.voiceState;
+      const current = participantManager.get(payload.targetSessionId)?.voiceState;
       if (current) {
         participantManager.updateVoiceState({ ...current, serverMuted: payload.muted, isSpeaking: false });
       }
-      if (payload.targetUserId === serverStore.currentUser?.id) {
+      if (serverStore.isMySession(payload.targetSessionId)) {
         voiceStore.setServerMuted(payload.muted);
         this.syncLocalVoiceMediaState();
       }
     });
 
     appEvents.on(`message.${MessageType.ADMIN_DEAFEN_USER}`, (payload: AdminDeafenUserPayload) => {
-      const current = participantManager.get(payload.targetUserId)?.voiceState;
+      const current = participantManager.get(payload.targetSessionId)?.voiceState;
       if (current) {
         participantManager.updateVoiceState({ ...current, serverDeafened: payload.deafened });
       }
-      if (payload.targetUserId === serverStore.currentUser?.id) {
+      if (serverStore.isMySession(payload.targetSessionId)) {
         voiceStore.setServerDeafened(payload.deafened);
         this.syncLocalVoiceMediaState();
       }
     });
 
     appEvents.on(`message.${MessageType.ADMIN_KICK_VOICE}`, (payload: AdminKickVoicePayload) => {
-      if (payload.targetUserId !== serverStore.currentUser?.id) return;
+      if (!serverStore.isMySession(payload.targetSessionId)) return;
       audioProcessor.stopMicrophone();
       videoService.stopCamera();
       videoService.stopScreenShare();
@@ -553,7 +566,7 @@ class App {
     });
 
     appEvents.on(`message.${MessageType.ADMIN_MOVE_USER}`, (payload: AdminMoveUserPayload) => {
-      if (payload.targetUserId !== serverStore.currentUser?.id) return;
+      if (!serverStore.isMySession(payload.targetSessionId)) return;
       void this.mainView.rejoinVoiceChannel(payload.channelId);
     });
 
@@ -561,7 +574,10 @@ class App {
     appEvents.on('local.speaking', (speaking: boolean) => {
       voiceStore.setSpeaking(speaking);
       if (serverStore.currentUser) {
-        participantManager.setSpeaking(serverStore.currentUser.id, speaking);
+        participantManager.setSpeaking(
+          serverStore.currentUser.sessionId || serverStore.currentUser.id,
+          speaking
+        );
       }
     });
 

@@ -7,7 +7,7 @@ import { serverStore } from '../stores/serverStore';
 import { connectionStore } from '../stores/connectionStore';
 import { webRtcManager } from '../core/WebRtcManager';
 import { appEvents } from '../core/EventBus';
-import { participantManager } from '../core/ParticipantManager';
+import { participantManager, ParticipantViewModel } from '../core/ParticipantManager';
 import { networkClient } from '../core/NetworkClient';
 import { showAlert } from './Dialog';
 import { t } from '../i18n';
@@ -36,7 +36,9 @@ export class UserContextMenu {
 
     const currentVol = settingsStore.getUserVolume(user.clientId);
     const avatarSrc = getAvatarUrl(user.avatarUrl);
-    const targetState = participantManager.get(user.id)?.voiceState;
+    // Voice moderation addresses a connection, not a person: prefer the exact
+    // session the menu was opened from, else any session of theirs in voice (#309).
+    const targetState = this.resolveVoiceTarget(user)?.voiceState;
     const voiceChannels = (serverStore.serverDetails?.channels ?? []).filter((channel) => channel.type === 'VOICE');
     const roleIds = new Set(serverStore.getUserRoleIds(user.id));
     const manageableRoles = serverStore.roles
@@ -266,6 +268,16 @@ export class UserContextMenu {
     }
   }
 
+  /**
+   * The connection a voice moderation action should target: the exact session
+   * the menu was opened from, else any session of that person in voice (#309).
+   */
+  private resolveVoiceTarget(user: UserSummary): ParticipantViewModel | undefined {
+    const exact = participantManager.get(user.sessionId || '');
+    if (exact?.voiceState) return exact;
+    return participantManager.getByUserId(user.id) ?? exact;
+  }
+
   private attachEvents(user: UserSummary): void {
     if (!this.menuEl) return;
 
@@ -290,24 +302,25 @@ export class UserContextMenu {
     });
 
     this.menuEl.querySelector('[data-action="server-mute"]')?.addEventListener('click', () => {
-      const targetState = participantManager.get(user.id)?.voiceState;
+      const target = this.resolveVoiceTarget(user);
       void this.runAdminAction(() => networkClient.sendRequest(MessageType.ADMIN_MUTE_USER, {
-        targetUserId: user.id,
-        muted: !(targetState?.serverMuted ?? false),
+        targetSessionId: target?.user.sessionId || user.sessionId || user.id,
+        muted: !(target?.voiceState?.serverMuted ?? false),
       }));
     });
 
     this.menuEl.querySelector('[data-action="server-deafen"]')?.addEventListener('click', () => {
-      const targetState = participantManager.get(user.id)?.voiceState;
+      const target = this.resolveVoiceTarget(user);
       void this.runAdminAction(() => networkClient.sendRequest(MessageType.ADMIN_DEAFEN_USER, {
-        targetUserId: user.id,
-        deafened: !(targetState?.serverDeafened ?? false),
+        targetSessionId: target?.user.sessionId || user.sessionId || user.id,
+        deafened: !(target?.voiceState?.serverDeafened ?? false),
       }));
     });
 
     this.menuEl.querySelector('[data-action="kick-voice"]')?.addEventListener('click', () => {
+      const target = this.resolveVoiceTarget(user);
       void this.runAdminAction(() => networkClient.sendRequest(MessageType.ADMIN_KICK_VOICE, {
-        targetUserId: user.id,
+        targetSessionId: target?.user.sessionId || user.sessionId || user.id,
       }));
     });
 
@@ -315,8 +328,9 @@ export class UserContextMenu {
       btn.addEventListener('click', () => {
         const channelId = btn.getAttribute('data-channel-id');
         if (!channelId) return;
+        const target = this.resolveVoiceTarget(user);
         void this.runAdminAction(() => networkClient.sendRequest(MessageType.ADMIN_MOVE_USER, {
-          targetUserId: user.id,
+          targetSessionId: target?.user.sessionId || user.sessionId || user.id,
           channelId,
         }));
       });

@@ -10,12 +10,14 @@ export class SignalingService {
   /** Hard cap on simultaneous screen shares per participant (#253). */
   private static readonly MAX_SCREEN_SHARES = 2;
 
-  // Map of userId -> VoiceParticipantState
+  // Map of sessionId -> VoiceParticipantState. Keyed per connection, not per
+  // person, so the same user can be in voice from two devices at once (#309).
   private voiceStates: Map<string, VoiceParticipantState> = new Map();
 
   constructor(private channelRepo: IChannelRepository) {}
 
   public async joinVoiceChannel(
+    sessionId: string,
     userId: string,
     channelId: string
   ): Promise<{
@@ -34,10 +36,10 @@ export class SignalingService {
       };
     }
 
-    // Check channel capacity (excluding the user's own possibly-lingering state,
-    // e.g. when reconnecting into the same channel during the grace period).
+    // Check channel capacity (excluding this session's own possibly-lingering
+    // state, e.g. when reconnecting into the same channel during the grace period).
     const currentInChannel = this.getParticipantsInChannel(channelId);
-    const othersInChannel = currentInChannel.filter((p) => p.userId !== userId);
+    const othersInChannel = currentInChannel.filter((p) => p.sessionId !== sessionId);
     if (othersInChannel.length >= channel.maxParticipants) {
       return {
         success: false,
@@ -46,11 +48,12 @@ export class SignalingService {
       };
     }
 
-    // If user was already in another voice channel, leave first
-    const previousState = this.voiceStates.get(userId);
+    // If this session was already in another voice channel, leave first
+    const previousState = this.voiceStates.get(sessionId);
     const existingParticipants = othersInChannel;
 
     const newState: VoiceParticipantState = {
+      sessionId,
       userId,
       channelId,
       isMuted: previousState?.isMuted ?? false,
@@ -64,8 +67,8 @@ export class SignalingService {
       screenShareIds: previousState?.screenShareIds ?? [],
     };
 
-    this.voiceStates.set(userId, newState);
-    Logger.info('WEBRTC', `User ${userId} joined voice channel ${channelId}`);
+    this.voiceStates.set(sessionId, newState);
+    Logger.info('WEBRTC', `Session ${sessionId} joined voice channel ${channelId}`);
 
     return {
       success: true,
@@ -74,26 +77,27 @@ export class SignalingService {
     };
   }
 
-  public leaveVoiceChannel(userId: string): VoiceParticipantState | null {
-    const current = this.voiceStates.get(userId);
+  public leaveVoiceChannel(sessionId: string): VoiceParticipantState | null {
+    const current = this.voiceStates.get(sessionId);
     if (current) {
-      this.voiceStates.delete(userId);
-      Logger.info('WEBRTC', `User ${userId} left voice channel ${current.channelId}`);
+      this.voiceStates.delete(sessionId);
+      Logger.info('WEBRTC', `Session ${sessionId} left voice channel ${current.channelId}`);
       return current;
     }
     return null;
   }
 
   public updateVoiceState(
-    userId: string,
+    sessionId: string,
     updates: Partial<VoiceParticipantState>
   ): VoiceParticipantState | null {
-    const current = this.voiceStates.get(userId);
+    const current = this.voiceStates.get(sessionId);
     if (!current) return null;
 
     const updated: VoiceParticipantState = {
       ...current,
       ...updates,
+      sessionId: current.sessionId,
       userId: current.userId,
       channelId: current.channelId,
     };
@@ -110,7 +114,7 @@ export class SignalingService {
       updated.screenShareIds = [];
     }
 
-    this.voiceStates.set(userId, updated);
+    this.voiceStates.set(sessionId, updated);
     return updated;
   }
 
@@ -126,8 +130,13 @@ export class SignalingService {
       .slice(0, SignalingService.MAX_SCREEN_SHARES);
   }
 
-  public getVoiceState(userId: string): VoiceParticipantState | undefined {
-    return this.voiceStates.get(userId);
+  public getVoiceState(sessionId: string): VoiceParticipantState | undefined {
+    return this.voiceStates.get(sessionId);
+  }
+
+  /** Every voice session of a person, since they may be in from several devices (#309). */
+  public getSessionsOfUser(userId: string): VoiceParticipantState[] {
+    return Array.from(this.voiceStates.values()).filter((s) => s.userId === userId);
   }
 
   public getParticipantsInChannel(channelId: string): VoiceParticipantState[] {
@@ -142,15 +151,15 @@ export class SignalingService {
 
   public getAllVoiceStates(): Record<string, VoiceParticipantState> {
     const obj: Record<string, VoiceParticipantState> = {};
-    for (const [userId, state] of this.voiceStates.entries()) {
-      obj[userId] = state;
+    for (const [sessionId, state] of this.voiceStates.entries()) {
+      obj[sessionId] = state;
     }
     return obj;
   }
 
   public validateSignalRouting(signal: WebRtcSignalPayload): boolean {
-    const fromState = this.voiceStates.get(signal.fromUserId);
-    const targetState = this.voiceStates.get(signal.targetUserId);
+    const fromState = this.voiceStates.get(signal.fromSessionId);
+    const targetState = this.voiceStates.get(signal.targetSessionId);
 
     if (!fromState || !targetState) {
       return false;

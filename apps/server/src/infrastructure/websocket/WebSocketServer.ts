@@ -70,9 +70,15 @@ import { Logger } from '../logger/Logger';
 interface ClientSession {
   ws: WebSocket;
   user?: UserSummary;
+  /**
+   * `userId:deviceId` of this connection, set once authenticated (#309). It is
+   * stable across reconnects of the same install, which is what lets the server
+   * tell a returning device from a second one.
+   */
+  sessionId?: string;
   isAlive: boolean;
   ip: string;
-  /** True when this session was replaced by a newer connection of the same user. */
+  /** True when this session was replaced by a newer connection of the same device. */
   replaced?: boolean;
   /** True when the client explicitly logged out (graceful disconnect). */
   intentionalLogout?: boolean;
@@ -81,8 +87,9 @@ interface ClientSession {
 export class WebSocketServer {
   private wss: WSServer;
   private sessions: Map<WebSocket, ClientSession> = new Map();
-  private userSockets: Map<string, WebSocket> = new Map();
-  /** Pending "user left" timers for users that dropped and may still reconnect. */
+  /** Live sockets keyed by sessionId: one person may hold several at once (#309). */
+  private sessionSockets: Map<string, WebSocket> = new Map();
+  /** Pending "user left" timers for sessions that dropped and may still reconnect. */
   private reconnectTimers: Map<string, NodeJS.Timeout> = new Map();
   private heartbeatTimer?: NodeJS.Timeout;
 
@@ -103,14 +110,40 @@ export class WebSocketServer {
     this.startHeartbeat();
   }
 
+  /** Live connections keyed by sessionId — one person may hold several (#309). */
   public getOnlineUsersMap(): Map<string, { user: UserSummary }> {
     const map = new Map<string, { user: UserSummary }>();
     for (const session of this.sessions.values()) {
-      if (session.user) {
-        map.set(session.user.id, { user: session.user });
+      if (session.user && session.sessionId) {
+        map.set(session.sessionId, { user: session.user });
       }
     }
     return map;
+  }
+
+  /**
+   * Disconnects every device of a person. Used by the server GUI host, which
+   * addresses people by user id and must not leave the other devices online
+   * (#309). Returns how many live sessions were closed.
+   */
+  public closeSessionsOfUser(userId: string): number {
+    for (const [pendingSessionId, pendingTimer] of this.reconnectTimers.entries()) {
+      if (pendingSessionId.startsWith(`${userId}:`)) {
+        clearTimeout(pendingTimer);
+        this.reconnectTimers.delete(pendingSessionId);
+      }
+    }
+
+    const targets = this.getSessionsOfUser(userId);
+    for (const target of targets) {
+      if (target.sessionId) this.sessionSockets.delete(target.sessionId);
+      try {
+        target.ws.close();
+      } catch {
+        // ignore
+      }
+    }
+    return targets.length;
   }
 
   private setupWss(): void {
@@ -362,12 +395,15 @@ export class WebSocketServer {
     }
 
     session.user = result.user;
+    const sessionId = result.user.sessionId!;
+    session.sessionId = sessionId;
 
-    // Prevent duplicate sessions for the same user. A lingering/zombie socket
+    // Prevent duplicate sessions for the *same device*. A lingering/zombie socket
     // (e.g. after a reconnect where the old TCP connection was not yet cleaned
-    // up) would otherwise receive every broadcast twice, causing duplicated
-    // messages/channels on the client. Replace the old session cleanly.
-    const existingWs = this.userSockets.get(result.user.id);
+    // up) would otherwise receive every broadcast twice. Note this is keyed by
+    // sessionId, not by user: another device of the same person is a legitimate
+    // second session and must be left alone (#309).
+    const existingWs = this.sessionSockets.get(sessionId);
     if (existingWs && existingWs !== session.ws) {
       const staleSession = this.sessions.get(existingWs);
       if (staleSession) {
@@ -379,19 +415,20 @@ export class WebSocketServer {
       } catch {
         /* ignore */
       }
-      Logger.info('NETWORK', `Replaced stale session for user ${result.user.id}`);
+      Logger.info('NETWORK', `Replaced stale session ${sessionId}`);
     }
 
-    this.userSockets.set(result.user.id, session.ws);
+    this.sessionSockets.set(sessionId, session.ws);
 
-    // If this user had a pending "reconnecting" grace timer (from a recent
+    // If this session had a pending "reconnecting" grace timer (from a recent
     // ungraceful drop), cancel it and tell everyone they are back online (#44).
-    const pendingTimer = this.reconnectTimers.get(result.user.id);
+    const pendingTimer = this.reconnectTimers.get(sessionId);
     if (pendingTimer) {
       clearTimeout(pendingTimer);
-      this.reconnectTimers.delete(result.user.id);
+      this.reconnectTimers.delete(sessionId);
       const backOnlinePayload: UserConnectionStatePayload = {
         userId: result.user.id,
+        sessionId,
         nickname: result.user.nickname,
         status: 'online',
       };
@@ -562,10 +599,11 @@ export class WebSocketServer {
     // are not stranded in a "ghost" channel after it has been removed.
     const strandedParticipants = this.signalingService.getParticipantsInChannel(payload.channelId);
     for (const participant of strandedParticipants) {
-      this.signalingService.leaveVoiceChannel(participant.userId);
+      this.signalingService.leaveVoiceChannel(participant.sessionId);
       const leavePayload: VoiceUserLeftPayload = {
         channelId: payload.channelId,
         userId: participant.userId,
+        sessionId: participant.sessionId,
       };
       this.broadcast({
         type: MessageType.VOICE_USER_LEFT,
@@ -599,7 +637,7 @@ export class WebSocketServer {
       return;
     }
 
-    session.user = result.updatedUser;
+    this.applyUserUpdate(result.updatedUser);
     const updatePayload: UserUpdatedPayload = { user: result.updatedUser };
 
     this.broadcast({
@@ -627,7 +665,7 @@ export class WebSocketServer {
       return;
     }
 
-    session.user = result.updatedUser;
+    this.applyUserUpdate(result.updatedUser);
     const updatePayload: UserUpdatedPayload = { user: result.updatedUser };
 
     this.broadcast({
@@ -723,7 +761,7 @@ export class WebSocketServer {
     const participants = this.signalingService.getParticipantsInChannel(payload.channelId);
     if (participants.length > 0) {
       for (const p of participants) {
-        const sock = this.userSockets.get(p.userId);
+        const sock = this.sessionSockets.get(p.sessionId);
         if (sock && sock.readyState === WebSocket.OPEN) {
           this.send(sock, {
             type: MessageType.SOUNDBOARD_PLAYED,
@@ -748,9 +786,13 @@ export class WebSocketServer {
     payload: VoiceJoinPayload,
     requestId?: string
   ): Promise<void> {
-    if (!session.user) return;
+    if (!session.user || !session.sessionId) return;
 
-    const result = await this.signalingService.joinVoiceChannel(session.user.id, payload.channelId);
+    const result = await this.signalingService.joinVoiceChannel(
+      session.sessionId,
+      session.user.id,
+      payload.channelId
+    );
     if (!result.success || !result.voiceState) {
       this.sendError(
         session.ws,
@@ -764,6 +806,7 @@ export class WebSocketServer {
     const joinPayload: VoiceUserJoinedPayload = {
       channelId: payload.channelId,
       userId: session.user.id,
+      sessionId: session.sessionId,
       voiceState: result.voiceState,
     };
 
@@ -780,13 +823,14 @@ export class WebSocketServer {
     payload: VoiceLeavePayload,
     requestId?: string
   ): Promise<void> {
-    if (!session.user) return;
+    if (!session.user || !session.sessionId) return;
 
-    const previous = this.signalingService.leaveVoiceChannel(session.user.id);
+    const previous = this.signalingService.leaveVoiceChannel(session.sessionId);
     if (previous) {
       const leavePayload: VoiceUserLeftPayload = {
         channelId: previous.channelId,
         userId: session.user.id,
+        sessionId: session.sessionId,
       };
 
       this.broadcast({
@@ -802,15 +846,15 @@ export class WebSocketServer {
     payload: VoiceStateUpdatePayload,
     requestId?: string
   ): Promise<void> {
-    if (!session.user) return;
+    if (!session.user || !session.sessionId) return;
 
-    const current = this.signalingService.getVoiceState(session.user.id);
+    const current = this.signalingService.getVoiceState(session.sessionId);
     const effectivePayload: VoiceStateUpdatePayload = { ...payload };
     if (current?.serverMuted) {
       effectivePayload.isSpeaking = false;
     }
 
-    const updated = this.signalingService.updateVoiceState(session.user.id, effectivePayload);
+    const updated = this.signalingService.updateVoiceState(session.sessionId, effectivePayload);
     if (updated) {
       const changedPayload: VoiceStateChangedPayload = { voiceState: updated };
       this.broadcast({
@@ -826,17 +870,17 @@ export class WebSocketServer {
     payload: WebRtcSignalPayload,
     requestId?: string
   ): void {
-    if (!session.user) return;
+    if (!session.user || !session.sessionId) return;
 
-    // Enforce that fromUserId matches the authenticated user
-    payload.fromUserId = session.user.id;
+    // Enforce that fromSessionId matches the authenticated connection
+    payload.fromSessionId = session.sessionId;
 
     if (!this.signalingService.validateSignalRouting(payload)) {
-      Logger.warn('WEBRTC', `Invalid signal routing attempt from ${session.user.id} to ${payload.targetUserId}`);
+      Logger.warn('WEBRTC', `Invalid signal routing attempt from ${session.sessionId} to ${payload.targetSessionId}`);
       return;
     }
 
-    const targetSocket = this.userSockets.get(payload.targetUserId);
+    const targetSocket = this.sessionSockets.get(payload.targetSessionId);
     if (targetSocket && targetSocket.readyState === WebSocket.OPEN) {
       this.send(targetSocket, {
         type: MessageType.RTC_SIGNAL,
@@ -922,31 +966,31 @@ export class WebSocketServer {
   }
 
   private async handleAdminMuteUser(session: ClientSession, payload: AdminMuteUserPayload, requestId?: string): Promise<void> {
-    const state = this.signalingService.getVoiceState(payload.targetUserId);
+    const state = this.signalingService.getVoiceState(payload.targetSessionId);
     if (!state) {
       this.sendError(session.ws, ProtocolErrorCode.BAD_REQUEST, 'Usuário não está em um canal de voz.', requestId);
       return;
     }
-    const updated = this.signalingService.updateVoiceState(payload.targetUserId, { serverMuted: payload.muted, isSpeaking: false });
+    const updated = this.signalingService.updateVoiceState(payload.targetSessionId, { serverMuted: payload.muted, isSpeaking: false });
     if (!updated) return;
     this.broadcast({ type: MessageType.ADMIN_MUTE_USER, requestId, payload });
     this.broadcast({ type: MessageType.VOICE_STATE_CHANGED, requestId, payload: { voiceState: updated } });
   }
 
   private async handleAdminDeafenUser(session: ClientSession, payload: AdminDeafenUserPayload, requestId?: string): Promise<void> {
-    const state = this.signalingService.getVoiceState(payload.targetUserId);
+    const state = this.signalingService.getVoiceState(payload.targetSessionId);
     if (!state) {
       this.sendError(session.ws, ProtocolErrorCode.BAD_REQUEST, 'Usuário não está em um canal de voz.', requestId);
       return;
     }
-    const updated = this.signalingService.updateVoiceState(payload.targetUserId, { serverDeafened: payload.deafened, isSpeaking: false });
+    const updated = this.signalingService.updateVoiceState(payload.targetSessionId, { serverDeafened: payload.deafened, isSpeaking: false });
     if (!updated) return;
     this.broadcast({ type: MessageType.ADMIN_DEAFEN_USER, requestId, payload });
     this.broadcast({ type: MessageType.VOICE_STATE_CHANGED, requestId, payload: { voiceState: updated } });
   }
 
   private async handleAdminKickVoice(session: ClientSession, payload: AdminKickVoicePayload, requestId?: string): Promise<void> {
-    const previous = this.signalingService.leaveVoiceChannel(payload.targetUserId);
+    const previous = this.signalingService.leaveVoiceChannel(payload.targetSessionId);
     if (!previous) {
       this.sendError(session.ws, ProtocolErrorCode.BAD_REQUEST, 'Usuário não está em um canal de voz.', requestId);
       return;
@@ -956,12 +1000,12 @@ export class WebSocketServer {
     this.broadcast({
       type: MessageType.VOICE_USER_LEFT,
       requestId,
-      payload: { channelId: previous.channelId, userId: payload.targetUserId },
+      payload: { channelId: previous.channelId, userId: previous.userId, sessionId: previous.sessionId },
     });
   }
 
   private async handleAdminMoveUser(session: ClientSession, payload: AdminMoveUserPayload, requestId?: string): Promise<void> {
-    const previous = this.signalingService.getVoiceState(payload.targetUserId);
+    const previous = this.signalingService.getVoiceState(payload.targetSessionId);
     if (!previous) {
       this.sendError(session.ws, ProtocolErrorCode.BAD_REQUEST, 'Usuário não está em um canal de voz.', requestId);
       return;
@@ -970,7 +1014,7 @@ export class WebSocketServer {
       return;
     }
 
-    const joinResult = await this.signalingService.joinVoiceChannel(payload.targetUserId, payload.channelId);
+    const joinResult = await this.signalingService.joinVoiceChannel(payload.targetSessionId, previous.userId, payload.channelId);
     if (!joinResult.success || !joinResult.voiceState) {
       this.sendError(session.ws, joinResult.errorCode || ProtocolErrorCode.BAD_REQUEST, joinResult.errorMessage || 'Não foi possível mover o usuário.', requestId);
       return;
@@ -980,14 +1024,15 @@ export class WebSocketServer {
     this.broadcast({
       type: MessageType.VOICE_USER_LEFT,
       requestId,
-      payload: { channelId: previous.channelId, userId: payload.targetUserId },
+      payload: { channelId: previous.channelId, userId: previous.userId, sessionId: previous.sessionId },
     });
     this.broadcast({
       type: MessageType.VOICE_USER_JOINED,
       requestId,
       payload: {
         channelId: payload.channelId,
-        userId: payload.targetUserId,
+        userId: previous.userId,
+        sessionId: previous.sessionId,
         voiceState: joinResult.voiceState,
       },
     });
@@ -1016,21 +1061,25 @@ export class WebSocketServer {
       return;
     }
 
-    // Revoke the target's live session immediately (before any further await) so
-    // any concurrent in-flight message from them is dropped by handleMessage.
-    const targetWs = this.userSockets.get(targetUserId);
-    const targetSession = targetWs ? this.sessions.get(targetWs) : undefined;
-    if (targetSession) targetSession.replaced = true;
+    // Kicking removes the person, so every device they are signed in from has to
+    // go — not just the most recent one (#309). Marked before any further await
+    // so concurrent in-flight messages from them are dropped by handleMessage.
+    const targetSessions = this.getSessionsOfUser(targetUserId);
+    for (const targetSession of targetSessions) targetSession.replaced = true;
 
     // Invalidate any outstanding HTTP upload tokens the member still holds.
     this.attachmentService.revokeTokensForUser(targetUserId);
 
-    // Remove the target from any voice channel they were in.
-    const previousVoice = this.signalingService.leaveVoiceChannel(targetUserId);
-    if (previousVoice) {
+    // Remove the target from any voice channel they were in (one state per device).
+    for (const previousVoice of this.signalingService.getSessionsOfUser(targetUserId)) {
+      this.signalingService.leaveVoiceChannel(previousVoice.sessionId);
       this.broadcast({
         type: MessageType.VOICE_USER_LEFT,
-        payload: { channelId: previousVoice.channelId, userId: targetUserId },
+        payload: {
+          channelId: previousVoice.channelId,
+          userId: targetUserId,
+          sessionId: previousVoice.sessionId,
+        },
       });
     }
 
@@ -1042,23 +1091,9 @@ export class WebSocketServer {
     this.send(session.ws, { type: MessageType.MEMBER_KICKED, requestId, payload: kickedPayload });
     this.broadcast({ type: MessageType.MEMBER_KICKED, payload: kickedPayload }, session.ws);
 
-    // Cancel any pending reconnect-grace timer (the member may have been mid
-    // reconnect, in which case there is no live socket but a timer is armed).
-    const pendingTimer = this.reconnectTimers.get(targetUserId);
-    if (pendingTimer) {
-      clearTimeout(pendingTimer);
-      this.reconnectTimers.delete(targetUserId);
-    }
-
-    // Forcefully disconnect the kicked user's live session, if connected.
-    if (targetWs) {
-      this.userSockets.delete(targetUserId);
-      try {
-        targetWs.close();
-      } catch {
-        // ignore
-      }
-    }
+    // Cancel pending reconnect-grace timers and forcefully disconnect every
+    // live session of the kicked user.
+    this.closeSessionsOfUser(targetUserId);
 
     // Role assignments were removed with the user, so refresh role state.
     await this.broadcastRolesState();
@@ -1066,39 +1101,64 @@ export class WebSocketServer {
     Logger.info('NETWORK', `User ${result.nickname} was kicked from the server by ${session.user.nickname}`);
   }
 
+  /**
+   * Refreshes the cached summary on every live session of that person, keeping
+   * the per-connection fields the service layer knows nothing about (#309).
+   */
+  private applyUserUpdate(updatedUser: UserSummary): void {
+    for (const target of this.getSessionsOfUser(updatedUser.id)) {
+      target.user = {
+        ...updatedUser,
+        sessionId: target.sessionId,
+        connectedAt: target.user?.connectedAt,
+      };
+    }
+  }
+
+  /** Every live session of a person: they may be signed in from several devices (#309). */
+  private getSessionsOfUser(userId: string): ClientSession[] {
+    const found: ClientSession[] = [];
+    for (const session of this.sessions.values()) {
+      if (session.user?.id === userId) found.push(session);
+    }
+    return found;
+  }
+
   private handleDisconnect(session: ClientSession): void {
     this.sessions.delete(session.ws);
     this.authService.clearChallenge(session.ws);
 
-    // If this session was replaced by a newer connection of the same user, it
+    // If this session was replaced by a newer connection of the same device, it
     // is a stale/zombie socket. Do not broadcast USER_LEFT nor touch the
-    // userSockets mapping (which now points at the newer session).
+    // sessionSockets mapping (which now points at the newer session).
     if (session.replaced) {
       return;
     }
 
-    if (!session.user) {
+    if (!session.user || !session.sessionId) {
       return;
     }
 
     const user = session.user;
+    const sessionId = session.sessionId;
 
     // Only clear the mapping if it still points at this exact socket.
-    if (this.userSockets.get(user.id) === session.ws) {
-      this.userSockets.delete(user.id);
+    if (this.sessionSockets.get(sessionId) === session.ws) {
+      this.sessionSockets.delete(sessionId);
     }
 
     // Graceful logout (user clicked disconnect / switched servers): remove them
     // immediately. Otherwise treat it as a possible temporary connection loss
     // and give them a grace period to reconnect before announcing USER_LEFT.
     if (session.intentionalLogout) {
-      this.finalizeUserLeave(user);
+      this.finalizeSessionLeave(user, sessionId);
       return;
     }
 
-    // Notify everyone else that this user lost connection (#44).
+    // Notify everyone else that this session lost connection (#44).
     const reconnectingPayload: UserConnectionStatePayload = {
       userId: user.id,
+      sessionId,
       nickname: user.nickname,
       status: 'reconnecting',
     };
@@ -1109,28 +1169,31 @@ export class WebSocketServer {
     Logger.info('NETWORK', `User ${user.nickname} lost connection (aguardando reconexão)`);
 
     // Clear any previous timer just in case, then start the grace period.
-    const existingTimer = this.reconnectTimers.get(user.id);
+    const existingTimer = this.reconnectTimers.get(sessionId);
     if (existingTimer) clearTimeout(existingTimer);
     const timer = setTimeout(() => {
-      this.reconnectTimers.delete(user.id);
-      // Only finalize if the user hasn't reconnected in the meantime.
-      if (this.userSockets.has(user.id)) return;
-      this.finalizeUserLeave(user);
+      this.reconnectTimers.delete(sessionId);
+      // Only finalize if this session hasn't reconnected in the meantime.
+      if (this.sessionSockets.has(sessionId)) return;
+      this.finalizeSessionLeave(user, sessionId);
     }, LIMITS.RECONNECT_GRACE_MS);
-    this.reconnectTimers.set(user.id, timer);
+    this.reconnectTimers.set(sessionId, timer);
   }
 
   /**
-   * Removes a user from voice, announces USER_LEFT and logs the departure. Used
-   * both for graceful logouts and when the reconnection grace period expires.
+   * Removes one connection from voice, announces USER_LEFT for it and logs the
+   * departure. Used both for graceful logouts and when the reconnection grace
+   * period expires. The person may still be online from another device, which
+   * the client resolves from the `sessionId` carried in the payload (#309).
    */
-  private finalizeUserLeave(user: UserSummary): void {
+  private finalizeSessionLeave(user: UserSummary, sessionId: string): void {
     // Leave voice channel if in one
-    const previousVoice = this.signalingService.leaveVoiceChannel(user.id);
+    const previousVoice = this.signalingService.leaveVoiceChannel(sessionId);
     if (previousVoice) {
       const leavePayload: VoiceUserLeftPayload = {
         channelId: previousVoice.channelId,
         userId: user.id,
+        sessionId,
       };
       this.broadcast({
         type: MessageType.VOICE_USER_LEFT,
@@ -1140,6 +1203,7 @@ export class WebSocketServer {
 
     const userLeftPayload: UserLeftPayload = {
       userId: user.id,
+      sessionId,
       nickname: user.nickname,
     };
     this.broadcast({

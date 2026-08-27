@@ -92,6 +92,12 @@ export interface AuthConnectPayload {
   publicKey: string;
   nickname: string;
   password?: string;
+  /**
+   * Random id persisted per installation, letting the server tell "the same
+   * device reconnecting" (replace the stale socket) from "another device of the
+   * same person" (keep both) (#309).
+   */
+  deviceId?: string;
 }
 
 export interface AuthChallengePayload {
@@ -225,21 +231,21 @@ export interface VoiceStateUpdatePayload {
 }
 
 export interface AdminMuteUserPayload {
-  targetUserId: string;
+  targetSessionId: string;
   muted: boolean;
 }
 
 export interface AdminDeafenUserPayload {
-  targetUserId: string;
+  targetSessionId: string;
   deafened: boolean;
 }
 
 export interface AdminKickVoicePayload {
-  targetUserId: string;
+  targetSessionId: string;
 }
 
 export interface AdminMoveUserPayload {
-  targetUserId: string;
+  targetSessionId: string;
   channelId: string;
 }
 
@@ -296,11 +302,14 @@ export interface UserJoinedPayload {
 
 export interface UserLeftPayload {
   userId: string;
+  /** The connection that went away; the person may still be online elsewhere (#309). */
+  sessionId?: string;
   nickname: string;
 }
 
 export interface UserConnectionStatePayload {
   userId: string;
+  sessionId?: string;
   nickname: string;
   status: 'reconnecting' | 'online';
 }
@@ -325,12 +334,14 @@ export interface ChatHistoryPayload {
 export interface VoiceUserJoinedPayload {
   channelId: string;
   userId: string;
+  sessionId: string;
   voiceState: VoiceParticipantState;
 }
 
 export interface VoiceUserLeftPayload {
   channelId: string;
   userId: string;
+  sessionId: string;
 }
 
 export interface VoiceStateChangedPayload {

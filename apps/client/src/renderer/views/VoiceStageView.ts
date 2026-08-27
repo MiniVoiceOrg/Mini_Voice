@@ -48,9 +48,14 @@ type StageTileKind = 'voice' | 'camera' | 'screen';
 interface StageTile {
   p: ParticipantViewModel;
   kind: StageTileKind;
-  key: string; // `${userId}:${kind}` (+ `:${shareId}` for screens) — stable identity for focus/DOM keys
+  key: string; // `${sessionId}:${kind}` (+ `:${shareId}` for screens) — stable identity for focus/DOM keys
   /** Which screen share this tile renders, for 'screen' tiles only (#253). */
   shareId?: string;
+}
+
+/** Tiles address a connection rather than a person: someone may join twice (#309). */
+function sidOf(p: ParticipantViewModel): string {
+  return p.user.sessionId || p.user.id;
 }
 
 /**
@@ -88,13 +93,13 @@ export class VoiceStageView {
   private focusZoomTileKey: string | null = null;
   private suppressCardClickUntil = 0;
   // #150: remote screen shares are gated behind an explicit "Assistir
-  // transmissão". Keyed by stage tile key (`${userId}:screen:${shareId}`) so
+  // transmissão". Keyed by stage tile key (`${sessionId}:screen:${shareId}`) so
   // each of a peer's shares is opted into separately (#253). These sets survive
   // innerHTML re-renders (instance state).
   private watchingShareKeys: Set<string> = new Set();
   // Screen audio is capped at one stream per participant (#253), so the
   // explicit mute stays keyed by user id — it matches the <audio> element.
-  private mutedScreenUserIds: Set<string> = new Set();
+  private mutedScreenSessionIds: Set<string> = new Set();
   private pingInterval: any = null;
   private telemetryInterval: number | null = null;
   private telemetryRefreshInFlight = false;
@@ -124,10 +129,10 @@ export class VoiceStageView {
    * broadcast starts unblurred and focused. Must run after the stage DOM exists
    * (i.e. after `setChannel`), since it re-renders the participant tiles.
    */
-  public watchScreenShare(userId: string): void {
+  public watchScreenShare(sessionId: string): void {
     const participant = participantManager
       .getInVoiceChannel(this.currentChannelId ?? '')
-      .find((p) => p.user.id === userId);
+      .find((p) => sidOf(p) === sessionId);
     if (!participant) return;
 
     // The notice covers the participant, not a specific share, so opt into all
@@ -136,10 +141,10 @@ export class VoiceStageView {
     if (shareIds.length === 0) return;
 
     for (const shareId of shareIds) {
-      this.watchingShareKeys.add(`${userId}:screen:${shareId}`);
+      this.watchingShareKeys.add(`${sessionId}:screen:${shareId}`);
     }
-    this.mutedScreenUserIds.delete(userId);
-    this.focusedTileKeys = [`${userId}:screen:${shareIds[0]}`];
+    this.mutedScreenSessionIds.delete(sessionId);
+    this.focusedTileKeys = [`${sessionId}:screen:${shareIds[0]}`];
     this.renderParticipants();
   }
 
@@ -322,16 +327,16 @@ export class VoiceStageView {
     if (!this.currentChannelId) return;
     const participants = participantManager.getInVoiceChannel(this.currentChannelId);
     participants.forEach((p) => {
-      const isLocal = p.user.id === serverStore.currentUser?.id;
+      const isLocal = serverStore.isMySession(p.user.sessionId);
       const isSpeaking = isLocal ? voiceStore.isSpeaking : p.isSpeaking;
-      this.setCardSpeaking(p.user.id, isSpeaking);
+      this.setCardSpeaking(sidOf(p), isSpeaking);
     });
   }
 
-  private setCardSpeaking(userId: string, isSpeaking: boolean): void {
-    // Update every non-screen tile for the user (a user may show a voice or
+  private setCardSpeaking(sessionId: string, isSpeaking: boolean): void {
+    // Update every non-screen tile for the session (it may show a voice or
     // camera tile; the screen tile never pulses on speech — #26).
-    const cards = document.querySelectorAll(`[data-user-id="${userId}"][data-kind]:not([data-kind="screen"])`);
+    const cards = document.querySelectorAll(`[data-session-id="${sessionId}"][data-kind]:not([data-kind="screen"])`);
     cards.forEach((card) => {
       if (isSpeaking) {
         card.classList.add('speaking');
@@ -347,17 +352,17 @@ export class VoiceStageView {
    * a participant sharing two screens yields one tile per share (#253);
    * participants with no video yield a single avatar ('voice') tile.
    */
-  private buildStageTiles(participants: ParticipantViewModel[], currentUserId?: string): StageTile[] {
+  private buildStageTiles(participants: ParticipantViewModel[], currentSessionId?: string): StageTile[] {
     const tiles: StageTile[] = [];
     for (const p of participants) {
-      const isLocal = p.user.id === currentUserId;
+      const isLocal = sidOf(p) === currentSessionId;
       const isCamOn = isLocal ? voiceStore.isCameraOn : (p.voiceState?.isCameraOn ?? false);
       const shareIds = this.getShareIds(p, isLocal);
-      if (isCamOn) tiles.push({ p, kind: 'camera', key: `${p.user.id}:camera` });
+      if (isCamOn) tiles.push({ p, kind: 'camera', key: `${sidOf(p)}:camera` });
       for (const shareId of shareIds) {
-        tiles.push({ p, kind: 'screen', key: `${p.user.id}:screen:${shareId}`, shareId });
+        tiles.push({ p, kind: 'screen', key: `${sidOf(p)}:screen:${shareId}`, shareId });
       }
-      if (!isCamOn && shareIds.length === 0) tiles.push({ p, kind: 'voice', key: `${p.user.id}:voice` });
+      if (!isCamOn && shareIds.length === 0) tiles.push({ p, kind: 'voice', key: `${sidOf(p)}:voice` });
     }
     return tiles;
   }
@@ -419,14 +424,14 @@ export class VoiceStageView {
   /** Stable, unique DOM id fragment for a tile — screens differ by share (#253). */
   private tileDomId(tile: StageTile): string {
     return tile.kind === 'screen'
-      ? `${tile.p.user.id}-screen-${tile.shareId}`
-      : `${tile.p.user.id}-${tile.kind}`;
+      ? `${sidOf(tile.p)}-screen-${tile.shareId}`
+      : `${sidOf(tile.p)}-${tile.kind}`;
   }
 
   /** True when at least one of the participant's shares was opted into (#253). */
   private isWatchingAnyShare(p: ParticipantViewModel): boolean {
     return this.getShareIds(p, false).some((shareId) =>
-      this.watchingShareKeys.has(`${p.user.id}:screen:${shareId}`)
+      this.watchingShareKeys.has(`${sidOf(p)}:screen:${shareId}`)
     );
   }
 
@@ -434,7 +439,7 @@ export class VoiceStageView {
     // The speaking glow reflects the microphone; a pure screen tile shouldn't
     // pulse when the user talks (their camera/voice tile already does).
     if (tile.kind === 'screen') return false;
-    return (tile.p.user.id === serverStore.currentUser?.id) ? voiceStore.isSpeaking : tile.p.isSpeaking;
+    return serverStore.isMySession(tile.p.user.sessionId) ? voiceStore.isSpeaking : tile.p.isSpeaking;
   }
 
   public renderParticipants(): void {
@@ -451,16 +456,16 @@ export class VoiceStageView {
       return;
     }
 
-    const currentUserId = serverStore.currentUser?.id;
+    const currentSessionId = serverStore.currentUser?.sessionId || serverStore.currentUser?.id;
 
     // #150: reset watch-state for any share that is no longer being broadcast
     // so a fresh broadcast is gated behind "Assistir transmissão" again; also
     // drop the broadcaster's explicit screen-audio mute once they stop entirely.
     const liveShareKeys = new Set<string>();
     for (const p of participants) {
-      if (p.user.id === currentUserId) continue;
+      if (sidOf(p) === currentSessionId) continue;
       for (const shareId of this.getShareIds(p, false)) {
-        liveShareKeys.add(`${p.user.id}:screen:${shareId}`);
+        liveShareKeys.add(`${sidOf(p)}:screen:${shareId}`);
       }
     }
     for (const watchedKey of [...this.watchingShareKeys]) {
@@ -468,14 +473,14 @@ export class VoiceStageView {
         this.watchingShareKeys.delete(watchedKey);
       }
     }
-    for (const mutedUserId of [...this.mutedScreenUserIds]) {
-      const stillSharing = [...liveShareKeys].some((key) => key.startsWith(`${mutedUserId}:screen:`));
-      if (!stillSharing) this.mutedScreenUserIds.delete(mutedUserId);
+    for (const mutedSessionId of [...this.mutedScreenSessionIds]) {
+      const stillSharing = [...liveShareKeys].some((key) => key.startsWith(`${mutedSessionId}:screen:`));
+      if (!stillSharing) this.mutedScreenSessionIds.delete(mutedSessionId);
     }
 
     // A participant sharing camera + screens contributes one tile per source
     // (#26, #253); focus, speaking and DOM keys are keyed per tile.
-    const tiles = this.buildStageTiles(participants, currentUserId);
+    const tiles = this.buildStageTiles(participants, currentSessionId);
 
     // Drop focus entries whose tile disappeared (share ended, peer left).
     this.focusedTileKeys = this.focusedTileKeys.filter((key) =>
@@ -492,7 +497,7 @@ export class VoiceStageView {
         <div class="stage-focused-layout">
           <div class="stage-focused-stack ${focusedTiles.length > 1 ? 'stage-focused-stack--split' : ''}">
             ${focusedTiles.map((focusedTile) => `
-              <div class="stage-focused-main ${this.isTileSpeaking(focusedTile) ? 'speaking' : ''}" id="card-${this.tileDomId(focusedTile)}" data-user-id="${focusedTile.p.user.id}" data-kind="${focusedTile.kind}" data-tile-key="${focusedTile.key}">
+              <div class="stage-focused-main ${this.isTileSpeaking(focusedTile) ? 'speaking' : ''}" id="card-${this.tileDomId(focusedTile)}" data-session-id="${sidOf(focusedTile.p)}" data-kind="${focusedTile.kind}" data-tile-key="${focusedTile.key}">
                 <div class="stage-focus-hint-badge">
                   <span class="material-symbols-outlined md-14">zoom_in</span>
                   <span>${t('stage.focusMode')}</span>
@@ -506,7 +511,7 @@ export class VoiceStageView {
             <div class="stage-focused-strip">
               ${otherTiles.map((tile) => {
                 return `
-                  <div class="stage-mini-card ${tile.kind === 'voice' ? '' : 'stage-mini-card--video'} ${this.isTileSpeaking(tile) ? 'speaking' : ''}" id="card-${this.tileDomId(tile)}" data-user-id="${tile.p.user.id}" data-kind="${tile.kind}" data-tile-key="${tile.key}" title="${t('stage.focusOn', { name: escapeHtml(tile.p.user.nickname) })}">
+                  <div class="stage-mini-card ${tile.kind === 'voice' ? '' : 'stage-mini-card--video'} ${this.isTileSpeaking(tile) ? 'speaking' : ''}" id="card-${this.tileDomId(tile)}" data-session-id="${sidOf(tile.p)}" data-kind="${tile.kind}" data-tile-key="${tile.key}" title="${t('stage.focusOn', { name: escapeHtml(participantManager.displayName(tile.p)) })}">
                     ${this.renderCardContent(tile, false, true)}
                   </div>
                 `;
@@ -520,7 +525,7 @@ export class VoiceStageView {
         <div class="stage-grid" id="stage-grid">
           ${tiles.map((tile) => {
             return `
-              <div class="stage-card ${tile.kind === 'voice' ? '' : 'stage-card--video'} ${this.isTileSpeaking(tile) ? 'speaking' : ''}" id="card-${this.tileDomId(tile)}" data-user-id="${tile.p.user.id}" data-kind="${tile.kind}" data-tile-key="${tile.key}" title="${t('stage.focusHint')}">
+              <div class="stage-card ${tile.kind === 'voice' ? '' : 'stage-card--video'} ${this.isTileSpeaking(tile) ? 'speaking' : ''}" id="card-${this.tileDomId(tile)}" data-session-id="${sidOf(tile.p)}" data-kind="${tile.kind}" data-tile-key="${tile.key}" title="${t('stage.focusHint')}">
                 ${this.renderCardContent(tile, false, false)}
               </div>
             `;
@@ -533,15 +538,15 @@ export class VoiceStageView {
     // while preserving explicit per-user mutes. The <audio> elements are created
     // by WebRtcManager on document.body and persist across these re-renders.
     participants.forEach((p) => {
-      if (p.user.id === currentUserId) return;
+      if (sidOf(p) === currentSessionId) return;
       if (this.getShareIds(p, false).length === 0) return;
-      const audioEl = document.querySelector(`audio[data-screen-audio-user="${p.user.id}"]`) as HTMLAudioElement | null;
+      const audioEl = document.querySelector(`audio[data-screen-audio-session="${sidOf(p)}"]`) as HTMLAudioElement | null;
       if (!audioEl) return;
-      audioEl.muted = voiceStore.getEffectiveDeafened() || !this.isWatchingAnyShare(p) || this.mutedScreenUserIds.has(p.user.id);
+      audioEl.muted = voiceStore.getEffectiveDeafened() || !this.isWatchingAnyShare(p) || this.mutedScreenSessionIds.has(sidOf(p));
     });
 
     // Attach click listeners to cards for focus toggle & right-click for volume adjustment
-    const allCards = area.querySelectorAll('[data-user-id]');
+    const allCards = area.querySelectorAll('[data-session-id]');
     allCards.forEach((card) => {
       card.addEventListener('click', (e: Event) => {
         // Don't toggle focus when the click originates from an interactive
@@ -562,9 +567,9 @@ export class VoiceStageView {
         const mouseEvent = e as MouseEvent;
         mouseEvent.preventDefault();
         mouseEvent.stopPropagation();
-        const userId = card.getAttribute('data-user-id');
-        if (!userId) return;
-        const participant = participantManager.get(userId);
+        const sessionId = card.getAttribute('data-session-id');
+        if (!sessionId) return;
+        const participant = participantManager.get(sessionId);
         if (participant?.user) {
           userContextMenu.open(mouseEvent.clientX, mouseEvent.clientY, participant.user);
         }
@@ -589,12 +594,12 @@ export class VoiceStageView {
     watchBtns.forEach((btn) => {
       btn.addEventListener('click', (e: Event) => {
         e.stopPropagation();
-        const userId = btn.getAttribute('data-watch-user');
+        const sessionId = btn.getAttribute('data-watch-session');
         const shareId = btn.getAttribute('data-watch-share');
-        if (!userId || !shareId) return;
-        this.watchingShareKeys.add(`${userId}:screen:${shareId}`);
-        this.mutedScreenUserIds.delete(userId);
-        this.focusedTileKeys = [`${userId}:screen:${shareId}`];
+        if (!sessionId || !shareId) return;
+        this.watchingShareKeys.add(`${sessionId}:screen:${shareId}`);
+        this.mutedScreenSessionIds.delete(sessionId);
+        this.focusedTileKeys = [`${sessionId}:screen:${shareId}`];
         this.renderParticipants();
       });
     });
@@ -605,10 +610,10 @@ export class VoiceStageView {
     stopWatchBtns.forEach((btn) => {
       btn.addEventListener('click', (e: Event) => {
         e.stopPropagation();
-        const userId = btn.getAttribute('data-stopwatch-user');
+        const sessionId = btn.getAttribute('data-stopwatch-session');
         const shareId = btn.getAttribute('data-stopwatch-share');
-        if (!userId || !shareId) return;
-        const tileKey = `${userId}:screen:${shareId}`;
+        if (!sessionId || !shareId) return;
+        const tileKey = `${sessionId}:screen:${shareId}`;
         this.watchingShareKeys.delete(tileKey);
         this.focusedTileKeys = this.focusedTileKeys.filter((key) => key !== tileKey);
         this.renderParticipants();
@@ -619,11 +624,13 @@ export class VoiceStageView {
     const volSliders = area.querySelectorAll('.stage-screen-volume-slider') as NodeListOf<HTMLInputElement>;
     volSliders.forEach((slider) => {
       slider.addEventListener('input', () => {
-        const userId = slider.getAttribute('data-user-id');
-        if (!userId) return;
+        const sessionId = slider.getAttribute('data-session-id');
+        // The volume preference is persisted per person, not per device (#309).
+        const ownerId = slider.getAttribute('data-owner-id');
+        if (!sessionId || !ownerId) return;
         const vol = parseInt(slider.value, 10);
-        settingsStore.setScreenAudioVolume(userId, vol);
-        const audioEl = document.querySelector(`audio[data-screen-audio-user="${userId}"]`) as HTMLAudioElement | null;
+        settingsStore.setScreenAudioVolume(ownerId, vol);
+        const audioEl = document.querySelector(`audio[data-screen-audio-session="${sessionId}"]`) as HTMLAudioElement | null;
         if (audioEl) audioEl.volume = vol / 100;
       });
     });
@@ -636,8 +643,8 @@ export class VoiceStageView {
       // render, so a muted share doesn't come back showing "volume_up" (#159).
       const initWrapper = btn.closest('.stage-volume-wrapper');
       const initSlider = initWrapper?.querySelector('.stage-screen-volume-slider') as HTMLInputElement | null;
-      const initUserId = initSlider?.getAttribute('data-user-id');
-      if (initUserId && this.mutedScreenUserIds.has(initUserId)) {
+      const initSessionId = initSlider?.getAttribute('data-session-id');
+      if (initSessionId && this.mutedScreenSessionIds.has(initSessionId)) {
         const initIcon = btn.querySelector('.material-symbols-outlined');
         if (initIcon) initIcon.textContent = 'volume_off';
         btn.title = t('stage.screenAudioMuted');
@@ -649,19 +656,19 @@ export class VoiceStageView {
         const wrapper = btn.closest('.stage-volume-wrapper');
         const slider = wrapper?.querySelector('.stage-screen-volume-slider') as HTMLInputElement | null;
         if (!slider) return;
-        const userId = slider.getAttribute('data-user-id');
-        if (!userId) return;
-        const audioEl = document.querySelector(`audio[data-screen-audio-user="${userId}"]`) as HTMLAudioElement | null;
+        const sessionId = slider.getAttribute('data-session-id');
+        if (!sessionId) return;
+        const audioEl = document.querySelector(`audio[data-screen-audio-session="${sessionId}"]`) as HTMLAudioElement | null;
 
         const icon = btn.querySelector('.material-symbols-outlined');
-        if (this.mutedScreenUserIds.has(userId)) {
-          this.mutedScreenUserIds.delete(userId);
+        if (this.mutedScreenSessionIds.has(sessionId)) {
+          this.mutedScreenSessionIds.delete(sessionId);
           if (audioEl) audioEl.muted = voiceStore.getEffectiveDeafened() ? true : false;
           if (icon) icon.textContent = 'volume_up';
           btn.title = t('stage.screenAudioVolume');
           wrapper?.classList.remove('screen-audio-muted');
         } else {
-          this.mutedScreenUserIds.add(userId);
+          this.mutedScreenSessionIds.add(sessionId);
           if (audioEl) audioEl.muted = true;
           if (icon) icon.textContent = 'volume_off';
           btn.title = t('stage.screenAudioMuted');
@@ -703,13 +710,13 @@ export class VoiceStageView {
     // by share id so every tile shows independent video (#26, #253).
     tiles.forEach((tile) => {
       if (tile.kind === 'voice') return;
-      const isLocal = tile.p.user.id === currentUserId;
+      const isLocal = sidOf(tile.p) === currentSessionId;
       const stream = isLocal
         ? (tile.kind === 'screen' ? videoService.getScreenStream(tile.shareId!) : videoService.getCameraStream())
         : (tile.kind === 'screen' ? this.getRemoteScreenStream(tile) : tile.p.remoteStream);
       if (!stream) return;
       const suffix = tile.kind === 'screen' ? `screen-${tile.shareId}` : tile.kind;
-      const ids = [`video-${tile.p.user.id}-${suffix}`, `video-mini-${tile.p.user.id}-${suffix}`];
+      const ids = [`video-${sidOf(tile.p)}-${suffix}`, `video-mini-${sidOf(tile.p)}-${suffix}`];
       ids.forEach((id) => {
         const el = document.getElementById(id) as HTMLVideoElement | null;
         if (el && el.srcObject !== stream) {
@@ -875,7 +882,7 @@ export class VoiceStageView {
 
   private renderCardContent(tile: StageTile, isFocused: boolean = false, isMini: boolean = false): string {
     const p = tile.p;
-    const isLocal = p.user.id === serverStore.currentUser?.id;
+    const isLocal = serverStore.isMySession(p.user.sessionId);
     const isCamOn = isLocal ? voiceStore.isCameraOn : (p.voiceState?.isCameraOn ?? false);
     const isScreenOn = isLocal ? voiceStore.isScreenSharing : (p.voiceState?.isScreenSharing ?? false);
     const isServerMuted = isLocal ? voiceStore.serverMuted : (p.voiceState?.serverMuted ?? false);
@@ -888,7 +895,7 @@ export class VoiceStageView {
     const isVideoTile = tile.kind === 'camera' || tile.kind === 'screen';
     const isScreenTile = tile.kind === 'screen';
     const tileSuffix = isScreenTile ? `screen-${tile.shareId}` : tile.kind;
-    const videoId = isMini ? `video-mini-${p.user.id}-${tileSuffix}` : `video-${p.user.id}-${tileSuffix}`;
+    const videoId = isMini ? `video-mini-${sidOf(p)}-${tileSuffix}` : `video-${sidOf(p)}-${tileSuffix}`;
     const isRemoteScreen = isScreenTile && !isLocal;
     const isWatching = this.watchingShareKeys.has(tile.key);
     // #150: a remote screen the local user has not opted into watching is
@@ -904,8 +911,8 @@ export class VoiceStageView {
       ? t('stage.screenLabelNumbered', { index: String(shareIndex + 1) })
       : t('stage.screenLabel');
     const label = isScreenTile
-      ? `${escapeHtml(p.user.nickname)} · ${screenLabel}`
-      : escapeHtml(p.user.nickname);
+      ? `${escapeHtml(participantManager.displayName(p))} · ${screenLabel}`
+      : escapeHtml(participantManager.displayName(p));
 
     return `
       ${isVideoTile ? `
@@ -919,29 +926,29 @@ export class VoiceStageView {
         ${(isScreenTile && !isLocked && !isMini && shareIndex <= 0) ? `
           <div
             class="telemetry-overlay position-${settingsStore.screenShareTelemetryPosition}${settingsStore.screenShareTelemetryEnabled ? '' : ' is-hidden'}"
-            data-telemetry-user-id="${p.user.id}"
-          >${this.getTelemetryText(p.user.id)}</div>
+            data-telemetry-session-id="${sidOf(p)}"
+          >${this.getTelemetryText(sidOf(p))}</div>
         ` : ''}
         ${isLocked ? `
           <div class="stage-watch-overlay${isMini ? ' stage-watch-overlay--mini' : ''}">
-            <button class="stage-watch-btn" data-watch-user="${p.user.id}" data-watch-share="${tile.shareId}"${isMini ? ` title="${t('stage.watchBroadcast')}" aria-label="${t('stage.watchBroadcast')}"` : ''}>
+            <button class="stage-watch-btn" data-watch-session="${sidOf(p)}" data-watch-share="${tile.shareId}"${isMini ? ` title="${t('stage.watchBroadcast')}" aria-label="${t('stage.watchBroadcast')}"` : ''}>
               <span class="material-symbols-outlined">smart_display</span>
               ${isMini ? '' : `<span>${t('stage.watchBroadcast')}</span>`}
             </button>
-            ${isMini ? '' : `<div class="stage-watch-caption">${t('stage.watchCaption', { name: escapeHtml(p.user.nickname) })}</div>`}
+            ${isMini ? '' : `<div class="stage-watch-caption">${t('stage.watchCaption', { name: escapeHtml(participantManager.displayName(p)) })}</div>`}
           </div>
         ` : `
           <div class="stage-card-controls">
             ${isRemoteScreen ? `
               <div class="stage-volume-wrapper">
                 <div class="stage-volume-popup">
-                  <input type="range" class="stage-screen-volume-slider" data-user-id="${p.user.id}" min="0" max="100" value="${settingsStore.getScreenAudioVolume(p.user.id)}" />
+                  <input type="range" class="stage-screen-volume-slider" data-session-id="${sidOf(p)}" data-owner-id="${p.user.id}" min="0" max="100" value="${settingsStore.getScreenAudioVolume(p.user.id)}" />
                 </div>
                 <button class="stage-volume-btn" title="${t('stage.screenAudioVolume')}" aria-label="${t('stage.volumeAria')}">
                   <span class="material-symbols-outlined md-18">volume_up</span>
                 </button>
               </div>
-              <button class="stage-stopwatch-btn" data-stopwatch-user="${p.user.id}" data-stopwatch-share="${tile.shareId}" title="${t('stage.stopWatching')}" aria-label="${t('stage.stopWatching')}">
+              <button class="stage-stopwatch-btn" data-stopwatch-session="${sidOf(p)}" data-stopwatch-share="${tile.shareId}" title="${t('stage.stopWatching')}" aria-label="${t('stage.stopWatching')}">
                 <span class="material-symbols-outlined md-18">visibility_off</span>
               </button>
             ` : ''}
@@ -954,7 +961,7 @@ export class VoiceStageView {
         <div class="stage-avatar-wrapper">
           <img class="stage-avatar-img" src="${avatarSrc}">
           ${!isMini ? `
-            <div class="stage-participant-name">${escapeHtml(p.user.nickname)} ${isLocal ? `(${t('common.you')})` : ''}</div>
+            <div class="stage-participant-name">${escapeHtml(participantManager.displayName(p))} ${isLocal ? `(${t('common.you')})` : ''}</div>
           ` : ''}
         </div>
       `}
@@ -977,8 +984,8 @@ export class VoiceStageView {
     `;
   }
 
-  private getTelemetryText(userId: string): string {
-    const snapshot = this.telemetrySnapshots.get(userId);
+  private getTelemetryText(sessionId: string): string {
+    const snapshot = this.telemetrySnapshots.get(sessionId);
     if (!snapshot) {
       return 'Coletando...';
     }
@@ -1031,9 +1038,9 @@ export class VoiceStageView {
       );
       overlay.classList.add(`position-${settingsStore.screenShareTelemetryPosition}`);
       overlay.classList.toggle('is-hidden', !settingsStore.screenShareTelemetryEnabled);
-      const userId = overlay.getAttribute('data-telemetry-user-id');
-      if (userId) {
-        overlay.textContent = this.getTelemetryText(userId);
+      const sessionId = overlay.getAttribute('data-telemetry-session-id');
+      if (sessionId) {
+        overlay.textContent = this.getTelemetryText(sessionId);
       }
     });
   }
@@ -1041,7 +1048,7 @@ export class VoiceStageView {
   private hasActiveScreenShares(): boolean {
     if (!this.currentChannelId) return false;
     return participantManager.getInVoiceChannel(this.currentChannelId).some((participant) => {
-      const isLocal = participant.user.id === serverStore.currentUser?.id;
+      const isLocal = serverStore.isMySession(participant.user.sessionId);
       return isLocal ? voiceStore.isScreenSharing : (participant.voiceState?.isScreenSharing ?? false);
     });
   }
@@ -1075,7 +1082,7 @@ export class VoiceStageView {
     try {
       const participants = participantManager.getInVoiceChannel(this.currentChannelId);
       const screenParticipants = participants.filter((participant) => {
-        const isLocal = participant.user.id === serverStore.currentUser?.id;
+        const isLocal = serverStore.isMySession(participant.user.sessionId);
         return isLocal ? voiceStore.isScreenSharing : (participant.voiceState?.isScreenSharing ?? false);
       });
 
@@ -1091,12 +1098,12 @@ export class VoiceStageView {
       await Promise.all(screenParticipants.map(async (participant) => {
         const snapshot = await this.collectTelemetrySnapshot(participant);
         if (snapshot) {
-          nextSnapshots.set(participant.user.id, snapshot);
+          nextSnapshots.set(sidOf(participant), snapshot);
         }
       }));
 
       this.telemetrySnapshots = nextSnapshots;
-      this.pruneTelemetryByteSamples(Array.from(screenParticipants, (participant) => participant.user.id));
+      this.pruneTelemetryByteSamples(Array.from(screenParticipants, (participant) => sidOf(participant)));
       this.applyTelemetryOverlayState();
     } finally {
       this.telemetryRefreshInFlight = false;
@@ -1104,13 +1111,13 @@ export class VoiceStageView {
   }
 
   private async collectTelemetrySnapshot(participant: ParticipantViewModel): Promise<ScreenTelemetrySnapshot | null> {
-    const isLocal = participant.user.id === serverStore.currentUser?.id;
+    const isLocal = serverStore.isMySession(participant.user.sessionId);
     return isLocal
-      ? this.collectSenderTelemetry(participant.user.id)
-      : this.collectReceiverTelemetry(participant.user.id);
+      ? this.collectSenderTelemetry(sidOf(participant))
+      : this.collectReceiverTelemetry(sidOf(participant));
   }
 
-  private async collectSenderTelemetry(userId: string): Promise<ScreenTelemetrySnapshot | null> {
+  private async collectSenderTelemetry(sessionId: string): Promise<ScreenTelemetrySnapshot | null> {
     const peerConnections = webRtcManager.getPeerConnections();
     const localTrack = this.getPrimaryLocalScreenTrack();
     const fallback = this.getLocalScreenFallback();
@@ -1151,7 +1158,7 @@ export class VoiceStageView {
             keyFramesEncoded += report.keyFramesEncoded;
           }
 
-          const bitrate = this.computeBitrateKbps(`sender:${userId}:${index}:${report.id}`, report.bytesSent);
+          const bitrate = this.computeBitrateKbps(`sender:${sessionId}:${index}:${report.id}`, report.bytesSent);
           if (bitrate !== null) {
             totalBitrateKbps += bitrate;
           }
@@ -1182,8 +1189,8 @@ export class VoiceStageView {
     };
   }
 
-  private async collectReceiverTelemetry(userId: string): Promise<ScreenTelemetrySnapshot | null> {
-    const pc = webRtcManager.getPeerConnection(userId);
+  private async collectReceiverTelemetry(sessionId: string): Promise<ScreenTelemetrySnapshot | null> {
+    const pc = webRtcManager.getPeerConnection(sessionId);
     if (!pc) return null;
 
     try {
@@ -1207,7 +1214,7 @@ export class VoiceStageView {
           fps: this.pickTelemetryNumber(null, report.framesPerSecond),
           width: this.pickTelemetryNumber(null, report.frameWidth),
           height: this.pickTelemetryNumber(null, report.frameHeight),
-          bitrateKbps: this.computeBitrateKbps(`receiver:${userId}:${report.id}`, report.bytesReceived) ?? 0,
+          bitrateKbps: this.computeBitrateKbps(`receiver:${sessionId}:${report.id}`, report.bytesReceived) ?? 0,
           codec: this.getCodecName(stats, report.codecId),
           framesEncoded: null,
           keyFramesEncoded: null,
@@ -1283,8 +1290,8 @@ export class VoiceStageView {
     return (deltaBytes * 8) / (deltaMs / 1000) / 1000;
   }
 
-  private pruneTelemetryByteSamples(activeUserIds: string[]): void {
-    const activePrefixes = new Set(activeUserIds.map((userId) => `:${userId}:`));
+  private pruneTelemetryByteSamples(activeSessionIds: string[]): void {
+    const activePrefixes = new Set(activeSessionIds.map((sessionId) => `:${sessionId}:`));
     for (const key of this.telemetryByteSamples.keys()) {
       const isActive = Array.from(activePrefixes).some((prefix) => key.includes(prefix));
       if (!isActive) {
@@ -1541,13 +1548,13 @@ export class VoiceStageView {
       this.syncTelemetryMonitor();
     });
 
-    const u3 = appEvents.on('participants.speaking_changed', (data: { userId: string; speaking: boolean }) => {
-      this.setCardSpeaking(data.userId, data.speaking);
+    const u3 = appEvents.on('participants.speaking_changed', (data: { sessionId: string; speaking: boolean }) => {
+      this.setCardSpeaking(data.sessionId, data.speaking);
     });
 
     const u4 = appEvents.on('voice.speaking_changed', (speaking: boolean) => {
       if (serverStore.currentUser) {
-        this.setCardSpeaking(serverStore.currentUser.id, speaking);
+        this.setCardSpeaking(serverStore.currentUser.sessionId || serverStore.currentUser.id, speaking);
       }
     });
 

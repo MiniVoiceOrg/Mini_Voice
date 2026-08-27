@@ -14,7 +14,10 @@ export class ServerStore {
   public knownMembers: Map<string, UserSummary> = new Map();
 
   public setServerDetails(details: ServerDetails, currentUser: UserSummary): void {
-    this.serverDetails = details;
+    // The server sends one entry per live connection (#309). The member list is
+    // per person, so it holds a collapsed copy — the untouched original still
+    // feeds the per-session voice lists.
+    this.serverDetails = { ...details, members: ServerStore.dedupeMembers(details.members) };
     this.currentUser = currentUser;
     this.roles = details.roles ?? [];
     this.userRoles = details.userRoles ?? [];
@@ -35,6 +38,18 @@ export class ServerStore {
       this.activeTextChannelId = textChannels[0].id;
     }
     appEvents.emit('server.updated');
+  }
+
+  /** Keeps the oldest connection of each person, so the list has one row each (#309). */
+  private static dedupeMembers(members: UserSummary[]): UserSummary[] {
+    const byUser = new Map<string, UserSummary>();
+    for (const member of members) {
+      const existing = byUser.get(member.id);
+      if (!existing || (member.connectedAt || 0) < (existing.connectedAt || 0)) {
+        byUser.set(member.id, member);
+      }
+    }
+    return Array.from(byUser.values());
   }
 
   /** Upserts a user into the persistent known-members map. */
@@ -61,6 +76,11 @@ export class ServerStore {
     });
   }
 
+  /** True when the id refers to this very connection, not just to this person (#309). */
+  public isMySession(sessionId?: string): boolean {
+    return !!sessionId && sessionId === this.currentUser?.sessionId;
+  }
+
   public setActiveTextChannel(channelId: string): void {
     this.activeTextChannelId = channelId;
     appEvents.emit('channel.selected', channelId);
@@ -85,7 +105,12 @@ export class ServerStore {
   }
 
   public updateCurrentUser(user: UserSummary): void {
-    this.currentUser = user;
+    // Profile updates arrive without connection fields, so ours are kept (#309).
+    this.currentUser = {
+      ...user,
+      sessionId: user.sessionId ?? this.currentUser?.sessionId,
+      connectedAt: user.connectedAt ?? this.currentUser?.connectedAt,
+    };
     this.rememberMember(user);
     if (this.serverDetails) {
       const idx = this.serverDetails.members.findIndex((m) => m.id === user.id);

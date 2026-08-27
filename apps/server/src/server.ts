@@ -254,8 +254,15 @@ export class MonkyServer {
         return;
       }
       if (req.url === '/preview') {
-        const online = getOnlineUsers() as Map<string, { user: { nickname: string; avatarUrl?: string | null } }>;
+        const online = getOnlineUsers() as Map<string, { user: { id: string; nickname: string; avatarUrl?: string | null } }>;
+        // Keyed per connection, so collapse a person's devices into one entry (#309).
+        const seenUserIds = new Set<string>();
         const users = Array.from(online.values())
+          .filter((entry) => {
+            if (seenUserIds.has(entry.user.id)) return false;
+            seenUserIds.add(entry.user.id);
+            return true;
+          })
           .slice(0, 10)
           .map((entry) => ({
             nickname: entry.user.nickname,
@@ -273,7 +280,8 @@ export class MonkyServer {
                 name: server?.name || config.serverName || 'Monky Server',
                 hasPassword: !!(server?.passwordHash && server.passwordHash.length > 0),
                 iconUrl: avatarStorage.getPublicUrl(server?.iconPath),
-                userCount: online.size,
+                // Distinct people, matching the per-person maxUsers semantics (#309).
+                userCount: seenUserIds.size,
                 maxUsers: server?.maxUsers || LIMITS.MAX_USERS_DEFAULT,
                 users,
               })

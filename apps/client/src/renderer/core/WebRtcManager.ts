@@ -8,10 +8,11 @@ import { appEvents } from './EventBus';
 import { networkClient } from './NetworkClient';
 import { participantManager } from './ParticipantManager';
 import { settingsStore } from '../stores/settingsStore';
+import { serverStore } from '../stores/serverStore';
 import { voiceStore } from '../stores/voiceStore';
 
 export interface PeerSession {
-  peerUserId: string;
+  peerSessionId: string;
   pc: RTCPeerConnection;
   remoteStream: MediaStream;
   /** Remote screen streams keyed by share id (#253: up to MAX_SCREEN_SHARES). */
@@ -47,9 +48,9 @@ export class WebRtcManager {
   private screenAudioStreamIds: Set<string> = new Set();
   private screenVideoStreamIds: Set<string> = new Set();
   // Tracks received before screen-audio-meta arrived, keyed by streamId
-  private pendingScreenAudioTracks: Map<string, { track: MediaStreamTrack; peerUserId: string }> = new Map();
+  private pendingScreenAudioTracks: Map<string, { track: MediaStreamTrack; peerSessionId: string }> = new Map();
   // Screen video tracks received before screen-video-meta arrived, keyed by streamId
-  private pendingScreenVideoTracks: Map<string, { track: MediaStreamTrack; peerUserId: string }> = new Map();
+  private pendingScreenVideoTracks: Map<string, { track: MediaStreamTrack; peerSessionId: string }> = new Map();
   private sharedVadAudioContext: AudioContext | null = null;
   private remoteAudioVads: Map<string, { source: MediaStreamAudioSourceNode; analyser: AnalyserNode; interval: any }> = new Map();
   private localAudioTrack: MediaStreamTrack | null = null;
@@ -62,7 +63,7 @@ export class WebRtcManager {
   private screenAudioStream: MediaStream | null = null;
   private screenAudioStreamId: string | null = null;
   private currentPreset: QualityPresetType = 'NORMAL';
-  private currentUserId: string = '';
+  private currentSessionId: string = '';
   private isDeafened: boolean = false;
 
   private rtcConfig: RTCConfiguration = {
@@ -81,8 +82,9 @@ export class WebRtcManager {
     this.setupSignalListeners();
   }
 
-  public setCurrentUserId(userId: string): void {
-    this.currentUserId = userId;
+  /** Our own session id: the tie-breaker for who initiates each peer link (#309). */
+  public setCurrentSessionId(sessionId: string): void {
+    this.currentSessionId = sessionId;
   }
 
   public setQualityPreset(preset: QualityPresetType): void {
@@ -107,8 +109,8 @@ export class WebRtcManager {
   /**
    * Route a screen audio track to a dedicated <audio> element for a peer.
    */
-  private routeScreenAudioTrack(peerUserId: string, track: MediaStreamTrack): void {
-    let screenAudioEl = this.screenAudioElements.get(peerUserId);
+  private routeScreenAudioTrack(peerSessionId: string, track: MediaStreamTrack): void {
+    let screenAudioEl = this.screenAudioElements.get(peerSessionId);
     const isDeaf = this.isDeafened || voiceStore.getEffectiveDeafened();
     if (!screenAudioEl) {
       screenAudioEl = document.createElement('audio');
@@ -116,16 +118,16 @@ export class WebRtcManager {
       // #150: start silent — screen audio is gated behind "Assistir transmissão"
       // in the stage view, which unmutes this element when the viewer opts in.
       screenAudioEl.muted = true;
-      screenAudioEl.setAttribute('data-screen-audio-user', peerUserId);
+      screenAudioEl.setAttribute('data-screen-audio-session', peerSessionId);
       document.body.appendChild(screenAudioEl);
-      this.screenAudioElements.set(peerUserId, screenAudioEl);
+      this.screenAudioElements.set(peerSessionId, screenAudioEl);
     }
     if (isDeaf) {
       screenAudioEl.muted = true;
     }
     const screenStream = new MediaStream([track]);
     screenAudioEl.srcObject = screenStream;
-    const participant = participantManager.get(peerUserId);
+    const participant = participantManager.get(peerSessionId);
     const clientId = participant?.user.clientId;
     const volume = clientId ? settingsStore.getScreenAudioVolume(clientId) : 100;
     screenAudioEl.volume = volume / 100;
@@ -144,15 +146,15 @@ export class WebRtcManager {
    * render it as a separate tile from the camera (#26) and from the peer's
    * other screen share (#253).
    */
-  private routeScreenVideoTrack(peerUserId: string, track: MediaStreamTrack, shareId: string): void {
-    const session = this.peers.get(peerUserId);
+  private routeScreenVideoTrack(peerSessionId: string, track: MediaStreamTrack, shareId: string): void {
+    const session = this.peers.get(peerSessionId);
     if (!session) return;
 
     // If it was provisionally added to the camera stream (meta arrived late),
     // move it out so it doesn't render as the camera.
     if (session.remoteStream.getTrackById(track.id)) {
       session.remoteStream.removeTrack(track);
-      participantManager.setRemoteStream(peerUserId, session.remoteStream);
+      participantManager.setRemoteStream(peerSessionId, session.remoteStream);
     }
 
     let screenStream = session.remoteScreenStreams.get(shareId);
@@ -168,7 +170,7 @@ export class WebRtcManager {
     if (!screenStream.getTrackById(track.id)) {
       screenStream.addTrack(track);
     }
-    participantManager.setRemoteScreenStream(peerUserId, shareId, screenStream);
+    participantManager.setRemoteScreenStream(peerSessionId, shareId, screenStream);
 
     const attach = (el: HTMLVideoElement | null) => {
       if (el) {
@@ -179,12 +181,12 @@ export class WebRtcManager {
         el.play().catch(() => {});
       }
     };
-    attach(document.getElementById(`video-${peerUserId}-screen-${shareId}`) as HTMLVideoElement | null);
-    attach(document.getElementById(`video-mini-${peerUserId}-screen-${shareId}`) as HTMLVideoElement | null);
+    attach(document.getElementById(`video-${peerSessionId}-screen-${shareId}`) as HTMLVideoElement | null);
+    attach(document.getElementById(`video-mini-${peerSessionId}-screen-${shareId}`) as HTMLVideoElement | null);
     // Pre-#253 peers don't publish a screenShareIds list, so their tile is keyed
     // by the stage's legacy placeholder rather than by this stream id.
-    attach(document.getElementById(`video-${peerUserId}-screen-legacy`) as HTMLVideoElement | null);
-    attach(document.getElementById(`video-mini-${peerUserId}-screen-legacy`) as HTMLVideoElement | null);
+    attach(document.getElementById(`video-${peerSessionId}-screen-legacy`) as HTMLVideoElement | null);
+    attach(document.getElementById(`video-mini-${peerSessionId}-screen-legacy`) as HTMLVideoElement | null);
 
     track.onended = () => {
       screenStream!.removeTrack(track);
@@ -193,7 +195,7 @@ export class WebRtcManager {
       // screen and not a camera. A reconnect ends the track without the sender
       // re-announcing the metadata, so dropping it here would make the share
       // come back misclassified as the camera (#26).
-      participantManager.removeRemoteScreenStream(peerUserId, shareId);
+      participantManager.removeRemoteScreenStream(peerSessionId, shareId);
     };
   }
 
@@ -257,7 +259,7 @@ export class WebRtcManager {
   private async renegotiateIfNeeded(session: PeerSession): Promise<void> {
     const pc = session.pc;
     if (pc.signalingState === 'stable' && !session.makingOffer && this.hasUnnegotiatedSenders(pc)) {
-      console.log(`[WebRTC] Re-negotiating dropped track(s) for ${session.peerUserId}`);
+      console.log(`[WebRTC] Re-negotiating dropped track(s) for ${session.peerSessionId}`);
       await this.sendOffer(session);
     }
   }
@@ -283,7 +285,7 @@ export class WebRtcManager {
       const iceState = session.pc.iceConnectionState;
       if (state !== 'connected' && state !== 'closed') {
         console.warn(
-          `[WebRTC] Watchdog timeout (${timeoutMs}ms) for peer ${session.peerUserId} (state=${state}, iceState=${iceState}). Triggering recovery.`
+          `[WebRTC] Watchdog timeout (${timeoutMs}ms) for peer ${session.peerSessionId} (state=${state}, iceState=${iceState}). Triggering recovery.`
         );
         this.recoverPeerConnection(session, 'watchdog_timeout');
       }
@@ -298,7 +300,7 @@ export class WebRtcManager {
     session.isRecovering = true;
     session.iceRestartAttempts++;
     console.log(
-      `[WebRTC] Attempting ICE restart #${session.iceRestartAttempts} for peer ${session.peerUserId} (reason: ${reason})`
+      `[WebRTC] Attempting ICE restart #${session.iceRestartAttempts} for peer ${session.peerSessionId} (reason: ${reason})`
     );
 
     try {
@@ -309,31 +311,31 @@ export class WebRtcManager {
       await this.sendOffer(session, true);
       this.startConnectionWatchdog(session, 10000);
     } catch (err) {
-      console.warn(`[WebRTC] ICE restart failed for ${session.peerUserId}:`, err);
-      await this.hardReconnectPeer(session.peerUserId);
+      console.warn(`[WebRTC] ICE restart failed for ${session.peerSessionId}:`, err);
+      await this.hardReconnectPeer(session.peerSessionId);
     } finally {
       session.isRecovering = false;
     }
   }
 
-  private async hardReconnectPeer(peerUserId: string): Promise<void> {
-    const existing = this.peers.get(peerUserId);
+  private async hardReconnectPeer(peerSessionId: string): Promise<void> {
+    const existing = this.peers.get(peerSessionId);
     const attempts = (existing?.reconnectAttempts || 0) + 1;
 
     if (attempts > 3) {
-      console.warn(`[WebRTC] Max hard reconnect attempts reached for peer ${peerUserId}. Aborting recovery.`);
-      appEvents.emit('remote.peer_degraded', { userId: peerUserId });
+      console.warn(`[WebRTC] Max hard reconnect attempts reached for peer ${peerSessionId}. Aborting recovery.`);
+      appEvents.emit('remote.peer_degraded', { sessionId: peerSessionId });
       return;
     }
 
-    console.log(`[WebRTC] Performing Hard Reconnect #${attempts} for peer ${peerUserId}...`);
+    console.log(`[WebRTC] Performing Hard Reconnect #${attempts} for peer ${peerSessionId}...`);
 
     if (existing) {
       this.clearPeerTimers(existing);
       try {
         existing.pc.close();
       } catch (e) {}
-      this.peers.delete(peerUserId);
+      this.peers.delete(peerSessionId);
     }
 
     // Exponential backoff delay (1s, 2s, 4s)
@@ -342,13 +344,13 @@ export class WebRtcManager {
 
     if (!voiceStore.currentVoiceChannelId) return;
     const isPeerStillInVoice =
-      participantManager.get(peerUserId)?.voiceState?.channelId === voiceStore.currentVoiceChannelId;
+      participantManager.get(peerSessionId)?.voiceState?.channelId === voiceStore.currentVoiceChannelId;
     if (!isPeerStillInVoice) return;
 
-    const isInitiator = this.currentUserId.localeCompare(peerUserId) < 0;
-    await this.connectToPeer(peerUserId, isInitiator);
+    const isInitiator = this.currentSessionId.localeCompare(peerSessionId) < 0;
+    await this.connectToPeer(peerSessionId, isInitiator);
 
-    const newSession = this.peers.get(peerUserId);
+    const newSession = this.peers.get(peerSessionId);
     if (newSession) {
       newSession.reconnectAttempts = attempts;
     }
@@ -358,12 +360,23 @@ export class WebRtcManager {
     if (session.iceRestartAttempts < 2) {
       this.triggerIceRestart(session, reason);
     } else {
-      this.hardReconnectPeer(session.peerUserId);
+      this.hardReconnectPeer(session.peerSessionId);
     }
   }
 
-  public async connectToPeer(peerUserId: string, isInitiator: boolean): Promise<void> {
-    const existingSession = this.peers.get(peerUserId);
+  /**
+   * Another device of our own in the same call. We still link up with it so
+   * camera and screen share work, but its audio is dropped: playing it would
+   * feed the speakers of one device into the microphone of the other (#309).
+   */
+  private isOwnOtherDevice(peerSessionId: string): boolean {
+    const myUserId = serverStore.currentUser?.id;
+    if (!myUserId || peerSessionId === this.currentSessionId) return false;
+    return participantManager.get(peerSessionId)?.user.id === myUserId;
+  }
+
+  public async connectToPeer(peerSessionId: string, isInitiator: boolean): Promise<void> {
+    const existingSession = this.peers.get(peerSessionId);
     if (existingSession) {
       if (existingSession.pc.connectionState !== 'closed' && existingSession.pc.connectionState !== 'failed') {
         return;
@@ -372,15 +385,15 @@ export class WebRtcManager {
       try {
         existingSession.pc.close();
       } catch (e) {}
-      this.peers.delete(peerUserId);
+      this.peers.delete(peerSessionId);
     }
 
     const pc = new RTCPeerConnection(this.rtcConfig);
     const remoteStream = new MediaStream();
-    const isPolite = this.currentUserId.localeCompare(peerUserId) < 0;
+    const isPolite = this.currentSessionId.localeCompare(peerSessionId) < 0;
 
     const session: PeerSession = {
-      peerUserId,
+      peerSessionId,
       pc,
       remoteStream,
       remoteScreenStreams: new Map(),
@@ -392,7 +405,7 @@ export class WebRtcManager {
       reconnectAttempts: 0,
       isRecovering: false,
     };
-    this.peers.set(peerUserId, session);
+    this.peers.set(peerSessionId, session);
 
     // Setup Audio Transceiver
     if (this.localAudioTrack) {
@@ -418,8 +431,8 @@ export class WebRtcManager {
       const stream = this.localScreenStreams.get(shareId);
       if (!stream) continue;
       networkClient.send(MessageType.RTC_SIGNAL, {
-        targetUserId: peerUserId,
-        fromUserId: this.currentUserId,
+        targetSessionId: peerSessionId,
+        fromSessionId: this.currentSessionId,
         signalType: 'screen-video-meta',
         streamId: shareId,
       });
@@ -430,8 +443,8 @@ export class WebRtcManager {
     if (this.localScreenAudioTrack && this.screenAudioStream) {
       // Announce stream ID before adding track
       networkClient.send(MessageType.RTC_SIGNAL, {
-        targetUserId: peerUserId,
-        fromUserId: this.currentUserId,
+        targetSessionId: peerSessionId,
+        fromSessionId: this.currentSessionId,
         signalType: 'screen-audio-meta',
         streamId: this.screenAudioStreamId,
       });
@@ -442,8 +455,8 @@ export class WebRtcManager {
     pc.onicecandidate = (event) => {
       if (event.candidate) {
         networkClient.send(MessageType.RTC_SIGNAL, {
-          targetUserId: peerUserId,
-          fromUserId: this.currentUserId,
+          targetSessionId: peerSessionId,
+          fromSessionId: this.currentSessionId,
           signalType: 'candidate',
           candidate: event.candidate.toJSON ? event.candidate.toJSON() : event.candidate,
         });
@@ -452,7 +465,14 @@ export class WebRtcManager {
 
     // Remote Track handler (Audio & Video)
     pc.ontrack = (event) => {
-      console.log(`[WebRTC] Received remote track (${event.track.kind}) from ${peerUserId}`);
+      console.log(`[WebRTC] Received remote track (${event.track.kind}) from ${peerSessionId}`);
+
+      // Our own other device: keep the video, drop every audio track before it
+      // can reach a speaker and loop back through the other mic (#309).
+      if (event.track.kind === 'audio' && this.isOwnOtherDevice(peerSessionId)) {
+        console.log(`[WebRTC] Dropping audio from our own other device (${peerSessionId})`);
+        return;
+      }
 
       // Check if this is a screen audio track — either by known stream ID
       // or by detecting it as a 2nd audio track (the first is the mic).
@@ -462,12 +482,12 @@ export class WebRtcManager {
       const isExtraAudioTrack = event.track.kind === 'audio' && existingMicAudio && incomingStreamId && !remoteStream.getTrackById(event.track.id);
 
       if (isKnownScreenAudio || isExtraAudioTrack) {
-        console.log(`[WebRTC] Routing screen audio track from ${peerUserId} (known=${isKnownScreenAudio}, extra=${isExtraAudioTrack}, streamId=${incomingStreamId})`);
+        console.log(`[WebRTC] Routing screen audio track from ${peerSessionId} (known=${isKnownScreenAudio}, extra=${isExtraAudioTrack}, streamId=${incomingStreamId})`);
         // If meta hasn't arrived yet, store for potential reclassification
         if (!isKnownScreenAudio && incomingStreamId) {
-          this.pendingScreenAudioTracks.set(incomingStreamId, { track: event.track, peerUserId });
+          this.pendingScreenAudioTracks.set(incomingStreamId, { track: event.track, peerSessionId });
         }
-        this.routeScreenAudioTrack(peerUserId, event.track);
+        this.routeScreenAudioTrack(peerSessionId, event.track);
         return;
       }
 
@@ -482,11 +502,11 @@ export class WebRtcManager {
         event.track.kind === 'video' && existingCameraVideo && !!incomingStreamId && !remoteStream.getTrackById(event.track.id);
 
       if (isKnownScreenVideo || isExtraVideoTrack) {
-        console.log(`[WebRTC] Routing screen video track from ${peerUserId} (known=${isKnownScreenVideo}, extra=${isExtraVideoTrack}, streamId=${incomingStreamId})`);
+        console.log(`[WebRTC] Routing screen video track from ${peerSessionId} (known=${isKnownScreenVideo}, extra=${isExtraVideoTrack}, streamId=${incomingStreamId})`);
         if (!isKnownScreenVideo && incomingStreamId) {
-          this.pendingScreenVideoTracks.set(incomingStreamId, { track: event.track, peerUserId });
+          this.pendingScreenVideoTracks.set(incomingStreamId, { track: event.track, peerSessionId });
         }
-        this.routeScreenVideoTrack(peerUserId, event.track, incomingStreamId!);
+        this.routeScreenVideoTrack(peerSessionId, event.track, incomingStreamId!);
         return;
       }
 
@@ -500,11 +520,11 @@ export class WebRtcManager {
       }
 
       remoteStream.addTrack(event.track);
-      participantManager.setRemoteStream(peerUserId, remoteStream);
+      participantManager.setRemoteStream(peerSessionId, remoteStream);
 
       if (event.track.kind === 'audio') {
-        let audioEl = this.audioElements.get(peerUserId);
-        const participant = participantManager.get(peerUserId);
+        let audioEl = this.audioElements.get(peerSessionId);
+        const participant = participantManager.get(peerSessionId);
         const clientId = participant?.user.clientId;
         const volume = clientId ? settingsStore.getUserVolume(clientId) : 100;
         const isDeaf = this.isDeafened || voiceStore.getEffectiveDeafened();
@@ -513,7 +533,7 @@ export class WebRtcManager {
           audioEl.autoplay = true;
           audioEl.muted = isDeaf;
           document.body.appendChild(audioEl);
-          this.audioElements.set(peerUserId, audioEl);
+          this.audioElements.set(peerSessionId, audioEl);
         }
         audioEl.muted = isDeaf;
         audioEl.volume = volume / 100;
@@ -525,11 +545,11 @@ export class WebRtcManager {
         this.applySinkToElement(el).finally(() => {
           el.play().catch((e) => console.warn('[WebRTC] Audio play error:', e));
         });
-        this.setupRemoteVad(peerUserId, remoteStream);
+        this.setupRemoteVad(peerSessionId, remoteStream);
       }
 
       if (event.track.kind === 'video') {
-        const videoEl = document.getElementById(`video-${peerUserId}-camera`) as HTMLVideoElement;
+        const videoEl = document.getElementById(`video-${peerSessionId}-camera`) as HTMLVideoElement;
         if (videoEl) {
           // Audio is routed exclusively through the dedicated <audio> element so
           // it can honour per-user volume, deafen and speaker selection. Keep
@@ -539,7 +559,7 @@ export class WebRtcManager {
           videoEl.srcObject = remoteStream;
           videoEl.play().catch((e) => console.warn('[WebRTC] Video play error:', e));
         }
-        const miniVideoEl = document.getElementById(`video-mini-${peerUserId}-camera`) as HTMLVideoElement;
+        const miniVideoEl = document.getElementById(`video-mini-${peerSessionId}-camera`) as HTMLVideoElement;
         if (miniVideoEl) {
           miniVideoEl.muted = true;
           miniVideoEl.srcObject = remoteStream;
@@ -549,13 +569,13 @@ export class WebRtcManager {
 
       event.track.onended = () => {
         remoteStream.removeTrack(event.track);
-        participantManager.setRemoteStream(peerUserId, remoteStream);
+        participantManager.setRemoteStream(peerSessionId, remoteStream);
       };
 
       event.track.onunmute = () => {
-        participantManager.setRemoteStream(peerUserId, remoteStream);
+        participantManager.setRemoteStream(peerSessionId, remoteStream);
         if (event.track.kind === 'audio') {
-          const audioEl = this.audioElements.get(peerUserId);
+          const audioEl = this.audioElements.get(peerSessionId);
           if (audioEl) {
             audioEl.muted = this.isDeafened || voiceStore.getEffectiveDeafened();
             // Only (re)assign srcObject if it actually changed: reassigning the
@@ -571,13 +591,13 @@ export class WebRtcManager {
             });
           }
         } else if (event.track.kind === 'video') {
-          const videoEl = document.getElementById(`video-${peerUserId}-camera`) as HTMLVideoElement;
+          const videoEl = document.getElementById(`video-${peerSessionId}-camera`) as HTMLVideoElement;
           if (videoEl) {
             videoEl.muted = true;
             videoEl.srcObject = remoteStream;
             videoEl.play().catch(() => {});
           }
-          const miniVideoEl = document.getElementById(`video-mini-${peerUserId}-camera`) as HTMLVideoElement;
+          const miniVideoEl = document.getElementById(`video-mini-${peerSessionId}-camera`) as HTMLVideoElement;
           if (miniVideoEl) {
             miniVideoEl.muted = true;
             miniVideoEl.srcObject = remoteStream;
@@ -589,7 +609,7 @@ export class WebRtcManager {
 
     pc.oniceconnectionstatechange = () => {
       const iceState = pc.iceConnectionState;
-      console.log(`[WebRTC] Peer ${peerUserId} ICE state: ${iceState}`);
+      console.log(`[WebRTC] Peer ${peerSessionId} ICE state: ${iceState}`);
 
       if (iceState === 'connected' || iceState === 'completed') {
         this.clearPeerTimers(session);
@@ -600,39 +620,39 @@ export class WebRtcManager {
           session.disconnectGraceTimer = setTimeout(() => {
             session.disconnectGraceTimer = undefined;
             if (pc.iceConnectionState === 'disconnected') {
-              console.warn(`[WebRTC] Peer ${peerUserId} ICE remained disconnected for 4s. Recovering.`);
+              console.warn(`[WebRTC] Peer ${peerSessionId} ICE remained disconnected for 4s. Recovering.`);
               this.recoverPeerConnection(session, 'ice_disconnected');
             }
           }, 4000);
         }
       } else if (iceState === 'failed') {
         this.clearPeerTimers(session);
-        console.warn(`[WebRTC] Peer ${peerUserId} ICE state failed. Recovering immediately.`);
+        console.warn(`[WebRTC] Peer ${peerSessionId} ICE state failed. Recovering immediately.`);
         this.recoverPeerConnection(session, 'ice_failed');
       }
     };
 
     pc.onconnectionstatechange = () => {
       const state = pc.connectionState;
-      console.log(`[WebRTC] Peer ${peerUserId} state: ${state}`);
+      console.log(`[WebRTC] Peer ${peerSessionId} state: ${state}`);
 
       if (state === 'connected') {
         this.clearPeerTimers(session);
         session.iceRestartAttempts = 0;
         session.reconnectAttempts = 0;
         this.applyBitrateConstraints();
-        participantManager.setRemoteStream(peerUserId, remoteStream);
+        participantManager.setRemoteStream(peerSessionId, remoteStream);
       } else if (state === 'failed') {
         this.clearPeerTimers(session);
-        appEvents.emit('remote.peer_degraded', { userId: peerUserId });
+        appEvents.emit('remote.peer_degraded', { sessionId: peerSessionId });
         this.recoverPeerConnection(session, 'connection_failed');
       } else if (state === 'disconnected') {
-        appEvents.emit('remote.peer_degraded', { userId: peerUserId });
+        appEvents.emit('remote.peer_degraded', { sessionId: peerSessionId });
         if (!session.disconnectGraceTimer) {
           session.disconnectGraceTimer = setTimeout(() => {
             session.disconnectGraceTimer = undefined;
             if (pc.connectionState === 'disconnected') {
-              console.warn(`[WebRTC] Peer ${peerUserId} connection remained disconnected for 4s. Recovering.`);
+              console.warn(`[WebRTC] Peer ${peerSessionId} connection remained disconnected for 4s. Recovering.`);
               this.recoverPeerConnection(session, 'connection_disconnected');
             }
           }, 4000);
@@ -660,20 +680,20 @@ export class WebRtcManager {
       await session.pc.setLocalDescription(offer);
 
       networkClient.send(MessageType.RTC_SIGNAL, {
-        targetUserId: session.peerUserId,
-        fromUserId: this.currentUserId,
+        targetSessionId: session.peerSessionId,
+        fromSessionId: this.currentSessionId,
         signalType: 'offer',
         sdp: session.pc.localDescription?.toJSON ? session.pc.localDescription.toJSON() : session.pc.localDescription,
       });
     } catch (err) {
-      console.error(`[WebRTC] Error sending offer to ${session.peerUserId}:`, err);
+      console.error(`[WebRTC] Error sending offer to ${session.peerSessionId}:`, err);
     } finally {
       session.makingOffer = false;
     }
   }
 
   private async handleIncomingSignal(payload: WebRtcSignalPayload): Promise<void> {
-    const { fromUserId, signalType, sdp, candidate, streamId } = payload;
+    const { fromSessionId, signalType, sdp, candidate, streamId } = payload;
 
     // Handle screen-audio-meta: register the stream ID so ontrack can route it
     if (signalType === 'screen-audio-meta') {
@@ -682,7 +702,7 @@ export class WebRtcManager {
         // If ontrack already fired before this meta arrived, reclassify the pending track
         const pending = this.pendingScreenAudioTracks.get(streamId);
         if (pending) {
-          console.log(`[WebRTC] Reclassifying pending track as screen audio for ${pending.peerUserId}`);
+          console.log(`[WebRTC] Reclassifying pending track as screen audio for ${pending.peerSessionId}`);
           this.pendingScreenAudioTracks.delete(streamId);
           // Already routed by ontrack — no further action needed
         }
@@ -697,18 +717,18 @@ export class WebRtcManager {
         this.screenVideoStreamIds.add(streamId);
         const pending = this.pendingScreenVideoTracks.get(streamId);
         if (pending) {
-          console.log(`[WebRTC] Reclassifying pending track as screen video for ${pending.peerUserId}`);
+          console.log(`[WebRTC] Reclassifying pending track as screen video for ${pending.peerSessionId}`);
           this.pendingScreenVideoTracks.delete(streamId);
-          this.routeScreenVideoTrack(pending.peerUserId, pending.track, streamId);
+          this.routeScreenVideoTrack(pending.peerSessionId, pending.track, streamId);
         }
       }
       return;
     }
 
-    let session = this.peers.get(fromUserId);
+    let session = this.peers.get(fromSessionId);
     if (!session && signalType === 'offer') {
-      await this.connectToPeer(fromUserId, false);
-      session = this.peers.get(fromUserId);
+      await this.connectToPeer(fromSessionId, false);
+      session = this.peers.get(fromSessionId);
     }
 
     if (!session) return;
@@ -720,10 +740,10 @@ export class WebRtcManager {
 
         if (offerCollision) {
           if (!session.isPolite) {
-            console.log(`[WebRTC] Impolite peer ignoring offer collision from ${fromUserId}`);
+            console.log(`[WebRTC] Impolite peer ignoring offer collision from ${fromSessionId}`);
             return;
           }
-          console.log(`[WebRTC] Polite peer rolling back for offer from ${fromUserId}`);
+          console.log(`[WebRTC] Polite peer rolling back for offer from ${fromSessionId}`);
           await session.pc.setRemoteDescription({ type: 'rollback' } as any);
         }
 
@@ -780,8 +800,8 @@ export class WebRtcManager {
         await session.pc.setLocalDescription(answer);
 
         networkClient.send(MessageType.RTC_SIGNAL, {
-          targetUserId: fromUserId,
-          fromUserId: this.currentUserId,
+          targetSessionId: fromSessionId,
+          fromSessionId: this.currentSessionId,
           signalType: 'answer',
           sdp: session.pc.localDescription?.toJSON ? session.pc.localDescription.toJSON() : session.pc.localDescription,
         });
@@ -819,7 +839,7 @@ export class WebRtcManager {
         }
       }
     } catch (err) {
-      console.error(`[WebRTC] Signal handling error from ${fromUserId}:`, err);
+      console.error(`[WebRTC] Signal handling error from ${fromSessionId}:`, err);
     }
   }
 
@@ -847,7 +867,7 @@ export class WebRtcManager {
           await this.sendOffer(session);
         }
       } catch (err) {
-        console.warn(`[WebRTC] Error updating audio track for peer ${session.peerUserId}:`, err);
+        console.warn(`[WebRTC] Error updating audio track for peer ${session.peerSessionId}:`, err);
       }
     }
   }
@@ -878,8 +898,8 @@ export class WebRtcManager {
     // Announce stream ID to all peers BEFORE adding the track.
     for (const session of this.peers.values()) {
       networkClient.send(MessageType.RTC_SIGNAL, {
-        targetUserId: session.peerUserId,
-        fromUserId: this.currentUserId,
+        targetSessionId: session.peerSessionId,
+        fromSessionId: this.currentSessionId,
         signalType: 'screen-video-meta',
         streamId: shareId,
       });
@@ -901,7 +921,7 @@ export class WebRtcManager {
         await this.waitForStable(session.pc);
         await this.renegotiateIfNeeded(session);
       } catch (err) {
-        console.warn(`[WebRTC] Error adding screen video track for ${session.peerUserId}:`, err);
+        console.warn(`[WebRTC] Error adding screen video track for ${session.peerSessionId}:`, err);
       }
     }
     this.applyBitrateConstraints();
@@ -923,7 +943,7 @@ export class WebRtcManager {
         session.screenVideoSenders.delete(shareId);
         await this.sendOffer(session);
       } catch (err) {
-        console.warn(`[WebRTC] Error removing screen video track for ${session.peerUserId}:`, err);
+        console.warn(`[WebRTC] Error removing screen video track for ${session.peerSessionId}:`, err);
       }
     }
   }
@@ -966,8 +986,8 @@ export class WebRtcManager {
       // Announce stream ID to all peers BEFORE adding the track
       for (const session of this.peers.values()) {
         networkClient.send(MessageType.RTC_SIGNAL, {
-          targetUserId: session.peerUserId,
-          fromUserId: this.currentUserId,
+          targetSessionId: session.peerSessionId,
+          fromSessionId: this.currentSessionId,
           signalType: 'screen-audio-meta',
           streamId: this.screenAudioStreamId,
         });
@@ -985,7 +1005,7 @@ export class WebRtcManager {
           await this.waitForStable(session.pc);
           await this.renegotiateIfNeeded(session);
         } catch (err) {
-          console.warn(`[WebRTC] Error adding screen audio track for ${session.peerUserId}:`, err);
+          console.warn(`[WebRTC] Error adding screen audio track for ${session.peerSessionId}:`, err);
         }
       }
     } else {
@@ -998,7 +1018,7 @@ export class WebRtcManager {
             session.screenAudioSender = null;
             await this.sendOffer(session);
           } catch (err) {
-            console.warn(`[WebRTC] Error removing screen audio track for ${session.peerUserId}:`, err);
+            console.warn(`[WebRTC] Error removing screen audio track for ${session.peerSessionId}:`, err);
           }
         }
       }
@@ -1029,7 +1049,7 @@ export class WebRtcManager {
           await this.sendOffer(session);
         }
       } catch (err) {
-        console.warn(`[WebRTC] Error updating video track for peer ${session.peerUserId}:`, err);
+        console.warn(`[WebRTC] Error updating video track for peer ${session.peerSessionId}:`, err);
       }
     }
   }
@@ -1098,8 +1118,8 @@ export class WebRtcManager {
     }
   }
 
-  public async getPeerPing(peerUserId: string): Promise<number | null> {
-    const session = this.peers.get(peerUserId);
+  public async getPeerPing(peerSessionId: string): Promise<number | null> {
+    const session = this.peers.get(peerSessionId);
     if (!session || !session.pc) return null;
     try {
       const stats = await session.pc.getStats();
@@ -1137,8 +1157,8 @@ export class WebRtcManager {
     return this.sharedVadAudioContext;
   }
 
-  private setupRemoteVad(peerUserId: string, stream: MediaStream): void {
-    this.cleanupRemoteVad(peerUserId);
+  private setupRemoteVad(peerSessionId: string, stream: MediaStream): void {
+    this.cleanupRemoteVad(peerSessionId);
     try {
       const ctx = this.getSharedVadContext();
       const analyser = ctx.createAnalyser();
@@ -1174,25 +1194,25 @@ export class WebRtcManager {
           silenceCounter = 0;
           if (!isSpeaking) {
             isSpeaking = true;
-            participantManager.setSpeaking(peerUserId, true);
+            participantManager.setSpeaking(peerSessionId, true);
           }
         } else {
           silenceCounter++;
           if (silenceCounter > 4 && isSpeaking) {
             isSpeaking = false;
-            participantManager.setSpeaking(peerUserId, false);
+            participantManager.setSpeaking(peerSessionId, false);
           }
         }
       }, 50);
 
-      this.remoteAudioVads.set(peerUserId, { source, analyser, interval });
+      this.remoteAudioVads.set(peerSessionId, { source, analyser, interval });
     } catch (err) {
-      console.warn(`[WebRTC] Could not setup remote VAD for ${peerUserId}:`, err);
+      console.warn(`[WebRTC] Could not setup remote VAD for ${peerSessionId}:`, err);
     }
   }
 
-  private cleanupRemoteVad(peerUserId: string): void {
-    const vad = this.remoteAudioVads.get(peerUserId);
+  private cleanupRemoteVad(peerSessionId: string): void {
+    const vad = this.remoteAudioVads.get(peerSessionId);
     if (vad) {
       clearInterval(vad.interval);
       try {
@@ -1201,20 +1221,20 @@ export class WebRtcManager {
       try {
         vad.analyser.disconnect();
       } catch {}
-      this.remoteAudioVads.delete(peerUserId);
+      this.remoteAudioVads.delete(peerSessionId);
     }
   }
 
-  public getPeerConnection(peerUserId: string): RTCPeerConnection | null {
-    return this.peers.get(peerUserId)?.pc || null;
+  public getPeerConnection(peerSessionId: string): RTCPeerConnection | null {
+    return this.peers.get(peerSessionId)?.pc || null;
   }
 
   public getPeerConnections(): RTCPeerConnection[] {
     return Array.from(this.peers.values()).map((session) => session.pc);
   }
 
-  public setPeerVolume(peerUserId: string, volume0to100: number): void {
-    const audioEl = this.audioElements.get(peerUserId);
+  public setPeerVolume(peerSessionId: string, volume0to100: number): void {
+    const audioEl = this.audioElements.get(peerSessionId);
     if (audioEl) {
       audioEl.volume = Math.max(0, Math.min(100, volume0to100)) / 100;
     }
@@ -1222,8 +1242,8 @@ export class WebRtcManager {
 
   public setPeerVolumeByClientId(clientId: string, volume0to100: number): void {
     const targetVolume = Math.max(0, Math.min(100, volume0to100)) / 100;
-    for (const [peerUserId, audioEl] of this.audioElements.entries()) {
-      const participant = participantManager.get(peerUserId);
+    for (const [peerSessionId, audioEl] of this.audioElements.entries()) {
+      const participant = participantManager.get(peerSessionId);
       if (participant?.user.clientId === clientId) {
         audioEl.volume = targetVolume;
       }
@@ -1231,8 +1251,8 @@ export class WebRtcManager {
   }
 
   public applyUserVolumes(): void {
-    for (const [peerUserId, audioEl] of this.audioElements.entries()) {
-      const participant = participantManager.get(peerUserId);
+    for (const [peerSessionId, audioEl] of this.audioElements.entries()) {
+      const participant = participantManager.get(peerSessionId);
       const clientId = participant?.user.clientId;
       if (clientId) {
         const vol = settingsStore.getUserVolume(clientId);
@@ -1241,36 +1261,36 @@ export class WebRtcManager {
     }
   }
 
-  public removePeer(peerUserId: string): void {
-    this.cleanupRemoteVad(peerUserId);
-    const audioEl = this.audioElements.get(peerUserId);
+  public removePeer(peerSessionId: string): void {
+    this.cleanupRemoteVad(peerSessionId);
+    const audioEl = this.audioElements.get(peerSessionId);
     if (audioEl) {
       audioEl.srcObject = null;
       audioEl.remove();
-      this.audioElements.delete(peerUserId);
+      this.audioElements.delete(peerSessionId);
     }
-    const screenAudioEl = this.screenAudioElements.get(peerUserId);
+    const screenAudioEl = this.screenAudioElements.get(peerSessionId);
     if (screenAudioEl) {
       screenAudioEl.srcObject = null;
       screenAudioEl.remove();
-      this.screenAudioElements.delete(peerUserId);
+      this.screenAudioElements.delete(peerSessionId);
     }
 
-    const session = this.peers.get(peerUserId);
+    const session = this.peers.get(peerSessionId);
     if (session) {
       this.clearPeerTimers(session);
       session.pc.close();
-      this.peers.delete(peerUserId);
+      this.peers.delete(peerSessionId);
     }
   }
 
   public closeAllPeers(): void {
-    for (const [peerUserId] of this.peers) {
-      this.removePeer(peerUserId);
+    for (const [peerSessionId] of this.peers) {
+      this.removePeer(peerSessionId);
     }
     this.peers.clear();
-    for (const peerUserId of Array.from(this.remoteAudioVads.keys())) {
-      this.cleanupRemoteVad(peerUserId);
+    for (const peerSessionId of Array.from(this.remoteAudioVads.keys())) {
+      this.cleanupRemoteVad(peerSessionId);
     }
     if (this.sharedVadAudioContext && this.sharedVadAudioContext.state !== 'closed') {
       this.sharedVadAudioContext.close().catch(() => {});

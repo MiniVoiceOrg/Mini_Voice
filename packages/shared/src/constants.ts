@@ -1,4 +1,4 @@
-export const PROTOCOL_VERSION = 2;
+export const PROTOCOL_VERSION = 3;
 
 export const LIMITS = {
   MAX_MESSAGE_LENGTH: 2000,
@@ -18,6 +18,10 @@ export const LIMITS = {
   HEARTBEAT_INTERVAL_MS: 5000,
   HEARTBEAT_TIMEOUT_MS: 35000,
   RECONNECT_GRACE_MS: 20000,
+  // Concurrent devices a single identity may hold (#309). Without a cap, an
+  // already-online identity could open unlimited connections and bypass
+  // maxUsers, since capacity counts people rather than connections.
+  MAX_SESSIONS_PER_USER: 3,
   // Chat attachments (#11). Both size limits are server-configurable; these are
   // only the initial defaults applied when a server is first created.
   MAX_ATTACHMENT_FILE_SIZE_DEFAULT: 50 * 1024 * 1024, // 50 MB per file

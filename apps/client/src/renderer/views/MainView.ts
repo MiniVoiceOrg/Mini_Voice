@@ -281,11 +281,13 @@ export class MainView {
   private getRemoteScreenSharers(): Array<{ id: string; nickname: string }> {
     const channelId = voiceStore.currentVoiceChannelId;
     if (!channelId) return [];
-    const meId = serverStore.currentUser?.id;
     return participantManager
       .getInVoiceChannel(channelId)
-      .filter((p) => p.user.id !== meId && (p.voiceState?.isScreenSharing ?? false))
-      .map((p) => ({ id: p.user.id, nickname: p.user.nickname }));
+      .filter((p) => !serverStore.isMySession(p.user.sessionId) && (p.voiceState?.isScreenSharing ?? false))
+      .map((p) => ({
+        id: p.user.sessionId || p.user.id,
+        nickname: participantManager.displayName(p),
+      }));
   }
 
   /**
@@ -339,12 +341,12 @@ export class MainView {
    * Switches the center area to the voice stage, optionally opting into a
    * specific remote screen share on the way in (#282).
    */
-  private openVoiceStage(watchUserId?: string): void {
+  private openVoiceStage(watchSessionId?: string): void {
     const channelId = voiceStore.currentVoiceChannelId;
     if (!channelId) return;
     this.activeContentView = 'stage';
     this.voiceStageView?.setChannel(channelId);
-    if (watchUserId) this.voiceStageView?.watchScreenShare(watchUserId);
+    if (watchSessionId) this.voiceStageView?.watchScreenShare(watchSessionId);
     this.renderChannels();
     this.updateScreenShareNotice();
   }
@@ -538,7 +540,8 @@ export class MainView {
             ${inVoice.length > 0 ? `
               <div class="voice-participants-sublist">
                 ${inVoice.map((p) => {
-                  const isLocal = p.user.id === serverStore.currentUser?.id;
+                  const sessionId = p.user.sessionId || p.user.id;
+                  const isLocal = serverStore.isMySession(p.user.sessionId);
                   const isSpeaking = isLocal ? voiceStore.isSpeaking : p.isSpeaking;
                   const isServerDeafened = isLocal ? voiceStore.serverDeafened : (p.voiceState?.serverDeafened ?? false);
                   const isServerMuted = isLocal ? voiceStore.serverMuted : (p.voiceState?.serverMuted ?? false);
@@ -546,11 +549,12 @@ export class MainView {
                   const isSelfMuted = isLocal ? voiceStore.isMuted : (p.voiceState?.isMuted ?? false);
                   const isMicMuted = isSelfMuted || isServerMuted || isSelfDeafened || isServerDeafened;
                   const avatar = getAvatarUrl(p.user.avatarUrl);
+                  const displayName = participantManager.displayName(p);
 
                   return `
-                    <div id="voice-mini-user-${p.user.id}" class="voice-participant-mini ${isSpeaking ? 'speaking' : ''}" data-user-id="${p.user.id}" title="${escapeHtml(p.user.nickname)} (${t('main.rightClickVolumeShort')})">
+                    <div id="voice-mini-user-${sessionId}" class="voice-participant-mini ${isSpeaking ? 'speaking' : ''}" data-session-id="${sessionId}" title="${escapeHtml(displayName)} (${t('main.rightClickVolumeShort')})">
                       <img class="voice-mini-avatar" src="${avatar}">
-                      <span class="voice-mini-name">${escapeHtml(p.user.nickname)}</span>
+                      <span class="voice-mini-name">${escapeHtml(displayName)}</span>
                       ${isServerDeafened ? `<span class="material-symbols-outlined md-14 voice-mini-icon muted" title="${t('permissions.serverDeafened')}">hearing_disabled</span>` : ''}
                       ${isServerMuted ? `<span class="material-symbols-outlined md-14 voice-mini-icon muted" title="${t('permissions.serverMuted')}">admin_panel_settings</span>` : ''}
                       ${isMicMuted ? `<span class="material-symbols-outlined md-14 voice-mini-icon muted" title="${t('main.micMuted')}">mic_off</span>` : ''}
@@ -572,9 +576,9 @@ export class MainView {
       miniEl.addEventListener('contextmenu', (e: Event) => {
         const mouseEvent = e as MouseEvent;
         mouseEvent.preventDefault();
-        const userId = miniEl.getAttribute('data-user-id');
-        if (!userId) return;
-        const participant = participantManager.get(userId);
+        const sessionId = miniEl.getAttribute('data-session-id');
+        if (!sessionId) return;
+        const participant = participantManager.get(sessionId);
         if (participant?.user) {
           userContextMenu.open(mouseEvent.clientX, mouseEvent.clientY, participant.user);
         }
@@ -586,9 +590,9 @@ export class MainView {
         el.draggable = true;
         el.addEventListener('dragstart', (e: Event) => {
           const de = e as DragEvent;
-          const userId = el.getAttribute('data-user-id');
-          if (userId) {
-            de.dataTransfer?.setData('text/monky-user-id', userId);
+          const sessionId = el.getAttribute('data-session-id');
+          if (sessionId) {
+            de.dataTransfer?.setData('text/monky-session-id', sessionId);
             de.dataTransfer!.effectAllowed = 'move';
             el.classList.add('dragging');
           }
@@ -603,7 +607,7 @@ export class MainView {
         const el = item as HTMLElement;
         el.addEventListener('dragover', (e: Event) => {
           const de = e as DragEvent;
-          if (de.dataTransfer?.types.includes('text/monky-user-id')) {
+          if (de.dataTransfer?.types.includes('text/monky-session-id')) {
             de.preventDefault();
             de.dataTransfer!.dropEffect = 'move';
             el.classList.add('drop-target');
@@ -619,11 +623,11 @@ export class MainView {
           const de = e as DragEvent;
           de.preventDefault();
           el.classList.remove('drop-target');
-          const userId = de.dataTransfer?.getData('text/monky-user-id');
+          const sessionId = de.dataTransfer?.getData('text/monky-session-id');
           const channelId = el.getAttribute('data-channel-id');
-          if (userId && channelId) {
+          if (sessionId && channelId) {
             void networkClient.sendRequest(MessageType.ADMIN_MOVE_USER, {
-              targetUserId: userId,
+              targetSessionId: sessionId,
               channelId,
             }).catch(() => {});
           }
@@ -813,8 +817,9 @@ export class MainView {
     // Connect to all peers already in this voice channel
     const peersInChannel = participantManager.getInVoiceChannel(channelId);
     for (const peer of peersInChannel) {
-      if (peer.user.id !== serverStore.currentUser?.id) {
-        await webRtcManager.connectToPeer(peer.user.id, true);
+      const peerSessionId = peer.user.sessionId || peer.user.id;
+      if (!serverStore.isMySession(peer.user.sessionId)) {
+        await webRtcManager.connectToPeer(peerSessionId, true);
       }
     }
   }
@@ -886,10 +891,10 @@ export class MainView {
     if (listEl) {
       listEl.innerHTML = members.map((m) => {
         const isLocal = m.id === serverStore.currentUser?.id;
-        const vm = participantManager.get(m.id);
+        const vm = participantManager.getByUserId(m.id);
         const voiceState = vm?.voiceState;
         const inVoice = !!voiceState;
-        const isReconnecting = !!vm?.isReconnecting;
+        const isReconnecting = participantManager.isUserReconnecting(m.id);
         const avatar = getAvatarUrl(m.avatarUrl);
         const isServerDeafened = isLocal ? voiceStore.serverDeafened : (voiceState?.serverDeafened ?? false);
         const isServerMuted = isLocal ? voiceStore.serverMuted : (voiceState?.serverMuted ?? false);
@@ -1159,7 +1164,8 @@ export class MainView {
         else avatarEl.classList.remove('speaking');
       }
       if (serverStore.currentUser) {
-        const miniEl = document.getElementById(`voice-mini-user-${serverStore.currentUser.id}`);
+        const mySessionId = serverStore.currentUser.sessionId || serverStore.currentUser.id;
+        const miniEl = document.getElementById(`voice-mini-user-${mySessionId}`);
         if (miniEl) {
           if (speaking) miniEl.classList.add('speaking');
           else miniEl.classList.remove('speaking');
@@ -1167,8 +1173,8 @@ export class MainView {
       }
     });
 
-    const u6 = appEvents.on('participants.speaking_changed', (data: { userId: string; speaking: boolean }) => {
-      const miniEl = document.getElementById(`voice-mini-user-${data.userId}`);
+    const u6 = appEvents.on('participants.speaking_changed', (data: { sessionId: string; speaking: boolean }) => {
+      const miniEl = document.getElementById(`voice-mini-user-${data.sessionId}`);
       if (miniEl) {
         if (data.speaking) miniEl.classList.add('speaking');
         else miniEl.classList.remove('speaking');

@@ -95,7 +95,7 @@ type RunningServer = {
   dbConn: DatabaseConnection;
   wsServer: {
     getOnlineUsersMap(): Map<string, { user: { id: string } }>;
-    userSockets: Map<string, { close(): void }>;
+    closeSessionsOfUser(userId: string): number;
   };
 };
 
@@ -236,13 +236,16 @@ class ServerGuiController {
       throw new Error('O servidor precisa estar em execução para expulsar membros.');
     }
 
-    const socket = running.wsServer.userSockets.get(userId);
-    if (!socket) {
+    const closed = running.wsServer.closeSessionsOfUser(userId);
+    if (closed === 0) {
       throw new Error('Usuário não está online.');
     }
 
-    socket.close();
-    this.pushLog('WARN', 'NETWORK', `User ${userId} was disconnected by the GUI host`);
+    this.pushLog(
+      'WARN',
+      'NETWORK',
+      `User ${userId} was disconnected by the GUI host (${closed} session(s))`
+    );
     return this.getMembers();
   }
 
@@ -553,12 +556,21 @@ class ServerGuiController {
     });
   }
 
+  /**
+   * People currently online. The websocket map is keyed by sessionId since
+   * #309, so it is folded back to distinct user ids — the GUI reasons about
+   * people, not devices.
+   */
   private getOnlineUserIds(): Set<string> {
     const running = this.server as unknown as RunningServer | null;
     if (!running) {
       return new Set();
     }
-    return new Set(Array.from(running.wsServer.getOnlineUsersMap().keys()));
+    const ids = new Set<string>();
+    for (const entry of running.wsServer.getOnlineUsersMap().values()) {
+      ids.add(entry.user.id);
+    }
+    return ids;
   }
 
   private getOnlineUserCount(): number {
