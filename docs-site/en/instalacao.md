@@ -10,7 +10,27 @@ Download the latest version from [github.com/MonkyOrg/Monky/releases/latest](htt
 
 ## Security warnings
 
-Windows and macOS may show a warning because the executables are not signed with a paid certificate yet. On Windows, click *More info › Run anyway*. On macOS, right-click the app and choose *Open*.
+Windows and macOS may show a warning because the executables are not signed with a paid certificate yet.
+
+- **Windows**: click *More info › Run anyway*.
+- **macOS**: right-click the app and choose *Open*.
+
+### macOS: "The application is damaged and can't be opened"
+
+On macOS (especially on Apple Silicon), Gatekeeper may block the app with the message **"is damaged and can't be opened"**. The file is **not** corrupted — it's just the security quarantine, because the app is not notarized by Apple yet.
+
+After moving **Monky.app** to the *Applications* folder, open Terminal and run:
+
+```bash
+xattr -dr com.apple.quarantine /Applications/Monky.app
+```
+
+Then open the app normally. If it still complains, force a local (ad-hoc) re-sign:
+
+```bash
+sudo xattr -cr /Applications/Monky.app
+codesign --force --deep --sign - /Applications/Monky.app
+```
 
 ## Updates
 
