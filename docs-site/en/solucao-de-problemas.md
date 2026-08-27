@@ -68,11 +68,12 @@ does not help.
 
 The reason: macOS **does not store that permission by app name**, it stores it
 against the binary's **code signature**. Since Monky is not signed with an Apple
-Developer ID certificate yet, every build gets a different identity (*ad-hoc*
-signing). After an update the system sees an app with a new identity, and the
-permission granted to the previous version no longer applies to it. Because the
-name and the path stay identical, the old entry remains listed and checked —
-hence the impression that everything is already allowed.
+Developer ID certificate yet, the system ends up identifying the app by the
+contents of the binary itself — which change with every version. After an update
+macOS sees an app with a new identity, and the permission granted to the
+previous version no longer applies to it. Because the name and the path stay
+identical, the old entry remains listed and checked — hence the impression that
+everything is already allowed.
 
 ### How to share your screen again
 
