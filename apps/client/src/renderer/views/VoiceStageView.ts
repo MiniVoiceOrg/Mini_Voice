@@ -63,7 +63,6 @@ export class VoiceStageView {
   /** Zoom/pan state of the focused screen share, reset when focus changes (#271). */
   private focusZoom = { scale: 1, x: 0, y: 0 };
   private focusZoomTileKey: string | null = null;
-  private gridExpanded = false;
   private suppressCardClickUntil = 0;
   // #150: remote screen shares are gated behind an explicit "Assistir
   // transmissão". These sets survive innerHTML re-renders (instance state).
@@ -136,10 +135,6 @@ export class VoiceStageView {
           </div>
 
           <div style="display: flex; align-items: center; gap: 10px;">
-            <!-- Grid view toggle (#29) -->
-            <button id="stage-btn-viewmode" class="btn btn-secondary" style="padding: 4px 10px; font-size: 12px;" title="${t('stage.toggleView')}">
-              <span class="material-symbols-outlined md-16">${this.gridExpanded ? 'view_agenda' : 'grid_view'}</span>
-            </button>
             <!-- Ping / Latency Badge -->
             <div id="stage-ping-badge" class="stage-ping-badge good">
               <span class="ping-dot"></span>
@@ -398,7 +393,7 @@ export class VoiceStageView {
       `;
     } else {
       area.innerHTML = `
-        <div class="stage-grid ${this.gridExpanded ? 'stage-grid--expanded' : ''}" id="stage-grid">
+        <div class="stage-grid" id="stage-grid">
           ${tiles.map((tile) => {
             return `
               <div class="stage-card ${this.isTileSpeaking(tile) ? 'speaking' : ''}" id="card-${tile.p.user.id}-${tile.kind}" data-user-id="${tile.p.user.id}" data-kind="${tile.kind}" data-tile-key="${tile.key}" title="${t('stage.focusHint')}">
@@ -1369,16 +1364,6 @@ export class VoiceStageView {
       } finally {
         setButtonLoading(btnStopShare, false);
       }
-    });
-
-    const btnViewMode = document.getElementById('stage-btn-viewmode');
-    btnViewMode?.addEventListener('click', () => {
-      this.gridExpanded = !this.gridExpanded;
-      // The expanded grid is a full equal-split view, so leave focus mode.
-      if (this.gridExpanded) this.focusedTileKey = null;
-      const icon = btnViewMode.querySelector('.material-symbols-outlined');
-      if (icon) icon.textContent = this.gridExpanded ? 'view_agenda' : 'grid_view';
-      this.renderParticipants();
     });
 
     const btnSoundboard = document.getElementById('stage-btn-soundboard');

@@ -387,7 +387,6 @@ export const ptBR = {
   // ── Palco de voz (VoiceStageView.ts) ─────────────────────────────────────
   'stage.noChannelTitle': 'Nenhum canal de voz conectado',
   'stage.noChannelSubtitle': 'Clique em um canal de voz na barra lateral para entrar na chamada!',
-  'stage.toggleView': 'Alternar entre visão padrão e visão em grade',
   'stage.pingCalculating': 'Latência de Voz P2P: Calculando...',
   'stage.connectedMesh': 'Conectado (Mesh P2P)',
   'stage.muteMic': 'Mutar Microfone',

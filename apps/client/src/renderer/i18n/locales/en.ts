@@ -386,7 +386,6 @@ export const en: TranslationMap = {
   // ── Voice stage (VoiceStageView.ts) ──────────────────────────────────────
   'stage.noChannelTitle': 'Not connected to a voice channel',
   'stage.noChannelSubtitle': 'Click a voice channel in the sidebar to join the call!',
-  'stage.toggleView': 'Switch between default and grid view',
   'stage.pingCalculating': 'P2P voice latency: calculating...',
   'stage.connectedMesh': 'Connected (P2P mesh)',
   'stage.muteMic': 'Mute microphone',

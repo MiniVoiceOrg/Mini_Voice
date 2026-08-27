@@ -2856,32 +2856,6 @@ input:focus, textarea:focus, select:focus {
   box-shadow: 0 0 20px rgba(35, 165, 90, 0.6), inset 0 0 10px rgba(35, 165, 90, 0.2) !important;
 }
 
-/* Expanded grid (#29): cameras/screens fill the whole stage, split equally. */
-.stage-grid--expanded {
-  display: grid;
-  gap: 8px;
-  padding: 8px;
-  align-items: stretch;
-  justify-content: stretch;
-  align-content: stretch;
-  overflow: hidden;
-  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
-  grid-auto-rows: 1fr;
-}
-
-.stage-grid--expanded .stage-card {
-  aspect-ratio: auto;
-  width: 100%;
-  height: 100%;
-  max-width: none;
-  min-width: 0;
-  min-height: 0;
-}
-
-.stage-grid--expanded .stage-video-element.screen-share {
-  object-fit: cover;
-}
-
 /* Focused Mode Layout */
 .stage-focused-layout {
   flex: 1;
