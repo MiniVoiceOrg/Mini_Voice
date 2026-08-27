@@ -1,5 +1,3 @@
-[🏠 Home](en-Home) · [Português](Configuracoes)
-
 # Settings
 
 Open from the gear icon on the connection screen or bottom bar.
@@ -18,6 +16,3 @@ Open from the gear icon on the connection screen or bottom bar.
 | Normal | 32 kbps | 480p | 720p | General use |
 | High Quality | 48 kbps | 720p | 1080p | Fast internet and a PC to spare |
 | Gaming | 28 kbps | reduced | smooth (60 FPS) | Gaming: prioritises voice and fluid screen |
-
----
-<sub>📝 This page is generated from [`wiki/`](https://github.com/MonkyOrg/Monky/tree/main/wiki) in the repository. Edits made directly in the Wiki will be overwritten — please open a Pull Request.</sub>

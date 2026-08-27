@@ -1,5 +1,3 @@
-[🏠 Home](en-Home) · [Português](Usando-o-App)
-
 # Using the App
 
 ## Voice
@@ -21,6 +19,3 @@ Each text channel has history saved on the server, avatars, timestamps, basic fo
 ## Soundboard
 
 Under **Settings › Soundboard**, choose a folder containing `.mp3`, `.wav` or `.ogg`. In the call, play sounds from the soundboard button. Volume and local mute live in the same settings. The host can disable the soundboard for the whole server.
-
----
-<sub>📝 This page is generated from [`wiki/`](https://github.com/MonkyOrg/Monky/tree/main/wiki) in the repository. Edits made directly in the Wiki will be overwritten — please open a Pull Request.</sub>

@@ -1,0 +1,50 @@
+---
+layout: home
+hero:
+  name: Monky
+  text: Voz, vídeo, tela e chat entre amigos
+  tagline: No seu próprio servidor, sem cadastro e sem intermediários.
+  image:
+    src: /logo.png
+    alt: Monky
+  actions:
+    - theme: brand
+      text: Começar
+      link: /instalacao
+    - theme: alt
+      text: Download
+      link: https://github.com/MonkyOrg/Monky/releases/latest
+features:
+  - icon: 🎙️
+    title: Voz e Vídeo P2P
+    details: Comunicação direta via WebRTC — sem servidores intermediários.
+  - icon: 🖥️
+    title: Compartilhamento de Tela
+    details: Compartilhe telas e janelas com áudio, múltiplas telas simultâneas.
+  - icon: 🏠
+    title: Auto-hospedado
+    details: Rode no seu PC ou VPS — seus dados, suas regras.
+  - icon: 🔒
+    title: Privacidade Total
+    details: Sem cadastro, sem rastreamento, sem intermediários.
+---
+
+## Como funciona
+
+1. Uma pessoa hospeda pelo app ou em um VPS.
+2. Os amigos entram informando IP e porta.
+3. Voz, vídeo e tela trafegam P2P via WebRTC; o servidor cuida de login, canais, chat e sinalização.
+
+## Mapa da documentação
+
+- [Instalação](/instalacao)
+- [Primeiros Passos](/primeiros-passos)
+- [Criar Seu Servidor](/criar-seu-servidor)
+- [Entrar Em Um Servidor](/entrar-em-um-servidor)
+- [Usando o App](/usando-o-app)
+- [Configurações](/configuracoes)
+- [Hospedar em VPS](/hospedar-em-vps)
+- [Monky Server](/monky-server)
+- [Solução de Problemas](/solucao-de-problemas)
+- [Verificar Releases](/verificar-releases)
+- [Recursos](/recursos)

@@ -83,24 +83,22 @@ jobs:
           check_pair "CONTRIBUTING.md" "CONTRIBUTING.en.md"
           check_pair "docs/CLI.md" "docs/CLI.en.md"
 
-          # A Wiki publicada nasce deste repositorio. Paginas PT ficam na raiz
-          # (wiki/*.md sem prefixo en-) e EN ficam com prefixo en- (wiki/en-*.md).
+          # O site de docs (VitePress) tem PT na raiz de docs-site/ e EN em
+          # docs-site/en/. Cada pagina precisa manter o par no mesmo PR.
           shopt -s nullglob
-          for pt in wiki/*.md; do
+          for pt in docs-site/*.md; do
             base=$(basename "$pt")
-            [[ "$base" == en-* ]] && continue
-            if [ ! -f "wiki/en-$base" ]; then
-              echo "::error file=$pt::$pt nao tem pagina correspondente em wiki/en-$base."
+            if [ ! -f "docs-site/en/$base" ]; then
+              echo "::error file=$pt::$pt nao tem pagina correspondente em docs-site/en/$base."
               fail=1
             fi
-            check_pair "$pt" "wiki/en-$base"
+            check_pair "$pt" "docs-site/en/$base"
           done
 
-          for en in wiki/en-*.md; do
+          for en in docs-site/en/*.md; do
             base=$(basename "$en")
-            pt_base="${base#en-}"
-            if [ ! -f "wiki/$pt_base" ]; then
-              echo "::error file=$en::$en nao tem pagina correspondente em wiki/$pt_base."
+            if [ ! -f "docs-site/$base" ]; then
+              echo "::error file=$en::$en nao tem pagina correspondente em docs-site/$base."
               fail=1
             fi
           done

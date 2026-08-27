@@ -1,5 +1,3 @@
-[🏠 Home](Home) · [English](en-Entrar-Em-Um-Servidor)
-
 # Entrar Em Um Servidor
 
 Na aba **Entrar no Servidor** existem três caminhos.
@@ -16,7 +14,4 @@ Todo servidor em que você entra fica salvo. A bolinha indica **online** ou **of
 
 Preencha **Seu Nickname**, **IP / Host do Servidor**, **Porta** (normalmente `3000`) e **Senha do Servidor** se existir. Depois clique em **Entrar no Servidor**.
 
-Se algo falhar, veja [Solução de Problemas](Solucao-de-Problemas).
-
----
-<sub>📝 Esta página é gerada a partir de [`wiki/`](https://github.com/MonkyOrg/Monky/tree/main/wiki) no repositório. Edições feitas direto na Wiki serão sobrescritas — abra um Pull Request.</sub>
+Se algo falhar, veja [Solução de Problemas](/solucao-de-problemas).

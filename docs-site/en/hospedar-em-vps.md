@@ -1,5 +1,3 @@
-[🏠 Home](en-Home) · [Português](Hospedar-em-VPS)
-
 # Host on a VPS
 
 To keep the server up 24/7, run only the server on a Linux machine. Requires **Node.js 20 or newer** (CI uses 22).
@@ -53,6 +51,3 @@ Full documentation: [docs/CLI.en.md](https://github.com/MonkyOrg/Monky/blob/main
 | High dynamic | UDP | P2P voice, video and screen | Usually works via STUN |
 
 There is no TURN server; on very restricted networks, use a VPN.
-
----
-<sub>📝 This page is generated from [`wiki/`](https://github.com/MonkyOrg/Monky/tree/main/wiki) in the repository. Edits made directly in the Wiki will be overwritten — please open a Pull Request.</sub>
