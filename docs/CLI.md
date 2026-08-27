@@ -159,7 +159,7 @@ O comando:
 
 - Instala PM2 globalmente se não estiver disponível.
 - Cria a pasta de dados se não existir.
-- Gera um arquivo `ecosystem.config.js` na pasta de dados.
+- Gera um arquivo `ecosystem.config.cjs` na pasta de dados.
 - Inicia o processo via PM2 como daemon (background).
 - Auto-restart: se o servidor crashar, PM2 reinicia automaticamente.
 - Limite de memória: 512 MB (reinicia se exceder).

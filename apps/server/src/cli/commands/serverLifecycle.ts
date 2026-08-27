@@ -53,6 +53,14 @@ export async function startServerCommand(globalArgs: GlobalArgs, args: string[])
   const ecosystemContent = generateEcosystem(dataDir, config.port, config.serverName || DEFAULT_SERVER_NAME);
   await fs.promises.writeFile(ecosystemPath, ecosystemContent, 'utf8');
 
+  // Clean up legacy ecosystem.config.js if it exists
+  const legacyEcosystemPath = path.join(dataDir, 'ecosystem.config.js');
+  if (fs.existsSync(legacyEcosystemPath)) {
+    try {
+      await fs.promises.unlink(legacyEcosystemPath);
+    } catch {}
+  }
+
   // Check if already running
   const listResult = spawnSync('pm2', ['jlist'], { encoding: 'utf8', shell: true });
   if (listResult.status === 0) {
