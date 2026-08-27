@@ -1,8 +1,10 @@
 /**
  * ScreenCaptureKit Audio Capture (macOS 13+)
  *
- * Captures system audio EXCLUDING the Monky process using SCStream with
- * excludesCurrentProcessAudio = YES.
+ * Captures audio EXCLUDING the Monky process using SCStream with
+ * excludesCurrentProcessAudio = YES. When a window id is supplied the stream is
+ * scoped to that window, so only its application's audio is captured (#298);
+ * otherwise the whole display's audio is captured.
  *
  * Output: PCM float32 interleaved, 48kHz stereo (configurable). ScreenCaptureKit
  * delivers planar (non-interleaved) float32, so frames are interleaved here
@@ -132,7 +134,8 @@ bool platform_is_supported() {
   return false;
 }
 
-bool platform_start(uint32_t excludePid, uint32_t loopbackMode, uint32_t sampleRate, uint32_t channels,
+bool platform_start(uint32_t excludePid, uint32_t loopbackMode, int64_t includeWindowId,
+                    uint32_t sampleRate, uint32_t channels,
                     Napi::ThreadSafeFunction tsfn) {
   (void)excludePid;
   (void)loopbackMode; // macOS ScreenCaptureKit always excludes the current process
@@ -153,17 +156,38 @@ bool platform_start(uint32_t excludePid, uint32_t loopbackMode, uint32_t sampleR
         return;
       }
 
-      // Use the main display
-      SCDisplay* display = content.displays.firstObject;
-      if (!display) {
-        g_captureRunning_mac.store(false);
-        dispatch_semaphore_signal(sem);
-        return;
-      }
+      SCContentFilter* filter = nil;
 
-      // Filter: capture entire display audio
-      SCContentFilter* filter = [[SCContentFilter alloc] initWithDisplay:display
-                                                       excludingWindows:@[]];
+      if (includeWindowId > 0) {
+        // Sharing a single window used to stream the audio of the whole machine,
+        // while the UI promised only the app's audio (#298). ScreenCaptureKit
+        // scopes audio to the filter, so a desktop-independent window filter
+        // delivers just the owning application's audio.
+        for (SCWindow* window in content.windows) {
+          if ((int64_t)window.windowID == includeWindowId) {
+            filter = [[SCContentFilter alloc] initWithDesktopIndependentWindow:window];
+            break;
+          }
+        }
+
+        // Falling back to the full display here would silently leak every other
+        // app's audio, which is exactly the bug we are fixing. Fail instead.
+        if (!filter) {
+          g_captureRunning_mac.store(false);
+          dispatch_semaphore_signal(sem);
+          return;
+        }
+      } else {
+        // Sharing a whole screen: capture that display's audio.
+        SCDisplay* display = content.displays.firstObject;
+        if (!display) {
+          g_captureRunning_mac.store(false);
+          dispatch_semaphore_signal(sem);
+          return;
+        }
+        filter = [[SCContentFilter alloc] initWithDisplay:display
+                                         excludingWindows:@[]];
+      }
 
       SCStreamConfiguration* config = [[SCStreamConfiguration alloc] init];
       config.capturesAudio = YES;

@@ -390,8 +390,10 @@ bool platform_is_supported() {
          (osvi.dwMajorVersion == 10 && osvi.dwBuildNumber >= 19041);
 }
 
-bool platform_start(uint32_t targetPid, uint32_t loopbackMode, uint32_t sampleRate, uint32_t channels,
+bool platform_start(uint32_t targetPid, uint32_t loopbackMode, int64_t includeWindowId,
+                    uint32_t sampleRate, uint32_t channels,
                     Napi::ThreadSafeFunction tsfn) {
+  (void)includeWindowId; // Windows narrows by process tree, resolved by the caller.
   if (g_captureRunning.load()) return false;
   g_tsfn_win = tsfn;
   g_captureRunning.store(true);

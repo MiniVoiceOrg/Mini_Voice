@@ -3,22 +3,22 @@
 // Platform-specific forward declarations
 #if defined(_WIN32)
 bool platform_is_supported();
-bool platform_start(uint32_t targetPid, uint32_t loopbackMode, uint32_t sampleRate, uint32_t channels,
-                    Napi::ThreadSafeFunction tsfn);
+bool platform_start(uint32_t targetPid, uint32_t loopbackMode, int64_t includeWindowId,
+                    uint32_t sampleRate, uint32_t channels, Napi::ThreadSafeFunction tsfn);
 uint32_t platform_pid_for_hwnd(int64_t hwnd);
 void platform_stop();
 const char* platform_get_last_error();
 int platform_get_status();
 #elif defined(__MACOS__)
 bool platform_is_supported();
-bool platform_start(uint32_t targetPid, uint32_t loopbackMode, uint32_t sampleRate, uint32_t channels,
-                    Napi::ThreadSafeFunction tsfn);
+bool platform_start(uint32_t targetPid, uint32_t loopbackMode, int64_t includeWindowId,
+                    uint32_t sampleRate, uint32_t channels, Napi::ThreadSafeFunction tsfn);
 void platform_stop();
 const char* platform_get_last_error() { return ""; }
 int platform_get_status() { return 0; }
 #else
 bool platform_is_supported() { return false; }
-bool platform_start(uint32_t, uint32_t, uint32_t, uint32_t, Napi::ThreadSafeFunction) { return false; }
+bool platform_start(uint32_t, uint32_t, int64_t, uint32_t, uint32_t, Napi::ThreadSafeFunction) { return false; }
 void platform_stop() {}
 const char* platform_get_last_error() { return ""; }
 int platform_get_status() { return 0; }
@@ -65,21 +65,27 @@ Napi::Value Start(const Napi::CallbackInfo& info) {
   }
 
   // By default capture the whole system minus our own process tree (EXCLUDE).
-  // When a specific window handle is provided, capture ONLY that window's
-  // application process tree (INCLUDE) so unrelated app audio is not shared.
+  // When a specific window is provided, narrow the capture down to that window's
+  // application so unrelated app audio is not shared (#298).
   uint32_t targetPid = excludePid;
   uint32_t loopbackMode = 0; // 0 = exclude tree, 1 = include tree
+  int64_t includeWindowId = 0;
+
+  if (opts.Has("includeWindowId") && opts.Get("includeWindowId").IsNumber()) {
+    includeWindowId = opts.Get("includeWindowId").As<Napi::Number>().Int64Value();
+  }
+
 #if defined(_WIN32)
-  if (opts.Has("includeHwnd") && opts.Get("includeHwnd").IsNumber()) {
-    int64_t includeHwnd = opts.Get("includeHwnd").As<Napi::Number>().Int64Value();
-    if (includeHwnd != 0) {
-      uint32_t appPid = platform_pid_for_hwnd(includeHwnd);
-      if (appPid != 0) {
-        targetPid = appPid;
-        loopbackMode = 1;
-      }
+  // Windows resolves the window handle to a PID up front and uses WASAPI's
+  // process-tree loopback.
+  if (includeWindowId != 0) {
+    uint32_t appPid = platform_pid_for_hwnd(includeWindowId);
+    if (appPid != 0) {
+      targetPid = appPid;
+      loopbackMode = 1;
     }
   }
+  includeWindowId = 0;
 #endif
 
   g_tsfn = Napi::ThreadSafeFunction::New(
@@ -90,7 +96,7 @@ Napi::Value Start(const Napi::CallbackInfo& info) {
     1    // one thread
   );
 
-  bool ok = platform_start(targetPid, loopbackMode, sampleRate, channels, g_tsfn);
+  bool ok = platform_start(targetPid, loopbackMode, includeWindowId, sampleRate, channels, g_tsfn);
   if (ok) {
     g_running = true;
     result.Set("success", Napi::Boolean::New(env, true));

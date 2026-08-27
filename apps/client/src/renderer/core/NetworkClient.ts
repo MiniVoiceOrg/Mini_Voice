@@ -38,6 +38,7 @@ type ConnectState = AuthConnectPayload & ClientIdentity;
 
 export class NetworkClient {
   private ws: WebSocket | null = null;
+  private connectionTimeout: ReturnType<typeof setTimeout> | null = null;
   private status: ConnectionStatus = 'DISCONNECTED';
   private reconnectAttempt: number = 0;
   private reconnectTimeout: any = null;
@@ -116,6 +117,7 @@ export class NetworkClient {
       this.hasEverConnected = false;
     }
     this.clearReconnect();
+    this.clearConnectionTimeout();
 
     const cleanHost = host.trim().replace(/^ws:\/\//, '').replace(/^wss:\/\//, '');
     this.currentServerUrl = `ws://${cleanHost}:${port}`;
@@ -131,16 +133,7 @@ export class NetworkClient {
       this.setStatus('CONNECTING');
 
       try {
-        if (this.ws) {
-          this.ws.onopen = null;
-          this.ws.onmessage = null;
-          this.ws.onclose = null;
-          this.ws.onerror = null;
-          try {
-            this.ws.close();
-          } catch {}
-          this.ws = null;
-        }
+        this.detachSocket(this.ws);
         this.ws = new WebSocket(this.currentServerUrl);
       } catch (err: any) {
         this.setStatus('DISCONNECTED');
@@ -148,7 +141,11 @@ export class NetworkClient {
         return;
       }
 
-      const connectionTimeout = setTimeout(() => {
+      const socket = this.ws;
+      const isStale = () => this.ws !== socket;
+
+      this.connectionTimeout = setTimeout(() => {
+        if (isStale()) return;
         if (this.status === 'CONNECTING') {
           this.rejectPendingAuth(new Error(t('network.timeout')));
           this.ws?.close();
@@ -162,13 +159,14 @@ export class NetworkClient {
       }, 12000);
 
       this.ws.onopen = () => {
-        clearTimeout(connectionTimeout);
+        if (isStale()) return;
+        this.clearConnectionTimeout();
         const authRequestId = uuidv4();
         this.pendingAuth = {
           requestId: authRequestId,
           timer: setTimeout(() => {
             this.rejectPendingAuth(new Error(t('network.timeout')));
-            this.ws?.close();
+            socket.close();
           }, 15000),
           resolve: (res) => {
             this.clearPendingAuth();
@@ -181,7 +179,7 @@ export class NetworkClient {
           },
           reject: (error) => {
             this.clearPendingAuth();
-            this.ws?.close();
+            socket.close();
             this.setStatus('DISCONNECTED');
             reject(error);
           },
@@ -200,6 +198,7 @@ export class NetworkClient {
       };
 
       this.ws.onmessage = (event) => {
+        if (isStale()) return;
         try {
           const message: ProtocolMessage = JSON.parse(event.data.toString());
           this.handleIncomingMessage(message);
@@ -209,7 +208,8 @@ export class NetworkClient {
       };
 
       this.ws.onclose = () => {
-        clearTimeout(connectionTimeout);
+        if (isStale()) return;
+        this.clearConnectionTimeout();
         if (this.status === 'CONNECTING') {
           const authError = this.clearPendingAuth();
           this.setStatus('DISCONNECTED');
@@ -236,6 +236,7 @@ export class NetworkClient {
   public disconnect(): void {
     this.manualDisconnect = true;
     this.clearReconnect();
+    this.clearConnectionTimeout();
     this.stopHeartbeat();
     this.clearPendingAuth();
     if (this.ws) {
@@ -244,11 +245,34 @@ export class NetworkClient {
           this.ws.send(JSON.stringify({ type: MessageType.USER_LOGOUT, payload: {} }));
         } catch {}
       }
-      this.ws.close();
-      this.ws = null;
+      // Detach before dropping the reference: a socket closed here fires `onclose`
+      // asynchronously, and by then a new connect() may already have cleared
+      // `manualDisconnect`, which used to restart the reconnect loop and null out
+      // the brand new socket (#312).
+      this.detachSocket(this.ws);
     }
     this.setStatus('DISCONNECTED');
     appEvents.emit('network.disconnected');
+  }
+
+  /** Drops every handler of a socket and closes it, so it can no longer affect state. */
+  private detachSocket(socket: WebSocket | null): void {
+    if (!socket) return;
+    socket.onopen = null;
+    socket.onmessage = null;
+    socket.onclose = null;
+    socket.onerror = null;
+    try {
+      socket.close();
+    } catch {}
+    if (this.ws === socket) this.ws = null;
+  }
+
+  private clearConnectionTimeout(): void {
+    if (this.connectionTimeout) {
+      clearTimeout(this.connectionTimeout);
+      this.connectionTimeout = null;
+    }
   }
 
   public send(type: MessageType, payload: any, requestId?: string): void {

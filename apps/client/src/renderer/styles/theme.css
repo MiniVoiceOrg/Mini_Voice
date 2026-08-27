@@ -1,4 +1,5 @@
 :root {
+  --server-rail-width: 60px;
   --bg-app: #0b0e14;
   --bg-sidebar: #11151c;
   --bg-panel: #161b22;
@@ -540,6 +541,7 @@ input:focus, textarea:focus, select:focus {
   min-height: 0;
   width: 100vw;
   background-color: var(--bg-app);
+  position: relative;
 }
 
 /* Channels Sidebar */
@@ -573,8 +575,8 @@ input:focus, textarea:focus, select:focus {
 
 /* Server rail: vertical bar of saved servers + home (#29) */
 .server-rail {
-  width: 60px;
-  min-width: 60px;
+  width: var(--server-rail-width);
+  min-width: var(--server-rail-width);
   background-color: var(--bg-app);
   border-right: 1px solid var(--border-color);
   display: flex;
@@ -3778,15 +3780,23 @@ button[data-loading="1"]::after {
   font-size: 12px;
 }
 
+/* Covers only the server interface: the title bar and the server rail stay usable
+   so the user can switch servers, go home or close the app while it retries (#321). */
 .reconnect-overlay {
-  position: fixed;
-  inset: 0;
+  position: absolute;
+  inset: 0 0 0 var(--server-rail-width);
   z-index: 4000;
   display: flex;
   align-items: center;
   justify-content: center;
   background: rgba(0, 0, 0, 0.55);
   backdrop-filter: blur(2px);
+}
+
+/* Fallback when the overlay cannot be anchored to the server layout. */
+body > .reconnect-overlay {
+  position: fixed;
+  inset: 0;
 }
 
 .reconnect-card {
@@ -4029,6 +4039,46 @@ button[data-loading="1"]::after {
   display: flex;
   flex-direction: column;
   animation: fadeIn 0.15s ease;
+}
+
+/* Small windows: a centered card wastes the little space there is, so both the
+   app and the server settings take over the whole window and the tab sidebar
+   turns into a horizontal strip (#324). */
+@media (max-width: 900px), (max-height: 640px) {
+  .settings-modal-card,
+  .settings-modal-card.server-settings-modal-card {
+    width: 100vw !important;
+    max-width: 100vw !important;
+    height: 100vh !important;
+    max-height: 100vh !important;
+    border: none !important;
+    border-radius: 0 !important;
+    flex-direction: column !important;
+  }
+
+  .settings-modal-card .settings-sidebar {
+    width: 100%;
+    min-width: 0;
+    flex-direction: row;
+    align-items: center;
+    padding: 8px 10px;
+    border-right: none;
+    border-bottom: 1px solid var(--border-color);
+    overflow-x: auto;
+    overflow-y: hidden;
+    scrollbar-width: thin;
+  }
+
+  /* The section label and the separators only make sense stacked vertically. */
+  .settings-modal-card .settings-sidebar > div {
+    display: none;
+  }
+
+  .settings-modal-card .settings-tab-btn {
+    width: auto;
+    flex-shrink: 0;
+    white-space: nowrap;
+  }
 }
 
 .permission-switch {
