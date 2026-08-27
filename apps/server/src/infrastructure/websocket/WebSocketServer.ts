@@ -1298,6 +1298,16 @@ export class WebSocketServer {
     for (const ws of this.sessions.keys()) {
       ws.close();
     }
+    // Closing gracefully lets clients show the shutdown notice, but a peer that
+    // never answers the close frame would keep its socket — and the HTTP server
+    // waiting on it — alive for the ws library's 30s close timeout. Unref'd so
+    // it can never hold the process open by itself (#333).
+    const forceClose = setTimeout(() => {
+      for (const ws of this.sessions.keys()) {
+        if (ws.readyState !== WebSocket.CLOSED) ws.terminate();
+      }
+    }, LIMITS.SHUTDOWN_GRACE_MS);
+    forceClose.unref?.();
     this.wss.close();
   }
 }

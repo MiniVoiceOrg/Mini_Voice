@@ -18,6 +18,11 @@ export const LIMITS = {
   HEARTBEAT_INTERVAL_MS: 5000,
   HEARTBEAT_TIMEOUT_MS: 35000,
   RECONNECT_GRACE_MS: 20000,
+  // How long a shutdown waits for peers to answer the close frame before their
+  // sockets are forcibly destroyed. Without a bound, a single unresponsive peer
+  // (sleeping laptop, dropped Wi-Fi) holds the HTTP server open for the ws
+  // library's internal 30s close timeout, freezing the host's UI (#333).
+  SHUTDOWN_GRACE_MS: 1500,
   // Concurrent devices a single identity may hold (#309). Without a cap, an
   // already-online identity could open unlimited connections and bypass
   // maxUsers, since capacity counts people rather than connections.

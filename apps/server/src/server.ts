@@ -536,7 +536,19 @@ export class MonkyServer {
     await this.lanBroadcaster.stop();
     this.rateLimiter.dispose();
     this.wsServer.close();
-    await new Promise<void>((resolve) => this.httpServer.close(() => resolve()));
+    // The desktop host awaits this call before it can start another server, so
+    // the shutdown must be bounded: destroy whatever is still hanging on rather
+    // than waiting on it forever (#333).
+    await new Promise<void>((resolve) => {
+      const forceClose = setTimeout(() => {
+        this.httpServer.closeAllConnections?.();
+      }, LIMITS.SHUTDOWN_GRACE_MS * 2);
+      forceClose.unref?.();
+      this.httpServer.close(() => {
+        clearTimeout(forceClose);
+        resolve();
+      });
+    });
     this.dbConn.close();
     Logger.info('INFO', 'Server stopped.');
   }
