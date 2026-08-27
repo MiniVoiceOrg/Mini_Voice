@@ -138,11 +138,19 @@ move, comment explaining why before starting.
 
 `main` is protected — every merge goes through a squashed PR.
 
+**Always branch from an up-to-date `main`**, never from whichever branch you
+happened to be on:
+
 ```bash
+git checkout main && git pull        # before creating the branch
 git checkout -b feat/my-change
 # ... commits ...
 git push -u origin feat/my-change
 ```
+
+Branching off a branch that has an open PR makes your PR drag its commits into
+the diff, and the two then depend on each other to merge. If your change really
+does depend on another open PR, agree on the stacking before you branch.
 
 Branch and commit prefixes follow [Conventional Commits](https://www.conventionalcommits.org/):
 `feat:`, `fix:`, `refactor:`, `docs:`, `chore:`, `ci:`. Reference the issue in
