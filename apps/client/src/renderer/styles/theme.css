@@ -2851,6 +2851,17 @@ input:focus, textarea:focus, select:focus {
   border-color: rgba(88, 101, 242, 0.6);
 }
 
+/* #293: tiles that carry video (camera or screen) are widescreen instead of
+   square. Cameras and monitors are 16:9, so a square tile either crops the
+   image (cover) or letterboxes it (contain); both waste the card. Avatar-only
+   tiles stay square. */
+.stage-card--video {
+  aspect-ratio: 16 / 9;
+  max-width: 620px;
+  min-width: 300px;
+  min-height: 0;
+}
+
 .stage-card.speaking {
   border-color: #23a55a !important;
   box-shadow: 0 0 20px rgba(35, 165, 90, 0.6), inset 0 0 10px rgba(35, 165, 90, 0.2) !important;
@@ -2950,6 +2961,12 @@ input:focus, textarea:focus, select:focus {
 .stage-mini-card:hover {
   border-color: var(--accent-primary);
   transform: scale(1.04);
+}
+
+/* #293: same widescreen rule for the focus-mode strip. A 100px square is too
+   narrow to read a shared screen; 16:9 gives the thumbnail usable width. */
+.stage-mini-card--video {
+  aspect-ratio: 16 / 9;
 }
 
 .stage-mini-card.speaking {
