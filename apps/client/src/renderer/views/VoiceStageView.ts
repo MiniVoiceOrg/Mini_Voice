@@ -6,7 +6,7 @@ import { participantManager, ParticipantViewModel } from '../core/ParticipantMan
 import { screenAudioService } from '../core/ScreenAudioService';
 import { serverStore } from '../stores/serverStore';
 import { settingsStore } from '../stores/settingsStore';
-import { voiceStore } from '../stores/voiceStore';
+import { voiceStore, VoiceStore } from '../stores/voiceStore';
 import { audioProcessor } from '../core/AudioProcessor';
 import { videoService } from '../core/VideoService';
 import { webRtcManager } from '../core/WebRtcManager';
@@ -48,8 +48,31 @@ type StageTileKind = 'voice' | 'camera' | 'screen';
 interface StageTile {
   p: ParticipantViewModel;
   kind: StageTileKind;
-  key: string; // `${userId}:${kind}` — stable identity for focus/DOM keys
+  key: string; // `${userId}:${kind}` (+ `:${shareId}` for screens) — stable identity for focus/DOM keys
+  /** Which screen share this tile renders, for 'screen' tiles only (#253). */
+  shareId?: string;
 }
+
+/**
+ * Share id used for peers that only announce the legacy `isScreenSharing`
+ * boolean (clients older than #253). They can only ever have one share, so a
+ * fixed key is enough to give their tile a stable identity.
+ */
+const LEGACY_SHARE_ID = 'legacy';
+
+/**
+ * Share ids come from other clients and are interpolated into DOM ids and data
+ * attributes, so only MediaStream-shaped ids are accepted. Anything else is
+ * treated as a hostile payload and ignored.
+ */
+const SAFE_SHARE_ID = /^[A-Za-z0-9_.-]{1,64}$/;
+
+/**
+ * How many tiles can sit in the focus area at once (#253). Two side-by-side
+ * panes stay readable on a normal screen; beyond that the grid is the better
+ * layout anyway.
+ */
+const MAX_FOCUSED_TILES = 2;
 
 /** Zoom bounds for the focused screen share (#271). */
 const FOCUS_ZOOM_MAX_SCALE = 4;
@@ -59,15 +82,18 @@ export class VoiceStageView {
   private container: HTMLElement;
   private currentChannelId: string | null = null;
   private unbindEvents: Array<() => void> = [];
-  private focusedTileKey: string | null = null;
+  private focusedTileKeys: string[] = [];
   /** Zoom/pan state of the focused screen share, reset when focus changes (#271). */
   private focusZoom = { scale: 1, x: 0, y: 0 };
   private focusZoomTileKey: string | null = null;
-  private gridExpanded = false;
   private suppressCardClickUntil = 0;
   // #150: remote screen shares are gated behind an explicit "Assistir
-  // transmissão". These sets survive innerHTML re-renders (instance state).
-  private watchingUserIds: Set<string> = new Set();
+  // transmissão". Keyed by stage tile key (`${userId}:screen:${shareId}`) so
+  // each of a peer's shares is opted into separately (#253). These sets survive
+  // innerHTML re-renders (instance state).
+  private watchingShareKeys: Set<string> = new Set();
+  // Screen audio is capped at one stream per participant (#253), so the
+  // explicit mute stays keyed by user id — it matches the <audio> element.
   private mutedScreenUserIds: Set<string> = new Set();
   private pingInterval: any = null;
   private telemetryInterval: number | null = null;
@@ -85,7 +111,7 @@ export class VoiceStageView {
 
   public setChannel(channelId: string | null): void {
     this.currentChannelId = channelId;
-    this.focusedTileKey = null;
+    this.focusedTileKeys = [];
     if (!channelId) {
       this.stopTelemetryMonitor();
     }
@@ -99,9 +125,21 @@ export class VoiceStageView {
    * (i.e. after `setChannel`), since it re-renders the participant tiles.
    */
   public watchScreenShare(userId: string): void {
-    this.watchingUserIds.add(userId);
+    const participant = participantManager
+      .getInVoiceChannel(this.currentChannelId ?? '')
+      .find((p) => p.user.id === userId);
+    if (!participant) return;
+
+    // The notice covers the participant, not a specific share, so opt into all
+    // of their shares and focus the first one (#253).
+    const shareIds = this.getShareIds(participant, false);
+    if (shareIds.length === 0) return;
+
+    for (const shareId of shareIds) {
+      this.watchingShareKeys.add(`${userId}:screen:${shareId}`);
+    }
     this.mutedScreenUserIds.delete(userId);
-    this.focusedTileKey = `${userId}:screen`;
+    this.focusedTileKeys = [`${userId}:screen:${shareIds[0]}`];
     this.renderParticipants();
   }
 
@@ -136,10 +174,6 @@ export class VoiceStageView {
           </div>
 
           <div style="display: flex; align-items: center; gap: 10px;">
-            <!-- Grid view toggle (#29) -->
-            <button id="stage-btn-viewmode" class="btn btn-secondary" style="padding: 4px 10px; font-size: 12px;" title="${t('stage.toggleView')}">
-              <span class="material-symbols-outlined md-16">${this.gridExpanded ? 'view_agenda' : 'grid_view'}</span>
-            </button>
             <!-- Ping / Latency Badge -->
             <div id="stage-ping-badge" class="stage-ping-badge good">
               <span class="ping-dot"></span>
@@ -310,6 +344,7 @@ export class VoiceStageView {
   /**
    * Expands the flat participant list into renderable tiles. Camera + screen
    * are independent, so a participant broadcasting both yields two tiles (#26);
+   * a participant sharing two screens yields one tile per share (#253);
    * participants with no video yield a single avatar ('voice') tile.
    */
   private buildStageTiles(participants: ParticipantViewModel[], currentUserId?: string): StageTile[] {
@@ -317,12 +352,83 @@ export class VoiceStageView {
     for (const p of participants) {
       const isLocal = p.user.id === currentUserId;
       const isCamOn = isLocal ? voiceStore.isCameraOn : (p.voiceState?.isCameraOn ?? false);
-      const isScreenOn = isLocal ? voiceStore.isScreenSharing : (p.voiceState?.isScreenSharing ?? false);
+      const shareIds = this.getShareIds(p, isLocal);
       if (isCamOn) tiles.push({ p, kind: 'camera', key: `${p.user.id}:camera` });
-      if (isScreenOn) tiles.push({ p, kind: 'screen', key: `${p.user.id}:screen` });
-      if (!isCamOn && !isScreenOn) tiles.push({ p, kind: 'voice', key: `${p.user.id}:voice` });
+      for (const shareId of shareIds) {
+        tiles.push({ p, kind: 'screen', key: `${p.user.id}:screen:${shareId}`, shareId });
+      }
+      if (!isCamOn && shareIds.length === 0) tiles.push({ p, kind: 'voice', key: `${p.user.id}:voice` });
     }
     return tiles;
+  }
+
+  /**
+   * Screen shares to render for a participant (#253). Falls back to a single
+   * synthetic share when the peer only reports the legacy `isScreenSharing`
+   * boolean, so older clients still show up as one tile.
+   *
+   * Share ids arrive from other clients and end up in DOM ids and attributes,
+   * so anything that isn't a plain MediaStream-style id is dropped here — this
+   * is the single choke point every tile goes through.
+   */
+  private getShareIds(p: ParticipantViewModel, isLocal: boolean): string[] {
+    if (isLocal) return [...voiceStore.screenShareIds];
+    const announced = p.voiceState?.screenShareIds;
+    if (announced && announced.length > 0) {
+      const safe = announced.filter((id) => SAFE_SHARE_ID.test(id));
+      if (safe.length > 0) return safe.slice(0, VoiceStore.MAX_SCREEN_SHARES);
+    }
+    return p.voiceState?.isScreenSharing ? [LEGACY_SHARE_ID] : [];
+  }
+
+  /**
+   * Focus toggle (#253). A plain click focuses a single tile (or leaves focus
+   * when it was the only one focused); Shift+click adds/removes a second pane
+   * so two screens can be watched side by side.
+   */
+  private toggleFocus(tileKey: string, additive: boolean): void {
+    const isFocused = this.focusedTileKeys.includes(tileKey);
+
+    if (additive) {
+      if (isFocused) {
+        this.focusedTileKeys = this.focusedTileKeys.filter((key) => key !== tileKey);
+      } else {
+        // Keep the most recent selections when the cap is reached.
+        this.focusedTileKeys = [...this.focusedTileKeys, tileKey].slice(-MAX_FOCUSED_TILES);
+      }
+      return;
+    }
+
+    this.focusedTileKeys =
+      isFocused && this.focusedTileKeys.length === 1 ? [] : [tileKey];
+  }
+
+  /**
+   * Resolves the remote stream backing a screen tile. Pre-#253 peers announce
+   * their real MediaStream id over `screen-video-meta` but never publish a
+   * `screenShareIds` list, so their tile is keyed by LEGACY_SHARE_ID and has to
+   * fall back to whichever single screen stream arrived for that user.
+   */
+  private getRemoteScreenStream(tile: StageTile): MediaStream | undefined {
+    const streams = tile.p.remoteScreenStreams;
+    if (tile.shareId === LEGACY_SHARE_ID) {
+      return streams.values().next().value;
+    }
+    return streams.get(tile.shareId!);
+  }
+
+  /** Stable, unique DOM id fragment for a tile — screens differ by share (#253). */
+  private tileDomId(tile: StageTile): string {
+    return tile.kind === 'screen'
+      ? `${tile.p.user.id}-screen-${tile.shareId}`
+      : `${tile.p.user.id}-${tile.kind}`;
+  }
+
+  /** True when at least one of the participant's shares was opted into (#253). */
+  private isWatchingAnyShare(p: ParticipantViewModel): boolean {
+    return this.getShareIds(p, false).some((shareId) =>
+      this.watchingShareKeys.has(`${p.user.id}:screen:${shareId}`)
+    );
   }
 
   private isTileSpeaking(tile: StageTile): boolean {
@@ -348,46 +454,60 @@ export class VoiceStageView {
 
     const currentUserId = serverStore.currentUser?.id;
 
-    // #150: reset watch-state for anyone who is no longer sharing their screen
+    // #150: reset watch-state for any share that is no longer being broadcast
     // so a fresh broadcast is gated behind "Assistir transmissão" again; also
-    // drop their explicit screen-audio mute.
-    for (const watchedId of [...this.watchingUserIds]) {
-      const wp = participants.find((p) => p.user.id === watchedId);
-      const stillSharing = !!wp && wp.user.id !== currentUserId && (wp.voiceState?.isScreenSharing ?? false);
-      if (!stillSharing) {
-        this.watchingUserIds.delete(watchedId);
-        this.mutedScreenUserIds.delete(watchedId);
+    // drop the broadcaster's explicit screen-audio mute once they stop entirely.
+    const liveShareKeys = new Set<string>();
+    for (const p of participants) {
+      if (p.user.id === currentUserId) continue;
+      for (const shareId of this.getShareIds(p, false)) {
+        liveShareKeys.add(`${p.user.id}:screen:${shareId}`);
       }
     }
-
-    // A participant sharing camera + screen contributes two independent tiles
-    // (#26); focus, speaking and DOM keys are keyed per tile.
-    const tiles = this.buildStageTiles(participants, currentUserId);
-
-    if (this.focusedTileKey && !tiles.some((tile) => tile.key === this.focusedTileKey)) {
-      this.focusedTileKey = null;
+    for (const watchedKey of [...this.watchingShareKeys]) {
+      if (!liveShareKeys.has(watchedKey)) {
+        this.watchingShareKeys.delete(watchedKey);
+      }
+    }
+    for (const mutedUserId of [...this.mutedScreenUserIds]) {
+      const stillSharing = [...liveShareKeys].some((key) => key.startsWith(`${mutedUserId}:screen:`));
+      if (!stillSharing) this.mutedScreenUserIds.delete(mutedUserId);
     }
 
-    if (this.focusedTileKey) {
-      const focusedTile = tiles.find((tile) => tile.key === this.focusedTileKey)!;
-      const otherTiles = tiles.filter((tile) => tile.key !== this.focusedTileKey);
-      const isFocusedSpeaking = this.isTileSpeaking(focusedTile);
+    // A participant sharing camera + screens contributes one tile per source
+    // (#26, #253); focus, speaking and DOM keys are keyed per tile.
+    const tiles = this.buildStageTiles(participants, currentUserId);
+
+    // Drop focus entries whose tile disappeared (share ended, peer left).
+    this.focusedTileKeys = this.focusedTileKeys.filter((key) =>
+      tiles.some((tile) => tile.key === key)
+    );
+
+    if (this.focusedTileKeys.length > 0) {
+      const focusedTiles = this.focusedTileKeys
+        .map((key) => tiles.find((tile) => tile.key === key)!)
+        .filter(Boolean);
+      const otherTiles = tiles.filter((tile) => !this.focusedTileKeys.includes(tile.key));
 
       area.innerHTML = `
         <div class="stage-focused-layout">
-          <div class="stage-focused-main ${isFocusedSpeaking ? 'speaking' : ''}" id="card-${focusedTile.p.user.id}-${focusedTile.kind}" data-user-id="${focusedTile.p.user.id}" data-kind="${focusedTile.kind}" data-tile-key="${focusedTile.key}">
-            <div class="stage-focus-hint-badge">
-              <span class="material-symbols-outlined md-14">zoom_in</span>
-              <span>${t('stage.focusMode')}</span>
-            </div>
-            ${this.renderCardContent(focusedTile, true)}
+          <div class="stage-focused-stack ${focusedTiles.length > 1 ? 'stage-focused-stack--split' : ''}">
+            ${focusedTiles.map((focusedTile) => `
+              <div class="stage-focused-main ${this.isTileSpeaking(focusedTile) ? 'speaking' : ''}" id="card-${this.tileDomId(focusedTile)}" data-user-id="${focusedTile.p.user.id}" data-kind="${focusedTile.kind}" data-tile-key="${focusedTile.key}">
+                <div class="stage-focus-hint-badge">
+                  <span class="material-symbols-outlined md-14">zoom_in</span>
+                  <span>${t('stage.focusMode')}</span>
+                </div>
+                ${this.renderCardContent(focusedTile, true)}
+              </div>
+            `).join('')}
           </div>
 
           ${otherTiles.length > 0 ? `
             <div class="stage-focused-strip">
               ${otherTiles.map((tile) => {
                 return `
-                  <div class="stage-mini-card ${this.isTileSpeaking(tile) ? 'speaking' : ''}" id="card-${tile.p.user.id}-${tile.kind}" data-user-id="${tile.p.user.id}" data-kind="${tile.kind}" data-tile-key="${tile.key}" title="${t('stage.focusOn', { name: escapeHtml(tile.p.user.nickname) })}">
+                  <div class="stage-mini-card ${tile.kind === 'voice' ? '' : 'stage-mini-card--video'} ${this.isTileSpeaking(tile) ? 'speaking' : ''}" id="card-${this.tileDomId(tile)}" data-user-id="${tile.p.user.id}" data-kind="${tile.kind}" data-tile-key="${tile.key}" title="${t('stage.focusOn', { name: escapeHtml(tile.p.user.nickname) })}">
                     ${this.renderCardContent(tile, false, true)}
                   </div>
                 `;
@@ -398,10 +518,10 @@ export class VoiceStageView {
       `;
     } else {
       area.innerHTML = `
-        <div class="stage-grid ${this.gridExpanded ? 'stage-grid--expanded' : ''}" id="stage-grid">
+        <div class="stage-grid" id="stage-grid">
           ${tiles.map((tile) => {
             return `
-              <div class="stage-card ${this.isTileSpeaking(tile) ? 'speaking' : ''}" id="card-${tile.p.user.id}-${tile.kind}" data-user-id="${tile.p.user.id}" data-kind="${tile.kind}" data-tile-key="${tile.key}" title="${t('stage.focusHint')}">
+              <div class="stage-card ${tile.kind === 'voice' ? '' : 'stage-card--video'} ${this.isTileSpeaking(tile) ? 'speaking' : ''}" id="card-${this.tileDomId(tile)}" data-user-id="${tile.p.user.id}" data-kind="${tile.kind}" data-tile-key="${tile.key}" title="${t('stage.focusHint')}">
                 ${this.renderCardContent(tile, false, false)}
               </div>
             `;
@@ -415,10 +535,10 @@ export class VoiceStageView {
     // by WebRtcManager on document.body and persist across these re-renders.
     participants.forEach((p) => {
       if (p.user.id === currentUserId) return;
-      if (!(p.voiceState?.isScreenSharing ?? false)) return;
+      if (this.getShareIds(p, false).length === 0) return;
       const audioEl = document.querySelector(`audio[data-screen-audio-user="${p.user.id}"]`) as HTMLAudioElement | null;
       if (!audioEl) return;
-      audioEl.muted = !this.watchingUserIds.has(p.user.id) || this.mutedScreenUserIds.has(p.user.id);
+      audioEl.muted = !this.isWatchingAnyShare(p) || this.mutedScreenUserIds.has(p.user.id);
     });
 
     // Attach click listeners to cards for focus toggle & right-click for volume adjustment
@@ -434,7 +554,7 @@ export class VoiceStageView {
         if (this.focusZoom.scale > 1 && card.classList.contains('stage-focused-main')) return;
         const tileKey = card.getAttribute('data-tile-key');
         if (tileKey) {
-          this.focusedTileKey = (this.focusedTileKey === tileKey ? null : tileKey);
+          this.toggleFocus(tileKey, (e as MouseEvent).shiftKey);
           this.renderParticipants();
         }
       });
@@ -471,10 +591,11 @@ export class VoiceStageView {
       btn.addEventListener('click', (e: Event) => {
         e.stopPropagation();
         const userId = btn.getAttribute('data-watch-user');
-        if (!userId) return;
-        this.watchingUserIds.add(userId);
+        const shareId = btn.getAttribute('data-watch-share');
+        if (!userId || !shareId) return;
+        this.watchingShareKeys.add(`${userId}:screen:${shareId}`);
         this.mutedScreenUserIds.delete(userId);
-        this.focusedTileKey = `${userId}:screen`;
+        this.focusedTileKeys = [`${userId}:screen:${shareId}`];
         this.renderParticipants();
       });
     });
@@ -486,9 +607,11 @@ export class VoiceStageView {
       btn.addEventListener('click', (e: Event) => {
         e.stopPropagation();
         const userId = btn.getAttribute('data-stopwatch-user');
-        if (!userId) return;
-        this.watchingUserIds.delete(userId);
-        if (this.focusedTileKey === `${userId}:screen`) this.focusedTileKey = null;
+        const shareId = btn.getAttribute('data-stopwatch-share');
+        if (!userId || !shareId) return;
+        const tileKey = `${userId}:screen:${shareId}`;
+        this.watchingShareKeys.delete(tileKey);
+        this.focusedTileKeys = this.focusedTileKeys.filter((key) => key !== tileKey);
         this.renderParticipants();
       });
     });
@@ -577,16 +700,17 @@ export class VoiceStageView {
     });
 
     // Attach media streams to the per-tile video elements cleanly. Camera rides
-    // remoteStream / cameraStream; screen rides remoteScreenStream / screenStream
-    // so both tiles show independent video (#26).
+    // remoteStream / cameraStream; each screen share rides its own stream keyed
+    // by share id so every tile shows independent video (#26, #253).
     tiles.forEach((tile) => {
       if (tile.kind === 'voice') return;
       const isLocal = tile.p.user.id === currentUserId;
       const stream = isLocal
-        ? (tile.kind === 'screen' ? videoService.getScreenStream() : videoService.getCameraStream())
-        : (tile.kind === 'screen' ? tile.p.remoteScreenStream : tile.p.remoteStream);
+        ? (tile.kind === 'screen' ? videoService.getScreenStream(tile.shareId!) : videoService.getCameraStream())
+        : (tile.kind === 'screen' ? this.getRemoteScreenStream(tile) : tile.p.remoteStream);
       if (!stream) return;
-      const ids = [`video-${tile.p.user.id}-${tile.kind}`, `video-mini-${tile.p.user.id}-${tile.kind}`];
+      const suffix = tile.kind === 'screen' ? `screen-${tile.shareId}` : tile.kind;
+      const ids = [`video-${tile.p.user.id}-${suffix}`, `video-mini-${tile.p.user.id}-${suffix}`];
       ids.forEach((id) => {
         const el = document.getElementById(id) as HTMLVideoElement | null;
         if (el && el.srcObject !== stream) {
@@ -621,7 +745,10 @@ export class VoiceStageView {
    * every render because the stage markup is rebuilt from scratch.
    */
   private setupFocusedScreenZoom(area: HTMLElement): void {
-    const main = area.querySelector('.stage-focused-main') as HTMLElement | null;
+    // Zoom/pan targets a single pane; with the focus area split in two (#253)
+    // there is no unambiguous target, so it stays disabled until one is left.
+    const mains = area.querySelectorAll('.stage-focused-main');
+    const main = (mains.length === 1 ? mains[0] : null) as HTMLElement | null;
     const video = main?.querySelector(
       'video.stage-video-element.screen-share:not(.screen-locked)'
     ) as HTMLElement | null;
@@ -760,39 +887,48 @@ export class VoiceStageView {
 
     const isVideoTile = tile.kind === 'camera' || tile.kind === 'screen';
     const isScreenTile = tile.kind === 'screen';
-    const videoId = isMini ? `video-mini-${p.user.id}-${tile.kind}` : `video-${p.user.id}-${tile.kind}`;
+    const tileSuffix = isScreenTile ? `screen-${tile.shareId}` : tile.kind;
+    const videoId = isMini ? `video-mini-${p.user.id}-${tileSuffix}` : `video-${p.user.id}-${tileSuffix}`;
     const isRemoteScreen = isScreenTile && !isLocal;
-    const isWatching = this.watchingUserIds.has(p.user.id);
+    const isWatching = this.watchingShareKeys.has(tile.key);
     // #150: a remote screen the local user has not opted into watching is
     // rendered blurred + silent behind an "Assistir transmissão" CTA. Applies
     // to screen tiles only — the camera tile always plays normally (#26).
     const isLocked = isRemoteScreen && !isWatching;
     // Distinguish the two tiles of a camera + screen sharer with a "· Tela"
-    // suffix on the screen tile label (#26).
-    const label = isScreenTile ? `${escapeHtml(p.user.nickname)} · Tela` : escapeHtml(p.user.nickname);
+    // suffix on the screen tile label (#26); when the same person shares two
+    // screens at once, number them so the tiles stay tellable apart (#253).
+    const shareIds = isScreenTile ? this.getShareIds(p, isLocal) : [];
+    const shareIndex = isScreenTile ? shareIds.indexOf(tile.shareId!) : -1;
+    const screenLabel = shareIds.length > 1 && shareIndex >= 0
+      ? t('stage.screenLabelNumbered', { index: String(shareIndex + 1) })
+      : t('stage.screenLabel');
+    const label = isScreenTile
+      ? `${escapeHtml(p.user.nickname)} · ${screenLabel}`
+      : escapeHtml(p.user.nickname);
 
     return `
       ${isVideoTile ? `
         <video id="${videoId}" class="stage-video-element ${isScreenTile ? 'screen-share' : ''}${isLocked ? ' screen-locked' : ''}" autoplay playsinline muted></video>
         ${!isLocked ? `
-          <div class="stage-loading-overlay" id="loading-${videoId}">
+          <div class="stage-loading-overlay${isMini ? ' stage-loading-overlay--mini' : ''}" id="loading-${videoId}">
             <div class="reconnect-spinner"></div>
-            <span>${isScreenTile ? t('stage.loadingScreen') : t('stage.loadingCamera')}</span>
+            ${isMini ? '' : `<span>${isScreenTile ? t('stage.loadingScreen') : t('stage.loadingCamera')}</span>`}
           </div>
         ` : ''}
-        ${(isScreenTile && !isLocked) ? `
+        ${(isScreenTile && !isLocked && !isMini && shareIndex <= 0) ? `
           <div
             class="telemetry-overlay position-${settingsStore.screenShareTelemetryPosition}${settingsStore.screenShareTelemetryEnabled ? '' : ' is-hidden'}"
             data-telemetry-user-id="${p.user.id}"
           >${this.getTelemetryText(p.user.id)}</div>
         ` : ''}
         ${isLocked ? `
-          <div class="stage-watch-overlay">
-            <button class="stage-watch-btn" data-watch-user="${p.user.id}">
+          <div class="stage-watch-overlay${isMini ? ' stage-watch-overlay--mini' : ''}">
+            <button class="stage-watch-btn" data-watch-user="${p.user.id}" data-watch-share="${tile.shareId}"${isMini ? ` title="${t('stage.watchBroadcast')}" aria-label="${t('stage.watchBroadcast')}"` : ''}>
               <span class="material-symbols-outlined">smart_display</span>
-              <span>${t('stage.watchBroadcast')}</span>
+              ${isMini ? '' : `<span>${t('stage.watchBroadcast')}</span>`}
             </button>
-            <div class="stage-watch-caption">${t('stage.watchCaption', { name: escapeHtml(p.user.nickname) })}</div>
+            ${isMini ? '' : `<div class="stage-watch-caption">${t('stage.watchCaption', { name: escapeHtml(p.user.nickname) })}</div>`}
           </div>
         ` : `
           <div class="stage-card-controls">
@@ -805,7 +941,7 @@ export class VoiceStageView {
                   <span class="material-symbols-outlined md-18">volume_up</span>
                 </button>
               </div>
-              <button class="stage-stopwatch-btn" data-stopwatch-user="${p.user.id}" title="${t('stage.stopWatching')}" aria-label="${t('stage.stopWatching')}">
+              <button class="stage-stopwatch-btn" data-stopwatch-user="${p.user.id}" data-stopwatch-share="${tile.shareId}" title="${t('stage.stopWatching')}" aria-label="${t('stage.stopWatching')}">
                 <span class="material-symbols-outlined md-18">visibility_off</span>
               </button>
             ` : ''}
@@ -976,7 +1112,7 @@ export class VoiceStageView {
 
   private async collectSenderTelemetry(userId: string): Promise<ScreenTelemetrySnapshot | null> {
     const peerConnections = webRtcManager.getPeerConnections();
-    const localTrack = videoService.getScreenStream()?.getVideoTracks()[0] || null;
+    const localTrack = this.getPrimaryLocalScreenTrack();
     const fallback = this.getLocalScreenFallback();
 
     if (peerConnections.length === 0) {
@@ -1089,8 +1225,19 @@ export class VoiceStageView {
     }
   }
 
+  /**
+   * Screen telemetry is reported per participant, so with more than one share
+   * active it describes the first one (#253). The overlay is only rendered on
+   * that share's tile, so the numbers always match what they sit on top of.
+   */
+  private getPrimaryLocalScreenTrack(): MediaStreamTrack | null {
+    const [primaryShareId] = voiceStore.screenShareIds;
+    if (!primaryShareId) return null;
+    return videoService.getScreenStream(primaryShareId)?.getVideoTracks()[0] ?? null;
+  }
+
   private getLocalScreenFallback(): ScreenTelemetrySnapshot | null {
-    const track = videoService.getScreenStream()?.getVideoTracks()[0];
+    const track = this.getPrimaryLocalScreenTrack();
     if (!track) return null;
 
     const settings = track.getSettings();
@@ -1237,6 +1384,7 @@ export class VoiceStageView {
     audioProcessor.stopMicrophone();
     videoService.stopCamera();
     videoService.stopScreenShare();
+    webRtcManager.clearLocalScreenTracks();
     webRtcManager.closeAllPeers();
     voiceStore.reset();
     this.setChannel(null);
@@ -1245,9 +1393,12 @@ export class VoiceStageView {
   private async handleStopStreaming(): Promise<void> {
     if (voiceStore.isScreenSharing) {
       videoService.stopScreenShare();
-      await webRtcManager.setLocalScreenTrack(null);
+      await webRtcManager.removeAllLocalScreenTracks();
       voiceStore.setScreenSharing(false);
-      networkClient.send(MessageType.VOICE_STATE_UPDATE, { isScreenSharing: false });
+      networkClient.send(MessageType.VOICE_STATE_UPDATE, {
+        screenShareIds: [],
+        isScreenSharing: false,
+      });
       if (screenAudioService.getIsCapturing()) {
         await screenAudioService.stop();
       }
@@ -1369,16 +1520,6 @@ export class VoiceStageView {
       } finally {
         setButtonLoading(btnStopShare, false);
       }
-    });
-
-    const btnViewMode = document.getElementById('stage-btn-viewmode');
-    btnViewMode?.addEventListener('click', () => {
-      this.gridExpanded = !this.gridExpanded;
-      // The expanded grid is a full equal-split view, so leave focus mode.
-      if (this.gridExpanded) this.focusedTileKey = null;
-      const icon = btnViewMode.querySelector('.material-symbols-outlined');
-      if (icon) icon.textContent = this.gridExpanded ? 'view_agenda' : 'grid_view';
-      this.renderParticipants();
     });
 
     const btnSoundboard = document.getElementById('stage-btn-soundboard');

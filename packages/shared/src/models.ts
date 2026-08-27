@@ -90,6 +90,14 @@ export interface VoiceParticipantState {
   isCameraOn: boolean;
   isScreenSharing: boolean;
   isSharingScreenAudio: boolean;
+  /**
+   * IDs of the screen shares this participant is currently broadcasting (#253).
+   * Each entry is the MediaStream id announced over `screen-video-meta`, so
+   * receivers can key tiles and streams per share instead of per user.
+   * `isScreenSharing` stays as the derived flag (`length > 0`) and remains the
+   * source of truth for clients that predate this field.
+   */
+  screenShareIds?: string[];
 }
 
 export interface ServerDetails {

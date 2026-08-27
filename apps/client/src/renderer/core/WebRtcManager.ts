@@ -14,13 +14,15 @@ export interface PeerSession {
   peerUserId: string;
   pc: RTCPeerConnection;
   remoteStream: MediaStream;
-  remoteScreenStream: MediaStream;
+  /** Remote screen streams keyed by share id (#253: up to MAX_SCREEN_SHARES). */
+  remoteScreenStreams: Map<string, MediaStream>;
   isPolite: boolean;
   makingOffer: boolean;
   candidateQueue: RTCIceCandidateInit[];
   audioSender?: RTCRtpSender | null;
   videoSender?: RTCRtpSender | null;
-  screenVideoSender?: RTCRtpSender | null;
+  /** Dedicated screen video senders keyed by share id (#253). */
+  screenVideoSenders: Map<string, RTCRtpSender>;
   screenAudioSender?: RTCRtpSender | null;
   // Auto-recovery and retry management
   iceRestartAttempts: number;
@@ -52,12 +54,13 @@ export class WebRtcManager {
   private remoteAudioVads: Map<string, { source: MediaStreamAudioSourceNode; analyser: AnalyserNode; interval: any }> = new Map();
   private localAudioTrack: MediaStreamTrack | null = null;
   private localCameraTrack: MediaStreamTrack | null = null;
-  private localScreenTrack: MediaStreamTrack | null = null;
+  /** Local screen video tracks keyed by share id (#253). */
+  private localScreenTracks: Map<string, MediaStreamTrack> = new Map();
+  /** The MediaStream wrapper announced to peers for each local share (#253). */
+  private localScreenStreams: Map<string, MediaStream> = new Map();
   private localScreenAudioTrack: MediaStreamTrack | null = null;
   private screenAudioStream: MediaStream | null = null;
   private screenAudioStreamId: string | null = null;
-  private screenVideoStream: MediaStream | null = null;
-  private screenVideoStreamId: string | null = null;
   private currentPreset: QualityPresetType = 'NORMAL';
   private currentUserId: string = '';
 
@@ -132,10 +135,11 @@ export class WebRtcManager {
   }
 
   /**
-   * Route a screen video track into the peer's dedicated screen MediaStream so
-   * the stage can render it as a separate tile from the camera (#26).
+   * Route a screen video track into a per-share MediaStream so the stage can
+   * render it as a separate tile from the camera (#26) and from the peer's
+   * other screen share (#253).
    */
-  private routeScreenVideoTrack(peerUserId: string, track: MediaStreamTrack): void {
+  private routeScreenVideoTrack(peerUserId: string, track: MediaStreamTrack, shareId: string): void {
     const session = this.peers.get(peerUserId);
     if (!session) return;
 
@@ -146,31 +150,65 @@ export class WebRtcManager {
       participantManager.setRemoteStream(peerUserId, session.remoteStream);
     }
 
-    // Replace any previous screen video track with this one.
-    session.remoteScreenStream.getVideoTracks().forEach((old) => {
-      if (old.id !== track.id) session.remoteScreenStream.removeTrack(old);
-    });
-    if (!session.remoteScreenStream.getTrackById(track.id)) {
-      session.remoteScreenStream.addTrack(track);
+    let screenStream = session.remoteScreenStreams.get(shareId);
+    if (!screenStream) {
+      screenStream = new MediaStream();
+      session.remoteScreenStreams.set(shareId, screenStream);
     }
-    participantManager.setRemoteScreenStream(peerUserId, session.remoteScreenStream);
+
+    // Replace any previous screen video track for this share with this one.
+    screenStream.getVideoTracks().forEach((old) => {
+      if (old.id !== track.id) screenStream!.removeTrack(old);
+    });
+    if (!screenStream.getTrackById(track.id)) {
+      screenStream.addTrack(track);
+    }
+    participantManager.setRemoteScreenStream(peerUserId, shareId, screenStream);
 
     const attach = (el: HTMLVideoElement | null) => {
       if (el) {
         el.muted = true;
-        if (el.srcObject !== session.remoteScreenStream) {
-          el.srcObject = session.remoteScreenStream;
+        if (el.srcObject !== screenStream) {
+          el.srcObject = screenStream!;
         }
         el.play().catch(() => {});
       }
     };
-    attach(document.getElementById(`video-${peerUserId}-screen`) as HTMLVideoElement | null);
-    attach(document.getElementById(`video-mini-${peerUserId}-screen`) as HTMLVideoElement | null);
+    attach(document.getElementById(`video-${peerUserId}-screen-${shareId}`) as HTMLVideoElement | null);
+    attach(document.getElementById(`video-mini-${peerUserId}-screen-${shareId}`) as HTMLVideoElement | null);
+    // Pre-#253 peers don't publish a screenShareIds list, so their tile is keyed
+    // by the stage's legacy placeholder rather than by this stream id.
+    attach(document.getElementById(`video-${peerUserId}-screen-legacy`) as HTMLVideoElement | null);
+    attach(document.getElementById(`video-mini-${peerUserId}-screen-legacy`) as HTMLVideoElement | null);
 
     track.onended = () => {
-      session.remoteScreenStream.removeTrack(track);
-      participantManager.setRemoteScreenStream(peerUserId, session.remoteScreenStream);
+      screenStream!.removeTrack(track);
+      session.remoteScreenStreams.delete(shareId);
+      // `screenVideoStreamIds` is the only durable record that this id is a
+      // screen and not a camera. A reconnect ends the track without the sender
+      // re-announcing the metadata, so dropping it here would make the share
+      // come back misclassified as the camera (#26).
+      participantManager.removeRemoteScreenStream(peerUserId, shareId);
     };
+  }
+
+  /**
+   * True when the sender carries one of this peer's screen shares, so the
+   * camera-transceiver lookups never pick a screen m-line by mistake (#253).
+   */
+  private isScreenVideoSender(session: PeerSession, sender: RTCRtpSender): boolean {
+    for (const screenSender of session.screenVideoSenders.values()) {
+      if (screenSender === sender) return true;
+    }
+    return false;
+  }
+
+  /** True when the track is one of the local screen shares (#253). */
+  private isLocalScreenTrack(track: MediaStreamTrack): boolean {
+    for (const screenTrack of this.localScreenTracks.values()) {
+      if (screenTrack === track) return true;
+    }
+    return false;
   }
 
   /**
@@ -340,10 +378,11 @@ export class WebRtcManager {
       peerUserId,
       pc,
       remoteStream,
-      remoteScreenStream: new MediaStream(),
+      remoteScreenStreams: new Map(),
       isPolite,
       makingOffer: false,
       candidateQueue: [],
+      screenVideoSenders: new Map(),
       iceRestartAttempts: 0,
       reconnectAttempts: 0,
       isRecovering: false,
@@ -366,17 +405,20 @@ export class WebRtcManager {
       pc.addTransceiver('video', { direction: 'sendrecv' });
     }
 
-    // Setup Screen Video Track as a dedicated second sender (if currently
-    // sharing). Announce the stream ID first so the receiver can tell it apart
-    // from the camera track (mirrors the screen-audio-meta mechanism).
-    if (this.localScreenTrack && this.screenVideoStream) {
+    // Setup Screen Video Tracks as dedicated extra senders (if currently
+    // sharing). Announce each stream ID first so the receiver can tell them
+    // apart from the camera track and from each other (mirrors the
+    // screen-audio-meta mechanism) — #26, #253.
+    for (const [shareId, screenTrack] of this.localScreenTracks) {
+      const stream = this.localScreenStreams.get(shareId);
+      if (!stream) continue;
       networkClient.send(MessageType.RTC_SIGNAL, {
         targetUserId: peerUserId,
         fromUserId: this.currentUserId,
         signalType: 'screen-video-meta',
-        streamId: this.screenVideoStreamId,
+        streamId: shareId,
       });
-      session.screenVideoSender = pc.addTrack(this.localScreenTrack, this.screenVideoStream);
+      session.screenVideoSenders.set(shareId, pc.addTrack(screenTrack, stream));
     }
 
     // Setup Screen Audio Track (if currently sharing)
@@ -439,7 +481,7 @@ export class WebRtcManager {
         if (!isKnownScreenVideo && incomingStreamId) {
           this.pendingScreenVideoTracks.set(incomingStreamId, { track: event.track, peerUserId });
         }
-        this.routeScreenVideoTrack(peerUserId, event.track);
+        this.routeScreenVideoTrack(peerUserId, event.track, incomingStreamId!);
         return;
       }
 
@@ -648,7 +690,7 @@ export class WebRtcManager {
         if (pending) {
           console.log(`[WebRTC] Reclassifying pending track as screen video for ${pending.peerUserId}`);
           this.pendingScreenVideoTracks.delete(streamId);
-          this.routeScreenVideoTrack(pending.peerUserId, pending.track);
+          this.routeScreenVideoTrack(pending.peerUserId, pending.track, streamId);
         }
       }
       return;
@@ -708,14 +750,14 @@ export class WebRtcManager {
         // 2. Ensure the primary (camera) local video track is attached in the
         //    answer. The camera m-line is always created first, so the first
         //    video transceiver that isn't the screen sender is the camera one.
-        //    Screen share rides its own second sender and is negotiated
+        //    Screen shares ride their own extra senders and are negotiated
         //    separately (via screen-video-meta + renegotiateIfNeeded).
         const cameraTrack = this.localCameraTrack;
         const transceivers = session.pc.getTransceivers();
         const videoTransceiver = transceivers.find(
           (t) =>
             (t.receiver.track.kind === 'video' || t.sender.track?.kind === 'video') &&
-            t.sender !== session.screenVideoSender
+            !this.isScreenVideoSender(session, t.sender)
         );
         if (videoTransceiver) {
           videoTransceiver.direction = cameraTrack ? 'sendrecv' : 'recvonly';
@@ -809,66 +851,93 @@ export class WebRtcManager {
   }
 
   /**
-   * Set the local screen video track and add it to all peers as a dedicated
-   * second video sender (mirrors setLocalScreenAudioTrack). Announces the
-   * stream ID via screen-video-meta before adding the track so receivers render
-   * it as a separate tile from the camera (#26).
+   * Add a local screen video track as a dedicated extra sender on every peer
+   * (mirrors setLocalScreenAudioTrack). Announces the stream ID via
+   * screen-video-meta before adding the track so receivers render it as its own
+   * tile, separate from the camera (#26) and from the other share (#253).
    */
-  public async setLocalScreenTrack(track: MediaStreamTrack | null): Promise<void> {
-    this.localScreenTrack = track;
+  public async addLocalScreenTrack(stream: MediaStream): Promise<void> {
+    const track = stream.getVideoTracks()[0];
+    if (!track) return;
 
-    if (track) {
-      // Wrap in a dedicated MediaStream so receivers can identify it.
-      const stream = new MediaStream([track]);
-      this.screenVideoStream = stream;
-      this.screenVideoStreamId = stream.id;
+    // The share id IS the MediaStream id, which is also what gets announced
+    // over the wire, so both ends key the share by the same value.
+    const shareId = stream.id;
+    this.localScreenTracks.set(shareId, track);
+    this.localScreenStreams.set(shareId, stream);
 
-      // Announce stream ID to all peers BEFORE adding the track.
-      for (const session of this.peers.values()) {
-        networkClient.send(MessageType.RTC_SIGNAL, {
-          targetUserId: session.peerUserId,
-          fromUserId: this.currentUserId,
-          signalType: 'screen-video-meta',
-          streamId: this.screenVideoStreamId,
-        });
-      }
-
-      // Add track to all peers — wait for stable signaling state before
-      // renegotiating, since a camera change may have just triggered an offer.
-      for (const session of this.peers.values()) {
-        try {
-          await this.waitForStable(session.pc);
-          if (session.screenVideoSender) {
-            await session.screenVideoSender.replaceTrack(track);
-          } else {
-            session.screenVideoSender = session.pc.addTrack(track, stream);
-          }
-          await this.sendOffer(session);
-          // Wait for the answer, then verify the track was actually negotiated.
-          await this.waitForStable(session.pc);
-          await this.renegotiateIfNeeded(session);
-        } catch (err) {
-          console.warn(`[WebRTC] Error adding screen video track for ${session.peerUserId}:`, err);
-        }
-      }
-      this.applyBitrateConstraints();
-    } else {
-      // Remove screen video track from all peers.
-      for (const session of this.peers.values()) {
-        if (session.screenVideoSender) {
-          try {
-            await this.waitForStable(session.pc);
-            session.pc.removeTrack(session.screenVideoSender);
-            session.screenVideoSender = null;
-            await this.sendOffer(session);
-          } catch (err) {
-            console.warn(`[WebRTC] Error removing screen video track for ${session.peerUserId}:`, err);
-          }
-        }
-      }
-      this.screenVideoStream = null;
-      this.screenVideoStreamId = null;
+    // Announce stream ID to all peers BEFORE adding the track.
+    for (const session of this.peers.values()) {
+      networkClient.send(MessageType.RTC_SIGNAL, {
+        targetUserId: session.peerUserId,
+        fromUserId: this.currentUserId,
+        signalType: 'screen-video-meta',
+        streamId: shareId,
+      });
     }
+
+    // Add track to all peers — wait for stable signaling state before
+    // renegotiating, since a camera change may have just triggered an offer.
+    for (const session of this.peers.values()) {
+      try {
+        await this.waitForStable(session.pc);
+        const existing = session.screenVideoSenders.get(shareId);
+        if (existing) {
+          await existing.replaceTrack(track);
+        } else {
+          session.screenVideoSenders.set(shareId, session.pc.addTrack(track, stream));
+        }
+        await this.sendOffer(session);
+        // Wait for the answer, then verify the track was actually negotiated.
+        await this.waitForStable(session.pc);
+        await this.renegotiateIfNeeded(session);
+      } catch (err) {
+        console.warn(`[WebRTC] Error adding screen video track for ${session.peerUserId}:`, err);
+      }
+    }
+    this.applyBitrateConstraints();
+  }
+
+  /**
+   * Remove one local screen share from every peer (#253).
+   */
+  public async removeLocalScreenTrack(shareId: string): Promise<void> {
+    this.localScreenTracks.delete(shareId);
+    this.localScreenStreams.delete(shareId);
+
+    for (const session of this.peers.values()) {
+      const sender = session.screenVideoSenders.get(shareId);
+      if (!sender) continue;
+      try {
+        await this.waitForStable(session.pc);
+        session.pc.removeTrack(sender);
+        session.screenVideoSenders.delete(shareId);
+        await this.sendOffer(session);
+      } catch (err) {
+        console.warn(`[WebRTC] Error removing screen video track for ${session.peerUserId}:`, err);
+      }
+    }
+  }
+
+  /**
+   * Tear down every local screen share (leaving the channel, camera swap, …).
+   */
+  public async removeAllLocalScreenTracks(): Promise<void> {
+    for (const shareId of [...this.localScreenTracks.keys()]) {
+      await this.removeLocalScreenTrack(shareId);
+    }
+  }
+
+  /**
+   * Drops the local screen bookkeeping without renegotiating, for paths where
+   * the call itself is over and the peer connections are being torn down
+   * (leaving voice, kicked, socket dropped). Without this the stale tracks
+   * would be re-announced and re-added to every peer on the next join (#253).
+   * Note this must NOT run on reconnect, where the share is meant to survive.
+   */
+  public clearLocalScreenTracks(): void {
+    this.localScreenTracks.clear();
+    this.localScreenStreams.clear();
   }
 
   /**
@@ -933,11 +1002,11 @@ export class WebRtcManager {
     for (const session of this.peers.values()) {
       try {
         const transceivers = session.pc.getTransceivers();
-        // Find the primary (camera) video transceiver, never the screen sender.
+        // Find the primary (camera) video transceiver, never a screen sender.
         const videoTransceiver = transceivers.find(
           (t) =>
             (t.receiver.track.kind === 'video' || t.sender.track?.kind === 'video') &&
-            t.sender !== session.screenVideoSender
+            !this.isScreenVideoSender(session, t.sender)
         );
 
         if (videoTransceiver) {
@@ -1001,7 +1070,7 @@ export class WebRtcManager {
           if (sender.track.kind === 'audio') {
             params.encodings[0].maxBitrate = profile.audioBitrateKbps * 1000;
           } else if (sender.track.kind === 'video') {
-            const isScreen = sender.track === this.localScreenTrack;
+            const isScreen = this.isLocalScreenTrack(sender.track);
             params.encodings[0].maxBitrate =
               (isScreen ? profile.screenBitrateKbps : profile.cameraBitrateKbps) * 1000;
 

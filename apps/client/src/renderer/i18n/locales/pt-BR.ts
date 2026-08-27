@@ -208,6 +208,9 @@ export const ptBR = {
   'screenShare.noScreens': 'Nenhuma tela detectada.',
   'screenShare.noWindows': 'Nenhuma janela de aplicativo aberta foi detectada.',
   'screenShare.errorTitle': 'Erro ao compartilhar tela',
+  'screenShare.limitTitle': 'Limite de telas atingido',
+  'screenShare.confirmAdd': 'Adicionar tela',
+  'screenShare.limitMessage': 'Você já está compartilhando {max} telas. Pare uma delas antes de compartilhar outra.',
   'screenShare.errorMessage': 'Não foi possível iniciar o compartilhamento de tela: {error}',
   'screenShare.shareAppAudio': 'Compartilhar áudio do aplicativo',
 
@@ -387,7 +390,6 @@ export const ptBR = {
   // ── Palco de voz (VoiceStageView.ts) ─────────────────────────────────────
   'stage.noChannelTitle': 'Nenhum canal de voz conectado',
   'stage.noChannelSubtitle': 'Clique em um canal de voz na barra lateral para entrar na chamada!',
-  'stage.toggleView': 'Alternar entre visão padrão e visão em grade',
   'stage.pingCalculating': 'Latência de Voz P2P: Calculando...',
   'stage.connectedMesh': 'Conectado (Mesh P2P)',
   'stage.muteMic': 'Mutar Microfone',
@@ -424,6 +426,8 @@ export const ptBR = {
   'stage.stopScreenShareWithAudio': 'Parar Compartilhamento de Tela (com áudio)',
   'stage.bannerScreenWithAudio': 'Transmissão de Tela Ativa 🔊 com Áudio • Visível para todos na chamada',
   'stage.watchBroadcast': 'Assistir transmissão',
+  'stage.screenLabel': 'Tela',
+  'stage.screenLabelNumbered': 'Tela {index}',
   'stage.watchCaption': '{name} está compartilhando a tela',
   'stage.stopWatching': 'Parar de assistir',
   'stage.volumeAria': 'Volume',

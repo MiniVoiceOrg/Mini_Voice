@@ -663,7 +663,41 @@ input:focus, textarea:focus, select:focus {
 
 .server-rail-avatar.active {
   border-radius: 30%;
-  box-shadow: 0 0 0 2px var(--primary, #5865f2);
+}
+
+/* #287: Discord-style connection pill. It sits flush against the rail's left
+   wall and grows out from the centre on hover; the connected server keeps it
+   at full height. Lives on a wrapper because the avatar button clips its own
+   overflow to round the server icon. */
+.server-rail-item {
+  position: relative;
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.server-rail-pill {
+  position: absolute;
+  left: 0;
+  top: 50%;
+  width: 4px;
+  height: 0;
+  transform: translateY(-50%);
+  border-radius: 0 4px 4px 0;
+  background-color: #ffffff;
+  transition: height 0.2s ease;
+  pointer-events: none;
+}
+
+.server-rail-item:hover .server-rail-pill {
+  height: 20px;
+}
+
+/* Declared after the hover rule so the connected server stays at full height
+   even while hovered (same specificity, source order decides). */
+.server-rail-item.active .server-rail-pill {
+  height: 40px;
 }
 
 .server-rail-divider {
@@ -2851,35 +2885,20 @@ input:focus, textarea:focus, select:focus {
   border-color: rgba(88, 101, 242, 0.6);
 }
 
-.stage-card.speaking {
-  border-color: #23a55a !important;
-  box-shadow: 0 0 20px rgba(35, 165, 90, 0.6), inset 0 0 10px rgba(35, 165, 90, 0.2) !important;
-}
-
-/* Expanded grid (#29): cameras/screens fill the whole stage, split equally. */
-.stage-grid--expanded {
-  display: grid;
-  gap: 8px;
-  padding: 8px;
-  align-items: stretch;
-  justify-content: stretch;
-  align-content: stretch;
-  overflow: hidden;
-  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
-  grid-auto-rows: 1fr;
-}
-
-.stage-grid--expanded .stage-card {
-  aspect-ratio: auto;
-  width: 100%;
-  height: 100%;
-  max-width: none;
-  min-width: 0;
+/* #293: tiles that carry video (camera or screen) are widescreen instead of
+   square. Cameras and monitors are 16:9, so a square tile either crops the
+   image (cover) or letterboxes it (contain); both waste the card. Avatar-only
+   tiles stay square. */
+.stage-card--video {
+  aspect-ratio: 16 / 9;
+  max-width: 620px;
+  min-width: 300px;
   min-height: 0;
 }
 
-.stage-grid--expanded .stage-video-element.screen-share {
-  object-fit: cover;
+.stage-card.speaking {
+  border-color: #23a55a !important;
+  box-shadow: 0 0 20px rgba(35, 165, 90, 0.6), inset 0 0 10px rgba(35, 165, 90, 0.2) !important;
 }
 
 /* Focused Mode Layout */
@@ -2890,6 +2909,20 @@ input:focus, textarea:focus, select:focus {
   gap: 12px;
   height: 100%;
   min-height: 0;
+}
+
+/* Focus area holds one pane, or two side by side in split focus (#253). */
+.stage-focused-stack {
+  flex: 1;
+  display: flex;
+  gap: 12px;
+  min-height: 0;
+  min-width: 0;
+}
+
+.stage-focused-stack--split > .stage-focused-main {
+  flex: 1 1 0;
+  min-width: 0;
 }
 
 .stage-focused-main {
@@ -2976,6 +3009,12 @@ input:focus, textarea:focus, select:focus {
 .stage-mini-card:hover {
   border-color: var(--accent-primary);
   transform: scale(1.04);
+}
+
+/* #293: same widescreen rule for the focus-mode strip. A 100px square is too
+   narrow to read a shared screen; 16:9 gives the thumbnail usable width. */
+.stage-mini-card--video {
+  aspect-ratio: 16 / 9;
 }
 
 .stage-mini-card.speaking {
@@ -3152,6 +3191,24 @@ input:focus, textarea:focus, select:focus {
   font-size: 22px;
 }
 
+/* #292: inside the focus-mode strip the tile is only ~100px tall, so the full
+   button with label plus the caption overflowed it. The mini variant keeps just
+   the icon; the tooltip carries the label. */
+.stage-watch-overlay--mini {
+  gap: 0;
+  padding: 6px;
+}
+
+.stage-watch-overlay--mini .stage-watch-btn {
+  padding: 6px;
+  border-radius: 50%;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.45);
+}
+
+.stage-watch-overlay--mini .stage-watch-btn .material-symbols-outlined {
+  font-size: 18px;
+}
+
 .stage-watch-caption {
   pointer-events: none;
   color: #fff;
@@ -3199,6 +3256,12 @@ input:focus, textarea:focus, select:focus {
   background-color: rgba(0, 0, 0, 0.55);
   color: var(--text-normal);
   font-size: 13px;
+}
+
+/* #292: the focus-mode thumbnail has no room for the "loading" label, so it
+   keeps the spinner alone. */
+.stage-loading-overlay--mini {
+  gap: 0;
 }
 
 .stage-badges-overlay {
