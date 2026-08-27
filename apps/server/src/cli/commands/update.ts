@@ -11,7 +11,8 @@ import {
 } from '../pm2';
 import { confirm } from '../prompts';
 
-export const GITHUB_RELEASES_URL = 'https://api.github.com/repos/MonkyOrg/Monky/releases';
+export const GITHUB_RELEASES_URL =
+  'https://api.github.com/repos/MonkyOrg/Monky/releases?per_page=100';
 export const GITHUB_LATEST_RELEASE_URL = 'https://api.github.com/repos/MonkyOrg/Monky/releases/latest';
 
 export function getRepoRoot(): string | null {
@@ -104,7 +105,7 @@ export async function fetchLatestVersion(
           res.on('end', () => {
             try {
               const parsed = JSON.parse(data);
-              const release = Array.isArray(parsed) ? parsed[0] : parsed;
+              const release = Array.isArray(parsed) ? pickNewestRelease(parsed) : parsed;
               if (!release) {
                 resolve(null);
                 return;
@@ -174,6 +175,37 @@ export function compareVersions(local: string, remote: string): number {
     return b.betaNumber - a.betaNumber;
   }
   return 0;
+}
+
+export interface GitHubReleaseSummary {
+  tag_name?: string;
+  html_url?: string;
+  prerelease?: boolean;
+  draft?: boolean;
+  assets?: { name?: string; browser_download_url?: string }[];
+}
+
+/**
+ * Picks the newest release from the GitHub listing.
+ *
+ * The `/releases` endpoint does not return the list in chronological order — it
+ * orders by tag name, so `v2.4.0-beta.9` came back ahead of `v2.4.0-beta.15`.
+ * Reading `parsed[0]` therefore offered an old build as if it were the latest,
+ * while the desktop client, which compares every entry, resolved correctly. The
+ * two now use the same strategy: compare, never trust the order.
+ *
+ * Drafts are skipped because they are visible to maintainers only and have no
+ * downloadable assets.
+ */
+export function pickNewestRelease<T extends GitHubReleaseSummary>(releases: T[]): T | null {
+  let newest: T | null = null;
+  for (const release of releases || []) {
+    if (!release || release.draft || !release.tag_name) continue;
+    if (!newest || compareVersions(newest.tag_name as string, release.tag_name) > 0) {
+      newest = release;
+    }
+  }
+  return newest;
 }
 
 export async function checkForUpdate(

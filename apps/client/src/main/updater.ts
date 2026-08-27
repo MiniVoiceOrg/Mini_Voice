@@ -132,12 +132,18 @@ interface GithubRelease {
  * "latest release" (which excludes pre-releases). Beta users list all recent
  * releases (including pre-releases) and pick the one with the highest SemVer —
  * so a newer beta, or the final stable that supersedes it, is always chosen.
+ *
+ * The listing is never assumed to be in chronological order: GitHub returns it
+ * ordered by tag name, so the newest build is not necessarily the first entry.
+ * The page is asked at its maximum size for the same reason — the repository
+ * already has well over a hundred releases, and a short window could cut off
+ * the very release being looked for.
  */
 async function fetchTargetRelease(): Promise<GithubRelease | null | { error: string }> {
   const headers = { Accept: 'application/vnd.github+json', 'User-Agent': 'Monky-App' };
 
   if (betaChannel) {
-    const res = await fetch(`https://api.github.com/repos/${GITHUB_REPO}/releases?per_page=30`, {
+    const res = await fetch(`https://api.github.com/repos/${GITHUB_REPO}/releases?per_page=100`, {
       headers,
     });
     if (!res.ok) return { error: `HTTP ${res.status}` };

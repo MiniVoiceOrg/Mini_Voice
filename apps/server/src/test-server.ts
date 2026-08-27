@@ -9,6 +9,7 @@ import {
   PROTOCOL_VERSION,
 } from '@monky/shared';
 import { MonkyServer } from './server';
+import { compareVersions, pickNewestRelease } from './cli/commands/update';
 
 function withTimeout<T>(promise: Promise<T>, ms: number, label: string): Promise<T> {
   return Promise.race([
@@ -306,6 +307,49 @@ async function runTests() {
 
     wsDeviceAAgain.close();
     wsDeviceB.close();
+
+    // Teste 10: a API /releases devolve a lista ordenada por nome de tag, e nao
+    // por data, entao `beta.9` chega antes de `beta.15`. Confiar na posicao 0
+    // fazia o `monky update` oferecer uma build antiga como se fosse a ultima.
+    const releasesComoAApiDevolve = [
+      { tag_name: 'v2.4.0-beta.9' },
+      { tag_name: 'v2.4.0-beta.8' },
+      { tag_name: 'v2.4.0-beta.15' },
+      { tag_name: 'v2.4.0-beta.14' },
+    ];
+    const maisNova = pickNewestRelease(releasesComoAApiDevolve);
+    if (maisNova?.tag_name !== 'v2.4.0-beta.15') {
+      throw new Error(`Teste 10: esperava v2.4.0-beta.15, recebi ${maisNova?.tag_name}`);
+    }
+
+    // Rascunhos nao tem asset publicado, entao nao podem ser escolhidos.
+    const comRascunho = pickNewestRelease([
+      { tag_name: 'v9.9.9', draft: true },
+      { tag_name: 'v2.4.0-beta.15' },
+    ]);
+    if (comRascunho?.tag_name !== 'v2.4.0-beta.15') {
+      throw new Error(`Teste 10: rascunho deveria ser ignorado, recebi ${comRascunho?.tag_name}`);
+    }
+
+    // A nomenclatura nova (#338) convive com a antiga e vence pelo numero.
+    const naVirada = pickNewestRelease([{ tag_name: 'v3.0.0-beta001' }, { tag_name: 'v2.4.0-beta.15' }]);
+    if (naVirada?.tag_name !== 'v3.0.0-beta001') {
+      throw new Error(`Teste 10: esperava v3.0.0-beta001, recebi ${naVirada?.tag_name}`);
+    }
+    if (compareVersions('2.4.0-beta.15', '2.4.0-beta016') <= 0) {
+      throw new Error('Teste 10: beta016 deveria ser considerada mais nova que beta.15');
+    }
+
+    // Uma estavel supera a propria prerelease de mesmo numero.
+    const estavelVence = pickNewestRelease([{ tag_name: 'v3.0.0-beta005' }, { tag_name: 'v3.0.0' }]);
+    if (estavelVence?.tag_name !== 'v3.0.0') {
+      throw new Error(`Teste 10: estavel deveria vencer a beta, recebi ${estavelVence?.tag_name}`);
+    }
+
+    if (pickNewestRelease([]) !== null) {
+      throw new Error('Teste 10: lista vazia deveria devolver null');
+    }
+    console.log('✔ Teste 10 passou: A release mais nova é escolhida por comparação, não pela ordem da API');
 
     console.log('=== Todos os testes do servidor passaram com sucesso! ===');
   } finally {
