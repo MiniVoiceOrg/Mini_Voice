@@ -1,5 +1,3 @@
-[🏠 Home](Home) · [English](en-Configuracoes)
-
 # Configurações
 
 Abra pelo ícone de engrenagem na tela de conexão ou na barra inferior.
@@ -18,6 +16,3 @@ Abra pelo ícone de engrenagem na tela de conexão ou na barra inferior.
 | Normal | 32 kbps | 480p | 720p | Uso geral |
 | Alta Qualidade | 48 kbps | 720p | 1080p | Internet rápida e PC sobrando |
 | Gaming | 28 kbps | reduzida | fluida (60 FPS) | Jogando: prioriza voz e tela fluida |
-
----
-<sub>📝 Esta página é gerada a partir de [`wiki/`](https://github.com/MonkyOrg/Monky/tree/main/wiki) no repositório. Edições feitas direto na Wiki serão sobrescritas — abra um Pull Request.</sub>

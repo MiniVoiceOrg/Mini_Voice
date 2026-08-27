@@ -1,5 +1,3 @@
-[🏠 Home](Home) · [English](en-Usando-o-App)
-
 # Usando o App
 
 ## Voz
@@ -21,6 +19,3 @@ Cada canal de texto tem histórico salvo no servidor, avatares, horários, forma
 ## Soundboard
 
 Em **Configurações › Soundboard**, escolha uma pasta com `.mp3`, `.wav` ou `.ogg`. Na chamada, toque pelo botão de soundboard. Volume e mudo local ficam nas mesmas configurações. O anfitrião pode desativar o soundboard do servidor inteiro.
-
----
-<sub>📝 Esta página é gerada a partir de [`wiki/`](https://github.com/MonkyOrg/Monky/tree/main/wiki) no repositório. Edições feitas direto na Wiki serão sobrescritas — abra um Pull Request.</sub>

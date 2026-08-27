@@ -1,5 +1,3 @@
-[🏠 Home](Home) · [English](en-Verificar-Releases)
-
 # Verificar Releases
 
 Todas as releases são assinadas com [Sigstore Cosign](https://docs.sigstore.dev/) (keyless, via OIDC do GitHub Actions).
@@ -18,6 +16,3 @@ cosign verify-blob \
 ```
 
 Isso confirma que o artefato veio do pipeline oficial e não foi adulterado.
-
----
-<sub>📝 Esta página é gerada a partir de [`wiki/`](https://github.com/MonkyOrg/Monky/tree/main/wiki) no repositório. Edições feitas direto na Wiki serão sobrescritas — abra um Pull Request.</sub>

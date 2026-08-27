@@ -27,7 +27,10 @@
     "build:server": "npm run build --workspace=packages/shared && npm run build --workspace=apps/server",
     "dist:server-gui": "npm run build && npm run dist --workspace=apps/server-gui",
     "pack:cli": "npm run build && node scripts/pack-cli.js",
-    "test": "node scripts/test-versioning.js && npm run test --workspaces"
+    "test": "node scripts/test-versioning.js && npm run test --workspaces",
+    "docs:dev": "vitepress dev docs-site",
+    "docs:build": "vitepress build docs-site",
+    "docs:preview": "vitepress preview docs-site"
   },
   "keywords": [
     "webrtc",
@@ -41,6 +44,7 @@
   "license": "MIT",
   "devDependencies": {
     "rimraf": "^6.0.1",
-    "typescript": "^5.9.3"
+    "typescript": "^5.9.3",
+    "vitepress": "^1.6.4"
   }
 }

@@ -1,5 +1,3 @@
-[🏠 Home](en-Home) · [Português](Solucao-de-Problemas)
-
 # Troubleshooting
 
 | Symptom | What usually fixes it |
@@ -11,6 +9,3 @@
 | Shared screen has no sound | Share a whole screen and check the source app volume |
 | Nothing under Servers on the Network | Discovery only works on the same LAN; click Scan again and check UDP `41234` in the firewall |
 | One participant is silent only for me | Right-click them and set individual volume back to 100% |
-
----
-<sub>📝 This page is generated from [`wiki/`](https://github.com/MonkyOrg/Monky/tree/main/wiki) in the repository. Edits made directly in the Wiki will be overwritten — please open a Pull Request.</sub>

@@ -1,5 +1,3 @@
-[🏠 Home](Home) · [English](en-Monky-Server)
-
 # Monky Server
 
 **Monky Server** é o painel gráfico para quem hospeda e prefere administrar sem terminal. Ele faz o mesmo papel do CLI, com interface gráfica.
@@ -19,6 +17,3 @@ Baixe pela [página de releases](https://github.com/MonkyOrg/Monky/releases). Os
 - **Logs** — saída do servidor em tempo real.
 
 Para conversar, use o app Monky normal; Monky Server é para hospedar.
-
----
-<sub>📝 Esta página é gerada a partir de [`wiki/`](https://github.com/MonkyOrg/Monky/tree/main/wiki) no repositório. Edições feitas direto na Wiki serão sobrescritas — abra um Pull Request.</sub>

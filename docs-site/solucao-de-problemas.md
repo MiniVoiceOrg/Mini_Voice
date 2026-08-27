@@ -1,5 +1,3 @@
-[🏠 Home](Home) · [English](en-Solucao-de-Problemas)
-
 # Solução de Problemas
 
 | Sintoma | O que costuma resolver |
@@ -11,6 +9,3 @@
 | Tela compartilhada sem som | Compartilhe uma tela inteira e confira o volume do app de origem |
 | Nada em Servidores na Rede | A descoberta só funciona na mesma LAN; clique em Buscar de novo e verifique UDP `41234` no firewall |
 | Um participante ficou mudo só para mim | Clique com o botão direito nele e volte o volume individual para 100% |
-
----
-<sub>📝 Esta página é gerada a partir de [`wiki/`](https://github.com/MonkyOrg/Monky/tree/main/wiki) no repositório. Edições feitas direto na Wiki serão sobrescritas — abra um Pull Request.</sub>

@@ -1,5 +1,3 @@
-[🏠 Home](en-Home) · [Português](Instalacao)
-
 # Installation
 
 Download the latest version from [github.com/MonkyOrg/Monky/releases/latest](https://github.com/MonkyOrg/Monky/releases/latest).
@@ -18,7 +16,4 @@ Windows and macOS may show a warning because the executables are not signed with
 
 The app tells you when a new version is out. You can also check under **Settings › About and Updates › Check for updates**.
 
-To verify release checksums and signatures, see [Verify Releases](en-Verificar-Releases).
-
----
-<sub>📝 This page is generated from [`wiki/`](https://github.com/MonkyOrg/Monky/tree/main/wiki) in the repository. Edits made directly in the Wiki will be overwritten — please open a Pull Request.</sub>
+To verify release checksums and signatures, see [Verify Releases](/en/verificar-releases).

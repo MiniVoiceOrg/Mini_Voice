@@ -1,5 +1,3 @@
-[🏠 Home](Home) · [English](en-Criar-Seu-Servidor)
-
 # Criar Seu Servidor
 
 Na aba **Meus Servidores › Criar Servidor**, preencha nickname do anfitrião, nome do servidor, porta local, senha opcional e os canais iniciais de texto e voz.
@@ -25,6 +23,3 @@ Libere a porta no firewall, faça port forwarding da porta `3000` (ou a escolhid
 ## Administrar
 
 Em **Configurações do Servidor** é possível renomear o servidor, alterar/remover senha e permitir ou bloquear o soundboard. Os cabeçalhos de canais têm **+** para criar e lixeira para apagar.
-
----
-<sub>📝 Esta página é gerada a partir de [`wiki/`](https://github.com/MonkyOrg/Monky/tree/main/wiki) no repositório. Edições feitas direto na Wiki serão sobrescritas — abra um Pull Request.</sub>

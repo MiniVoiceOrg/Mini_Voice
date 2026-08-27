@@ -37,21 +37,21 @@ Baixe a versão mais recente em [github.com/MonkyOrg/Monky/releases/latest](http
 | Windows 10/11 (x64) | `Monky-<versão>-win-x64-portable.exe` | Não instala nada, é só executar |
 | macOS (Intel / Apple Silicon) | `Monky-<versão>-mac-<arch>.dmg` | Escolha `x64` (Intel) ou `arm64` (M1/M2/M3+) |
 
-Se o Windows/macOS mostrar aviso de segurança, veja [Instalação](https://github.com/MonkyOrg/Monky/wiki/Instalacao). Para checksums e assinatura, veja [Verificar Releases](https://github.com/MonkyOrg/Monky/wiki/Verificar-Releases).
+Se o Windows/macOS mostrar aviso de segurança, veja [Instalação](https://monkyorg.github.io/Monky/instalacao). Para checksums e assinatura, veja [Verificar Releases](https://monkyorg.github.io/Monky/verificar-releases).
 
 ## 📚 Documentação
 
-- [Wiki do Monky](https://github.com/MonkyOrg/Monky/wiki) — manual para usar e hospedar. ([English](https://github.com/MonkyOrg/Monky/wiki/en-Home))
-- [Primeiros Passos](https://github.com/MonkyOrg/Monky/wiki/Primeiros-Passos)
-- [Criar Seu Servidor](https://github.com/MonkyOrg/Monky/wiki/Criar-Seu-Servidor)
-- [Entrar Em Um Servidor](https://github.com/MonkyOrg/Monky/wiki/Entrar-Em-Um-Servidor)
-- [Usando o App](https://github.com/MonkyOrg/Monky/wiki/Usando-o-App)
-- [Hospedar em VPS](https://github.com/MonkyOrg/Monky/wiki/Hospedar-em-VPS)
+- [Documentação do Monky](https://monkyorg.github.io/Monky/) — manual para usar e hospedar. ([English](https://monkyorg.github.io/Monky/en/))
+- [Primeiros Passos](https://monkyorg.github.io/Monky/primeiros-passos)
+- [Criar Seu Servidor](https://monkyorg.github.io/Monky/criar-seu-servidor)
+- [Entrar Em Um Servidor](https://monkyorg.github.io/Monky/entrar-em-um-servidor)
+- [Usando o App](https://monkyorg.github.io/Monky/usando-o-app)
+- [Hospedar em VPS](https://monkyorg.github.io/Monky/hospedar-em-vps)
 
 ## 🧩 Os 3 produtos
 
 - **Monky** — app cliente para conversar com amigos.
-- **[Monky Server](https://github.com/MonkyOrg/Monky/wiki/Monky-Server)** — painel gráfico para quem hospeda.
+- **[Monky Server](https://monkyorg.github.io/Monky/monky-server)** — painel gráfico para quem hospeda.
 - **[Monky CLI](docs/CLI.md)** — administração por linha de comando, ideal para VPS.
 
 ## 🗳️ Roadmap & Votação
