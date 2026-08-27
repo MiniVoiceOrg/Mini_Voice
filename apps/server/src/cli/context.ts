@@ -10,14 +10,11 @@ import {
 } from '../infrastructure/database/SqliteRepositories';
 import { ensureServerSeedData } from '../server';
 import {
-  ANSI,
-  color,
   DEFAULT_DATA_DIR,
   DEFAULT_DATA_INPUT,
   DEFAULT_SERVER_NAME,
   SERVER_DB_NAME,
 } from './constants';
-import { ask } from './prompts';
 
 export interface CliContext {
   dataDir: string;
@@ -125,27 +122,5 @@ export async function withContext<T>(
     return await fn({ dataDir, dbConn, serverRepo, userRepo, roleRepo });
   } finally {
     dbConn.close();
-  }
-}
-
-export async function ensureExistingDataDir(dataDir: string, dataDirSpecified: boolean): Promise<string> {
-  if (dataDirSpecified) {
-    if (!fs.existsSync(dataDir) || !fs.existsSync(dataDbPath(dataDir))) {
-      throw new Error(`Pasta de dados inválida: ${dataDir}`);
-    }
-    return dataDir;
-  }
-
-  if (fs.existsSync(dataDir) && fs.existsSync(dataDbPath(dataDir))) {
-    return dataDir;
-  }
-
-  while (true) {
-    const answer = await ask('Caminho dos dados', formatDataDirForPrompt(dataDir));
-    const resolved = resolveInputPath(answer);
-    if (fs.existsSync(resolved) && fs.existsSync(dataDbPath(resolved))) {
-      return resolved;
-    }
-    console.log(color(`Pasta inválida ou banco de dados não encontrado em: ${resolved}`, ANSI.yellow));
   }
 }

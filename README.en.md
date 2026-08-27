@@ -47,7 +47,7 @@ Full usage and hosting manual at **[monkyorg.github.io/Monky/en](https://monkyor
 ## 🧩 The 2 products
 
 - **Monky** — client app for talking to friends. It also hosts the server, with a **Server Monitor** for live metrics and logs.
-- **[Monky CLI](https://monkyorg.github.io/Monky/en/cli)** — command-line administration, ideal for VPS.
+- **[Monky CLI](https://monkyorg.github.io/Monky/en/cli)** — command-line administration, ideal for VPS. Install it from the release, run `monky create` and you are done; a single machine can host as many servers as you want.
 
 ## 🗳️ Roadmap & voting
 

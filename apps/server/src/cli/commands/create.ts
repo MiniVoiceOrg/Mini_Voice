@@ -4,14 +4,22 @@ import {
   ANSI,
   color,
   DEFAULT_BOOTSTRAP_PORT,
-  DEFAULT_DATA_INPUT,
   DEFAULT_OWNER_NICKNAME,
   DEFAULT_SERVER_NAME,
 } from '../constants';
 import { ask, confirm, promptPassword } from '../prompts';
-import { CliContext, GlobalArgs, readLocalConfig, resolveInputPath, withContext, writeLocalConfig } from '../context';
+import {
+  CliContext,
+  GlobalArgs,
+  formatDataDirForPrompt,
+  readLocalConfig,
+  resolveInputPath,
+  withContext,
+  writeLocalConfig,
+} from '../context';
 import { DecryptedIdentity, decryptIdentityExport } from '../identity';
 import { parseOption, parsePositiveInt } from '../formatters';
+import { hasServerDatabase, registerServer } from '../registry';
 import { setConfig } from './config';
 import { startServerCommand } from './serverLifecycle';
 
@@ -91,19 +99,44 @@ export async function applyBootstrap(
   await ctx.roleRepo.assignRole(user.id, adminRole.id);
   await ctx.serverRepo.updateServer({ ownerUserId: user.id });
 
-  console.log(color('Bootstrap concluído com sucesso.', ANSI.green));
+  console.log(color('Dono do servidor configurado com sucesso.', ANSI.green));
   console.log(`nickname: ${user.nickname}`);
   console.log(`userId: ${user.id}`);
   console.log(`clientId: ${user.clientId}`);
 }
 
-export async function bootstrapCommand(globalArgs: GlobalArgs, args: string[]): Promise<void> {
-  const interactiveBootstrap = args.length === 0;
-  const dataDir = globalArgs.dataDirSpecified
-    ? globalArgs.dataDir
-    : interactiveBootstrap
-      ? resolveInputPath(await ask('Caminho dos dados do servidor', DEFAULT_DATA_INPUT))
-      : globalArgs.dataDir;
+/**
+ * Asks where the server data should live.
+ *
+ * The directory is always confirmed instead of silently defaulting to `./data`
+ * in whatever directory the command happened to run from — a globally
+ * installed CLI has no meaningful working directory.
+ */
+async function askDataDir(globalArgs: GlobalArgs): Promise<string> {
+  if (globalArgs.dataDirSpecified) {
+    return globalArgs.dataDir;
+  }
+
+  while (true) {
+    const answer = await ask('Onde guardar os dados do servidor', formatDataDirForPrompt(globalArgs.dataDir));
+    const resolved = resolveInputPath(answer);
+    if (!hasServerDatabase(resolved)) {
+      return resolved;
+    }
+    console.log(color(`Já existe um servidor Monky em: ${resolved}`, ANSI.yellow));
+    console.log(color('Escolha outra pasta ou use "monky destroy" para apagar o servidor existente.', ANSI.dim));
+  }
+}
+
+export async function createCommand(globalArgs: GlobalArgs, args: string[]): Promise<void> {
+  const dataDir = await askDataDir(globalArgs);
+
+  if (hasServerDatabase(dataDir)) {
+    throw new Error(
+      `Já existe um servidor Monky em: ${dataDir}\n` +
+        'Use "monky config" para ajustá-lo ou "monky destroy" para apagá-lo.'
+    );
+  }
 
   const identityCode = parseOption(args, '--identity') || (await ask('Código de identidade do dono (MONKY-ID:...)'));
   const identityPassword = await promptPassword('Senha da identidade: ');
@@ -114,7 +147,7 @@ export async function bootstrapCommand(globalArgs: GlobalArgs, args: string[]): 
   const port = parsePositiveInt('port', portValue);
 
   console.log();
-  console.log(color('Resumo do bootstrap', ANSI.bold));
+  console.log(color('Resumo do novo servidor', ANSI.bold));
   console.log(`dataDir: ${dataDir}`);
   console.log(`nickname: ${nickname}`);
   console.log(`serverName: ${serverName}`);
@@ -124,7 +157,7 @@ export async function bootstrapCommand(globalArgs: GlobalArgs, args: string[]): 
 
   const accepted = await confirm('Confirma?', true);
   if (!accepted) {
-    console.log(color('Bootstrap cancelado.', ANSI.yellow));
+    console.log(color('Criação cancelada.', ANSI.yellow));
     return;
   }
 
@@ -134,12 +167,15 @@ export async function bootstrapCommand(globalArgs: GlobalArgs, args: string[]): 
     await setConfig(ctx, 'password', serverPassword);
   });
 
-  // Save port in local config
   const config = readLocalConfig(dataDir);
   config.port = port;
   writeLocalConfig(dataDir, config);
 
+  // Registering here is what lets start/stop/restart/update find this server
+  // later from any directory.
+  registerServer(dataDir, { name: serverName, port });
+
   if (await confirm('Deseja iniciar o servidor agora?', true)) {
-    await startServerCommand({ ...globalArgs, dataDir }, ['--port', String(port), '--name', serverName]);
+    await startServerCommand({ ...globalArgs, dataDir, dataDirSpecified: true }, ['--port', String(port)]);
   }
 }

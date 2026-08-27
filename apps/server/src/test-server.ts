@@ -13,6 +13,9 @@ import {
 import { MonkyServer } from './server';
 import { Logger } from './infrastructure/logger/Logger';
 import { compareVersions, pickNewestRelease } from './cli/commands/update';
+import { generateEcosystem, getPm2ProcessName } from './cli/pm2';
+import { parseOption } from './cli/formatters';
+import { listServers, registerServer, serverIdFor, unregisterServer } from './cli/registry';
 
 function withTimeout<T>(promise: Promise<T>, ms: number, label: string): Promise<T> {
   return Promise.race([
@@ -445,6 +448,114 @@ async function runTests() {
       throw new Error('Teste 12: conectados não pode passar do limite do servidor');
     }
     console.log('✔ Teste 12 passou: Métricas do servidor expostas por API pública (uptime, membros, canais, mensagens)');
+
+    // Teste 13: o registro de servidores e o que permite mais de um servidor
+    // por maquina. Antes o nome do processo PM2 era fixo, entao iniciar um
+    // segundo servidor dizia "ja esta em execucao" e parar qualquer um parava
+    // o outro.
+    const registryHome = path.join(testDataDir, 'monky-home');
+    const previousHome = process.env.MONKY_HOME;
+    process.env.MONKY_HOME = registryHome;
+    try {
+      const serverA = path.join(testDataDir, 'srv-a');
+      const serverB = path.join(testDataDir, 'srv-b');
+      for (const dir of [serverA, serverB]) {
+        fs.mkdirSync(dir, { recursive: true });
+        fs.writeFileSync(path.join(dir, 'server.db'), '');
+      }
+
+      if (serverIdFor(serverA) === serverIdFor(serverB)) {
+        throw new Error('Teste 13: pastas diferentes deveriam gerar ids diferentes');
+      }
+      if (serverIdFor(serverA) !== serverIdFor(path.join(serverA, '.'))) {
+        throw new Error('Teste 13: o mesmo caminho deveria gerar o mesmo id');
+      }
+
+      registerServer(serverA, { name: 'Servidor A', port: 3000 });
+      registerServer(serverB, { name: 'Servidor B', port: 3001 });
+
+      const registered = listServers();
+      if (registered.length !== 2) {
+        throw new Error(`Teste 13: esperava 2 servidores registrados, recebi ${registered.length}`);
+      }
+      if (registered[0].name !== 'Servidor A' || registered[1].port !== 3001) {
+        throw new Error('Teste 13: os dados registrados não foram preservados');
+      }
+
+      registerServer(serverA, { port: 3010 });
+      const afterUpdate = listServers();
+      if (afterUpdate.length !== 2) {
+        throw new Error('Teste 13: registrar de novo deveria atualizar, não duplicar');
+      }
+      if (afterUpdate[0].port !== 3010 || afterUpdate[0].name !== 'Servidor A') {
+        throw new Error('Teste 13: atualizar a porta não deveria apagar o nome');
+      }
+
+      // Uma pasta apagada por fora nao pode continuar aparecendo na lista.
+      fs.rmSync(serverB, { recursive: true, force: true });
+      const afterPrune = listServers();
+      if (afterPrune.length !== 1 || afterPrune[0].name !== 'Servidor A') {
+        throw new Error('Teste 13: servidores sem banco deveriam sair da lista');
+      }
+
+      unregisterServer(serverA);
+      if (listServers().length !== 0) {
+        throw new Error('Teste 13: unregisterServer não removeu o servidor');
+      }
+
+      // O nome do processo PM2 e a chave de tudo: precisa variar por pasta e
+      // aparecer no ecosystem gerado.
+      const nameA = getPm2ProcessName(serverA);
+      const nameB = getPm2ProcessName(serverB);
+      if (nameA === nameB) {
+        throw new Error('Teste 13: servidores diferentes deveriam ter processos PM2 diferentes');
+      }
+      const ecosystem = generateEcosystem({ dataDir: serverA, port: 3010, serverName: 'Servidor "A"' });
+      if (!ecosystem.includes(`name: '${nameA}'`)) {
+        throw new Error('Teste 13: o ecosystem deveria usar o nome de processo derivado da pasta');
+      }
+      if (!ecosystem.includes('--port 3010')) {
+        throw new Error('Teste 13: o ecosystem deveria conter a porta informada');
+      }
+      if (!ecosystem.includes('\\"A\\"')) {
+        throw new Error('Teste 13: aspas no nome do servidor deveriam ser escapadas');
+      }
+    } finally {
+      if (previousHome === undefined) {
+        delete process.env.MONKY_HOME;
+      } else {
+        process.env.MONKY_HOME = previousHome;
+      }
+    }
+    console.log('✔ Teste 13 passou: Registro de servidores e processo PM2 por pasta permitem múltiplos servidores');
+
+    // Teste 14: parseOption engolia a flag seguinte como se fosse valor, entao
+    // "monky start --port --name x" iniciava com a porta "--name".
+    if (parseOption(['--port', '3000'], '--port') !== '3000') {
+      throw new Error('Teste 14: valor normal deveria ser lido');
+    }
+    if (parseOption(['--no-follow'], '--level') !== undefined) {
+      throw new Error('Teste 14: opção ausente deveria devolver undefined');
+    }
+    let rejeitouFlag = false;
+    try {
+      parseOption(['--port', '--name', 'x'], '--port');
+    } catch {
+      rejeitouFlag = true;
+    }
+    if (!rejeitouFlag) {
+      throw new Error('Teste 14: uma flag no lugar do valor deveria ser rejeitada');
+    }
+    let rejeitouVazio = false;
+    try {
+      parseOption(['--level'], '--level');
+    } catch {
+      rejeitouVazio = true;
+    }
+    if (!rejeitouVazio) {
+      throw new Error('Teste 14: opção sem valor deveria ser rejeitada');
+    }
+    console.log('✔ Teste 14 passou: parseOption rejeita flag ou vazio no lugar do valor');
 
     console.log('=== Todos os testes do servidor passaram com sucesso! ===');
   } finally {

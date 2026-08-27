@@ -1,92 +1,137 @@
-import fs from 'fs';
-import path from 'path';
 import { spawn, spawnSync } from 'child_process';
 import { LIMITS, LOG_LEVELS, LogLevel } from '@monky/shared';
-import { ServerConfig } from '../../server';
 import { SqliteServerRepository } from '../../infrastructure/database/SqliteRepositories';
 import { ANSI, color, DEFAULT_SERVER_NAME } from '../constants';
-import { dataDbPath, GlobalArgs, readLocalConfig, withContext } from '../context';
-import { parseOption, parsePositiveInt } from '../formatters';
+import { GlobalArgs, readLocalConfig, withContext } from '../context';
+import { parseOption, parsePositiveInt, pad } from '../formatters';
 import {
   ensurePm2,
-  generateEcosystem,
-  getEcosystemPath,
+  findLegacyProcessFor,
+  findPm2Process,
+  getPm2ProcessName,
   isMonkyServerRegistered,
   isPm2Available,
-  PM2_PROCESS_NAME,
+  LEGACY_PM2_PROCESS_NAME,
+  requirePm2,
+  writeEcosystem,
 } from '../pm2';
+import { hasServerDatabase, RegisteredServer, registerServer } from '../registry';
+import { knownServers, resolveTargetServer } from '../target';
 
-export async function loadStoredServer(dataDir: string): Promise<Awaited<ReturnType<SqliteServerRepository['getServer']>>> {
-  if (!fs.existsSync(dataDbPath(dataDir))) {
+/**
+ * Flags that only ever applied while the database was being created.
+ *
+ * `ensureServerSeedData` ignores them once the server exists, so accepting them
+ * on `monky start` silently did nothing. They now fail loudly and point at the
+ * command that actually applies them.
+ */
+const REMOVED_START_OPTIONS: Record<string, string> = {
+  '--password': 'monky config set password',
+  '--max-users': 'monky config set maxUsers',
+  '--name': 'monky config set name',
+  '--voice-channel': 'monky create',
+  '--text-channel': 'monky create',
+};
+
+function rejectRemovedStartOptions(args: string[]): void {
+  for (const [option, replacement] of Object.entries(REMOVED_START_OPTIONS)) {
+    if (args.includes(option)) {
+      throw new Error(
+        `"${option}" não é aceito em "monky start" — ele só teria efeito ao criar o servidor.\n` +
+          `Use: ${replacement}`
+      );
+    }
+  }
+}
+
+export async function loadStoredServer(
+  dataDir: string
+): Promise<Awaited<ReturnType<SqliteServerRepository['getServer']>>> {
+  if (!hasServerDatabase(dataDir)) {
     return null;
   }
   return withContext(dataDir, async (ctx) => ctx.serverRepo.getServer(), false);
 }
 
-export async function buildStartConfig(dataDir: string, args: string[]): Promise<ServerConfig> {
-  const storedServer = await loadStoredServer(dataDir);
+export interface StartPlan {
+  dataDir: string;
+  port: number;
+  serverName: string;
+}
+
+/**
+ * Resolves what `monky start` will hand to PM2.
+ *
+ * Everything comes from the server that already exists on disk; `--port` is the
+ * only accepted override, because it is the one setting that may need to change
+ * per boot without being persisted.
+ */
+export async function buildStartPlan(dataDir: string, args: string[]): Promise<StartPlan> {
+  // Arguments are validated before the database is opened so a typo fails with
+  // a message about the typo, not about the database.
+  rejectRemovedStartOptions(args);
+  const portOption = parseOption(args, '--port');
+  const overriddenPort = portOption ? parsePositiveInt('port', portOption) : null;
+
   const localConfig = readLocalConfig(dataDir);
-  const port = parseOption(args, '--port');
-  const name = parseOption(args, '--name');
-  const password = parseOption(args, '--password');
-  const maxUsers = parseOption(args, '--max-users');
-  const initialVoiceChannel = parseOption(args, '--voice-channel');
-  const initialTextChannel = parseOption(args, '--text-channel');
+  const storedServer = await loadStoredServer(dataDir);
 
   return {
-    port: port ? parsePositiveInt('port', port) : (localConfig.port || LIMITS.DEFAULT_PORT),
     dataDir,
-    serverName: name || storedServer?.name || DEFAULT_SERVER_NAME,
-    password: storedServer ? '' : (password || ''),
-    maxUsers: storedServer?.maxUsers || (maxUsers ? parsePositiveInt('max-users', maxUsers) : LIMITS.MAX_USERS_DEFAULT),
-    initialVoiceChannel,
-    initialTextChannel,
+    port: overriddenPort ?? localConfig.port ?? LIMITS.DEFAULT_PORT,
+    serverName: storedServer?.name || DEFAULT_SERVER_NAME,
   };
 }
 
+/**
+ * Retires the pre-registry `monky-server` process for this data directory.
+ *
+ * Without this an upgraded machine would end up with the old process and the
+ * new per-directory one competing for the same port.
+ */
+function retireLegacyProcess(dataDir: string): void {
+  if (!findLegacyProcessFor(dataDir)) return;
+  console.log(color('Migrando o processo PM2 antigo ("monky-server") para o novo formato...', ANSI.dim));
+  spawnSync('pm2', ['delete', LEGACY_PM2_PROCESS_NAME], { stdio: 'ignore', shell: true });
+}
+
 export async function startServerCommand(globalArgs: GlobalArgs, args: string[]): Promise<void> {
-  const dataDir = globalArgs.dataDir;
-  await fs.promises.mkdir(dataDir, { recursive: true });
+  rejectRemovedStartOptions(args);
+  const portOption = parseOption(args, '--port');
+  if (portOption) parsePositiveInt('port', portOption);
+
+  const target = await resolveTargetServer(globalArgs, 'iniciar');
+  const plan = await buildStartPlan(target.dataDir, args);
+  const processName = getPm2ProcessName(target.dataDir);
 
   ensurePm2();
 
-  const config = await buildStartConfig(dataDir, args);
-  const ecosystemPath = getEcosystemPath(dataDir);
-  const ecosystemContent = generateEcosystem(dataDir, config.port, config.serverName || DEFAULT_SERVER_NAME);
-  await fs.promises.writeFile(ecosystemPath, ecosystemContent, 'utf8');
-
-  // Clean up legacy ecosystem.config.js if it exists
-  const legacyEcosystemPath = path.join(dataDir, 'ecosystem.config.js');
-  if (fs.existsSync(legacyEcosystemPath)) {
-    try {
-      await fs.promises.unlink(legacyEcosystemPath);
-    } catch {}
+  const existing = findPm2Process(processName);
+  if (existing?.pm2_env?.status === 'online') {
+    console.log(color(`O servidor já está em execução (PID ${existing.pid}).`, ANSI.yellow));
+    console.log(color('Use "monky restart" para reiniciar ou "monky stop" para parar.', ANSI.dim));
+    return;
   }
 
-  // Check if already running
-  const listResult = spawnSync('pm2', ['jlist'], { encoding: 'utf8', shell: true });
-  if (listResult.status === 0) {
-    try {
-      const processes = JSON.parse(listResult.stdout);
-      const existing = processes.find((p: any) => p.name === PM2_PROCESS_NAME && p.pm2_env?.status === 'online');
-      if (existing) {
-        console.log(color(`O servidor já está em execução (PID ${existing.pid}).`, ANSI.yellow));
-        console.log(color('Use "monky restart" para reiniciar ou "monky stop" para parar.', ANSI.dim));
-        return;
-      }
-    } catch { /* ignore parse errors */ }
-  }
+  retireLegacyProcess(target.dataDir);
+  const ecosystemPath = writeEcosystem(plan);
 
-  const result = spawnSync('pm2', ['start', ecosystemPath], { stdio: 'inherit', shell: true });
+  // startOrRestart re-reads the ecosystem file, so a process PM2 still knows
+  // about from a previous "monky stop" picks up the current port.
+  const result = spawnSync('pm2', ['startOrRestart', ecosystemPath], { stdio: 'inherit', shell: true });
   if (result.status !== 0) {
     throw new Error('Falha ao iniciar o servidor via PM2.');
   }
 
+  spawnSync('pm2', ['save'], { stdio: 'ignore', shell: true });
+  registerServer(target.dataDir, { name: plan.serverName, port: plan.port });
+
   console.log();
   console.log(color('Servidor Monky iniciado com sucesso!', ANSI.green));
-  console.log(`porta: ${config.port}`);
-  console.log(`dataDir: ${path.resolve(dataDir)}`);
-  console.log(`serverName: ${config.serverName}`);
+  console.log(`porta: ${plan.port}`);
+  console.log(`dataDir: ${plan.dataDir}`);
+  console.log(`serverName: ${plan.serverName}`);
+  console.log(`processo PM2: ${processName}`);
   console.log();
   console.log(color('Comandos úteis:', ANSI.bold));
   console.log(`  monky status    — ver estado do servidor`);
@@ -95,35 +140,62 @@ export async function startServerCommand(globalArgs: GlobalArgs, args: string[])
   console.log(`  monky stop      — parar o servidor`);
 }
 
-export async function stopServerCommand(_dataDir: string): Promise<void> {
-  ensurePm2();
+export async function stopServerCommand(globalArgs: GlobalArgs): Promise<void> {
+  if (!requirePm2('parar')) return;
 
-  const result = spawnSync('pm2', ['stop', PM2_PROCESS_NAME], { encoding: 'utf8', shell: true });
+  const target = await resolveTargetServer(globalArgs, 'parar');
+  const processName = getPm2ProcessName(target.dataDir);
+
+  if (!isMonkyServerRegistered(processName) && findLegacyProcessFor(target.dataDir)) {
+    spawnSync('pm2', ['stop', LEGACY_PM2_PROCESS_NAME], { stdio: 'inherit', shell: true });
+    console.log(color('Servidor Monky parado com sucesso.', ANSI.green));
+    return;
+  }
+
+  const result = spawnSync('pm2', ['stop', processName], { encoding: 'utf8', shell: true });
   if (result.status !== 0) {
-    if (result.stderr?.includes('not found') || result.stdout?.includes('not found')) {
-      console.log(color('Nenhum servidor Monky em execução foi encontrado.', ANSI.yellow));
+    const output = `${result.stdout ?? ''}${result.stderr ?? ''}`;
+    if (output.includes('not found')) {
+      console.log(color('Esse servidor não está registrado no PM2 — nada a parar.', ANSI.yellow));
       return;
     }
     throw new Error('Falha ao parar o servidor.');
   }
 
-  spawnSync('pm2', ['delete', PM2_PROCESS_NAME], { stdio: 'ignore', shell: true });
+  // The process is kept in PM2 on purpose: deleting it discards the logs right
+  // when they matter most, after a crash or a manual stop.
   console.log(color('Servidor Monky parado com sucesso.', ANSI.green));
+  console.log(color(`Os logs continuam disponíveis em "monky logs".`, ANSI.dim));
 }
 
-export async function restartServerCommand(_dataDir: string): Promise<void> {
-  ensurePm2();
+export async function restartServerCommand(globalArgs: GlobalArgs, args: string[] = []): Promise<void> {
+  if (!requirePm2('reiniciar')) return;
 
-  const result = spawnSync('pm2', ['restart', PM2_PROCESS_NAME], { encoding: 'utf8', shell: true });
+  const target = await resolveTargetServer(globalArgs, 'reiniciar');
+  const processName = getPm2ProcessName(target.dataDir);
+
+  if (!isMonkyServerRegistered(processName) && !findLegacyProcessFor(target.dataDir)) {
+    console.log(color('Esse servidor não está registrado no PM2. Use "monky start" primeiro.', ANSI.yellow));
+    return;
+  }
+
+  retireLegacyProcess(target.dataDir);
+
+  // Rewriting the ecosystem before restarting is what makes a port or name
+  // changed in the meantime actually take effect.
+  const plan = await buildStartPlan(target.dataDir, args);
+  const ecosystemPath = writeEcosystem(plan);
+
+  const result = spawnSync('pm2', ['startOrRestart', ecosystemPath], { stdio: 'inherit', shell: true });
   if (result.status !== 0) {
-    if (result.stderr?.includes('not found') || result.stdout?.includes('not found')) {
-      console.log(color('Nenhum servidor Monky em execução. Use "monky start" primeiro.', ANSI.yellow));
-      return;
-    }
     throw new Error('Falha ao reiniciar o servidor.');
   }
 
+  spawnSync('pm2', ['save'], { stdio: 'ignore', shell: true });
+  registerServer(target.dataDir, { name: plan.serverName, port: plan.port });
+
   console.log(color('Servidor Monky reiniciado com sucesso.', ANSI.green));
+  console.log(`porta: ${plan.port}`);
 }
 
 /**
@@ -148,7 +220,7 @@ function parseLevelOption(value: string): LogLevel {
   throw new Error(`Nível inválido: ${value}. Use ${LOG_LEVELS.join(', ')}.`);
 }
 
-export function logsServerCommand(args: string[] = []): void {
+export async function logsServerCommand(globalArgs: GlobalArgs, args: string[] = []): Promise<void> {
   const linesOption = parseOption(args, '--lines');
   const levelOption = parseOption(args, '--level');
   const follow = !args.includes('--no-follow');
@@ -164,21 +236,28 @@ export function logsServerCommand(args: string[] = []): void {
     return;
   }
 
-  if (!isMonkyServerRegistered()) {
-    console.log(color('Servidor Monky não está registrado no PM2 — não há logs para exibir.', ANSI.yellow));
-    console.log(color('Use "monky start" para iniciar o servidor.', ANSI.dim));
-    return;
+  const target = await resolveTargetServer(globalArgs, 'inspecionar');
+  let processName = getPm2ProcessName(target.dataDir);
+
+  if (!isMonkyServerRegistered(processName)) {
+    if (findLegacyProcessFor(target.dataDir)) {
+      processName = LEGACY_PM2_PROCESS_NAME;
+    } else {
+      console.log(color('Esse servidor não está registrado no PM2 — não há logs para exibir.', ANSI.yellow));
+      console.log(color('Use "monky start" para iniciar o servidor.', ANSI.dim));
+      return;
+    }
   }
 
-  const pm2Args = ['logs', PM2_PROCESS_NAME, '--lines', String(lines)];
+  const pm2Args = ['logs', processName, '--lines', String(lines)];
   if (!follow) pm2Args.push('--nostream');
 
   const describeFilter = minLevel ? ` (nível ${minLevel} ou acima)` : '';
   console.log(
     color(
       follow
-        ? `Exibindo logs do servidor${describeFilter} — Ctrl+C para sair...`
-        : `Últimas ${lines} linhas do servidor${describeFilter}...`,
+        ? `Exibindo logs de "${target.name || target.dataDir}"${describeFilter} — Ctrl+C para sair...`
+        : `Últimas ${lines} linhas de "${target.name || target.dataDir}"${describeFilter}...`,
       ANSI.dim
     )
   );
@@ -220,42 +299,99 @@ export function logsServerCommand(args: string[] = []): void {
   child.on('close', () => process.off('SIGINT', forwardInterrupt));
 }
 
-export function statusServerCommand(): void {
-  ensurePm2();
+function statusLabel(status: string): string {
+  const statusColor = status === 'online' ? ANSI.green : status === 'stopped' ? ANSI.yellow : ANSI.red;
+  return color(status, statusColor);
+}
 
-  const listResult = spawnSync('pm2', ['jlist'], { encoding: 'utf8', shell: true });
-  if (listResult.status !== 0) {
-    console.log(color('Não foi possível verificar o estado do servidor.', ANSI.yellow));
+function readServerStatus(dataDir: string): { status: string; process: ReturnType<typeof findPm2Process> } {
+  const found = findPm2Process(getPm2ProcessName(dataDir)) ?? findLegacyProcessFor(dataDir);
+  return { status: found?.pm2_env?.status ?? 'não iniciado', process: found };
+}
+
+function printServerDetails(server: RegisteredServer): void {
+  const { status, process: entry } = readServerStatus(server.dataDir);
+  const port = server.port ?? readLocalConfig(server.dataDir).port ?? LIMITS.DEFAULT_PORT;
+
+  console.log(color(`Estado do servidor: ${server.name || 'Servidor Monky'}`, ANSI.bold));
+  console.log(`status: ${statusLabel(status)}`);
+  console.log(`dataDir: ${server.dataDir}`);
+  console.log(`porta: ${port}`);
+  console.log(`processo PM2: ${getPm2ProcessName(server.dataDir)}`);
+
+  if (!entry) {
+    console.log(color('Use "monky start" para iniciar.', ANSI.dim));
     return;
   }
 
-  try {
-    const processes = JSON.parse(listResult.stdout);
-    const monky = processes.find((p: any) => p.name === PM2_PROCESS_NAME);
-    if (!monky) {
-      console.log(color('Servidor Monky não está registrado no PM2.', ANSI.yellow));
-      console.log(color('Use "monky start" para iniciar.', ANSI.dim));
-      return;
-    }
+  console.log(`pid: ${entry.pid || '-'}`);
+  console.log(`uptime: ${entry.pm2_env?.pm_uptime ? new Date(entry.pm2_env.pm_uptime).toISOString() : '-'}`);
+  console.log(`restarts: ${entry.pm2_env?.restart_time ?? 0}`);
+  console.log(`memória: ${entry.monit?.memory ? `${Math.round(entry.monit.memory / 1024 / 1024)} MB` : '-'}`);
+  console.log(`cpu: ${entry.monit?.cpu !== undefined ? `${entry.monit.cpu}%` : '-'}`);
+}
 
-    const status = monky.pm2_env?.status || 'unknown';
-    const pid = monky.pid || '-';
-    const uptime = monky.pm2_env?.pm_uptime ? new Date(monky.pm2_env.pm_uptime).toISOString() : '-';
-    const restarts = monky.pm2_env?.restart_time ?? 0;
-    const memory = monky.monit?.memory ? `${Math.round(monky.monit.memory / 1024 / 1024)} MB` : '-';
-    const cpu = monky.monit?.cpu !== undefined ? `${monky.monit.cpu}%` : '-';
+export function printServerTable(servers: RegisteredServer[]): void {
+  const rows = servers.map((server) => ({
+    name: server.name || 'Servidor Monky',
+    status: readServerStatus(server.dataDir).status,
+    port: String(server.port ?? readLocalConfig(server.dataDir).port ?? LIMITS.DEFAULT_PORT),
+    dataDir: server.dataDir,
+  }));
 
-    const statusColor = status === 'online' ? ANSI.green : status === 'stopped' ? ANSI.yellow : ANSI.red;
+  const nameWidth = Math.max(4, ...rows.map((row) => row.name.length));
+  const statusWidth = Math.max(6, ...rows.map((row) => row.status.length));
+  const portWidth = Math.max(5, ...rows.map((row) => row.port.length));
 
-    console.log(color('Estado do Servidor Monky', ANSI.bold));
-    console.log(`status: ${color(status, statusColor)}`);
-    console.log(`pid: ${pid}`);
-    console.log(`uptime: ${uptime}`);
-    console.log(`restarts: ${restarts}`);
-    console.log(`memory: ${memory}`);
-    console.log(`cpu: ${cpu}`);
-  } catch {
-    // Fallback to pm2 show
-    spawnSync('pm2', ['show', PM2_PROCESS_NAME], { stdio: 'inherit', shell: true });
+  console.log(
+    `${color(pad('NOME', nameWidth), ANSI.cyan)}  ${color(pad('STATUS', statusWidth), ANSI.cyan)}  ` +
+      `${color(pad('PORTA', portWidth), ANSI.cyan)}  ${color('PASTA DE DADOS', ANSI.cyan)}`
+  );
+
+  for (const row of rows) {
+    const paddedStatus = statusLabel(row.status) + ' '.repeat(Math.max(0, statusWidth - row.status.length));
+    console.log(`${pad(row.name, nameWidth)}  ${paddedStatus}  ${pad(row.port, portWidth)}  ${row.dataDir}`);
   }
+}
+
+export async function listServersCommand(): Promise<void> {
+  const servers = knownServers();
+  if (servers.length === 0) {
+    console.log(color('Nenhum servidor Monky encontrado nesta máquina.', ANSI.yellow));
+    console.log(color('Crie um com "monky create".', ANSI.dim));
+    return;
+  }
+  printServerTable(servers);
+}
+
+/**
+ * Shows one server in detail, or every server as a table.
+ *
+ * Listing is read-only, so with several servers it prints all of them instead
+ * of asking which one — asking would be busywork for a question with no side
+ * effects.
+ */
+export async function statusServerCommand(globalArgs: GlobalArgs): Promise<void> {
+  if (!requirePm2('consultar')) return;
+
+  if (globalArgs.dataDirSpecified) {
+    printServerDetails(await resolveTargetServer(globalArgs, 'consultar'));
+    return;
+  }
+
+  const servers = knownServers();
+  if (servers.length === 0) {
+    console.log(color('Nenhum servidor Monky encontrado nesta máquina.', ANSI.yellow));
+    console.log(color('Crie um com "monky create".', ANSI.dim));
+    return;
+  }
+
+  if (servers.length === 1) {
+    printServerDetails(servers[0]);
+    return;
+  }
+
+  printServerTable(servers);
+  console.log();
+  console.log(color('Use "monky status --data <pasta>" para detalhes de um servidor.', ANSI.dim));
 }

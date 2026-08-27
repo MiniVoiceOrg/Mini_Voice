@@ -47,7 +47,7 @@ Manual completo de uso e hospedagem em **[monkyorg.github.io/Monky](https://monk
 ## 🧩 Os 2 produtos
 
 - **Monky** — app cliente para conversar com amigos. Ele também hospeda o servidor, com **Monitor do Servidor** para métricas e logs ao vivo.
-- **[Monky CLI](https://monkyorg.github.io/Monky/cli)** — administração por linha de comando, ideal para VPS.
+- **[Monky CLI](https://monkyorg.github.io/Monky/cli)** — administração por linha de comando, ideal para VPS. Instale pela release, rode `monky create` e pronto; a mesma máquina pode hospedar quantos servidores quiser.
 
 ## 🗳️ Roadmap & Votação
 
