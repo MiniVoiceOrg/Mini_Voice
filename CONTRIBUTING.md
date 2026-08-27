@@ -136,11 +136,18 @@ deveria andar, comente nela explicando o porquê antes de começar.
 
 A `main` é protegida — todo merge passa por PR com squash.
 
+**Ramifique sempre da `main` atualizada**, nunca da branch em que você estava:
+
 ```bash
+git checkout main && git pull        # antes de criar a branch
 git checkout -b feat/minha-mudanca
 # ... commits ...
 git push -u origin feat/minha-mudanca
 ```
+
+Ramificar de uma branch com PR aberto faz o seu PR arrastar os commits dela no
+diff, e os dois passam a depender um do outro para mergear. Se a sua mudança
+realmente depende de outro PR aberto, combine o empilhamento antes de ramificar.
 
 Prefixos de branch e commit seguem [Conventional Commits](https://www.conventionalcommits.org/):
 `feat:`, `fix:`, `refactor:`, `docs:`, `chore:`, `ci:`. Referencie a issue no

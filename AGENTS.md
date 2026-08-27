@@ -65,11 +65,23 @@ A comunicação do agente deve ser sempre **clara, didática, transparente e res
 
 ---
 
+## 🔍 Rigor ao Afirmar e ao Documentar
+
+- **Verifique antes de afirmar.** Nunca diga que algo está feito, verde ou mergeado sem ter conferido. O estado de um PR muda enquanto você trabalha: consulte `state` junto de `mergeable`, porque `mergeable: UNKNOWN` tanto significa "o GitHub ainda está calculando" quanto "o PR já foi fechado".
+- **Documentação apodrece em silêncio.** Link, âncora, caminho de menu e nome de arquivo não dão erro quando ficam errados — apenas passam a apontar para o lugar errado. Ao mexer em documentação, confira o que citou: âncoras contra o render real, caminhos de menu contra a interface, nomes de arquivo e comandos contra o que existe de fato.
+
+---
+
 ## 🔄 Fluxo de Trabalho a partir do Board
+
+> ⚠️ **Esta seção só se aplica a quem tem acesso ao board da organização.**
+> O board é privado. Se você está contribuindo de fora, ele não é visível nem necessário — siga o [`CONTRIBUTING.md`](CONTRIBUTING.md) e ignore tudo o que vem abaixo.
 
 O board oficial fica em: https://github.com/orgs/MonkyOrg/projects/1
 
-Sempre que iniciar o desenvolvimento a partir de uma issue/card do board, siga rigorosamente as etapas abaixo:
+**Nem toda issue está no board.** A entrada é filtrada por label, e bug nasce em Discussions — só vira issue depois de confirmado. Se a issue em que você vai trabalhar não tem card, **não crie um**: pergunte ao desenvolvedor.
+
+Quando houver card, siga rigorosamente as etapas abaixo:
 
 ```mermaid
 flowchart TD
@@ -157,10 +169,19 @@ gh issue comment <NÚMERO_DA_ISSUE> --body "<comentário em PT-BR>"
   - Backlog: `f75ad846`
   - Blocked: `7a1e61fe`
   - In progress: `47fc9ee4`
-  - QA: `df73e18b`
+  - Awaiting PR Review: `1187975c`
   - After QA Review: `98330754`
+  - QA: `df73e18b`
   - Done: `98236657`
   - Ideias descartadas: `6eeb0bfb`
+
+⚠️ **Tabela é cópia, e cópia envelhece.** O board muda sem avisar: a coluna `Ready` ficou documentada aqui depois de já ter sido removida, e a `Awaiting PR Review` existia no board sem constar desta lista. Confira na API antes de confiar:
+
+```bash
+gh api graphql -f query='
+{ organization(login: "MonkyOrg") { projectV2(number: 1) {
+    field(name: "Status") { ... on ProjectV2SingleSelectField { options { id name } } } } } }'
+```
 
 ### Mover Card no Board:
 
