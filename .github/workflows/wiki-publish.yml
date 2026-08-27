@@ -1,0 +1,54 @@
+name: Publish Wiki
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'wiki/**'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  publish:
+    name: Publish wiki pages
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Publish wiki
+        shell: bash
+        env:
+          WIKI_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+
+          wiki_repo="https://x-access-token:${WIKI_TOKEN}@github.com/MonkyOrg/Monky.wiki.git"
+          wiki_dir="monky-wiki"
+
+          if ! git clone "$wiki_repo" "$wiki_dir"; then
+            echo "::warning::Monky.wiki.git ainda nao existe. Crie a primeira pagina manualmente em https://github.com/MonkyOrg/Monky/wiki para o GitHub inicializar o repositorio da Wiki; depois rode este workflow novamente (workflow_dispatch)."
+            exit 0
+          fi
+
+          if ! git -C "$wiki_dir" rev-parse --verify HEAD >/dev/null 2>&1; then
+            echo "::warning::O repositorio Monky.wiki.git ainda esta vazio. Crie a primeira pagina manualmente em https://github.com/MonkyOrg/Monky/wiki antes de publicar pelo workflow."
+            exit 0
+          fi
+
+          rsync -a --delete --exclude='.git/' wiki/ "$wiki_dir"/
+
+          cd "$wiki_dir"
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+          if git diff --quiet --exit-code && [ -z "$(git status --porcelain)" ]; then
+            echo "Wiki ja esta atualizada."
+            exit 0
+          fi
+
+          git add .
+          git commit -m "docs: publish wiki"
+          git push
