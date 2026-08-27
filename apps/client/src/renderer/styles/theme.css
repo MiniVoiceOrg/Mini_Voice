@@ -606,6 +606,11 @@ input:focus, textarea:focus, select:focus {
 
 .server-rail-avatar {
   position: relative;
+  overflow: visible;
+}
+
+.server-rail-avatar > img {
+  clip-path: circle(50%);
 }
 
 /* Online/offline indicator on saved-server avatars in the sidebar rail (#37). */

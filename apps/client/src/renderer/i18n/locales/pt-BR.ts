@@ -213,6 +213,7 @@ export const ptBR = {
   'screenShare.limitMessage': 'Você já está compartilhando {max} telas. Pare uma delas antes de compartilhar outra.',
   'screenShare.errorMessage': 'Não foi possível iniciar o compartilhamento de tela: {error}',
   'screenShare.shareAppAudio': 'Compartilhar áudio do aplicativo',
+  'screenShare.audioAlreadySharing': 'Áudio já está sendo compartilhado em outra tela',
 
   // ── Identidade criptográfica ─────────────────────────────────────────────
   'identity.sectionTitle': 'Identidade',

@@ -11,6 +11,8 @@ export class VideoService {
    * on the wire and in the remote UI.
    */
   private screenStreams: Map<string, MediaStream> = new Map();
+  /** Maps stream id → desktop source id so the picker can hide active shares. */
+  private screenSourceIds: Map<string, string> = new Map();
   private currentPreset: QualityPresetType = 'NORMAL';
 
   public setQualityPreset(preset: QualityPresetType): void {
@@ -100,6 +102,9 @@ export class VideoService {
 
     const shareId = stream.id;
     this.screenStreams.set(shareId, stream);
+    if (sourceId) {
+      this.screenSourceIds.set(shareId, sourceId);
+    }
 
     // Auto-detect when user stops sharing via browser UI
     const screenTrack = stream.getVideoTracks()[0];
@@ -135,6 +140,7 @@ export class VideoService {
       stream.getVideoTracks().forEach((t) => { t.onended = null; });
       stream.getTracks().forEach((t) => t.stop());
       this.screenStreams.delete(id);
+      this.screenSourceIds.delete(id);
       appEvents.emit('local.screen_stopped', id);
     }
   }
@@ -153,6 +159,11 @@ export class VideoService {
 
   public getScreenShareCount(): number {
     return this.screenStreams.size;
+  }
+
+  /** Returns the set of desktop source ids currently being shared. */
+  public getActiveSourceIds(): Set<string> {
+    return new Set(this.screenSourceIds.values());
   }
 }
 
