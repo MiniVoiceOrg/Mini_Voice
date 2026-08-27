@@ -101,6 +101,8 @@ export interface HostServerOptions {
   password?: string;
   initialVoiceChannel?: string;
   initialTextChannel?: string;
+  /** Id of the entry in "Meus Servidores" that owns this instance (#333). */
+  serverId?: string;
 }
 
 export interface AppIdentityResult {
@@ -137,7 +139,7 @@ export interface IpcInvokeChannels {
   // Servidor Local
   'server-host:start': { args: [options: HostServerOptions]; returnType: { success: boolean; error?: string } };
   'server-host:stop': { args: []; returnType: { success: boolean } };
-  'server-host:status': { args: []; returnType: { isRunning: boolean } };
+  'server-host:status': { args: []; returnType: { isRunning: boolean; port: number | null; serverId: string | null } };
 
   // LAN Discovery
   'lan:start': { args: []; returnType: void };

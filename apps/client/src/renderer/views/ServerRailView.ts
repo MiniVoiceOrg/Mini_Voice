@@ -232,6 +232,7 @@ export class ServerRailView {
         password: created.password,
         initialTextChannel: created.textChannel,
         initialVoiceChannel: created.voiceChannel,
+        serverId: created.id,
       });
 
       if (!res.success) {
