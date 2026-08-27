@@ -43,6 +43,7 @@ export interface ElectronApi {
   onSoundboardShortcutTriggered: (cb: (soundName: string) => void) => () => void;
   minimize: () => Promise<void>;
   maximize: () => Promise<void>;
+  toggleMaximize: () => Promise<void>;
   close: () => Promise<void>;
   getAppVersion: () => Promise<string>;
   checkForUpdates: () => Promise<UpdateCheckResult>;
@@ -112,7 +113,8 @@ const api: ElectronApi = {
     };
   },
   minimize: () => ipcRenderer.invoke('window:minimize'),
-  maximize: () => ipcRenderer.invoke('window:toggle-maximize'),
+  maximize: () => ipcRenderer.invoke('window:maximize'),
+  toggleMaximize: () => ipcRenderer.invoke('window:toggle-maximize'),
   close: () => ipcRenderer.invoke('window:close'),
   getAppVersion: () => ipcRenderer.invoke('app:get-version'),
   checkForUpdates: () => ipcRenderer.invoke('updater:check'),

@@ -1171,6 +1171,16 @@ export class MainView {
       if (titleEl) titleEl.innerText = payload.name;
       const iconEl = document.getElementById('server-header-icon') as HTMLImageElement;
       if (iconEl) iconEl.src = payload.iconUrl ? getAvatarUrl(payload.iconUrl) : logoUrl;
+      // Persist updated icon on the saved server entry
+      const url = networkClient.getCurrentServerUrl();
+      if (url) {
+        const match = url.match(/\/\/([^:]+):(\d+)/);
+        if (match) connectionStore.updateSavedServerIcon(match[1], parseInt(match[2], 10), payload.iconUrl ?? null);
+      }
+      serverRailView.render();
+    });
+
+    const u7b = appEvents.on('connection.saved_servers_changed', () => {
       serverRailView.render();
     });
 
@@ -1221,7 +1231,7 @@ export class MainView {
       this.renderChannels();
     });
 
-    this.unbindEvents.push(u1, u2, u3, u4, u5, u6, u7, u8, u9, u10, u11, u12, u13);
+    this.unbindEvents.push(u1, u2, u3, u4, u5, u6, u7, u7b, u8, u9, u10, u11, u12, u13);
   }
 
   /** True when the given text channel is the one currently visible on screen (#14). */
