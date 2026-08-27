@@ -96,6 +96,24 @@ export const en: TranslationMap = {
   'invite.tipLoopback': '<b>Localhost:</b> This address only works on the same computer where the server is running.',
   'invite.tipCustom': '<b>Custom address:</b> Make sure the host and port <b>{port}</b> are reachable by your friends.',
 
+  // ── Hosted server monitor (ServerMonitorModal.ts) ────────────────────────
+  'serverMonitor.title': 'Server Monitor',
+  'serverMonitor.uptime': 'Uptime',
+  'serverMonitor.online': 'Online',
+  'serverMonitor.members': 'Members',
+  'serverMonitor.channels': 'Channels',
+  'serverMonitor.messages': 'Messages',
+  'serverMonitor.port': 'Port',
+  'serverMonitor.levelAll': 'All',
+  'serverMonitor.searchPlaceholder': 'Filter logs...',
+  'serverMonitor.autoScroll': 'Auto-scroll',
+  'serverMonitor.loading': 'Loading logs...',
+  'serverMonitor.empty': 'No logs recorded yet.',
+  'serverMonitor.noMatches': 'No logs match the filter.',
+  'serverMonitor.entryCount': 'Showing {shown} of {total} entries',
+  'serverMonitor.copy': 'Copy',
+  'serverMonitor.clear': 'Clear',
+
   // ── Chat (ChatView.ts) ───────────────────────────────────────────────────
   'chat.selectChannel': 'Pick a channel to start chatting',
   'chat.textChannelBadge': 'Text channel',

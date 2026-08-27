@@ -23,6 +23,10 @@ export const LIMITS = {
   // (sleeping laptop, dropped Wi-Fi) holds the HTTP server open for the ws
   // library's internal 30s close timeout, freezing the host's UI (#333).
   SHUTDOWN_GRACE_MS: 1500,
+  // Entries kept in the logger's in-memory ring buffer. It feeds the log view
+  // of a hosted server, so it has to be bounded — a server running for days
+  // would otherwise grow it without limit.
+  LOG_BUFFER_SIZE: 500,
   // Concurrent devices a single identity may hold (#309). Without a cap, an
   // already-online identity could open unlimited connections and bypass
   // maxUsers, since capacity counts people rather than connections.

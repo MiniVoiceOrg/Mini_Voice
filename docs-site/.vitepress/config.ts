@@ -22,7 +22,7 @@ const ptSidebar = [
     text: 'Avançado',
     items: [
       { text: 'Hospedar em VPS', link: '/hospedar-em-vps' },
-      { text: 'Monky Server', link: '/monky-server' },
+      { text: 'Monky CLI', link: '/cli' },
       { text: 'Verificar Releases', link: '/verificar-releases' },
     ],
   },
@@ -57,7 +57,7 @@ const enSidebar = [
     text: 'Advanced',
     items: [
       { text: 'Host on a VPS', link: '/en/hospedar-em-vps' },
-      { text: 'Monky Server', link: '/en/monky-server' },
+      { text: 'Monky CLI', link: '/en/cli' },
       { text: 'Verify Releases', link: '/en/verificar-releases' },
     ],
   },

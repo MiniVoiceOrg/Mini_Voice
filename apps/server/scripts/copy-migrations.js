@@ -1,7 +1,7 @@
 /**
  * tsc does not emit the .sql migration files, and DatabaseConnection resolves
  * them relative to the compiled output. Copying them here keeps dist/ complete
- * for every consumer that packages it (Client, Server GUI and the CLI tarball).
+ * for every consumer that packages it (Client and the CLI tarball).
  */
 const fs = require('fs');
 const path = require('path');

@@ -27,6 +27,24 @@ export function isMonkyServerRunning(): boolean {
   }
 }
 
+/**
+ * Whether PM2 knows about the server at all, regardless of its status.
+ *
+ * Reading logs is still useful for a stopped or crashed process, so this is a
+ * weaker check than {@link isMonkyServerRunning}.
+ */
+export function isMonkyServerRegistered(): boolean {
+  if (!isPm2Available()) return false;
+  try {
+    const listResult = spawnSync('pm2', ['jlist'], { encoding: 'utf8', shell: true });
+    if (listResult.status !== 0) return false;
+    const processes = JSON.parse(listResult.stdout);
+    return processes.some((p: any) => p.name === PM2_PROCESS_NAME);
+  } catch {
+    return false;
+  }
+}
+
 export function ensurePm2(): void {
   if (!isPm2Available()) {
     console.log(color('PM2 não encontrado. Instalando globalmente...', ANSI.yellow));

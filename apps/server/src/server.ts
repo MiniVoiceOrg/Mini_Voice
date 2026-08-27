@@ -2,7 +2,7 @@ import http from 'http';
 import fs from 'fs';
 import path from 'path';
 import { v4 as uuidv4 } from 'uuid';
-import { ADMIN_PERMISSIONS, DEFAULT_PERMISSIONS, LIMITS, Permission, ProtocolErrorCode, stripAdministrator } from '@monky/shared';
+import { ADMIN_PERMISSIONS, DEFAULT_PERMISSIONS, LIMITS, Permission, ProtocolErrorCode, ServerStats, stripAdministrator } from '@monky/shared';
 import { AuthService } from './application/services/AuthService';
 import { AttachmentService } from './application/services/AttachmentService';
 import { ChannelService } from './application/services/ChannelService';
@@ -161,6 +161,7 @@ export class MonkyServer {
   private rateLimiter: RateLimiter;
   private lanBroadcaster: LanBroadcaster;
   private attachmentService: AttachmentService;
+  private startedAt: number | null = null;
 
   private constructor(
     private config: ServerConfig,
@@ -520,6 +521,7 @@ export class MonkyServer {
   public async start(): Promise<void> {
     return new Promise((resolve) => {
       this.httpServer.listen(this.config.port, '0.0.0.0', () => {
+        this.startedAt = Date.now();
         Logger.info('INFO', `Monky Server running on 0.0.0.0:${this.config.port}`);
         Logger.info('INFO', `Data directory: ${this.config.dataDir}`);
         void this.attachmentService.reconcile();
@@ -550,6 +552,48 @@ export class MonkyServer {
       });
     });
     this.dbConn.close();
+    this.startedAt = null;
     Logger.info('INFO', 'Server stopped.');
+  }
+
+  /**
+   * Snapshot of the running server, for whoever is hosting it.
+   *
+   * This exists as a public method on purpose: the Server GUI used to read the
+   * same numbers by casting the instance to reach `dbConn` and `wsServer`
+   * directly, which TypeScript could not check and which broke silently every
+   * time an internal changed (#309).
+   *
+   * Deliberately cheap — it is polled by the UI, so it counts rows and open
+   * sessions but never walks the data directory.
+   */
+  public async getStats(): Promise<ServerStats> {
+    const db = this.dbConn.getDb();
+    const serverRecord = await new SqliteServerRepository(db).getServer();
+    const members = await new SqliteUserRepository(db).listAll();
+    const messages = await new SqliteMessageRepository(db).countAll();
+    const channels = serverRecord
+      ? await new SqliteChannelRepository(db).listByServerId(serverRecord.id)
+      : [];
+
+    // Counts people rather than sockets: one person may hold several sessions
+    // since a single identity can be connected from more than one device.
+    const onlineUserIds = new Set<string>();
+    for (const session of this.wsServer.getOnlineUsersMap().values()) {
+      onlineUserIds.add(session.user.id);
+    }
+
+    return {
+      serverName: serverRecord?.name ?? this.config.serverName ?? 'Monky Server',
+      port: this.config.port,
+      dataDir: this.config.dataDir,
+      startedAt: this.startedAt,
+      uptimeMs: this.startedAt ? Date.now() - this.startedAt : 0,
+      onlineUsers: onlineUserIds.size,
+      maxUsers: serverRecord?.maxUsers ?? LIMITS.MAX_USERS_DEFAULT,
+      members: members.length,
+      channels: channels.length,
+      messages,
+    };
   }
 }

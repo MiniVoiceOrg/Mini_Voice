@@ -122,9 +122,9 @@ export class WebSocketServer {
   }
 
   /**
-   * Disconnects every device of a person. Used by the server GUI host, which
-   * addresses people by user id and must not leave the other devices online
-   * (#309). Returns how many live sessions were closed.
+   * Disconnects every device of a person. Callers address people by user id and
+   * must not leave the other devices online (#309). Returns how many live
+   * sessions were closed.
    */
   public closeSessionsOfUser(userId: string): number {
     for (const [pendingSessionId, pendingTimer] of this.reconnectTimers.entries()) {

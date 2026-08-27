@@ -1,7 +1,7 @@
 import fs from 'fs';
 import path from 'path';
-import { spawnSync } from 'child_process';
-import { LIMITS } from '@monky/shared';
+import { spawn, spawnSync } from 'child_process';
+import { LIMITS, LOG_LEVELS, LogLevel } from '@monky/shared';
 import { ServerConfig } from '../../server';
 import { SqliteServerRepository } from '../../infrastructure/database/SqliteRepositories';
 import { ANSI, color, DEFAULT_SERVER_NAME } from '../constants';
@@ -11,6 +11,8 @@ import {
   ensurePm2,
   generateEcosystem,
   getEcosystemPath,
+  isMonkyServerRegistered,
+  isPm2Available,
   PM2_PROCESS_NAME,
 } from '../pm2';
 
@@ -124,11 +126,98 @@ export async function restartServerCommand(_dataDir: string): Promise<void> {
   console.log(color('Servidor Monky reiniciado com sucesso.', ANSI.green));
 }
 
-export function logsServerCommand(): void {
-  ensurePm2();
+/**
+ * Classifies a PM2 output line by the level the server Logger printed it with.
+ *
+ * The console format is `[timestamp] [CATEGORY]` for INFO and
+ * `[timestamp] [WARN:CATEGORY]` / `[ERROR:CATEGORY]` for the rest, and PM2
+ * prefixes every line with its own process tag, so the markers are matched
+ * anywhere in the line. Lines that match nothing are continuations (stack
+ * traces, for instance) and inherit the level of the line above them.
+ */
+function classifyLogLine(line: string): LogLevel | null {
+  if (line.includes('[ERROR:')) return 'ERROR';
+  if (line.includes('[WARN:')) return 'WARN';
+  if (/\[\d{4}-\d{2}-\d{2}T[^\]]+\]\s+\[[A-Z]+\]/.test(line)) return 'INFO';
+  return null;
+}
 
-  console.log(color('Exibindo logs do servidor (Ctrl+C para sair)...', ANSI.dim));
-  spawnSync('pm2', ['logs', PM2_PROCESS_NAME, '--lines', '50'], { stdio: 'inherit', shell: true });
+function parseLevelOption(value: string): LogLevel {
+  const normalized = value.trim().toUpperCase();
+  if ((LOG_LEVELS as string[]).includes(normalized)) return normalized as LogLevel;
+  throw new Error(`Nível inválido: ${value}. Use ${LOG_LEVELS.join(', ')}.`);
+}
+
+export function logsServerCommand(args: string[] = []): void {
+  const linesOption = parseOption(args, '--lines');
+  const levelOption = parseOption(args, '--level');
+  const follow = !args.includes('--no-follow');
+
+  const lines = linesOption ? parsePositiveInt('lines', linesOption) : 100;
+  const minLevel = levelOption ? parseLevelOption(levelOption) : null;
+
+  if (!isPm2Available()) {
+    console.log(color('PM2 não está instalado, então não há logs persistidos para ler.', ANSI.yellow));
+    console.log(color('O "monky logs" lê os logs do servidor iniciado com "monky start" (que roda via PM2).', ANSI.dim));
+    console.log(color('Instale com: npm install -g pm2', ANSI.dim));
+    console.log(color('Se o servidor foi iniciado pelo app Monky, use o Monitor do Servidor no próprio app.', ANSI.dim));
+    return;
+  }
+
+  if (!isMonkyServerRegistered()) {
+    console.log(color('Servidor Monky não está registrado no PM2 — não há logs para exibir.', ANSI.yellow));
+    console.log(color('Use "monky start" para iniciar o servidor.', ANSI.dim));
+    return;
+  }
+
+  const pm2Args = ['logs', PM2_PROCESS_NAME, '--lines', String(lines)];
+  if (!follow) pm2Args.push('--nostream');
+
+  const describeFilter = minLevel ? ` (nível ${minLevel} ou acima)` : '';
+  console.log(
+    color(
+      follow
+        ? `Exibindo logs do servidor${describeFilter} — Ctrl+C para sair...`
+        : `Últimas ${lines} linhas do servidor${describeFilter}...`,
+      ANSI.dim
+    )
+  );
+
+  // Without a level filter, hand the terminal straight to PM2 so its own
+  // colours and formatting survive; filtering requires reading the stream.
+  if (!minLevel) {
+    spawnSync('pm2', pm2Args, { stdio: 'inherit', shell: true });
+    return;
+  }
+
+  const threshold = LOG_LEVELS.indexOf(minLevel);
+  const child = spawn('pm2', pm2Args, { shell: true });
+  let pending = '';
+  let keepingCurrent = false;
+
+  const handleChunk = (chunk: Buffer) => {
+    pending += chunk.toString();
+    const parts = pending.split(/\r?\n/);
+    pending = parts.pop() ?? '';
+
+    for (const line of parts) {
+      const level = classifyLogLine(line);
+      if (level) {
+        keepingCurrent = LOG_LEVELS.indexOf(level) >= threshold;
+      }
+      if (keepingCurrent) console.log(line);
+    }
+  };
+
+  child.stdout?.on('data', handleChunk);
+  child.stderr?.on('data', handleChunk);
+  child.on('close', () => {
+    if (pending && keepingCurrent) console.log(pending);
+  });
+
+  const forwardInterrupt = () => child.kill();
+  process.on('SIGINT', forwardInterrupt);
+  child.on('close', () => process.off('SIGINT', forwardInterrupt));
 }
 
 export function statusServerCommand(): void {

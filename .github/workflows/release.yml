@@ -132,7 +132,7 @@ jobs:
         shell: bash
         run: |
           VERSION="${{ needs.version.outputs.version }}"
-          for f in apps/client/package.json apps/server-gui/package.json; do
+          for f in apps/client/package.json; do
             node -e "const f='$f';const p=require('./'+f);p.version='${VERSION}';require('fs').writeFileSync(f, JSON.stringify(p, null, 2)+'\n');"
           done
           echo "Packaged version set to ${VERSION}"
@@ -169,37 +169,10 @@ jobs:
           MAC_APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
           MAC_APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
 
-      # The Server GUI is a separate Electron app (host-side administration).
-      # It writes to release-server/ so its artifacts never collide with the
-      # Client's, which shares the same file names for update metadata.
-      # Tags cut before #284 have no electron-builder config, so a promotion of
-      # an older beta simply skips this step.
-      - name: Detect Server GUI packaging support
-        id: gui
-        shell: bash
-        run: |
-          if node -e "process.exit(require('./apps/server-gui/package.json').build ? 0 : 1)" 2>/dev/null; then
-            echo "enabled=true" >> "$GITHUB_OUTPUT"
-          else
-            echo "enabled=false" >> "$GITHUB_OUTPUT"
-            echo "This ref predates the Server GUI distribution; skipping."
-          fi
-
-      - name: Build Server GUI ${{ matrix.platform }} distributables
-        if: steps.gui.outputs.enabled == 'true'
-        working-directory: apps/server-gui
-        shell: bash
-        run: |
-          mkdir -p node_modules
-          npx --no-install electron-builder --${{ matrix.platform }} --publish never
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          npm_config_node_gyp: ${{ env.NODE_GYP_PATH || '' }}
-
-      # Each artifact keeps a single root directory on purpose: upload-artifact
+      # The artifact keeps a single root directory on purpose: upload-artifact
       # resolves the artifact root as the common ancestor of the search paths,
-      # so mixing release/ and release-server/ here would nest every file under
-      # those folders and break the flat paths in checksums-sha256.txt.
+      # so mixing another output folder here would nest every file under those
+      # folders and break the flat paths in checksums-sha256.txt.
       - name: Upload build artifacts
         uses: actions/upload-artifact@v4
         with:
@@ -212,18 +185,6 @@ jobs:
             release/*.zip
             release/*.blockmap
             release/latest*.yml
-
-      - name: Upload Server GUI artifacts
-        if: steps.gui.outputs.enabled == 'true'
-        uses: actions/upload-artifact@v4
-        with:
-          name: dist-server-${{ matrix.platform }}
-          if-no-files-found: error
-          retention-days: 7
-          path: |
-            release-server/*.exe
-            release-server/*.dmg
-            release-server/*.zip
 
   cli:
     name: Pack CLI tarball

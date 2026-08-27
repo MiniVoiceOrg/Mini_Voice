@@ -8,6 +8,7 @@ import { withButtonLoading } from '../utils/buttonLoading';
 import { showAlert, showConfirm } from './Dialog';
 import { pickAndCropImage } from './ImageCropModal';
 import { showIdentityImportDialog } from './IdentityDialogs';
+import { serverMonitorModal } from './ServerMonitorModal';
 import logoUrl from '../assets/Logo.png';
 import { getLanguage, t } from '../i18n';
 
@@ -149,6 +150,9 @@ export class ConnectionView {
                   ${
                     isRunning
                       ? `
+                        <button type="button" class="btn btn-secondary btn-monitor-created-server" data-created-server-id="${escapeHtml(server.id)}" title="${t('serverMonitor.title')}" style="padding: 2px 8px; font-size: 11px; height: 28px;">
+                          <span class="material-symbols-outlined md-16">monitoring</span>
+                        </button>
                         <button type="button" class="btn btn-danger btn-stop-created-server" data-created-server-id="${escapeHtml(server.id)}" style="padding: 2px 10px; font-size: 11px; height: 28px;">
                           ${t('connection.stop')}
                         </button>
@@ -761,6 +765,7 @@ export class ConnectionView {
     const joinPassInput = document.getElementById('join-password') as HTMLInputElement;
     const startCreatedButtons = this.container.querySelectorAll('.btn-start-created-server');
     const stopCreatedButtons = this.container.querySelectorAll('.btn-stop-created-server');
+    const monitorCreatedButtons = this.container.querySelectorAll('.btn-monitor-created-server');
     const removeCreatedButtons = this.container.querySelectorAll('.btn-remove-created-server');
     const importIdentityButton = document.getElementById('btn-import-existing-identity');
 
@@ -864,6 +869,14 @@ export class ConnectionView {
             button.innerHTML = originalHtml;
           }
         }
+      });
+    });
+
+    monitorCreatedButtons.forEach((btn) => {
+      btn.addEventListener('click', (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        void serverMonitorModal.open();
       });
     });
 

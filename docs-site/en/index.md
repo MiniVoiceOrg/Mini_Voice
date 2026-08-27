@@ -44,7 +44,7 @@ features:
 - [Using the App](/en/usando-o-app)
 - [Settings](/en/configuracoes)
 - [Host on a VPS](/en/hospedar-em-vps)
-- [Monky Server](/en/monky-server)
+- [Monky CLI](/en/cli)
 - [Troubleshooting](/en/solucao-de-problemas)
 - [Verify Releases](/en/verificar-releases)
 - [Features](/en/recursos)

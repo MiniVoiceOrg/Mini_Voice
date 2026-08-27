@@ -30,6 +30,7 @@ export interface IMessageRepository {
   create(message: MessageRecord): Promise<void>;
   listByChannel(channelId: string, limit: number, beforeTimestamp?: number): Promise<MessageRecord[]>;
   deleteByChannel(channelId: string): Promise<void>;
+  countAll(): Promise<number>;
 }
 
 export interface IMentionRepository {

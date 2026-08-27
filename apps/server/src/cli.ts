@@ -42,6 +42,7 @@ Uso:
   monky restart            Reinicia o servidor
   monky status             Exibe o estado do servidor
   monky logs               Exibe logs em tempo real
+                           (--lines N, --level INFO|WARN|ERROR, --no-follow)
   monky members            Lista membros
   monky members info <id>  Info detalhada de um membro
   monky admin add [user]   Concede admin (interativo se sem arg)
@@ -104,7 +105,7 @@ export async function runCommand(globalArgs: GlobalArgs): Promise<void> {
   }
 
   if (section === 'logs') {
-    logsServerCommand();
+    logsServerCommand([action, ...rest].filter(Boolean));
     return;
   }
 

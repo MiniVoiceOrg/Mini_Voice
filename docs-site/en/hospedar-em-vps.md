@@ -30,6 +30,25 @@ monky status
 monky logs
 ```
 
+## Reading the logs
+
+```bash
+monky logs                      # follows the logs live (Ctrl+C to quit)
+monky logs --lines 500          # starts with the last 500 lines
+monky logs --level WARN         # warnings and errors only
+monky logs --level ERROR --no-follow   # prints recent errors and exits
+```
+
+`--level` filters by minimum level: `INFO` shows everything, `WARN` shows
+warnings and errors, `ERROR` shows errors only. Continuation lines (stack
+traces, for instance) follow the level of the line above them.
+
+::: tip
+`monky logs` reads the logs of the server started with `monky start`, which runs
+through PM2. If the server is running inside the Monky app, use the **Server
+Monitor** in the app itself (server menu → Server Monitor).
+:::
+
 ## Administration
 
 ```bash
@@ -40,7 +59,7 @@ monky config set
 monky --help
 ```
 
-Full documentation: [docs/CLI.en.md](https://github.com/MonkyOrg/Monky/blob/main/docs/CLI.en.md).
+Full documentation: [Monky CLI](/en/cli).
 
 ## Ports used
 
