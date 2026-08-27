@@ -5,6 +5,7 @@
 
   <p>
     <a href="https://github.com/MonkyOrg/Monky/releases/latest"><img alt="Release" src="https://img.shields.io/github/v/release/MonkyOrg/Monky?label=download&color=5865f2"></a>
+    <a href="https://monkyorg.github.io/Monky/en/"><img alt="Documentation" src="https://img.shields.io/badge/docs-monkyorg.github.io-blue"></a>
     <a href="LICENSE"><img alt="MIT license" src="https://img.shields.io/badge/license-MIT-green"></a>
     <a href="https://github.com/MonkyOrg/Monky/actions/workflows/ci.yml"><img alt="CI" src="https://github.com/MonkyOrg/Monky/actions/workflows/ci.yml/badge.svg"></a>
     <a href="https://github.com/MonkyOrg/Monky/discussions/categories/ideas"><img alt="Ideas" src="https://img.shields.io/badge/ideas-vote%20here-orange"></a>
@@ -41,12 +42,7 @@ If Windows/macOS shows a security warning, see [Installation](https://monkyorg.g
 
 ## 📚 Documentation
 
-- [Monky Docs](https://monkyorg.github.io/Monky/en/) — manual for using and hosting.
-- [Getting Started](https://monkyorg.github.io/Monky/en/primeiros-passos)
-- [Create Your Server](https://monkyorg.github.io/Monky/en/criar-seu-servidor)
-- [Join a Server](https://monkyorg.github.io/Monky/en/entrar-em-um-servidor)
-- [Using the App](https://monkyorg.github.io/Monky/en/usando-o-app)
-- [Host on a VPS](https://monkyorg.github.io/Monky/en/hospedar-em-vps)
+Full usage and hosting manual at **[monkyorg.github.io/Monky/en](https://monkyorg.github.io/Monky/en/)** — installation, getting started, creating a server, hosting on a VPS and troubleshooting. ([Português](https://monkyorg.github.io/Monky/))
 
 ## 🧩 The 3 products
 
