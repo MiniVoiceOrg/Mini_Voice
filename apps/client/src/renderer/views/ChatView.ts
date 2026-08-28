@@ -1,5 +1,5 @@
 import { ChatMessage, LIMITS, MessageType, Permission } from '@monky/shared';
-import type { AttachmentMeta, UserSummary } from '@monky/shared';
+import type { AttachmentMeta, StickerEntry, UserSummary } from '@monky/shared';
 import { escapeHtml } from '../utils/html';
 import { appEvents } from '../core/EventBus';
 import { networkClient } from '../core/NetworkClient';
@@ -16,6 +16,9 @@ import { showAlert } from './Dialog';
 import { lightboxModal, LightboxMedia } from './LightboxModal';
 import { linkPreviewService } from '../core/LinkPreviewService';
 import { initializeCustomVideoPlayers } from '../utils/videoPlayer';
+import { EmojiPicker } from './EmojiPicker';
+import { stickerService } from '../core/StickerService';
+import { extractStickerIds, stickerToken, stripStickerTokens } from '../utils/stickers';
 
 /** How close to the end the feed must be to keep following new messages (#270). */
 const BOTTOM_SCROLL_THRESHOLD_PX = 48;
@@ -48,6 +51,8 @@ export class ChatView {
   // Files picked for the next message, keyed by a local id (#11).
   private pending: PendingAttachment[] = [];
   private uploadSeq = 0;
+  /** Emoji/sticker popover anchored to the composer (#356). */
+  private emojiPicker: EmojiPicker | null = null;
 
   constructor(container: HTMLElement) {
     this.container = container;
@@ -118,6 +123,9 @@ export class ChatView {
               <span class="material-symbols-outlined md-22">add_circle</span>
             </button>
             <input id="chat-file-input" type="file" multiple style="display: none;">
+            <button id="btn-emoji" type="button" class="chat-attach-btn" title="${t('chat.emojiPickerTitle')}">
+              <span class="material-symbols-outlined md-22">mood</span>
+            </button>
             <textarea id="chat-message-input" class="chat-input-field" rows="1" placeholder="${t('chat.inputPlaceholder', { channel: escapeHtml(channelName) })}" maxlength="${LIMITS.MAX_MESSAGE_LENGTH}"></textarea>
             <span id="chat-char-counter" class="chat-char-count">0/${LIMITS.MAX_MESSAGE_LENGTH}</span>
             <button id="btn-send-message" class="btn btn-primary chat-send-btn">
@@ -352,6 +360,7 @@ export class ChatView {
     const permissionBanner = this.container.querySelector('#chat-send-permission-banner') as HTMLElement | null;
     const btnSend = this.container.querySelector('#btn-send-message') as HTMLButtonElement | null;
     const btnAttach = this.container.querySelector('#btn-attach') as HTMLButtonElement | null;
+    const btnEmoji = this.container.querySelector('#btn-emoji') as HTMLButtonElement | null;
     if (!input || !inputWrapper) return;
 
     const channelName = serverStore.serverDetails?.channels.find((c) => c.id === this.currentChannelId)?.name || 'geral';
@@ -383,8 +392,16 @@ export class ChatView {
       btnAttach.setAttribute('aria-disabled', btnAttach.disabled ? 'true' : 'false');
     }
 
+    if (btnEmoji) {
+      // Emojis only need permission to talk; the sticker upload additionally
+      // checks ATTACH_FILES when it is actually sent.
+      btnEmoji.disabled = locked;
+      btnEmoji.setAttribute('aria-disabled', btnEmoji.disabled ? 'true' : 'false');
+    }
+
     if (locked) {
       this.closeMentionDropup();
+      this.emojiPicker?.close();
     }
   }
 
@@ -429,11 +446,27 @@ export class ChatView {
     }
 
     const avatarSrc = getAvatarUrl(m.userAvatarUrl);
+    // Attachments flagged as stickers are drawn as fixed-size squares instead of
+    // going into the regular media grid (#356). A marker only takes effect when
+    // it resolves to an image attachment of this message: anything else (a
+    // hand-typed marker, an id that no longer exists, a video/file attachment)
+    // is left alone so no text or attachment can disappear from the UI.
+    const stickers: AttachmentMeta[] = [];
+    for (const id of extractStickerIds(m.content)) {
+      const found = m.attachments?.find((a) => a.id === id);
+      if (found && found.kind === 'image') stickers.push(found);
+    }
+    const stickerIds = stickers.map((a) => a.id);
+    const visibleText = stickerIds.length > 0 ? stripStickerTokens(m.content, stickerIds) : m.content;
+    const otherAttachments =
+      stickerIds.length > 0 ? m.attachments?.filter((a) => !stickerIds.includes(a.id)) : m.attachments;
+
     const textHtml =
-      m.content && m.content.trim().length > 0
-        ? `<div class="chat-message-text">${renderMarkdown(m.content, { currentNickname, knownNicknames })}</div>`
+      visibleText && visibleText.trim().length > 0
+        ? `<div class="chat-message-text">${renderMarkdown(visibleText, { currentNickname, knownNicknames })}</div>`
         : '';
-    const attachmentsHtml = this.renderAttachments(m.attachments, m);
+    const stickersHtml = this.renderStickers(stickers);
+    const attachmentsHtml = this.renderAttachments(otherAttachments, m);
     const rowClass = `chat-message-row${isMentioned ? ' chat-message-mentioned' : ''}`;
 
     return `
@@ -445,11 +478,34 @@ export class ChatView {
             <span class="chat-timestamp">${time}</span>
           </div>
           ${textHtml}
+          ${stickersHtml}
           <div class="chat-link-previews" data-message-id="${escapeHtml(m.id)}"></div>
           ${attachmentsHtml}
         </div>
       </div>
     `;
+  }
+
+  /**
+   * Draws sticker attachments as fixed-size squares (#356). Unlike photos they
+   * get no lightbox or download affordance — they behave like a large emoji.
+   */
+  private renderStickers(stickers: AttachmentMeta[]): string {
+    if (stickers.length === 0) return '';
+    const items = stickers
+      .map((a) => {
+        const name = escapeHtml(a.originalName);
+        if (!a.url) {
+          return `
+            <div class="chat-sticker chat-sticker--evicted" title="${t('chat.attachmentEvicted')}">
+              <span class="material-symbols-outlined md-24">hide_source</span>
+            </div>
+          `;
+        }
+        return `<img class="chat-sticker" src="${getAttachmentUrl(a.url)}" alt="${name}" title="${name}" loading="lazy">`;
+      })
+      .join('');
+    return `<div class="chat-stickers">${items}</div>`;
   }
 
   /** Renders the attachment grid below a message body (#11). */
@@ -763,6 +819,34 @@ export class ChatView {
       fileInput.value = '';
     });
 
+    // --- Emoji & sticker picker (#356) ---
+    const btnEmoji = document.getElementById('btn-emoji');
+    if (btnEmoji && inputContainer) {
+      const picker = new EmojiPicker({
+        container: inputContainer,
+        anchor: btnEmoji,
+        onSelectEmoji: (emoji) => this.insertAtCaret(emoji),
+        onSelectSticker: (sticker) => {
+          picker.close();
+          void this.sendSticker(sticker);
+        },
+      });
+      this.emojiPicker = picker;
+
+      const onEmojiClick = () => {
+        if (this.arePermissionsResolved() && !serverStore.hasPermission(Permission.SEND_MESSAGES)) return;
+        picker.toggle();
+      };
+      btnEmoji.addEventListener('click', onEmojiClick);
+      // attachEvents() runs again on every re-render, so the popover must go with
+      // its listeners or its document-level handlers would pile up.
+      this.unbindEvents.push(() => {
+        btnEmoji.removeEventListener('click', onEmojiClick);
+        picker.destroy();
+        if (this.emojiPicker === picker) this.emojiPicker = null;
+      });
+    }
+
     // Paste files/images directly into the message box.
     input?.addEventListener('paste', (e: ClipboardEvent) => {
       const files = e.clipboardData?.files;
@@ -1014,6 +1098,61 @@ export class ChatView {
     if (el) {
       el.style.display = 'none';
       el.innerHTML = '';
+    }
+  }
+
+  /**
+   * Inserts text (an emoji) where the caret is, then replays an `input` event so
+   * the character counter, auto-resize and mention logic all react as if the
+   * user had typed it (#356).
+   */
+  private insertAtCaret(text: string): void {
+    const input = this.container.querySelector('#chat-message-input') as HTMLTextAreaElement | null;
+    if (!input || input.readOnly) return;
+
+    const start = input.selectionStart ?? input.value.length;
+    const end = input.selectionEnd ?? start;
+    const next = input.value.slice(0, start) + text + input.value.slice(end);
+    if (next.length > LIMITS.MAX_MESSAGE_LENGTH) return;
+
+    input.value = next;
+    const caret = start + text.length;
+    input.focus({ preventScroll: true });
+    input.setSelectionRange(caret, caret);
+    input.dispatchEvent(new Event('input', { bubbles: true }));
+  }
+
+  /**
+   * Sends a sticker as its own message (#356): the image goes through the normal
+   * attachment upload and the message text carries only the marker that tells
+   * every client to draw it as a fixed-size square.
+   */
+  private async sendSticker(sticker: StickerEntry): Promise<void> {
+    const channelId = this.currentChannelId;
+    if (!channelId) return;
+    if (
+      this.arePermissionsResolved() &&
+      (!serverStore.hasPermission(Permission.SEND_MESSAGES) || !serverStore.hasPermission(Permission.ATTACH_FILES))
+    ) {
+      void showAlert({ message: t('chat.stickerPermissionDenied'), variant: 'danger' });
+      return;
+    }
+
+    try {
+      const file = await stickerService.toFile(sticker);
+      if (!file) throw new Error(t('chat.stickerReadFailed'));
+
+      const meta = await uploadAttachment(channelId, file).promise;
+      networkClient.send(MessageType.CHAT_SEND, {
+        channelId,
+        content: stickerToken(meta.id),
+        attachmentIds: [meta.id],
+      });
+    } catch (e) {
+      void showAlert({
+        message: e instanceof Error ? e.message : t('chat.stickerSendFailed'),
+        variant: 'danger',
+      });
     }
   }
 

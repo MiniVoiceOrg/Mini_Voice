@@ -16,6 +16,16 @@ Whoever broadcasts shows a **LIVE** badge. Click the card to spotlight it or use
 
 Each text channel has history saved on the server, avatars, timestamps, basic formatting and an anti-flood limit of 10 messages every 5 seconds.
 
+## Emojis and stickers
+
+The smiley button next to the message field opens a picker with two tabs.
+
+**Emojis** holds the full catalog, split by category and searchable (try `heart`, `party`, `cake`…). Clicking an emoji inserts it at the cursor, so you can mix emoji and text in the same message.
+
+**Stickers** is where you pick a folder on your computer, the same way you do for the soundboard. Every `.png`, `.gif`, `.webp`, `.jpg` or `.avif` image up to 2 MB becomes a sticker — animated GIFs stay animated. Clicking a sticker sends it right away as its own message, and everyone sees it as a fixed-size square.
+
+The folder stays on your machine: the image is uploaded to the server when you use the sticker, like any other attachment. That is why sending a sticker requires the **Attach files** permission.
+
 ## Soundboard
 
 Under **Settings › Soundboard**, choose a folder containing `.mp3`, `.wav` or `.ogg`. In the call, play sounds from the soundboard button. Volume and local mute live in the same settings. The host can disable the soundboard for the whole server and, under **Server Settings › Roles**, grant the **Use soundboard** permission only to the desired roles.

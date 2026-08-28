@@ -46,6 +46,8 @@ export class SettingsStore {
   public soundboardFolderPath: string = '';
   public soundboardVolume: number = 80; // 0 - 100
   public soundboardMuted: boolean = false;
+  /** Folder the user picked for custom chat stickers (#356). */
+  public stickersFolderPath: string = '';
   public screenAudioVolumes: Record<string, number> = {}; // per-connection screen audio volume (#75), keyed by sessionId (#363)
   public screenShareTelemetryEnabled: boolean = false;
   public screenShareTelemetryPosition: 'top-left' | 'top-right' | 'bottom-left' | 'bottom-right' = 'top-right';
@@ -84,6 +86,9 @@ export class SettingsStore {
         }
         if (typeof this.soundboardFolderPath !== 'string') {
           this.soundboardFolderPath = '';
+        }
+        if (typeof this.stickersFolderPath !== 'string') {
+          this.stickersFolderPath = '';
         }
         if (typeof this.soundboardVolume !== 'number' || isNaN(this.soundboardVolume)) {
           this.soundboardVolume = 80;
@@ -275,6 +280,7 @@ export class SettingsStore {
         soundboardFolderPath: this.soundboardFolderPath,
         soundboardVolume: this.soundboardVolume,
         soundboardMuted: this.soundboardMuted,
+        stickersFolderPath: this.stickersFolderPath,
         screenAudioVolumes: this.screenAudioVolumes,
         screenShareTelemetryEnabled: this.screenShareTelemetryEnabled,
         screenShareTelemetryPosition: this.screenShareTelemetryPosition,

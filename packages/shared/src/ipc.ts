@@ -36,6 +36,27 @@ export interface SoundboardSoundData {
   sizeBytes: number;
 }
 
+/** One custom sticker image found in the user's stickers folder (#356). */
+export interface StickerEntry {
+  name: string;
+  fileName: string;
+  filePath: string;
+  sizeBytes: number;
+  ext: string;
+  mimeType: string;
+}
+
+/**
+ * The bytes of a single sticker. Read on demand (when a tile scrolls into view
+ * or the sticker is sent) so a large folder never loads entirely into memory.
+ */
+export interface StickerData {
+  fileName: string;
+  mimeType: string;
+  dataUrl: string;
+  sizeBytes: number;
+}
+
 export interface SoundboardShortcutBinding {
   soundName: string;
   accelerator: string;
@@ -189,11 +210,16 @@ export interface IpcInvokeChannels {
   'dialog:select-image': { args: []; returnType: ImageSelectionResult | null };
   'dialog:select-sound-file': { args: []; returnType: string | null };
   'dialog:select-soundboard-folder': { args: []; returnType: string | null };
+  'dialog:select-stickers-folder': { args: []; returnType: string | null };
 
   // Soundboard
   'soundboard:list-sounds': { args: [folderPath: string]; returnType: SoundboardSoundEntry[] };
   'soundboard:read-sound': { args: [filePath: string]; returnType: SoundboardSoundData | null };
   'soundboard:register-shortcuts': { args: [shortcuts: SoundboardShortcutBinding[]]; returnType: boolean };
+
+  // Figurinhas do chat (#356)
+  'stickers:list': { args: [folderPath: string]; returnType: StickerEntry[] };
+  'stickers:read': { args: [filePath: string]; returnType: StickerData | null };
 
   // Atalhos Globais (Keybinds)
   'shortcuts:register-actions': { args: [shortcuts: ActionShortcutBinding[]]; returnType: boolean };
