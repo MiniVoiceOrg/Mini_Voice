@@ -8,6 +8,7 @@
   },
   "include": [
     "src/preload/preload.ts",
+    "src/main/updateVersions.ts",
     "src/renderer/utils/**/*",
     "src/renderer/core/EventBus.ts",
     "src/renderer/stores/**/*",
