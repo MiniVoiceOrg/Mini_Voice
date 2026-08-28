@@ -44,6 +44,12 @@ export interface StickerEntry {
   sizeBytes: number;
   ext: string;
   mimeType: string;
+  /**
+   * True when the file is above the size the picker is willing to decode. It is
+   * still listed (dimmed, with an explanation) instead of vanishing silently,
+   * which is what made a large GIF look like it had simply been ignored.
+   */
+  tooLarge?: boolean;
 }
 
 /**
@@ -55,6 +61,17 @@ export interface StickerData {
   mimeType: string;
   dataUrl: string;
   sizeBytes: number;
+}
+
+/**
+ * Outcome of saving a sticker somebody else sent into the local folder. The
+ * failure reason is a code (not a message) so the renderer owns the wording and
+ * keeps it translatable.
+ */
+export interface StickerSaveResult {
+  ok: boolean;
+  fileName?: string;
+  reason?: 'no-folder' | 'bad-extension' | 'too-large' | 'write-failed';
 }
 
 export interface SoundboardShortcutBinding {
@@ -220,6 +237,10 @@ export interface IpcInvokeChannels {
   // Figurinhas do chat (#356)
   'stickers:list': { args: [folderPath: string]; returnType: StickerEntry[] };
   'stickers:read': { args: [filePath: string]; returnType: StickerData | null };
+  'stickers:save': {
+    args: [folderPath: string, fileName: string, bytes: Uint8Array];
+    returnType: StickerSaveResult;
+  };
 
   // Atalhos Globais (Keybinds)
   'shortcuts:register-actions': { args: [shortcuts: ActionShortcutBinding[]]; returnType: boolean };

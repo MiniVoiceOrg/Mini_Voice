@@ -18,6 +18,7 @@ import { linkPreviewService } from '../core/LinkPreviewService';
 import { initializeCustomVideoPlayers } from '../utils/videoPlayer';
 import { EmojiPicker } from './EmojiPicker';
 import { stickerService } from '../core/StickerService';
+import { settingsStore } from '../stores/settingsStore';
 import { extractStickerIds, stickerToken, stripStickerTokens } from '../utils/stickers';
 
 /** How close to the end the feed must be to keep following new messages (#270). */
@@ -488,7 +489,8 @@ export class ChatView {
 
   /**
    * Draws sticker attachments as fixed-size squares (#356). Unlike photos they
-   * get no lightbox or download affordance — they behave like a large emoji.
+   * get no lightbox or download affordance — they behave like a large emoji,
+   * except for a hover button that saves them into the user's own folder.
    */
   private renderStickers(stickers: AttachmentMeta[]): string {
     if (stickers.length === 0) return '';
@@ -502,7 +504,14 @@ export class ChatView {
             </div>
           `;
         }
-        return `<img class="chat-sticker" src="${getAttachmentUrl(a.url)}" alt="${name}" title="${name}" loading="lazy">`;
+        return `
+          <div class="chat-sticker-wrap">
+            <img class="chat-sticker" src="${getAttachmentUrl(a.url)}" alt="${name}" title="${name}" loading="lazy">
+            <button type="button" class="chat-sticker-save" data-sticker-url="${escapeHtml(a.url)}" data-sticker-name="${name}" title="${t('chat.saveSticker')}" aria-label="${t('chat.saveSticker')}">
+              <span class="material-symbols-outlined md-14">bookmark_add</span>
+            </button>
+          </div>
+        `;
       })
       .join('');
     return `<div class="chat-stickers">${items}</div>`;
@@ -639,6 +648,54 @@ export class ChatView {
         if (url) void this.downloadAttachment(url, name);
       });
     });
+
+    feed.querySelectorAll('.chat-sticker-save').forEach((button) => {
+      button.addEventListener('click', (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        const url = button.getAttribute('data-sticker-url');
+        const name = button.getAttribute('data-sticker-name') || 'sticker';
+        if (url) void this.saveSticker(url, name);
+      });
+    });
+  }
+
+  /**
+   * Copies a sticker somebody else sent into the local folder (#356 QA). Without
+   * a folder configured there is nowhere to put it, so the picker is offered
+   * instead of failing silently.
+   */
+  private async saveSticker(url: string, fileName: string): Promise<void> {
+    const attachmentUrl = getAttachmentUrl(url);
+    let result = await stickerService.saveFromUrl(attachmentUrl, fileName);
+
+    // `no-folder` covers both "never picked one" and "the main process has not
+    // seen the user confirm this folder in this run" — it only writes to folders
+    // chosen through its own dialog. Either way, asking is the right answer.
+    if (!result.ok && result.reason === 'no-folder') {
+      const folder = await window.api?.selectStickersFolder?.();
+      if (!folder) return;
+      settingsStore.stickersFolderPath = folder;
+      settingsStore.save();
+      await stickerService.loadStickers(true);
+      result = await stickerService.saveFromUrl(attachmentUrl, fileName);
+    }
+
+    if (result.ok) {
+      void showAlert({
+        message: t('chat.stickerSaved', { name: result.fileName ?? fileName }),
+        variant: 'success',
+      });
+      return;
+    }
+
+    const reasonKey =
+      result.reason === 'too-large'
+        ? 'chat.stickerSaveTooLarge'
+        : result.reason === 'bad-extension'
+          ? 'chat.stickerSaveBadFormat'
+          : 'chat.stickerSaveFailed';
+    void showAlert({ message: t(reasonKey), variant: 'danger' });
   }
 
   private openLightboxFromSource(source: HTMLElement): void {

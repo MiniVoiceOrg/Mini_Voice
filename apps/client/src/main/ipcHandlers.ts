@@ -428,8 +428,49 @@ export function setupIpcHandlers(
     '.apng': 'image/apng',
     '.avif': 'image/avif',
   };
-  const MAX_STICKER_BYTES = 2 * 1024 * 1024;
+  // Animated GIFs and WebPs are routinely a few megabytes, so the ceiling has to
+  // be generous enough not to quietly swallow a normal sticker. The server
+  // accepts far more (LIMITS.MAX_ATTACHMENT_FILE_SIZE_DEFAULT is 50 MB); the
+  // tighter bound here exists only because the renderer decodes these as base64
+  // data URLs, which costs ~33% on top of the file size.
+  const MAX_STICKER_BYTES = 8 * 1024 * 1024;
   const MAX_STICKERS_LISTED = 500;
+
+  /**
+   * Folders the user confirmed through the dialog below. `stickers:save` is the
+   * only channel here that writes to disk, so it refuses any folder outside this
+   * set: the renderer handles untrusted remote chat content and must not be able
+   * to name an arbitrary write target. Listing and reading stay path-based, like
+   * the pre-existing soundboard channels, because they cannot modify anything.
+   *
+   * It is persisted so the confirmation survives a restart — otherwise the first
+   * save of every session would pop a folder dialog for no reason the user can
+   * see.
+   */
+  const confirmedFoldersFile = path.join(app.getPath('userData'), 'sticker-folders.json');
+
+  const loadConfirmedStickerFolders = (): Set<string> => {
+    try {
+      const raw = fs.readFileSync(confirmedFoldersFile, 'utf8');
+      const parsed: unknown = JSON.parse(raw);
+      if (!Array.isArray(parsed)) return new Set();
+      return new Set(parsed.filter((p): p is string => typeof p === 'string'));
+    } catch {
+      return new Set();
+    }
+  };
+
+  const confirmedStickerFolders = loadConfirmedStickerFolders();
+
+  const confirmStickerFolder = (folder: string): void => {
+    confirmedStickerFolders.add(path.resolve(folder));
+    try {
+      fs.writeFileSync(confirmedFoldersFile, JSON.stringify(Array.from(confirmedStickerFolders)), 'utf8');
+    } catch (e) {
+      // Losing the record only costs an extra dialog next session.
+      console.warn('Could not persist the confirmed stickers folder:', e);
+    }
+  };
 
   ipcMain.handle('dialog:select-stickers-folder', async () => {
     const result = await dialog.showOpenDialog(mainWindow, {
@@ -440,6 +481,7 @@ export function setupIpcHandlers(
     if (result.canceled || result.filePaths.length === 0) {
       return null;
     }
+    confirmStickerFolder(result.filePaths[0]);
     return result.filePaths[0];
   });
 
@@ -462,7 +504,7 @@ export function setupIpcHandlers(
           const ext = path.extname(entry.name).toLowerCase();
           const fullPath = path.join(folderPath, entry.name);
           const stat = await fs.promises.stat(fullPath).catch(() => null);
-          if (!stat || stat.size > MAX_STICKER_BYTES) return null;
+          if (!stat) return null;
           return {
             name: path.basename(entry.name, ext),
             fileName: entry.name,
@@ -470,6 +512,9 @@ export function setupIpcHandlers(
             sizeBytes: stat.size,
             ext,
             mimeType: STICKER_MIME_TYPES[ext],
+            // Listed but flagged instead of dropped, so an oversized file is
+            // visibly rejected rather than appearing to have been ignored.
+            tooLarge: stat.size > MAX_STICKER_BYTES,
           };
         })
       );
@@ -509,7 +554,54 @@ export function setupIpcHandlers(
     }
   });
 
-  let registeredSoundboardShortcuts: Array<{ soundName: string; accelerator: string }> = [];  let registeredActionShortcuts: Array<{ action: string; accelerator: string }> = [];
+  // Saves a sticker somebody else sent into the user's own folder (#356 QA).
+  ipcMain.handle('stickers:save', async (_, folderPath: string, fileName: string, bytes: Uint8Array) => {
+    if (!folderPath || typeof folderPath !== 'string') {
+      return { ok: false, reason: 'no-folder' as const };
+    }
+    // Only a folder the user confirmed through the dialog is writable, so the
+    // renderer cannot pick the destination on its own.
+    if (!confirmedStickerFolders.has(path.resolve(folderPath))) {
+      return { ok: false, reason: 'no-folder' as const };
+    }
+    // The renderer supplies the name, so only the basename is trusted: it must
+    // never be able to steer the write outside that folder.
+    const safeName = path.basename(String(fileName ?? ''));
+    const ext = path.extname(safeName).toLowerCase();
+    if (!safeName || !STICKER_MIME_TYPES[ext]) {
+      return { ok: false, reason: 'bad-extension' as const };
+    }
+    if (!(bytes instanceof Uint8Array) || bytes.byteLength === 0 || bytes.byteLength > MAX_STICKER_BYTES) {
+      return { ok: false, reason: 'too-large' as const };
+    }
+    try {
+      const folderStat = await fs.promises.stat(folderPath).catch(() => null);
+      if (!folderStat || !folderStat.isDirectory()) {
+        return { ok: false, reason: 'no-folder' as const };
+      }
+
+      // Never clobber an existing sticker: "cat.gif" becomes "cat (1).gif". The
+      // 'wx' flag makes the filesystem itself reject an existing name, so there
+      // is no window between checking and writing.
+      const base = path.basename(safeName, ext);
+      for (let i = 0; i < 100; i++) {
+        const candidate = i === 0 ? safeName : `${base} (${i})${ext}`;
+        try {
+          await fs.promises.writeFile(path.join(folderPath, candidate), bytes, { flag: 'wx' });
+          return { ok: true, fileName: candidate };
+        } catch (e) {
+          if ((e as NodeJS.ErrnoException).code !== 'EEXIST') throw e;
+        }
+      }
+      return { ok: false, reason: 'write-failed' as const };
+    } catch (e) {
+      console.warn('Error saving sticker file:', e);
+      return { ok: false, reason: 'write-failed' as const };
+    }
+  });
+
+  let registeredSoundboardShortcuts: Array<{ soundName: string; accelerator: string }> = [];
+  let registeredActionShortcuts: Array<{ action: string; accelerator: string }> = [];
 
   const syncAllGlobalShortcuts = (): boolean => {
     try {
