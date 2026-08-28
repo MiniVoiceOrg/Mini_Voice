@@ -11,6 +11,7 @@ import { EventBus } from '../src/renderer/core/EventBus';
 import { normalizeSearchString, matchesSearch } from '../src/renderer/utils/search';
 import { compareVersions, feedUrlForTag, isNewer, pickBestRelease } from '../src/main/updateVersions';
 import { extractStickerIds, stickerToken, stripStickerTokens } from '../src/renderer/utils/stickers';
+import { buildCodeMessage } from '../src/renderer/views/CodeBlockModal';
 
 let passed = 0;
 let failed = 0;
@@ -93,7 +94,10 @@ function runTests() {
   assert(codeTest.includes('<code class="md-inline-code">npm install</code>'), 'Código inline formatado');
 
   const blockCodeTest = renderMarkdown('```\nconsole.log("monky");\n```');
-  assert(blockCodeTest.includes('<pre class="md-codeblock"><code>console.log(&quot;monky&quot;);</code></pre>'), 'Bloco de código formatado e escapado');
+  assert(
+    blockCodeTest.includes('<pre class="md-codeblock"><code class="hljs">console.log(&quot;monky&quot;);</code></pre>'),
+    'Bloco de código formatado e escapado'
+  );
 
   // Links seguros
   const linkTest = renderMarkdown('[Site Oficial](https://monky.chat)');
@@ -358,6 +362,45 @@ function runTests() {
   assert(
     extractStickerIds('[[sticker:<img src=x onerror=alert(1)>]]').length === 0,
     'marcador com HTML dentro não é aceito'
+  );
+
+  console.log('\n--- Blocos de código do chat (#391) ---');
+
+  const jsBlock = renderMarkdown('```js\nconst a = 1;\n```');
+  assert(jsBlock.includes('class="hljs language-javascript"'), 'Alias "js" é normalizado para "javascript"');
+  assert(jsBlock.includes('md-code-copy'), 'Bloco de código traz o botão de copiar');
+  assert(jsBlock.includes('hljs-keyword'), 'Código com linguagem conhecida recebe realce');
+
+  const unknownLang = renderMarkdown('```linguagemInventada\nfoo\n```');
+  assert(
+    unknownLang.includes('<code class="hljs">foo</code>'),
+    'Linguagem desconhecida cai no bloco sem realce'
+  );
+
+  // O realce roda sobre o texto cru; nada pode escapar como HTML de verdade.
+  // O hljs quebra a tag em spans, então o que se vê é `&lt;<span>script</span>&gt;`.
+  const xssBlock = renderMarkdown('```html\n<script>alert(1)</script>\n```');
+  assert(!xssBlock.includes('<script>'), 'Bloco de código não deixa passar <script> executável');
+  assert(xssBlock.includes('&lt;'), 'Sinais de menor dentro do código viram entidade HTML');
+  assert(!xssBlock.includes('&amp;lt;'), 'Bloco de código não escapa duas vezes');
+
+  // Regressão: o comportamento anterior de fence numa linha só continua valendo.
+  const singleLineFence = renderMarkdown('```trecho```');
+  assert(
+    singleLineFence.includes('<code class="hljs">trecho</code>'),
+    'Fence de uma linha não confunde o conteúdo com a linguagem'
+  );
+
+  const codeMessage = buildCodeMessage('python', 'print("oi")');
+  assert(codeMessage.startsWith('```python\n'), 'buildCodeMessage abre o fence com a linguagem');
+  const roundTrip = renderMarkdown(codeMessage);
+  assert(roundTrip.includes('language-python'), 'Mensagem gerada volta como bloco Python ao renderizar');
+
+  // Fences dentro do código quebrariam o bloco ao meio se não fossem neutralizados.
+  const nestedFence = renderMarkdown(buildCodeMessage('', 'antes\n```\ndepois'));
+  assert(
+    (nestedFence.match(/md-codeblock/g) || []).length === 1,
+    'Fence digitado dentro do código não parte a mensagem em dois blocos'
   );
 
   console.log(`\n=== Relatório dos Testes ===`);

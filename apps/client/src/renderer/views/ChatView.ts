@@ -17,6 +17,7 @@ import { lightboxModal, LightboxMedia } from './LightboxModal';
 import { linkPreviewService } from '../core/LinkPreviewService';
 import { initializeCustomVideoPlayers } from '../utils/videoPlayer';
 import { EmojiPicker } from './EmojiPicker';
+import { buildCodeMessage, codeBlockModal } from './CodeBlockModal';
 import { stickerService } from '../core/StickerService';
 import { settingsStore } from '../stores/settingsStore';
 import { extractStickerIds, stickerToken, stripStickerTokens } from '../utils/stickers';
@@ -126,6 +127,9 @@ export class ChatView {
             <input id="chat-file-input" type="file" multiple style="display: none;">
             <button id="btn-emoji" type="button" class="chat-attach-btn" title="${t('chat.emojiPickerTitle')}">
               <span class="material-symbols-outlined md-22">mood</span>
+            </button>
+            <button id="btn-code" type="button" class="chat-attach-btn" title="${t('chat.codeBlockTitle')}">
+              <span class="material-symbols-outlined md-22">code</span>
             </button>
             <textarea id="chat-message-input" class="chat-input-field" rows="1" placeholder="${t('chat.inputPlaceholder', { channel: escapeHtml(channelName) })}" maxlength="${LIMITS.MAX_MESSAGE_LENGTH}"></textarea>
             <span id="chat-char-counter" class="chat-char-count">0/${LIMITS.MAX_MESSAGE_LENGTH}</span>
@@ -239,6 +243,31 @@ export class ChatView {
     });
 
     linkPreviewService.initializePreviews(container);
+
+    // Copy button on code blocks (#391). Reading the rendered text back means
+    // the highlighting markup never leaks into what lands on the clipboard.
+    container.querySelectorAll('.md-code-copy').forEach((button) => {
+      button.addEventListener('click', async (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        const code = button.closest('.md-code')?.querySelector('code')?.textContent ?? '';
+        if (!code) return;
+        try {
+          await navigator.clipboard.writeText(code);
+        } catch (err) {
+          console.warn('[ChatView] Could not copy code block', err);
+          return;
+        }
+        const label = button.querySelector('.md-code-copy-label');
+        if (!label) return;
+        label.textContent = t('chat.codeBlockCopied');
+        button.classList.add('md-code-copy--done');
+        window.setTimeout(() => {
+          label.textContent = t('chat.codeBlockCopy');
+          button.classList.remove('md-code-copy--done');
+        }, 1600);
+      });
+    });
 
     // Attach right-click context menu on message rows (when not selecting text)
     const rows = container.classList.contains('chat-message-row')
@@ -362,6 +391,7 @@ export class ChatView {
     const btnSend = this.container.querySelector('#btn-send-message') as HTMLButtonElement | null;
     const btnAttach = this.container.querySelector('#btn-attach') as HTMLButtonElement | null;
     const btnEmoji = this.container.querySelector('#btn-emoji') as HTMLButtonElement | null;
+    const btnCode = this.container.querySelector('#btn-code') as HTMLButtonElement | null;
     if (!input || !inputWrapper) return;
 
     const channelName = serverStore.serverDetails?.channels.find((c) => c.id === this.currentChannelId)?.name || 'geral';
@@ -398,6 +428,11 @@ export class ChatView {
       // checks ATTACH_FILES when it is actually sent.
       btnEmoji.disabled = locked;
       btnEmoji.setAttribute('aria-disabled', btnEmoji.disabled ? 'true' : 'false');
+    }
+
+    if (btnCode) {
+      btnCode.disabled = locked;
+      btnCode.setAttribute('aria-disabled', btnCode.disabled ? 'true' : 'false');
     }
 
     if (locked) {
@@ -904,6 +939,22 @@ export class ChatView {
       });
     }
 
+    // --- Code block composer (#391) ---
+    const btnCode = document.getElementById('btn-code');
+    if (btnCode) {
+      const onCodeClick = () => {
+        if (this.arePermissionsResolved() && !serverStore.hasPermission(Permission.SEND_MESSAGES)) return;
+        codeBlockModal.open({
+          onSubmit: (language, code) => this.sendCodeBlock(language, code),
+        });
+      };
+      btnCode.addEventListener('click', onCodeClick);
+      this.unbindEvents.push(() => {
+        btnCode.removeEventListener('click', onCodeClick);
+        codeBlockModal.close();
+      });
+    }
+
     // Paste files/images directly into the message box.
     input?.addEventListener('paste', (e: ClipboardEvent) => {
       const files = e.clipboardData?.files;
@@ -1177,6 +1228,25 @@ export class ChatView {
     input.focus({ preventScroll: true });
     input.setSelectionRange(caret, caret);
     input.dispatchEvent(new Event('input', { bubbles: true }));
+  }
+
+  /**
+   * Sends a code block as its own message (#391). The fence is plain text, so
+   * this goes out through the same path as any other message and needs no
+   * protocol change.
+   */
+  private sendCodeBlock(language: string, code: string): void {
+    const channelId = this.currentChannelId;
+    if (!channelId) return;
+    if (this.arePermissionsResolved() && !serverStore.hasPermission(Permission.SEND_MESSAGES)) {
+      void showAlert({ message: t('chat.sendPermissionDenied'), variant: 'danger' });
+      return;
+    }
+
+    const content = buildCodeMessage(language, code);
+    if (!code.trim() || content.length > LIMITS.MAX_MESSAGE_LENGTH) return;
+
+    networkClient.send(MessageType.CHAT_SEND, { channelId, content });
   }
 
   /**

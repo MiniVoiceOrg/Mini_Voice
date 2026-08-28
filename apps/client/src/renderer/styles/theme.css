@@ -925,6 +925,49 @@ input:focus, textarea:focus, select:focus {
   opacity: 0.75;
 }
 
+/* Code block composer modal (#391). */
+.code-modal-card {
+  width: min(720px, 92vw);
+}
+
+.code-language-select {
+  margin-top: 4px;
+}
+
+.code-textarea {
+  margin-top: 4px;
+  font-family: var(--font-mono);
+  font-size: 12.5px;
+  line-height: 1.5;
+  resize: vertical;
+  white-space: pre;
+  overflow-wrap: normal;
+  overflow-x: auto;
+  tab-size: 2;
+}
+
+.code-modal-meta {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-top: 6px;
+}
+
+.code-modal-hint,
+.code-char-count {
+  font-size: 11px;
+  font-weight: 400;
+  color: var(--text-muted);
+  text-transform: none;
+  letter-spacing: normal;
+}
+
+.code-char-count--over {
+  color: var(--danger, #ed4245);
+  font-weight: 600;
+}
+
 /* Privacy controls in the create/edit channel dialogs (#384). */
 .channel-privacy-row {
   display: flex;
@@ -1754,6 +1797,64 @@ input:focus, textarea:focus, select:focus {
   padding: 1px 5px;
 }
 
+/* Code blocks with a language header and a copy button (#391). */
+.chat-message-text .md-code {
+  margin: 6px 0;
+  max-width: min(100%, 720px);
+  background: var(--bg-panel);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-sm);
+  overflow: hidden;
+}
+
+.chat-message-text .md-code-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 4px 6px 4px 10px;
+  background: var(--bg-card);
+  border-bottom: 1px solid var(--border-color);
+}
+
+.chat-message-text .md-code-lang {
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.3px;
+  color: var(--text-muted);
+}
+
+.chat-message-text .md-code-copy {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px 8px;
+  border: none;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--text-secondary);
+  font-size: 11px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s;
+}
+
+.chat-message-text .md-code-copy:hover {
+  background: var(--bg-card-hover);
+  color: var(--text-primary);
+}
+
+.chat-message-text .md-code-copy--done {
+  color: var(--success);
+}
+
+.chat-message-text .md-code .md-codeblock {
+  margin: 0;
+  border: none;
+  border-radius: 0;
+  background: transparent;
+}
+
 .chat-message-text .md-codeblock {
   font-family: var(--font-mono);
   font-size: 12.5px;
@@ -1764,7 +1865,46 @@ input:focus, textarea:focus, select:focus {
   margin: 4px 0;
   overflow-x: auto;
   white-space: pre;
+  tab-size: 2;
 }
+
+/*
+ * Syntax colors for highlight.js output. A theme is written here instead of
+ * importing one of the bundled stylesheets so the palette follows the app's own
+ * variables and stays readable on this background.
+ */
+.hljs-comment,
+.hljs-quote { color: #7d8590; font-style: italic; }
+.hljs-keyword,
+.hljs-selector-tag,
+.hljs-literal,
+.hljs-doctag,
+.hljs-formula { color: #ff7b72; }
+.hljs-string,
+.hljs-regexp,
+.hljs-addition,
+.hljs-attribute,
+.hljs-meta .hljs-string { color: #a5d6ff; }
+.hljs-number,
+.hljs-variable,
+.hljs-template-variable,
+.hljs-type,
+.hljs-selector-class,
+.hljs-selector-attr,
+.hljs-selector-pseudo { color: #ffa657; }
+.hljs-title,
+.hljs-title.class_,
+.hljs-title.function_,
+.hljs-section,
+.hljs-name { color: #d2a8ff; }
+.hljs-attr,
+.hljs-symbol,
+.hljs-bullet,
+.hljs-built_in,
+.hljs-meta { color: #79c0ff; }
+.hljs-deletion { color: #ffa198; }
+.hljs-emphasis { font-style: italic; }
+.hljs-strong { font-weight: 600; }
 
 .chat-message-text .md-link {
   color: var(--accent-primary);

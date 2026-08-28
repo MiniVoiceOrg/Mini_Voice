@@ -222,6 +222,24 @@ export class ServerStore {
     return this.userRoles.find((entry) => entry.userId === userId)?.roleIds ?? [];
   }
 
+  /**
+   * Permissions of any member, resolved the same way the server does it: the
+   * owner gets everything, someone with no role falls back to the defaults, and
+   * roles otherwise combine bit by bit (PermissionService.getUserPermissions).
+   */
+  public getUserPermissions(userId: string): number {
+    if (this.ownerId && userId === this.ownerId) return 0xFFFFFFFF;
+    const roleIds = new Set(this.getUserRoleIds(userId));
+    const roles = this.roles.filter((role) => roleIds.has(role.id));
+    return roles.length === 0
+      ? DEFAULT_PERMISSIONS
+      : roles.reduce((bits, role) => bits | role.permissions, 0);
+  }
+
+  public getChannel(channelId: string): ChannelSummary | undefined {
+    return this.serverDetails?.channels.find((c) => c.id === channelId);
+  }
+
   public getUserRoles(userId: string): Role[] {
     const roleIds = new Set(this.getUserRoleIds(userId));
     return this.roles.filter((role) => roleIds.has(role.id)).sort((a, b) => b.position - a.position);
@@ -254,18 +272,7 @@ export class ServerStore {
       this.myPermissions = 0;
       return this.myPermissions;
     }
-    if (this.ownerId && this.currentUser.id === this.ownerId) {
-      this.myPermissions = 0xFFFFFFFF;
-      if (this.serverDetails) {
-        this.serverDetails.myPermissions = this.myPermissions;
-      }
-      return this.myPermissions;
-    }
-    const roleIds = new Set(this.getUserRoleIds(this.currentUser.id));
-    const roles = this.roles.filter((role) => roleIds.has(role.id));
-    this.myPermissions = roles.length === 0
-      ? DEFAULT_PERMISSIONS
-      : roles.reduce((bits, role) => bits | role.permissions, 0);
+    this.myPermissions = this.getUserPermissions(this.currentUser.id);
     if (this.serverDetails) {
       this.serverDetails.myPermissions = this.myPermissions;
     }
