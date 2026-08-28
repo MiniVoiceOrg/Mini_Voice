@@ -1,4 +1,4 @@
-import { ProtocolErrorCode } from '@monky/shared';
+import { PROTOCOL_VERSION, ProtocolErrorCode } from '@monky/shared';
 import { t, type TranslationKey } from './index';
 
 /**
@@ -28,7 +28,52 @@ const ERROR_KEYS: Record<ProtocolErrorCode, TranslationKey> = {
   [ProtocolErrorCode.STORAGE_FULL]: 'protocolError.storageFull',
 };
 
-export function translateProtocolError(code: string | undefined, serverMessage?: string): string {
+/**
+ * A server released before #355 had no dedicated code for a version mismatch:
+ * the rejection came from the payload schema and arrived as a generic
+ * BAD_REQUEST carrying this message. Recognising it is what lets a current
+ * client say "the server is the outdated side" instead of "invalid request".
+ */
+const LEGACY_MISMATCH_MESSAGE = /vers[ãa]o de protocolo/i;
+const LEGACY_EXPECTED_VERSION = /esperado:\s*(\d+)/i;
+
+/**
+ * The protocol version the server speaks, or `null` when the rejection was not
+ * a version mismatch at all. A mismatch with an unknown remote version is
+ * reported as `{ serverVersion: null }`.
+ */
+function detectVersionMismatch(
+  code: string | undefined,
+  serverMessage: string | undefined,
+  serverProtocolVersion: number | undefined
+): { serverVersion: number | null } | null {
+  if (code === ProtocolErrorCode.PROTOCOL_VERSION_UNSUPPORTED) {
+    return { serverVersion: typeof serverProtocolVersion === 'number' ? serverProtocolVersion : null };
+  }
+
+  if (code === ProtocolErrorCode.BAD_REQUEST && serverMessage && LEGACY_MISMATCH_MESSAGE.test(serverMessage)) {
+    const match = LEGACY_EXPECTED_VERSION.exec(serverMessage);
+    return { serverVersion: match ? Number.parseInt(match[1], 10) : null };
+  }
+
+  return null;
+}
+
+function describeVersionMismatch(serverVersion: number | null): string {
+  if (serverVersion === null) return t('protocolError.protocolVersionUnsupported');
+  return serverVersion > PROTOCOL_VERSION
+    ? t('protocolError.protocolVersionClientOutdated')
+    : t('protocolError.protocolVersionServerOutdated');
+}
+
+export function translateProtocolError(
+  code: string | undefined,
+  serverMessage?: string,
+  serverProtocolVersion?: number
+): string {
+  const mismatch = detectVersionMismatch(code, serverMessage, serverProtocolVersion);
+  if (mismatch) return describeVersionMismatch(mismatch.serverVersion);
+
   const key = code ? ERROR_KEYS[code as ProtocolErrorCode] : undefined;
   if (key) return t(key);
   return serverMessage || code || t('protocolError.internalError');

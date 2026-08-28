@@ -354,7 +354,8 @@ export class WebSocketServer {
         session.ws,
         result.errorCode || ProtocolErrorCode.INTERNAL_ERROR,
         result.errorMessage || 'Falha na autenticação',
-        requestId
+        requestId,
+        result.serverProtocolVersion
       );
       return;
     }
@@ -1273,8 +1274,14 @@ export class WebSocketServer {
     }
   }
 
-  public sendError(ws: WebSocket, code: ProtocolErrorCode, message: string, requestId?: string): void {
-    const payload: ServerErrorPayload = { code, message, requestId };
+  public sendError(
+    ws: WebSocket,
+    code: ProtocolErrorCode,
+    message: string,
+    requestId?: string,
+    serverProtocolVersion?: number
+  ): void {
+    const payload: ServerErrorPayload = { code, message, requestId, serverProtocolVersion };
     this.send(ws, {
       type: MessageType.SERVER_ERROR,
       requestId,

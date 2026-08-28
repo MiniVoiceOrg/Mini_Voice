@@ -652,6 +652,10 @@ export const en: TranslationMap = {
   'protocolError.avatarInvalidType': 'Unsupported image format. Use PNG, JPG or WebP.',
   'protocolError.serverFull': 'The server is full.',
   'protocolError.protocolVersionUnsupported': 'Incompatible version: update Monky to join this server.',
+  'protocolError.protocolVersionClientOutdated':
+    'This server runs a newer version of Monky. Update your Monky to join.',
+  'protocolError.protocolVersionServerOutdated':
+    'This server runs an older version of Monky. Ask whoever hosts it to update the server.',
   'protocolError.internalError': 'Internal server error.',
   'protocolError.unauthorized': 'You are not authenticated on this server.',
   'protocolError.permissionDenied': 'You do not have permission to perform this action.',

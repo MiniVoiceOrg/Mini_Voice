@@ -5,6 +5,7 @@ import {
   AttachmentStorageInfo,
   AuthConnectPayload,
   LIMITS,
+  PROTOCOL_VERSION,
   ProtocolErrorCode,
   ServerDetails,
   UserSummary,
@@ -59,7 +60,26 @@ export class AuthService {
   public async createChallenge(
     ws: WebSocket,
     payload: AuthConnectPayload
-  ): Promise<{ success: boolean; nonce?: string; errorCode?: ProtocolErrorCode; errorMessage?: string }> {
+  ): Promise<{
+    success: boolean;
+    nonce?: string;
+    errorCode?: ProtocolErrorCode;
+    errorMessage?: string;
+    serverProtocolVersion?: number;
+  }> {
+    // Checked before the schema so a version mismatch reports itself as such.
+    // The schema would flatten it into a generic BAD_REQUEST, and the client
+    // then showed "invalid request" for what is really "one of you is outdated"
+    // (#355).
+    if (payload?.protocolVersion !== PROTOCOL_VERSION) {
+      return {
+        success: false,
+        errorCode: ProtocolErrorCode.PROTOCOL_VERSION_UNSUPPORTED,
+        errorMessage: `Versão de protocolo incompatível. Este servidor usa a versão ${PROTOCOL_VERSION}.`,
+        serverProtocolVersion: PROTOCOL_VERSION,
+      };
+    }
+
     const parseResult = authConnectSchema.safeParse(payload);
     if (!parseResult.success) {
       const firstError = parseResult.error.errors[0]?.message || 'Dados de conexão inválidos';

@@ -44,6 +44,8 @@ async function authenticateSocket(
     /** Reuse an identity to simulate the same person on another device (#309). */
     identity?: ReturnType<typeof createIdentity>;
     deviceId?: string;
+    /** Pretend to be a client speaking another protocol version (#355). */
+    protocolVersion?: number;
   }
 ): Promise<any> {
   const identity = options?.identity ?? createIdentity();
@@ -84,7 +86,7 @@ async function authenticateSocket(
         type: MessageType.AUTH_CONNECT,
         requestId,
         payload: {
-          protocolVersion: PROTOCOL_VERSION,
+          protocolVersion: options?.protocolVersion ?? PROTOCOL_VERSION,
           publicKey: identity.publicKeyHex,
           nickname,
           password,
@@ -556,6 +558,20 @@ async function runTests() {
       throw new Error('Teste 14: opção sem valor deveria ser rejeitada');
     }
     console.log('✔ Teste 14 passou: parseOption rejeita flag ou vazio no lugar do valor');
+
+    // Teste 15: uma versão de protocolo diferente caía no schema e voltava como
+    // BAD_REQUEST, então o cliente mostrava "requisição inválida" para o que na
+    // verdade é "um dos dois lados está desatualizado" (#355).
+    const wsVersao = new WebSocket('ws://127.0.0.1:3999');
+    const erroVersao = await authenticateSocket(wsVersao, 'req-versao', 'UserVersao', 'senha-secreta-123', {
+      protocolVersion: PROTOCOL_VERSION + 1,
+      expectErrorCode: ProtocolErrorCode.PROTOCOL_VERSION_UNSUPPORTED,
+    });
+    if (erroVersao.payload.serverProtocolVersion !== PROTOCOL_VERSION) {
+      throw new Error('Teste 15: o servidor deveria informar a própria versão de protocolo');
+    }
+    wsVersao.close();
+    console.log('✔ Teste 15 passou: Versão de protocolo incompatível responde PROTOCOL_VERSION_UNSUPPORTED');
 
     console.log('=== Todos os testes do servidor passaram com sucesso! ===');
   } finally {

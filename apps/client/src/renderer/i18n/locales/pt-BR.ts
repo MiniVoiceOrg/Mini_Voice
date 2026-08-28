@@ -653,6 +653,10 @@ export const ptBR = {
   'protocolError.avatarInvalidType': 'Formato de imagem não suportado. Use PNG, JPG ou WebP.',
   'protocolError.serverFull': 'O servidor está cheio.',
   'protocolError.protocolVersionUnsupported': 'Versão incompatível: atualize o Monky para entrar neste servidor.',
+  'protocolError.protocolVersionClientOutdated':
+    'Este servidor usa uma versão mais nova do Monky. Atualize o seu Monky para conseguir entrar.',
+  'protocolError.protocolVersionServerOutdated':
+    'Este servidor usa uma versão mais antiga do Monky. Peça para quem hospeda atualizar o servidor.',
   'protocolError.internalError': 'Erro interno do servidor.',
   'protocolError.unauthorized': 'Você não está autenticado neste servidor.',
   'protocolError.permissionDenied': 'Você não tem permissão para executar esta ação.',
