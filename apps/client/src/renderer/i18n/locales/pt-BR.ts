@@ -783,7 +783,8 @@ export const ptBR = {
   'update.startingDownload': 'Iniciando download…',
   'update.downloading': 'Baixando atualização… {percent}%',
   'update.installing': 'Atualização baixada. Instalando e reiniciando…',
-  'update.installerOpened': 'Instalador aberto — arraste o Monky para a pasta Aplicativos e reabra.',
+  'update.installerOpened':
+    'Instalador aberto. O Monky vai fechar para você arrastar a nova versão até a pasta Aplicativos.',
   'update.downloadFailed': 'Falha ao baixar a atualização.',
   'update.downloadManually': 'Baixar manualmente',
 

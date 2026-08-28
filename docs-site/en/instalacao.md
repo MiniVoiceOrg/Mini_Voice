@@ -36,4 +36,8 @@ codesign --force --deep --sign - /Applications/Monky.app
 
 The app tells you when a new version is out. You can also check under **Settings › About and Updates › Check for updates**.
 
+On Windows the update applies itself: Monky downloads it, installs it and reopens.
+
+On macOS the system will not replace an app that is running, so Monky downloads the `.dmg`, opens the install window and then **closes itself**. Drag Monky into your *Applications* folder, confirm the replacement and open the app again.
+
 To verify release checksums and signatures, see [Verify Releases](/en/verificar-releases).

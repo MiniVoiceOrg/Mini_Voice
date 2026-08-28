@@ -36,4 +36,8 @@ codesign --force --deep --sign - /Applications/Monky.app
 
 O app avisa quando sai uma versão nova. Você também pode conferir em **Configurações › Atualizações › Verificar atualizações**.
 
+No Windows a atualização é aplicada sozinha: o Monky baixa, instala e reabre.
+
+No macOS o sistema não permite substituir um aplicativo que está em uso, então o Monky baixa o `.dmg`, abre a janela de instalação e **se fecha sozinho** logo em seguida. Arraste o Monky para a pasta *Aplicativos*, confirme a substituição e abra o app de novo.
+
 Para verificar checksums e assinatura da release, veja [Verificar Releases](/verificar-releases).
