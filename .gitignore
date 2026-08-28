@@ -79,3 +79,6 @@ Thumbs.db
 apps/client/src/preload/*.js
 apps/client/src/preload/*.d.ts
 apps/client/src/preload/*.map
+
+# Repositorio separado da landing page da organizacao (MonkyOrg/MonkyOrg.github.io)
+MonkyOrg.github.io/

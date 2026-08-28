@@ -274,6 +274,13 @@ export interface ServerErrorPayload {
   code: ProtocolErrorCode;
   message: string;
   requestId?: string;
+  /**
+   * Protocol version the server speaks, sent with
+   * `PROTOCOL_VERSION_UNSUPPORTED` so the client can say *who* is outdated
+   * instead of a generic "incompatible" message (#355). Optional because
+   * servers released before this change never send it.
+   */
+  serverProtocolVersion?: number;
 }
 
 export interface ServerSettingsUpdatedPayload {

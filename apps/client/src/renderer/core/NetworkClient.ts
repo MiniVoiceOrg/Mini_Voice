@@ -374,7 +374,11 @@ export class NetworkClient {
 
       if (type === MessageType.SERVER_ERROR) {
         const errorPayload = payload as ServerErrorPayload;
-        this.pendingAuth.reject(new Error(translateProtocolError(errorPayload.code, errorPayload.message)));
+        this.pendingAuth.reject(
+          new Error(
+            translateProtocolError(errorPayload.code, errorPayload.message, errorPayload.serverProtocolVersion)
+          )
+        );
         return;
       }
     }
