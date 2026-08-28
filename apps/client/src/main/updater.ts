@@ -3,6 +3,13 @@ import fs from 'fs';
 import https from 'https';
 import path from 'path';
 import { mt } from './i18n';
+import {
+  cleanVer,
+  feedUrlForTag,
+  GithubRelease,
+  isNewer,
+  pickBestRelease,
+} from './updateVersions';
 
 const GITHUB_REPO = 'MonkyOrg/Monky';
 
@@ -18,9 +25,8 @@ interface CheckResult {
 type AutoUpdater = {
   autoDownload: boolean;
   autoInstallOnAppQuit: boolean;
-  allowPrerelease: boolean;
-  channel: string | null;
   on: (event: string, cb: (arg: unknown) => void) => void;
+  setFeedURL: (options: { provider: 'generic'; url: string }) => void;
   checkForUpdates: () => Promise<{ updateInfo?: { version: string } } | null>;
   downloadUpdate: () => Promise<unknown>;
   quitAndInstall: (isSilent?: boolean, isForceRunAfter?: boolean) => void;
@@ -45,66 +51,6 @@ function loadAutoUpdater(): AutoUpdater | null {
   }
 }
 
-function cleanVer(v?: string): string {
-  return String(v ?? '').replace(/^v/i, '').trim();
-}
-
-/**
- * Compares two semver strings following SemVer precedence, including the
- * pre-release rule that a release (e.g. `1.8.0`) outranks any of its
- * pre-releases (e.g. `1.8.0-beta.3`), and that `-beta.10 > -beta.2`.
- * Returns 1 if a > b, -1 if a < b, 0 if equal.
- */
-function compareVersions(a: string, b: string): number {
-  const na = cleanVer(a).split('-');
-  const nb = cleanVer(b).split('-');
-  const pa = na[0].split('.').map((n) => parseInt(n, 10) || 0);
-  const pb = nb[0].split('.').map((n) => parseInt(n, 10) || 0);
-  const len = Math.max(pa.length, pb.length);
-  for (let i = 0; i < len; i++) {
-    const x = pa[i] ?? 0;
-    const y = pb[i] ?? 0;
-    if (x > y) return 1;
-    if (x < y) return -1;
-  }
-  // Numeric parts equal — apply pre-release precedence.
-  const preA = na.slice(1).join('-');
-  const preB = nb.slice(1).join('-');
-  if (!preA && !preB) return 0;
-  if (!preA) return 1; // a is a release, b is a pre-release
-  if (!preB) return -1; // a is a pre-release, b is a release
-  return comparePrerelease(preA, preB);
-}
-
-function comparePrerelease(a: string, b: string): number {
-  const ai = a.split('.');
-  const bi = b.split('.');
-  const len = Math.max(ai.length, bi.length);
-  for (let i = 0; i < len; i++) {
-    const x = ai[i];
-    const y = bi[i];
-    if (x === undefined) return -1;
-    if (y === undefined) return 1;
-    const xn = /^\d+$/.test(x);
-    const yn = /^\d+$/.test(y);
-    if (xn && yn) {
-      const d = parseInt(x, 10) - parseInt(y, 10);
-      if (d !== 0) return d > 0 ? 1 : -1;
-    } else if (xn !== yn) {
-      return xn ? -1 : 1; // numeric identifiers have lower precedence
-    } else if (x > y) {
-      return 1;
-    } else if (x < y) {
-      return -1;
-    }
-  }
-  return 0;
-}
-
-function isNewer(latest: string, current: string): boolean {
-  return compareVersions(latest, current) > 0;
-}
-
 function msg(e: unknown): string {
   return e instanceof Error ? e.message : String(e);
 }
@@ -120,12 +66,12 @@ interface MacAsset {
 let pendingMacAsset: MacAsset | null = null;
 let downloadedMacPath: string | null = null;
 
-interface GithubRelease {
-  tag_name?: string;
-  draft?: boolean;
-  prerelease?: boolean;
-  assets?: Array<{ name: string; browser_download_url: string }>;
-}
+/**
+ * Tag of the release `checkViaGitHub` decided the user should get. The download
+ * step points electron-updater straight at it instead of letting the library
+ * find a release on its own — see `feedUrlForTag`.
+ */
+let pendingTag: string | null = null;
 
 /**
  * Fetches the release the user should be offered. Stable users get GitHub's
@@ -133,11 +79,9 @@ interface GithubRelease {
  * releases (including pre-releases) and pick the one with the highest SemVer —
  * so a newer beta, or the final stable that supersedes it, is always chosen.
  *
- * The listing is never assumed to be in chronological order: GitHub returns it
- * ordered by tag name, so the newest build is not necessarily the first entry.
- * The page is asked at its maximum size for the same reason — the repository
- * already has well over a hundred releases, and a short window could cut off
- * the very release being looked for.
+ * The page is asked at its maximum size because the repository already has well
+ * over a hundred releases, and a short window could cut off the very release
+ * being looked for.
  */
 async function fetchTargetRelease(): Promise<GithubRelease | null | { error: string }> {
   const headers = { Accept: 'application/vnd.github+json', 'User-Agent': 'Monky-App' };
@@ -147,15 +91,7 @@ async function fetchTargetRelease(): Promise<GithubRelease | null | { error: str
       headers,
     });
     if (!res.ok) return { error: `HTTP ${res.status}` };
-    const list = (await res.json()) as GithubRelease[];
-    const candidates = (Array.isArray(list) ? list : []).filter((r) => r && !r.draft && r.tag_name);
-    let best: GithubRelease | null = null;
-    for (const r of candidates) {
-      if (!best || compareVersions(cleanVer(r.tag_name), cleanVer(best.tag_name)) > 0) {
-        best = r;
-      }
-    }
-    return best;
+    return pickBestRelease(await res.json());
   }
 
   const res = await fetch(`https://api.github.com/repos/${GITHUB_REPO}/releases/latest`, { headers });
@@ -167,9 +103,12 @@ async function fetchTargetRelease(): Promise<GithubRelease | null | { error: str
  * Detects updates by querying the GitHub releases API on all platforms and
  * comparing with the running app version. This is more reliable than
  * electron-updater's own check (which can return null when a check is cached or
- * already in progress). On macOS it also records the matching .dmg to download.
+ * already in progress). It also records what to download: the matching .dmg on
+ * macOS, the release tag everywhere else.
  */
 async function checkViaGitHub(): Promise<CheckResult> {
+  pendingTag = null;
+  pendingMacAsset = null;
   try {
     const rel = await fetchTargetRelease();
     if (rel && 'error' in rel) return { ok: false, error: rel.error };
@@ -179,6 +118,8 @@ async function checkViaGitHub(): Promise<CheckResult> {
     if (!version || !isNewer(version, app.getVersion())) {
       return { ok: true, available: false, version };
     }
+
+    pendingTag = rel.tag_name ?? null;
 
     // On macOS, record the .dmg matching the current CPU architecture so the
     // download step can fetch it directly.
@@ -299,18 +240,15 @@ export function setupUpdater(mainWindow: BrowserWindow): void {
 
   ipcMain.handle('updater:set-channel', async (_e, allowBeta: unknown): Promise<CheckResult> => {
     betaChannel = !!allowBeta;
-    // Only toggle pre-release eligibility — do NOT force `updater.channel`.
-    // On a prerelease-versioned build (e.g. `1.9.0-beta.1`) with
-    // allowPrerelease, electron-updater's GitHubProvider uses `updater.channel`
-    // as the "current channel" and rejects every release whose channel differs
-    // (a forced "latest" matches nothing), throwing
-    // ERR_UPDATER_NO_PUBLISHED_VERSIONS. Left unset, the channel is derived from
-    // the running version and the manifest read falls back to `latest.yml` (the
-    // only file we publish, thanks to detectUpdateChannel:false at build time).
-    const updater = loadAutoUpdater();
-    if (updater) {
-      updater.allowPrerelease = betaChannel;
-    }
+    // Which releases are eligible is decided by `fetchTargetRelease`, which
+    // queries the GitHub API itself. electron-updater is handed the chosen
+    // release as a generic feed (see `updater:download`), so its own channel and
+    // pre-release settings no longer take part in the decision — leaving them
+    // alone avoids the ERR_UPDATER_NO_PUBLISHED_VERSIONS its GitHub provider
+    // used to throw on pre-release builds.
+    // A pending target from the previous channel would be stale.
+    pendingTag = null;
+    pendingMacAsset = null;
     return { ok: true };
   });
 
@@ -331,9 +269,33 @@ export function setupUpdater(mainWindow: BrowserWindow): void {
       return { ok: false, error: mt('error.updaterDevMode') };
     }
     try {
-      // Match the chosen pre-release eligibility. Do NOT set `updater.channel`
-      // here (see `update-set-channel`): forcing it breaks prerelease builds.
-      updater.allowPrerelease = betaChannel;
+      // Point electron-updater straight at the release `checkViaGitHub` picked,
+      // as a generic feed, instead of letting its GitHub provider search for one
+      // (#354).
+      //
+      // That search cannot cope with our tag format. Betas are tagged
+      // `v3.1.0-beta003` — zero padded and without a dot, so that GitHub's
+      // releases page (which sorts by tag name) lists them in order and the
+      // version stays valid SemVer (#338). But `semver.prerelease` then reads
+      // the whole `beta003` as one identifier, so electron-updater sees a
+      // *custom channel* named `beta003` rather than the `beta` channel, and its
+      // release loop only accepts releases whose channel matches. Nothing
+      // matches except the running build itself, so `checkForUpdates` concluded
+      // "no update", `downloadUpdate` had nothing recorded to fetch and failed
+      // with "Please check update first".
+      //
+      // Forcing `channel` is not a fix either: it makes the same loop accept the
+      // first stable release in the feed, which may be *older* than the beta the
+      // user is on. Our own SemVer comparison already picked the right release,
+      // so the library only needs to be told where it is.
+      if (!pendingTag) {
+        const recheck = await checkViaGitHub();
+        if (!recheck.ok) return recheck;
+      }
+      if (!pendingTag) {
+        return { ok: false, error: mt('error.noPendingUpdate') };
+      }
+      updater.setFeedURL({ provider: 'generic', url: feedUrlForTag(pendingTag) });
       // electron-updater requires its own check before it can download.
       await updater.checkForUpdates();
       await updater.downloadUpdate();
