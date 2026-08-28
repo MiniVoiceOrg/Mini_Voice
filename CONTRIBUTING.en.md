@@ -181,8 +181,11 @@ Note that **patch is the default**: every merge into `main` publishes some
 version, even if it is a documentation commit.
 
 The count starts from the **latest published release, betas included**. So a
-`feat:` merged right after the `1.1.0-beta001` beta ships as `1.2.0-beta001`,
-not as a second beta of that same `1.1.0`.
+`feat:` merged right after the `1.1.0-beta` beta ships as `1.2.0-beta`, not as a
+second beta of that same `1.1.0`.
+
+Betas are published as `vX.Y.Z-beta`, with no counter: since the base version
+changes on every release, there is no second beta of the same version to number.
 
 If your change breaks compatibility between client and server, it **must** ship
 as a major. Labelling a breaking change as `feat:` publishes a minor, and anyone

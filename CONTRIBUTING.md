@@ -178,8 +178,11 @@ Repare que **patch é o padrão**: todo merge na `main` publica alguma versão, 
 que seja um commit de documentação.
 
 A conta parte da **última release publicada, betas inclusive**. Ou seja, uma
-`feat:` mergeada logo depois da beta `1.1.0-beta001` sai como `1.2.0-beta001`, e
-não como um segundo beta da mesma `1.1.0`.
+`feat:` mergeada logo depois da beta `1.1.0-beta` sai como `1.2.0-beta`, e não
+como um segundo beta da mesma `1.1.0`.
+
+Betas são publicadas como `vX.Y.Z-beta`, sem contador: como a base muda a cada
+release, não existe uma segunda beta da mesma versão para numerar.
 
 Se a sua mudança quebra a compatibilidade entre cliente e servidor, ela
 **precisa** sair como major. Marcar uma breaking change como `feat:` publica uma
