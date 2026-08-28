@@ -12,15 +12,29 @@ usa esse registro para saber a qual servidor cada comando se aplica.
 
 ## Instalação
 
-Requer **Node.js 20 ou superior**. Instale direto da release, sem clonar o
-repositório:
+Requer **Node.js 20 ou superior**.
 
 ```bash
-npm install -g https://github.com/MonkyOrg/Monky/releases/download/v3.0.0-beta004/monky-cli-3.0.0-beta004.tgz
+curl -fsSL https://monkyorg.github.io/install.sh | bash
 ```
 
-Troque a versão pela desejada. Confira a lista em
-[Releases](https://github.com/MonkyOrg/Monky/releases).
+Para instalar uma versão beta:
+
+```bash
+curl -fsSL https://monkyorg.github.io/install.sh | bash -s -- --beta
+```
+
+<details>
+<summary>Instalação manual (sem o script)</summary>
+
+Baixe o `.tgz` da versão desejada em
+[Releases](https://github.com/MonkyOrg/Monky/releases) e instale com:
+
+```bash
+npm install -g https://github.com/MonkyOrg/Monky/releases/download/vX.Y.Z/monky-cli-X.Y.Z.tgz
+```
+
+</details>
 
 Para rodar o servidor como daemon (`monky start`), o CLI usa o
 [PM2](https://pm2.keymetrics.io/). Se ele não estiver instalado, `monky start`
@@ -116,7 +130,6 @@ Ao final, exibe um resumo, pede confirmação e oferece iniciar o servidor.
 | Opção | Descrição | Padrão |
 |---|---|---|
 | `--identity <código>` | Código de identidade do dono | perguntado |
-| `--nickname <nome>` | Nickname do dono | `Owner` |
 | `--name <nome>` | Nome do servidor | `Servidor dos Amigos` |
 | `--port <n>` | Porta do servidor | `3000` |
 | `--password <senha>` | Senha do servidor (vazio = sem senha) | perguntado |
@@ -135,7 +148,7 @@ monky create --data /srv/monky-amigos
 
 # Não interativo, exceto a senha da identidade
 monky create --data /srv/monky-amigos \
-  --identity "MONKY-ID:..." --nickname "Lucas" \
+  --identity "MONKY-ID:..." \
   --name "Servidor dos Amigos" --port 3000 --password "senhaDoServidor"
 ```
 
@@ -388,13 +401,8 @@ monky update [--beta] [--check] [--yes]
 | `--check` | Apenas verifica e sai, sem atualizar |
 | `--yes`, `-y` | Não pergunta nada — para uso em scripts e no auto-update |
 
-O comando detecta como o Monky foi instalado:
-
-- **Instalação pela release** (recomendada): baixa e instala o novo pacote com
-  `npm install -g`.
-- **Clone do repositório**: busca as tags, faz checkout da versão de destino,
-  instala as dependências e compila o servidor. Alterações locais não
-  commitadas interrompem a atualização com um aviso.
+O comando baixa e instala o novo pacote com `npm install -g` a partir dos
+artefatos da release no GitHub.
 
 Ao final, o servidor é reiniciado (com confirmação, exceto com `--yes`).
 
@@ -417,8 +425,7 @@ Registra no PM2 uma tarefa diária, às 4h, que roda `monky update --yes` para
 aquele servidor. O canal segue a versão instalada: se você está numa beta, o
 auto-update acompanha o canal beta.
 
-Funciona tanto na instalação pela release quanto no clone do repositório, em
-Linux, macOS e Windows. Para desligar:
+Funciona em Linux, macOS e Windows. Para desligar:
 
 ```bash
 monky config set autoUpdate false

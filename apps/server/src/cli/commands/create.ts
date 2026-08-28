@@ -140,7 +140,6 @@ export async function createCommand(globalArgs: GlobalArgs, args: string[]): Pro
 
   const identityCode = parseOption(args, '--identity') || (await ask('Código de identidade do dono (MONKY-ID:...)'));
   const identityPassword = await promptPassword('Senha da identidade: ');
-  const nickname = parseOption(args, '--nickname') || (await ask('Nickname do dono', DEFAULT_OWNER_NICKNAME));
   const serverName = parseOption(args, '--name') || (await ask('Nome do servidor', DEFAULT_SERVER_NAME));
   const portValue = parseOption(args, '--port') || (await ask('Porta do servidor', String(DEFAULT_BOOTSTRAP_PORT)));
   const serverPassword = parseOption(args, '--password') ?? (await promptPassword('Senha do servidor (deixe vazio para sem senha): '));
@@ -149,7 +148,6 @@ export async function createCommand(globalArgs: GlobalArgs, args: string[]): Pro
   console.log();
   console.log(color('Resumo do novo servidor', ANSI.bold));
   console.log(`dataDir: ${dataDir}`);
-  console.log(`nickname: ${nickname}`);
   console.log(`serverName: ${serverName}`);
   console.log(`port: ${port}`);
   console.log(`serverPassword: ${serverPassword ? 'definida' : 'sem senha'}`);
@@ -162,7 +160,7 @@ export async function createCommand(globalArgs: GlobalArgs, args: string[]): Pro
   }
 
   await withContext(dataDir, async (ctx) => {
-    await applyBootstrap(ctx, identityCode, identityPassword, nickname);
+    await applyBootstrap(ctx, identityCode, identityPassword, DEFAULT_OWNER_NICKNAME);
     await setConfig(ctx, 'name', serverName);
     await setConfig(ctx, 'password', serverPassword);
   });
