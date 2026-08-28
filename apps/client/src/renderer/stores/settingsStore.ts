@@ -40,6 +40,9 @@ export class SettingsStore {
   public chatMessageSoundMentionsOnly: boolean = false; // only play the cue when you are mentioned (#153)
   public updateBetaChannel: boolean = false; // opt into receiving beta (pre-release) updates
   public minimizeToTrayOnClose: boolean = true; // minimize to tray when closing window (#256)
+  // Ask whether to shut the local server down when its owner is the last one
+  // leaving (#334). Turned off from the prompt itself or in Settings.
+  public askShutdownOnLastLeave: boolean = true;
   // Per-server / per-channel overrides of the global chat-sound mode (#153).
   // A missing entry (or 'inherit') means "use the level above".
   public chatSoundServerOverrides: Record<string, ChatSoundMode> = {};
@@ -105,6 +108,9 @@ export class SettingsStore {
         }
         if (typeof this.minimizeToTrayOnClose !== 'boolean') {
           this.minimizeToTrayOnClose = true;
+        }
+        if (typeof this.askShutdownOnLastLeave !== 'boolean') {
+          this.askShutdownOnLastLeave = true;
         }
         this.chatSoundServerOverrides = this.sanitizeModeMap(this.chatSoundServerOverrides);
         this.chatSoundChannelOverrides = this.sanitizeModeMap(this.chatSoundChannelOverrides);
@@ -223,6 +229,8 @@ export class SettingsStore {
         chatMessageSoundEnabled: this.chatMessageSoundEnabled,
         chatMessageSoundMentionsOnly: this.chatMessageSoundMentionsOnly,
         updateBetaChannel: this.updateBetaChannel,
+        minimizeToTrayOnClose: this.minimizeToTrayOnClose,
+        askShutdownOnLastLeave: this.askShutdownOnLastLeave,
         chatSoundServerOverrides: this.chatSoundServerOverrides,
         chatSoundChannelOverrides: this.chatSoundChannelOverrides,
       }));

@@ -19,6 +19,16 @@ const CATALOGS = {
     'error.updaterUnavailable': 'Updater indisponível',
     'error.updaterDevMode': 'Atualização automática indisponível em modo de desenvolvimento',
     'error.startServerFailed': 'Falha ao iniciar servidor',
+    'screenPermission.title': 'Permissão de gravação de tela',
+    'screenPermission.message': 'O macOS está negando a captura de tela para o Monky.',
+    'screenPermission.detail':
+      'Isso costuma acontecer depois de atualizar o app: a autorização antiga continua marcada em Ajustes do Sistema, mas não vale mais para esta versão.\n\nUse "Reabrir permissão" para limpar a autorização antiga — o Monky vai reiniciar e o macOS vai perguntar de novo.',
+    'screenPermission.reset': 'Reabrir permissão',
+    'screenPermission.openSettings': 'Abrir Ajustes',
+    'screenPermission.cancel': 'Cancelar',
+    'screenPermission.resetFailedTitle': 'Não foi possível reabrir a permissão',
+    'screenPermission.resetFailedDetail':
+      'Feche o Monky por completo e rode no Terminal:\n\ntccutil reset ScreenCapture {bundleId}',
     'tray.tooltipIdle': 'Monky',
     'tray.tooltipDeafened': 'Monky (Áudio Mutado / Ensurdecido)',
     'tray.tooltipMuted': 'Monky (Microfone Mutado)',
@@ -41,6 +51,16 @@ const CATALOGS = {
     'error.updaterUnavailable': 'Updater unavailable',
     'error.updaterDevMode': 'Automatic updates are unavailable in development mode',
     'error.startServerFailed': 'Failed to start the server',
+    'screenPermission.title': 'Screen recording permission',
+    'screenPermission.message': 'macOS is denying screen capture for Monky.',
+    'screenPermission.detail':
+      'This usually happens after an update: the old authorization is still checked in System Settings, but it no longer applies to this version.\n\nUse "Re-request permission" to clear the stale authorization — Monky will restart and macOS will ask again.',
+    'screenPermission.reset': 'Re-request permission',
+    'screenPermission.openSettings': 'Open Settings',
+    'screenPermission.cancel': 'Cancel',
+    'screenPermission.resetFailedTitle': 'Could not re-request the permission',
+    'screenPermission.resetFailedDetail':
+      'Quit Monky completely and run in Terminal:\n\ntccutil reset ScreenCapture {bundleId}',
     'tray.tooltipIdle': 'Monky',
     'tray.tooltipDeafened': 'Monky (Audio Muted / Deafened)',
     'tray.tooltipMuted': 'Monky (Microphone Muted)',
@@ -65,6 +85,11 @@ export function setMainLanguage(language: string | undefined): void {
   }
 }
 
-export function mt(key: MainTranslationKey): string {
-  return CATALOGS[currentLanguage][key] ?? CATALOGS['pt-BR'][key] ?? key;
+export function mt(key: MainTranslationKey, params?: Record<string, string>): string {
+  const template = CATALOGS[currentLanguage][key] ?? CATALOGS['pt-BR'][key] ?? key;
+  if (!params) return template;
+  return Object.entries(params).reduce(
+    (text, [name, value]) => text.split(`{${name}}`).join(value),
+    template as string
+  );
 }

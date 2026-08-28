@@ -18,6 +18,13 @@ export class ServerManager {
     if (this.isRunning && this.serverInstance) {
       // Already serving exactly what was asked for.
       if (this.currentPort === options.port) {
+        // The caller may know which entry of "Meus Servidores" this instance
+        // belongs to even when whoever started it did not, so keep the most
+        // specific answer instead of leaving the id stale (#333).
+        if (options.serverId && options.serverId !== this.currentServerId) {
+          this.currentServerId = options.serverId;
+          this.notifyStatus();
+        }
         return { success: true };
       }
       // A different server is up: reporting success here would leave the caller
@@ -48,6 +55,7 @@ export class ServerManager {
       this.currentServerId = options.serverId ?? null;
       this.startForwardingLogs();
       console.log(`[ServerManager] Local server started successfully on port ${options.port}`);
+      this.notifyStatus();
       return { success: true };
     } catch (err: any) {
       console.error('[ServerManager] Error starting local server:', err);
@@ -55,6 +63,7 @@ export class ServerManager {
       this.serverInstance = null;
       this.currentPort = null;
       this.currentServerId = null;
+      this.notifyStatus();
       return { success: false, error: err.message || mt('error.startServerFailed') };
     }
   }
@@ -69,6 +78,22 @@ export class ServerManager {
       this.isRunning = false;
       this.currentPort = null;
       this.currentServerId = null;
+      this.notifyStatus();
+    }
+  }
+
+  /**
+   * Pushes the hosted server state to every window. Polling it at render time
+   * loses every transition that happens while another screen is up, which is
+   * how "Meus Servidores" ended up offering to start a server that was already
+   * running (#333).
+   */
+  private notifyStatus(): void {
+    const status = this.getStatus();
+    for (const window of BrowserWindow.getAllWindows()) {
+      if (!window.isDestroyed()) {
+        window.webContents.send('server-host:status-changed', status);
+      }
     }
   }
 

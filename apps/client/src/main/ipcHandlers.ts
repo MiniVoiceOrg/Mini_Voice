@@ -1,4 +1,5 @@
-import { app, BrowserWindow, desktopCapturer, dialog, globalShortcut, ipcMain, shell } from 'electron';
+import { app, BrowserWindow, desktopCapturer, dialog, globalShortcut, ipcMain, shell, systemPreferences } from 'electron';
+import { execFile } from 'child_process';
 import fs from 'fs';
 import http from 'http';
 import https from 'https';
@@ -10,6 +11,12 @@ import { HostServerOptions, ServerManager } from './serverManager';
 import { mt, setMainLanguage } from './i18n';
 import { fetchLinkPreview } from './linkPreview';
 import { TrayManager, VoiceStatus } from './trayManager';
+import {
+  HOME_MIN_HEIGHT,
+  HOME_MIN_WIDTH,
+  IN_SERVER_MIN_HEIGHT,
+  IN_SERVER_MIN_WIDTH,
+} from './windowSizing';
 
 function sanitizeDownloadFileName(fileName: string): string {
   const baseName = path.basename((fileName || '').trim()) || 'download';
@@ -111,6 +118,81 @@ export interface SetupIpcOptions {
   setMinimizeToTray?: (enabled: boolean) => void;
 }
 
+/**
+ * Bundle identifier macOS uses to key TCC permissions. Read from the bundle
+ * itself so a rename in electron-builder cannot silently break the reset below.
+ */
+function getMacBundleId(): string {
+  try {
+    // .../Monky.app/Contents/MacOS/Monky -> .../Monky.app/Contents/Info.plist
+    const infoPlist = path.join(path.dirname(path.dirname(app.getPath('exe'))), 'Info.plist');
+    const match = fs
+      .readFileSync(infoPlist, 'utf8')
+      .match(/<key>CFBundleIdentifier<\/key>\s*<string>([^<]+)<\/string>/);
+    if (match) return match[1];
+  } catch {
+    // Unpackaged runs have no Info.plist; the default below is only a hint.
+  }
+  return 'com.monky.app';
+}
+
+/**
+ * macOS ties the Screen Recording permission to the app's code signature. Monky
+ * ships unsigned, so every update produces a different identity and the previous
+ * authorization stops applying — while System Settings keeps showing the old
+ * entry as enabled, so the system never asks again (#327). Detect that state and
+ * offer to clear the stale entry, which makes macOS prompt on the next attempt.
+ */
+async function ensureScreenRecordingPermission(mainWindow: BrowserWindow): Promise<boolean> {
+  if (process.platform !== 'darwin') return true;
+
+  const status = systemPreferences.getMediaAccessStatus('screen');
+  // 'not-determined' means macOS still shows its own prompt on the first capture.
+  if (status === 'granted' || status === 'not-determined') return true;
+
+  const bundleId = getMacBundleId();
+  const { response } = await dialog.showMessageBox(mainWindow, {
+    type: 'warning',
+    title: mt('screenPermission.title'),
+    message: mt('screenPermission.message'),
+    detail: mt('screenPermission.detail'),
+    buttons: [mt('screenPermission.reset'), mt('screenPermission.openSettings'), mt('screenPermission.cancel')],
+    defaultId: 0,
+    cancelId: 2,
+  });
+
+  if (response === 1) {
+    await shell.openExternal(
+      'x-apple.systempreferences:com.apple.preference.security?Privacy_ScreenCapture'
+    );
+    return false;
+  }
+
+  if (response !== 0) return false;
+
+  try {
+    await new Promise<void>((resolve, reject) => {
+      execFile('tccutil', ['reset', 'ScreenCapture', bundleId], (error) =>
+        error ? reject(error) : resolve()
+      );
+    });
+  } catch (error) {
+    await dialog.showMessageBox(mainWindow, {
+      type: 'error',
+      title: mt('screenPermission.resetFailedTitle'),
+      message: (error as Error).message,
+      detail: mt('screenPermission.resetFailedDetail', { bundleId }),
+    });
+    return false;
+  }
+
+  // TCC caches the verdict per process, so the new prompt only appears on a
+  // fresh launch.
+  app.relaunch();
+  app.exit(0);
+  return false;
+}
+
 export function setupIpcHandlers(
   mainWindow: BrowserWindow,
   serverManager: ServerManager,
@@ -180,6 +262,10 @@ export function setupIpcHandlers(
   });
 
   // Desktop Screen Sharing sources
+  ipcMain.handle('screen-share:ensure-permission', async () => {
+    return await ensureScreenRecordingPermission(mainWindow);
+  });
+
   ipcMain.handle('screen-share:get-sources', async () => {
     const sources = await desktopCapturer.getSources({
       types: ['screen', 'window'],
@@ -391,6 +477,26 @@ export function setupIpcHandlers(
   });
   ipcMain.handle('window:maximize', () => {
     mainWindow.maximize();
+  });
+
+  // The connection screen is a narrow card, but the in-server layout (rail +
+  // channels + stage + members) needs room to stay usable, so the floor is
+  // raised to a 16:9 box while a server is open (#342).
+  ipcMain.handle('window:set-in-server', (_event, inServer: boolean) => {
+    const [minWidth, minHeight] = inServer
+      ? [IN_SERVER_MIN_WIDTH, IN_SERVER_MIN_HEIGHT]
+      : [HOME_MIN_WIDTH, HOME_MIN_HEIGHT];
+
+    mainWindow.setMinimumSize(minWidth, minHeight);
+
+    // setMinimumSize does not resize a window that is already smaller, which
+    // would leave the layout clipped until the user dragged an edge.
+    if (!mainWindow.isMaximized() && !mainWindow.isFullScreen()) {
+      const [width, height] = mainWindow.getSize();
+      if (width < minWidth || height < minHeight) {
+        mainWindow.setSize(Math.max(width, minWidth), Math.max(height, minHeight));
+      }
+    }
   });
 
   ipcMain.handle('window:close', () => {

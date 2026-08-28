@@ -4059,6 +4059,13 @@ body > .reconnect-overlay {
    window. The layout inside is deliberately left untouched — same vertical tab
    sidebar, same content area — only the card framing goes away (#324). */
 @media (max-width: 900px), (max-height: 640px) {
+  /* The backdrop keeps a 24px padding to frame the floating card. Once the card
+     takes over the window that padding is what leaves empty strips along the
+     edges, because the flex item shrinks to the padded content box (#324). */
+  .modal-backdrop--settings {
+    padding: 0 !important;
+  }
+
   .settings-modal-card,
   .settings-modal-card.server-settings-modal-card {
     width: 100vw !important;
@@ -4188,6 +4195,26 @@ body > .reconnect-overlay {
   line-height: 1.5;
   color: var(--text-secondary);
   white-space: pre-wrap;
+}
+
+/* Opt-out checkbox of a confirmation dialog, e.g. "não perguntar novamente" (#334). */
+.dialog-checkbox {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 14px;
+  font-size: 13px;
+  color: var(--text-secondary);
+  cursor: pointer;
+  user-select: none;
+}
+
+.dialog-checkbox input {
+  width: 15px;
+  height: 15px;
+  accent-color: var(--accent-primary);
+  cursor: pointer;
+  flex-shrink: 0;
 }
 
 /* Square crop dialog used before an image becomes a picture (#255). */

@@ -7,6 +7,9 @@ Open from the gear icon on the connection screen or bottom bar.
 - **Voice sensitivity (VAD)** — adjust while watching the meter; leave the marker above the silent level.
 - **Noise suppression (RNNoise)** — reduces keyboard, clicks and room noise.
 - **Quality and performance profile** — affects only what you transmit.
+- **Behaviour** — keep Monky in the system tray when the window is closed, and
+  ask before shutting down a server hosted on this machine when you are the last
+  person to leave it.
 - **Updates** — current version and manual check.
 - **Community** — shortcuts for ideas, voting and bugs.
 

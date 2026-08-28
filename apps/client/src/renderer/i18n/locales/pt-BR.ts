@@ -464,6 +464,18 @@ export const ptBR = {
   'stage.stopWatching': 'Parar de assistir',
   'stage.volumeAria': 'Volume',
   'stage.screenAudioMuted': 'Áudio da tela mutado (clique para desmutar)',
+  'stage.telemetryCollecting': 'Coletando...',
+
+  // ── Servidor local (#334) ────────────────────────────────────────────────
+  'hostedServer.emptyTitle': 'Servidor vazio',
+  'hostedServer.emptyMessage': 'Você foi o último a sair de "{name}" e o servidor continua ligado nesta máquina. Deseja desligá-lo?',
+  'hostedServer.shutDown': 'Desligar servidor',
+  'hostedServer.keepRunning': 'Manter ligado',
+  'hostedServer.dontAskAgain': 'Não perguntar novamente',
+  'hostedServer.stopWithUsersTitle': 'Ainda há gente conectada',
+  'hostedServer.stopWithUsersMessage.one': 'Há {count} pessoa conectada neste servidor. Se você desligar, ela será desconectada.',
+  'hostedServer.stopWithUsersMessage.other': 'Há {count} pessoas conectadas neste servidor. Se você desligar, todas serão desconectadas.',
+  'hostedServer.stopAnyway': 'Desligar mesmo assim',
 
   // ── Configurações (SettingsModal.ts) ─────────────────────────────────────
   'settings.devicesSection': 'Dispositivos de Entrada e Saída',
@@ -589,6 +601,8 @@ export const ptBR = {
   'settings.autoStartDesc': 'Inicia o Monky automaticamente ao ligar o computador.',
   'settings.minimizeToTray': 'Minimizar para a bandeja ao fechar',
   'settings.minimizeToTrayDesc': 'Ao fechar a janela, manter o Monky rodando na bandeja do sistema em segundo plano.',
+  'settings.askShutdownOnLastLeave': 'Perguntar ao sair do meu servidor vazio',
+  'settings.askShutdownOnLastLeaveDesc': 'Quando você for o último a sair de um servidor hospedado nesta máquina, perguntar se deseja desligá-lo.',
   'settings.communitySection': 'Comunidade',
   'settings.communityDesc': 'O Monky é open source. As ideias mais votadas pela comunidade viram as próximas features.',
   'settings.suggestIdea': 'Sugerir uma ideia',

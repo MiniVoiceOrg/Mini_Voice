@@ -12,6 +12,7 @@ import {
 import { unregisterServer } from '../registry';
 import { resolveTargetServer } from '../target';
 import { ask, confirm } from '../prompts';
+import { countOnlineUsers, resolveServerPort } from '../onlineUsers';
 
 export async function destroyCommand(globalArgs: GlobalArgs): Promise<void> {
   // resolveTargetServer only returns directories that actually hold a Monky
@@ -27,6 +28,15 @@ export async function destroyCommand(globalArgs: GlobalArgs): Promise<void> {
   console.log(`  - Avatares`);
   console.log(`  - Configurações`);
   console.log();
+
+  // Warn about live sessions before the typed confirmation, so the owner knows
+  // what is at stake while deciding (#334).
+  const onlineUsers = await countOnlineUsers(resolveServerPort(target));
+  if (onlineUsers !== null && onlineUsers > 0) {
+    const people = onlineUsers === 1 ? '1 pessoa conectada' : `${onlineUsers} pessoas conectadas`;
+    console.log(color(`Há ${people} neste servidor agora — todas serão desconectadas.`, ANSI.yellow));
+    console.log();
+  }
 
   const confirmText = await ask(`Digite "DESTROY" para confirmar`);
   if (confirmText !== 'DESTROY') {

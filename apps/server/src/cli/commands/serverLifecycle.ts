@@ -16,6 +16,7 @@ import {
   writeEcosystem,
 } from '../pm2';
 import { hasServerDatabase, RegisteredServer, registerServer } from '../registry';
+import { confirmDisconnectingUsers } from '../onlineUsers';
 import { knownServers, resolveTargetServer } from '../target';
 
 /**
@@ -146,6 +147,9 @@ export async function stopServerCommand(globalArgs: GlobalArgs): Promise<void> {
   const target = await resolveTargetServer(globalArgs, 'parar');
   const processName = getPm2ProcessName(target.dataDir);
 
+  // Everyone on the server loses their session when it goes down (#334).
+  if (!(await confirmDisconnectingUsers(target, 'parar'))) return;
+
   if (!isMonkyServerRegistered(processName) && findLegacyProcessFor(target.dataDir)) {
     spawnSync('pm2', ['stop', LEGACY_PM2_PROCESS_NAME], { stdio: 'inherit', shell: true });
     console.log(color('Servidor Monky parado com sucesso.', ANSI.green));
@@ -178,6 +182,9 @@ export async function restartServerCommand(globalArgs: GlobalArgs, args: string[
     console.log(color('Esse servidor não está registrado no PM2. Use "monky start" primeiro.', ANSI.yellow));
     return;
   }
+
+  // A restart drops every open session, same as a stop (#334).
+  if (!(await confirmDisconnectingUsers(target, 'reiniciar'))) return;
 
   retireLegacyProcess(target.dataDir);
 

@@ -77,6 +77,13 @@ everything is already allowed.
 
 ### How to share your screen again
 
+Since version `3.0.0-beta007` Monky detects this state on its own. When you click
+**Share Screen**, if macOS is denying the capture you get a warning with a
+**Re-request permission** button: it clears the stale authorization and restarts
+the app, and macOS asks again on the next attempt. Just grant it.
+
+If you prefer doing it by hand (or you are on an older version):
+
 1. Quit Monky completely (including the menu bar icon).
 2. In **Terminal**, run:
 

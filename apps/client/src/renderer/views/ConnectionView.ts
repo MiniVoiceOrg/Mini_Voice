@@ -1,6 +1,7 @@
 import { escapeHtml } from '../utils/html';
 import { MessageType } from '@monky/shared';
 import { connectionStore, type CreatedServer } from '../stores/connectionStore';
+import { serverStore } from '../stores/serverStore';
 import { networkClient } from '../core/NetworkClient';
 import { getAvatarUrl } from '../utils/avatar';
 import { settingsModal } from './SettingsModal';
@@ -9,6 +10,7 @@ import { showAlert, showConfirm } from './Dialog';
 import { pickAndCropImage } from './ImageCropModal';
 import { showIdentityImportDialog } from './IdentityDialogs';
 import { serverMonitorModal } from './ServerMonitorModal';
+import { confirmStopHostedServer } from '../utils/hostedServer';
 import logoUrl from '../assets/Logo.png';
 import { getLanguage, t } from '../i18n';
 
@@ -27,6 +29,7 @@ export class ConnectionView {
   private selectedSavedPort: number | null = null;
   private isHostedServerRunning: boolean = false;
   private runningCreatedServerId: string | null = null;
+  private runningHostedPort: number | null = null;
   private readonly discoveredServers: Map<string, DiscoveredServer> = new Map();
 
   constructor(container: HTMLElement) {
@@ -36,7 +39,33 @@ export class ConnectionView {
     connectionStore.loadCreatedServers();
     this.selectedAvatarBase64 = connectionStore.savedAvatarBase64 || '';
     this.setupLanDiscoveryListeners();
+    this.setupHostedServerListener();
     void this.syncHostedServerStatus();
+  }
+
+  /**
+   * Keeps the hosted server state fresh even while another screen is up. It
+   * used to be polled only when this view painted, so a server started from the
+   * server rail while connected elsewhere was still shown as stopped once the
+   * user came back (#333).
+   */
+  private setupHostedServerListener(): void {
+    window.api?.onHostServerStatusChanged?.((status) => {
+      this.applyHostedServerStatus(status);
+      // Repainting while the main screen is up would drop the user back on the
+      // connection screen mid-session.
+      if (!serverStore.serverDetails) {
+        this.render();
+      }
+    });
+  }
+
+  private applyHostedServerStatus(status: { isRunning: boolean; port: number | null; serverId: string | null }): void {
+    this.isHostedServerRunning = !!status.isRunning;
+    this.runningHostedPort = this.isHostedServerRunning ? status.port : null;
+    this.runningCreatedServerId = this.isHostedServerRunning
+      ? this.resolveRunningCreatedServerId(status.serverId, status.port)
+      : null;
   }
 
   private async syncHostedServerStatus(): Promise<void> {
@@ -44,14 +73,21 @@ export class ConnectionView {
 
     try {
       const status = await window.api.hostServerStatus();
-      this.isHostedServerRunning = !!status.isRunning;
-      this.runningCreatedServerId = this.isHostedServerRunning
-        ? this.resolveRunningCreatedServerId(status.serverId, status.port)
-        : null;
+      this.applyHostedServerStatus(status);
     } catch {
       this.isHostedServerRunning = false;
       this.runningCreatedServerId = null;
+      this.runningHostedPort = null;
     }
+  }
+
+  /** True when this entry of "Meus Servidores" is the instance currently up (#333). */
+  private isCreatedServerRunning(server: CreatedServer): boolean {
+    if (!this.isHostedServerRunning) return false;
+    if (this.runningCreatedServerId === server.id) return true;
+    // Only one hosted server runs at a time, so a port match is conclusive even
+    // when whoever started it never reported which entry it came from.
+    return this.runningHostedPort !== null && this.runningHostedPort === server.port;
   }
 
   /**
@@ -78,8 +114,13 @@ export class ConnectionView {
   private async refreshHostedServerStatus(): Promise<void> {
     const wasRunning = this.isHostedServerRunning;
     const previousId = this.runningCreatedServerId;
+    const previousPort = this.runningHostedPort;
     await this.syncHostedServerStatus();
-    if (wasRunning !== this.isHostedServerRunning || previousId !== this.runningCreatedServerId) {
+    const changed =
+      wasRunning !== this.isHostedServerRunning ||
+      previousId !== this.runningCreatedServerId ||
+      previousPort !== this.runningHostedPort;
+    if (changed && !serverStore.serverDetails) {
       this.render();
     }
   }
@@ -132,7 +173,7 @@ export class ConnectionView {
         </div>
         <div class="saved-servers-list" style="max-height: 220px;">
           ${createdServers.map((server) => {
-            const isRunning = this.isHostedServerRunning && this.runningCreatedServerId === server.id;
+            const isRunning = this.isCreatedServerRunning(server);
             return `
               <div class="saved-server-item" style="cursor: default;" data-created-server-id="${escapeHtml(server.id)}">
                 <div style="display: flex; flex-direction: column; overflow: hidden; min-width: 0;">
@@ -391,8 +432,7 @@ export class ConnectionView {
     await this.syncHostedServerStatus();
     // Only a *different* server needs to be swapped out. Restarting the one
     // already serving this entry would drop everyone connected to it (#333).
-    const alreadyServingThis =
-      this.isHostedServerRunning && this.runningCreatedServerId === server.id;
+    const alreadyServingThis = this.isCreatedServerRunning(server);
     if (this.isHostedServerRunning && !alreadyServingThis && window.api?.hostServerStop) {
       const confirmed = await showConfirm({
         title: t('connection.serverAlreadyRunningTitle'),
@@ -403,6 +443,9 @@ export class ConnectionView {
       });
       if (!confirmed) return;
 
+      // The server being replaced may still have people on it (#334).
+      if (!(await confirmStopHostedServer())) return;
+
       const stopRes = await window.api.hostServerStop();
       if (!stopRes.success) {
         throw new Error(t('connection.stopCurrentServerError'));
@@ -410,6 +453,7 @@ export class ConnectionView {
 
       this.isHostedServerRunning = false;
       this.runningCreatedServerId = null;
+      this.runningHostedPort = null;
     }
 
     if (window.api?.hostServerStart) {
@@ -435,6 +479,7 @@ export class ConnectionView {
     connectionStore.saveCreatedServer(updatedServer);
     this.isHostedServerRunning = true;
     this.runningCreatedServerId = updatedServer.id;
+    this.runningHostedPort = updatedServer.port;
 
     const identity = connectionStore.hasIdentity && connectionStore.clientId && connectionStore.publicKey
       ? { clientId: connectionStore.clientId, publicKey: connectionStore.publicKey }
@@ -466,6 +511,9 @@ export class ConnectionView {
   private async stopHostedServer(): Promise<void> {
     if (!window.api?.hostServerStop) return;
 
+    // Everyone on the server loses their session when it goes down (#334).
+    if (!(await confirmStopHostedServer())) return;
+
     const stopRes = await window.api.hostServerStop();
     if (!stopRes.success) {
       throw new Error(t('connection.stopServerError'));
@@ -476,7 +524,7 @@ export class ConnectionView {
   }
 
   private async removeCreatedServer(server: CreatedServer): Promise<void> {
-    const needsStop = this.isHostedServerRunning && this.runningCreatedServerId === server.id;
+    const needsStop = this.isCreatedServerRunning(server);
     const confirmed = await showConfirm({
       title: t('connection.deleteSavedServer'),
       message: needsStop
@@ -490,6 +538,9 @@ export class ConnectionView {
 
     if (needsStop) {
       await this.stopHostedServer();
+      // The stop can be called off when other people are still connected; the
+      // entry must survive so the running server stays reachable (#334).
+      if (this.isCreatedServerRunning(server)) return;
     }
 
     connectionStore.removeCreatedServer(server.id);

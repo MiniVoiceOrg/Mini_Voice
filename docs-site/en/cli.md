@@ -200,6 +200,10 @@ The process stays listed in PM2 on purpose: removing it would discard the logs
 exactly when they matter most, right after a crash or a manual stop. `monky
 logs` keeps working with the server stopped.
 
+If anyone is connected at that moment, the CLI reports how many people will be
+disconnected and asks for confirmation before stopping. On a non-interactive
+terminal (scripts, cron) the warning is printed and the stop goes ahead.
+
 ---
 
 ## `monky restart`
@@ -212,6 +216,9 @@ monky restart [--port <n>]
 
 `ecosystem.config.cjs` is rewritten before the restart, so a port or name
 changed since the last `start` takes effect.
+
+Just like `stop`, if anyone is connected the CLI warns and asks for confirmation
+before restarting.
 
 ---
 
@@ -429,6 +436,9 @@ Removes the database, attachments, avatars and configuration, kills the PM2
 process and drops the server from the registry. It asks for two confirmations:
 typing `DESTROY` and a final "yes". It only accepts folders that actually hold a
 Monky server.
+
+If anyone is connected, the warning shows up before the confirmations, saying
+how many people will be disconnected.
 
 ---
 

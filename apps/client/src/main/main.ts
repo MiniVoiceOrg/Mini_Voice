@@ -4,6 +4,7 @@ import { setupIpcHandlers } from './ipcHandlers';
 import { setupUpdater } from './updater';
 import { ServerManager } from './serverManager';
 import { TrayManager } from './trayManager';
+import { HOME_MIN_HEIGHT, HOME_MIN_WIDTH } from './windowSizing';
 
 import fs from 'fs';
 
@@ -60,8 +61,8 @@ function createWindow(): void {
   mainWindow = new BrowserWindow({
     width: winWidth,
     height: 950,
-    minWidth: 600,
-    minHeight: 500,
+    minWidth: HOME_MIN_WIDTH,
+    minHeight: HOME_MIN_HEIGHT,
     backgroundColor: '#0e1117',
     // Windows/Linux: fully frameless (custom title bar in the renderer).
     // macOS: keep the native traffic-light buttons but hide the title bar.

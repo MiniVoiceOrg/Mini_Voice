@@ -463,6 +463,18 @@ export const en: TranslationMap = {
   'stage.stopWatching': 'Stop watching',
   'stage.volumeAria': 'Volume',
   'stage.screenAudioMuted': 'Screen audio muted (click to unmute)',
+  'stage.telemetryCollecting': 'Collecting...',
+
+  // ── Local server (#334) ──────────────────────────────────────────────────
+  'hostedServer.emptyTitle': 'Server is empty',
+  'hostedServer.emptyMessage': 'You were the last one to leave "{name}" and the server is still running on this machine. Do you want to shut it down?',
+  'hostedServer.shutDown': 'Shut down server',
+  'hostedServer.keepRunning': 'Keep it running',
+  'hostedServer.dontAskAgain': "Don't ask again",
+  'hostedServer.stopWithUsersTitle': 'People are still connected',
+  'hostedServer.stopWithUsersMessage.one': '{count} person is connected to this server. Shutting it down will disconnect them.',
+  'hostedServer.stopWithUsersMessage.other': '{count} people are connected to this server. Shutting it down will disconnect all of them.',
+  'hostedServer.stopAnyway': 'Shut down anyway',
 
   // ── Settings (SettingsModal.ts) ──────────────────────────────────────────
   'settings.devicesSection': 'Input and output devices',
@@ -588,6 +600,8 @@ export const en: TranslationMap = {
   'settings.autoStartDesc': 'Launch Monky automatically when your computer starts.',
   'settings.minimizeToTray': 'Minimize to system tray on close',
   'settings.minimizeToTrayDesc': 'When closing the window, keep Monky running in the background system tray.',
+  'settings.askShutdownOnLastLeave': 'Ask when I leave my empty server',
+  'settings.askShutdownOnLastLeaveDesc': 'When you are the last one to leave a server hosted on this machine, ask whether to shut it down.',
   'settings.communitySection': 'Community',
   'settings.communityDesc': 'Monky is open source. The ideas the community votes up become the next features.',
   'settings.suggestIdea': 'Suggest an idea',

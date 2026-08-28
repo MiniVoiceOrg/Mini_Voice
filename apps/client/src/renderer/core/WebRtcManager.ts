@@ -1233,6 +1233,31 @@ export class WebRtcManager {
     return Array.from(this.peers.values()).map((session) => session.pc);
   }
 
+  /**
+   * Every sender publishing one local screen share — one per peer (#340).
+   * Scoping `getStats()` to these senders is what lets the stage report each
+   * share separately instead of merging both into the connection's totals.
+   */
+  public getScreenSendersForShare(shareId: string): RTCRtpSender[] {
+    const senders: RTCRtpSender[] = [];
+    for (const session of this.peers.values()) {
+      const sender = session.screenVideoSenders.get(shareId);
+      if (sender) senders.push(sender);
+    }
+    return senders;
+  }
+
+  /**
+   * Receiver carrying a specific remote track, so the stage can read one
+   * screen share's inbound stats without picking up the peer's other share or
+   * their camera (#340).
+   */
+  public getReceiverForTrack(peerSessionId: string, trackId: string): RTCRtpReceiver | null {
+    const session = this.peers.get(peerSessionId);
+    if (!session) return null;
+    return session.pc.getReceivers().find((receiver) => receiver.track?.id === trackId) ?? null;
+  }
+
   public setPeerVolume(peerSessionId: string, volume0to100: number): void {
     const audioEl = this.audioElements.get(peerSessionId);
     if (audioEl) {
