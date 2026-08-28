@@ -1,4 +1,4 @@
-import { QualityPresetType, QualityProfile, DEFAULT_CUSTOM_PROFILE } from '@monky/shared';
+import { QualityPresetType, QualityProfile, DEFAULT_CUSTOM_PROFILE, PttKeyBinding } from '@monky/shared';
 import { appEvents } from '../core/EventBus';
 
 /**
@@ -18,6 +18,10 @@ const CHAT_SOUND_MODES: ChatSoundMode[] = ['inherit', 'all', 'mentions', 'none']
 export class SettingsStore {
   public qualityPreset: QualityPresetType = 'NORMAL';
   public customProfile: QualityProfile = { ...DEFAULT_CUSTOM_PROFILE };
+  public inputMode: 'voice_activity' | 'push_to_talk' = 'voice_activity'; // #186
+  public pttKey: PttKeyBinding = { code: 'KeyV', display: 'V', keyType: 'keyboard', keyCode: 47 };
+  public pttReleaseDelay: number = 200; // 0 - 2000 ms
+  public pttSoundCue: boolean = true;
   public vadSensitivity: number = 25; // 0 - 100
   public selectedMicrophoneId: string = '';
   public selectedSpeakerId: string = '';
@@ -97,6 +101,20 @@ export class SettingsStore {
         }
         if (!['grid', 'list'].includes(this.soundboardViewMode)) {
           this.soundboardViewMode = 'grid';
+        }
+        if (!['voice_activity', 'push_to_talk'].includes(this.inputMode)) {
+          this.inputMode = 'voice_activity';
+        }
+        if (!this.pttKey || typeof this.pttKey !== 'object' || !this.pttKey.code || !this.pttKey.display) {
+          this.pttKey = { code: 'KeyV', display: 'V', keyType: 'keyboard', keyCode: 47 };
+        }
+        if (typeof this.pttReleaseDelay !== 'number' || isNaN(this.pttReleaseDelay)) {
+          this.pttReleaseDelay = 200;
+        } else {
+          this.pttReleaseDelay = Math.max(0, Math.min(2000, this.pttReleaseDelay));
+        }
+        if (typeof this.pttSoundCue !== 'boolean') {
+          this.pttSoundCue = true;
         }
         if (!this.keybindShortcuts || typeof this.keybindShortcuts !== 'object') {
           this.keybindShortcuts = {};
@@ -220,6 +238,10 @@ export class SettingsStore {
         maxDownloadKbps: this.maxDownloadKbps,
         userVolumes: this.userVolumes,
         noiseSuppressionEnabled: this.noiseSuppressionEnabled,
+        inputMode: this.inputMode,
+        pttKey: this.pttKey,
+        pttReleaseDelay: this.pttReleaseDelay,
+        pttSoundCue: this.pttSoundCue,
         soundboardFolderPath: this.soundboardFolderPath,
         soundboardVolume: this.soundboardVolume,
         soundboardMuted: this.soundboardMuted,

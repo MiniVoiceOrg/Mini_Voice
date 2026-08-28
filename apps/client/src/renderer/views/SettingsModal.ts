@@ -224,8 +224,7 @@ export class SettingsModal {
     if (tab === 'voice_video') {
       this.voiceVideoTab.startVadMeter(this.modalEl);
     } else {
-      this.voiceVideoTab.stopCameraPreview(this.modalEl);
-      this.voiceVideoTab.stopVadMeter();
+      this.voiceVideoTab.cleanup();
     }
   }
 
@@ -241,8 +240,7 @@ export class SettingsModal {
   }
 
   public close(): void {
-    this.voiceVideoTab.stopCameraPreview(this.modalEl || undefined);
-    this.voiceVideoTab.stopVadMeter();
+    this.voiceVideoTab.cleanup();
     if (this.modalEl) {
       const handler = (this.modalEl as any)._escHandler;
       if (handler) window.removeEventListener('keydown', handler);

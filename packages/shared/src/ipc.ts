@@ -46,6 +46,19 @@ export interface ActionShortcutBinding {
   accelerator: string;
 }
 
+export interface PttKeyBinding {
+  code: string;
+  display: string;
+  keyType: 'keyboard' | 'mouse';
+  keyCode?: number;
+  mouseButton?: number;
+}
+
+export interface PttConfig {
+  enabled: boolean;
+  key: PttKeyBinding | null;
+}
+
 export interface LinkPreviewData {
   url: string;
   title: string;
@@ -185,6 +198,11 @@ export interface IpcInvokeChannels {
   // Atalhos Globais (Keybinds)
   'shortcuts:register-actions': { args: [shortcuts: ActionShortcutBinding[]]; returnType: boolean };
 
+  // Push to Talk (PTT) (#186)
+  'ptt:set-config': { args: [config: PttConfig]; returnType: boolean };
+  'ptt:start-capture': { args: []; returnType: boolean };
+  'ptt:stop-capture': { args: []; returnType: boolean };
+
   // Link Preview
   'link-preview:fetch': { args: [url: string]; returnType: LinkPreviewData | null };
 
@@ -203,7 +221,7 @@ export interface IpcInvokeChannels {
   // Atualizador
   'updater:set-channel': { args: [allowBeta: boolean]; returnType: UpdateSimpleResult };
   'updater:check': { args: []; returnType: UpdateCheckResult };
-  'updater:download': { args: []; returnType: UpdateSimpleResult };
+  'updater:download': { args: [allowBeta: boolean]; returnType: UpdateSimpleResult };
   'updater:install': { args: []; returnType: UpdateSimpleResult };
 }
 
@@ -215,6 +233,8 @@ export interface IpcEvents {
   'lan:lost': [server: DiscoveredLanServer];
   'soundboard:shortcut-triggered': [soundName: string];
   'shortcut:action-triggered': [action: string];
+  'ptt:state-changed': [active: boolean];
+  'ptt:captured': [binding: PttKeyBinding];
   'screen-audio:frame': [buffer: ArrayBuffer | Uint8Array];
   'tray:toggle-mute': [];
   'tray:toggle-deafen': [];

@@ -173,6 +173,10 @@ function runTests() {
     toggle_deafen: { accelerator: 'CommandOrControl+Shift+D', display: 'Ctrl + Shift + D' },
   };
   store1.soundboardViewMode = 'list';
+  store1.inputMode = 'push_to_talk';
+  store1.pttKey = { code: 'Mouse4', display: 'Mouse 4 (Lateral Traseiro)', keyType: 'mouse', mouseButton: 4 };
+  store1.pttReleaseDelay = 350;
+  store1.pttSoundCue = false;
   store1.chatMessageSoundEnabled = false;
   store1.chatMessageSoundMentionsOnly = true;
   store1.setServerChatSoundOverride('srv-1', 'none');
@@ -184,6 +188,10 @@ function runTests() {
 
   const rawJson = JSON.parse(storageMap.get('monky_settings')!);
   assert(rawJson.soundboardViewMode === 'list', 'soundboardViewMode serializado no JSON');
+  assert(rawJson.inputMode === 'push_to_talk', 'inputMode serializado no JSON');
+  assert(rawJson.pttKey?.code === 'Mouse4', 'pttKey serializado no JSON');
+  assert(rawJson.pttReleaseDelay === 350, 'pttReleaseDelay serializado no JSON');
+  assert(rawJson.pttSoundCue === false, 'pttSoundCue serializado no JSON');
   assert(rawJson.keybindShortcuts?.toggle_mute?.accelerator === 'CommandOrControl+Shift+M', 'keybindShortcuts serializado no JSON');
   assert(rawJson.soundboardShortcuts?.Airhorn?.accelerator === 'CommandOrControl+Alt+A', 'soundboardShortcuts serializado no JSON');
   assert(rawJson.minimizeToTrayOnClose === false, 'minimizeToTrayOnClose serializado no JSON');
@@ -192,6 +200,10 @@ function runTests() {
   // Cria uma nova instância para simular reabertura / reload da aplicação
   const store2 = new SettingsStore();
   assert(store2.soundboardViewMode === 'list', 'soundboardViewMode restaurado com sucesso');
+  assert(store2.inputMode === 'push_to_talk', 'inputMode restaurado com sucesso');
+  assert(store2.pttKey?.code === 'Mouse4' && store2.pttKey?.display === 'Mouse 4 (Lateral Traseiro)', 'pttKey restaurado com sucesso');
+  assert(store2.pttReleaseDelay === 350, 'pttReleaseDelay restaurado com sucesso');
+  assert(store2.pttSoundCue === false, 'pttSoundCue restaurado com sucesso');
   assert(store2.minimizeToTrayOnClose === false, 'minimizeToTrayOnClose restaurado com sucesso');
   assert(store2.updateBetaChannel === true, 'updateBetaChannel restaurado com sucesso');
   assert(store2.askShutdownOnLastLeave === false, 'askShutdownOnLastLeave restaurado com sucesso');
@@ -206,10 +218,16 @@ function runTests() {
   assert(store2.getServerChatSoundOverride('srv-1') === 'none', 'serverChatSoundOverride restaurado com sucesso');
   assert(store2.getChannelChatSoundOverride('chan-1') === 'all', 'channelChatSoundOverride restaurado com sucesso');
 
-  // Testa sanitização de valor inválido para soundboardViewMode
-  storageMap.set('monky_settings', JSON.stringify({ soundboardViewMode: 'invalid_mode' }));
+  // Testa sanitização de valor inválido para soundboardViewMode e inputMode
+  storageMap.set('monky_settings', JSON.stringify({
+    soundboardViewMode: 'invalid_mode',
+    inputMode: 'invalid_input_mode',
+    pttReleaseDelay: -50,
+  }));
   const store3 = new SettingsStore();
   assert(store3.soundboardViewMode === 'grid', 'soundboardViewMode inválido é sanitizado para fallback "grid"');
+  assert(store3.inputMode === 'voice_activity', 'inputMode inválido é sanitizado para fallback "voice_activity"');
+  assert(store3.pttReleaseDelay === 0, 'pttReleaseDelay negativo é sanitizado para mínimo 0');
 
   console.log(`\n=== Relatório dos Testes ===`);
   console.log(`Total: ${passed + failed} | Passaram: ${passed} | Falharam: ${failed}`);

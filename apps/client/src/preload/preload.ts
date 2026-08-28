@@ -8,6 +8,8 @@ import type {
   ImageSelectionResult,
   LinkPreviewData,
   LogEntry,
+  PttConfig,
+  PttKeyBinding,
   ScreenAudioDiagnostics,
   ServerProbeResult,
   ServerStats,
@@ -54,6 +56,11 @@ export interface ElectronApi {
   onSoundboardShortcutTriggered: (cb: (soundName: string) => void) => () => void;
   registerActionShortcuts: (shortcuts: ActionShortcutBinding[]) => Promise<boolean>;
   onActionShortcutTriggered: (cb: (action: string) => void) => () => void;
+  setPttConfig: (config: PttConfig) => Promise<boolean>;
+  startPttCapture: () => Promise<boolean>;
+  stopPttCapture: () => Promise<boolean>;
+  onPttStateChanged: (cb: (active: boolean) => void) => () => void;
+  onPttCaptured: (cb: (binding: PttKeyBinding) => void) => () => void;
   minimize: () => Promise<void>;
   maximize: () => Promise<void>;
   toggleMaximize: () => Promise<void>;
@@ -150,6 +157,23 @@ const api: ElectronApi = {
     ipcRenderer.on('shortcut:action-triggered', listener);
     return () => {
       ipcRenderer.removeListener('shortcut:action-triggered', listener);
+    };
+  },
+  setPttConfig: (config) => ipcRenderer.invoke('ptt:set-config', config),
+  startPttCapture: () => ipcRenderer.invoke('ptt:start-capture'),
+  stopPttCapture: () => ipcRenderer.invoke('ptt:stop-capture'),
+  onPttStateChanged: (cb) => {
+    const listener = (_e: Electron.IpcRendererEvent, active: boolean) => cb(active);
+    ipcRenderer.on('ptt:state-changed', listener);
+    return () => {
+      ipcRenderer.removeListener('ptt:state-changed', listener);
+    };
+  },
+  onPttCaptured: (cb) => {
+    const listener = (_e: Electron.IpcRendererEvent, binding: PttKeyBinding) => cb(binding);
+    ipcRenderer.on('ptt:captured', listener);
+    return () => {
+      ipcRenderer.removeListener('ptt:captured', listener);
     };
   },
   minimize: () => ipcRenderer.invoke('window:minimize'),

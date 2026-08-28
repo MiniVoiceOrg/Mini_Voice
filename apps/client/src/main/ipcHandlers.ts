@@ -6,11 +6,13 @@ import https from 'https';
 import net from 'net';
 import path from 'path';
 import { LanDiscovery } from './lanDiscovery';
+import { globalInputHook } from './globalInputHook';
 import { exportIdentity, getClientId, getIdentity, hasIdentity, importIdentity, signChallenge } from './identityService';
 import { HostServerOptions, ServerManager } from './serverManager';
 import { mt, setMainLanguage } from './i18n';
 import { fetchLinkPreview } from './linkPreview';
 import { TrayManager, VoiceStatus } from './trayManager';
+import type { PttConfig } from '@monky/shared';
 import {
   HOME_MIN_HEIGHT,
   HOME_MIN_WIDTH,
@@ -200,6 +202,7 @@ export function setupIpcHandlers(
   options?: SetupIpcOptions
 ): void {
   const lanDiscovery = new LanDiscovery(mainWindow);
+  globalInputHook.init(mainWindow);
 
   ipcMain.handle('tray:update-voice-status', (_, status: VoiceStatus) => {
     trayManager?.updateVoiceStatus(status);
@@ -464,6 +467,19 @@ export function setupIpcHandlers(
     return syncAllGlobalShortcuts();
   });
 
+  // Push to Talk (PTT) (#186)
+  ipcMain.handle('ptt:set-config', (_, config: PttConfig) => {
+    return globalInputHook.setPttConfig(config);
+  });
+
+  ipcMain.handle('ptt:start-capture', () => {
+    return globalInputHook.startCapture();
+  });
+
+  ipcMain.handle('ptt:stop-capture', () => {
+    return globalInputHook.stopCapture();
+  });
+
   // Window Controls
   ipcMain.handle('window:minimize', () => {
     mainWindow.minimize();
@@ -653,5 +669,6 @@ export function setupIpcHandlers(
 
   mainWindow.on('closed', () => {
     void lanDiscovery.stop();
+    globalInputHook.destroy();
   });
 }
