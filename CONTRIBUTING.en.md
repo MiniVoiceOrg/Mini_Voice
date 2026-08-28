@@ -180,6 +180,10 @@ out the SemVer on its own:
 Note that **patch is the default**: every merge into `main` publishes some
 version, even if it is a documentation commit.
 
+The count starts from the **latest published release, betas included**. So a
+`feat:` merged right after the `1.1.0-beta001` beta ships as `1.2.0-beta001`,
+not as a second beta of that same `1.1.0`.
+
 If your change breaks compatibility between client and server, it **must** ship
 as a major. Labelling a breaking change as `feat:` publishes a minor, and anyone
 who updates only one of the two sides can no longer connect.
