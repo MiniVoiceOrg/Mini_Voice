@@ -256,6 +256,12 @@ export function setupIpcHandlers(
     return serverManager.getStats();
   });
 
+  // Removing a server from "Meus Servidores" has to take its data with it (#364).
+  ipcMain.handle('server-host:delete-data', async (_, serverId: string) => {
+    if (typeof serverId !== 'string') return { success: false };
+    return serverManager.deleteServerData(serverId);
+  });
+
   ipcMain.handle('lan:start', async () => {
     await lanDiscovery.start();
   });
