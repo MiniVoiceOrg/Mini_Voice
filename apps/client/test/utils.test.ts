@@ -145,6 +145,64 @@ function runTests() {
   assert(matchesSearch('Som de Tambor', ''), 'Busca vazia retorna true');
   assert(!matchesSearch('Som de Tambor', 'buzina'), 'Busca não correspondente retorna false');
 
+  // 7. SettingsStore Persistência (#325)
+  console.log('\n--- Testando SettingsStore Persistência (#325) ---');
+  const storageMap = new Map<string, string>();
+  (globalThis as any).localStorage = {
+    getItem: (key: string) => storageMap.get(key) ?? null,
+    setItem: (key: string, val: string) => storageMap.set(key, String(val)),
+    removeItem: (key: string) => storageMap.delete(key),
+    clear: () => storageMap.clear(),
+  };
+
+  const { SettingsStore } = require('../src/renderer/stores/settingsStore');
+  const store1 = new SettingsStore();
+
+  // Define várias configurações incluindo atalhos, minimização e updates beta
+  store1.minimizeToTrayOnClose = false;
+  store1.updateBetaChannel = true;
+  store1.askShutdownOnLastLeave = false;
+  store1.soundboardVolume = 42;
+  store1.soundboardMuted = true;
+  store1.soundboardFolderPath = 'C:\\Sons';
+  store1.soundboardShortcuts = {
+    Airhorn: { accelerator: 'CommandOrControl+Alt+A', display: 'Ctrl + Alt + A' },
+  };
+  store1.keybindShortcuts = {
+    toggle_mute: { accelerator: 'CommandOrControl+Shift+M', display: 'Ctrl + Shift + M' },
+    toggle_deafen: { accelerator: 'CommandOrControl+Shift+D', display: 'Ctrl + Shift + D' },
+  };
+  store1.chatMessageSoundEnabled = false;
+  store1.chatMessageSoundMentionsOnly = true;
+  store1.setServerChatSoundOverride('srv-1', 'none');
+  store1.setChannelChatSoundOverride('chan-1', 'all');
+
+  store1.save();
+
+  assert(storageMap.has('monky_settings'), 'monky_settings foi salvo no localStorage');
+
+  const rawJson = JSON.parse(storageMap.get('monky_settings')!);
+  assert(rawJson.keybindShortcuts?.toggle_mute?.accelerator === 'CommandOrControl+Shift+M', 'keybindShortcuts serializado no JSON');
+  assert(rawJson.soundboardShortcuts?.Airhorn?.accelerator === 'CommandOrControl+Alt+A', 'soundboardShortcuts serializado no JSON');
+  assert(rawJson.minimizeToTrayOnClose === false, 'minimizeToTrayOnClose serializado no JSON');
+  assert(rawJson.updateBetaChannel === true, 'updateBetaChannel serializado no JSON');
+
+  // Cria uma nova instância para simular reabertura / reload da aplicação
+  const store2 = new SettingsStore();
+  assert(store2.minimizeToTrayOnClose === false, 'minimizeToTrayOnClose restaurado com sucesso');
+  assert(store2.updateBetaChannel === true, 'updateBetaChannel restaurado com sucesso');
+  assert(store2.askShutdownOnLastLeave === false, 'askShutdownOnLastLeave restaurado com sucesso');
+  assert(store2.soundboardVolume === 42, 'soundboardVolume restaurado com sucesso');
+  assert(store2.soundboardMuted === true, 'soundboardMuted restaurado com sucesso');
+  assert(store2.soundboardFolderPath === 'C:\\Sons', 'soundboardFolderPath restaurado com sucesso');
+  assert(store2.soundboardShortcuts['Airhorn']?.display === 'Ctrl + Alt + A', 'soundboardShortcuts restaurado com sucesso');
+  assert(store2.keybindShortcuts['toggle_mute']?.display === 'Ctrl + Shift + M', 'keybindShortcuts (toggle_mute) restaurado com sucesso');
+  assert(store2.keybindShortcuts['toggle_deafen']?.display === 'Ctrl + Shift + D', 'keybindShortcuts (toggle_deafen) restaurado com sucesso');
+  assert(store2.chatMessageSoundEnabled === false, 'chatMessageSoundEnabled restaurado com sucesso');
+  assert(store2.chatMessageSoundMentionsOnly === true, 'chatMessageSoundMentionsOnly restaurado com sucesso');
+  assert(store2.getServerChatSoundOverride('srv-1') === 'none', 'serverChatSoundOverride restaurado com sucesso');
+  assert(store2.getChannelChatSoundOverride('chan-1') === 'all', 'channelChatSoundOverride restaurado com sucesso');
+
   console.log(`\n=== Relatório dos Testes ===`);
   console.log(`Total: ${passed + failed} | Passaram: ${passed} | Falharam: ${failed}`);
 

@@ -10,6 +10,7 @@
     "src/preload/preload.ts",
     "src/renderer/utils/**/*",
     "src/renderer/core/EventBus.ts",
+    "src/renderer/stores/settingsStore.ts",
     "test/**/*"
   ]
 }

@@ -226,6 +226,7 @@ export class SettingsStore {
         customProfile: this.customProfile,
         customSounds: this.customSounds,
         soundboardShortcuts: this.soundboardShortcuts,
+        keybindShortcuts: this.keybindShortcuts,
         chatMessageSoundEnabled: this.chatMessageSoundEnabled,
         chatMessageSoundMentionsOnly: this.chatMessageSoundMentionsOnly,
         updateBetaChannel: this.updateBetaChannel,
