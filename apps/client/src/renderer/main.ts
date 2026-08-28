@@ -6,6 +6,7 @@ import {
   AuthSuccessPayload,
   ChannelCreatedPayload,
   ChannelDeletedPayload,
+  ChannelUpdatedPayload,
   ChatHistoryPayload,
   ChatMessage,
   MessageType,
@@ -429,6 +430,10 @@ class App {
 
     appEvents.on(`message.${MessageType.CHANNEL_DELETED}`, (payload: ChannelDeletedPayload) => {
       serverStore.removeChannel(payload.channelId);
+    });
+
+    appEvents.on(`message.${MessageType.CHANNEL_UPDATED}`, (payload: ChannelUpdatedPayload) => {
+      serverStore.updateChannel(payload.channel);
     });
 
     appEvents.on(`message.${MessageType.CHAT_MESSAGE}`, (message: ChatMessage) => {

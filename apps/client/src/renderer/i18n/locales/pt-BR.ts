@@ -51,6 +51,14 @@ export const ptBR = {
   'channelModal.namePlaceholder': 'Ex: jogos',
   'channelModal.submit': 'Criar Canal',
   'channelModal.error': 'Erro ao criar canal',
+  'channelModal.editTitle': 'Editar Canal',
+  'channelModal.saveSubmit': 'Salvar Alterações',
+  'channelModal.editError': 'Erro ao atualizar canal',
+  'channelModal.privateLabel': 'Canal privado',
+  'channelModal.privateHint': 'Somente os cargos escolhidos verão este canal. Quem gerencia canais continua com acesso.',
+  'channelModal.allowedRolesLabel': 'Cargos com acesso',
+  'channelModal.allowedRolesHint': 'Sem nenhum cargo marcado, apenas quem gerencia canais entra.',
+  'channelModal.noRoles': 'Nenhum cargo criado ainda.',
 
   // ── Menu de contexto do usuário (UserContextMenu.ts) ─────────────────────
   'userMenu.audioSettings': 'Configurações de Áudio',
@@ -399,6 +407,8 @@ export const ptBR = {
   'main.createTextChannel': 'Criar Canal de Texto',
   'main.createVoiceChannel': 'Criar Canal de Voz',
   'main.deleteChannel': 'Apagar canal',
+  'main.editChannel': 'Editar canal',
+  'main.privateChannelBadge': 'Canal privado',
   'main.delete': 'Apagar',
   'main.deleteTextChannelTitle': 'Apagar canal de texto',
   'main.deleteVoiceChannelTitle': 'Apagar canal de voz',

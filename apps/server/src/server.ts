@@ -76,6 +76,8 @@ export async function ensureServerSeedData(
       position: 0,
       createdAt: now,
       maxParticipants: 50,
+      isPrivate: false,
+      allowedRoleIds: [],
     });
 
     await channelRepo.create({
@@ -86,6 +88,8 @@ export async function ensureServerSeedData(
       position: 1,
       createdAt: now,
       maxParticipants: LIMITS.MAX_PARTICIPANTS_PER_CHANNEL_DEFAULT,
+      isPrivate: false,
+      allowedRoleIds: [],
     });
 
     Logger.info('DATABASE', 'Server seeded successfully with default channels.');
@@ -204,7 +208,7 @@ export class MonkyServer {
     const roleService = new RoleService(roleRepo, userRepo, permissionService);
 
     const signalingService = new SignalingService(channelRepo);
-    const channelService = new ChannelService(channelRepo, serverRepo);
+    const channelService = new ChannelService(channelRepo, serverRepo, roleRepo, permissionService);
     const chatService = new ChatService(
       messageRepo,
       channelRepo,

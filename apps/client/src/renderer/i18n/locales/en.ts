@@ -50,6 +50,14 @@ export const en: TranslationMap = {
   'channelModal.namePlaceholder': 'e.g. games',
   'channelModal.submit': 'Create Channel',
   'channelModal.error': 'Could not create the channel',
+  'channelModal.editTitle': 'Edit Channel',
+  'channelModal.saveSubmit': 'Save Changes',
+  'channelModal.editError': 'Could not update the channel',
+  'channelModal.privateLabel': 'Private channel',
+  'channelModal.privateHint': 'Only the selected roles will see this channel. Whoever manages channels keeps access.',
+  'channelModal.allowedRolesLabel': 'Roles with access',
+  'channelModal.allowedRolesHint': 'With no role selected, only those who manage channels can get in.',
+  'channelModal.noRoles': 'No roles created yet.',
 
   // ── User context menu (UserContextMenu.ts) ───────────────────────────────
   'userMenu.audioSettings': 'Audio settings',
@@ -398,6 +406,8 @@ export const en: TranslationMap = {
   'main.createTextChannel': 'Create text channel',
   'main.createVoiceChannel': 'Create voice channel',
   'main.deleteChannel': 'Delete channel',
+  'main.editChannel': 'Edit channel',
+  'main.privateChannelBadge': 'Private channel',
   'main.delete': 'Delete',
   'main.deleteTextChannelTitle': 'Delete text channel',
   'main.deleteVoiceChannelTitle': 'Delete voice channel',

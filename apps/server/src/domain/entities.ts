@@ -32,6 +32,10 @@ export interface ChannelRecord {
   position: number;
   createdAt: number;
   maxParticipants: number;
+  /** Private channels (#384). */
+  isPrivate: boolean;
+  /** Roles allowed in, loaded from `channel_allowed_roles`. */
+  allowedRoleIds: string[];
 }
 
 export interface MessageRecord {

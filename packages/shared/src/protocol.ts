@@ -30,6 +30,7 @@ export enum MessageType {
   CHAT_MENTIONS_READ = 'CHAT_MENTIONS_READ',
   CHAT_REQUEST_UPLOAD_TOKEN = 'CHAT_REQUEST_UPLOAD_TOKEN',
   CHANNEL_CREATE = 'CHANNEL_CREATE',
+  CHANNEL_UPDATE = 'CHANNEL_UPDATE',
   CHANNEL_DELETE = 'CHANNEL_DELETE',
   USER_CHANGE_NICKNAME = 'USER_CHANGE_NICKNAME',
   USER_UPDATE_AVATAR = 'USER_UPDATE_AVATAR',
@@ -68,6 +69,7 @@ export enum MessageType {
   USER_UPDATED = 'USER_UPDATED',
   USER_CONNECTION_STATE = 'USER_CONNECTION_STATE',
   CHANNEL_CREATED = 'CHANNEL_CREATED',
+  CHANNEL_UPDATED = 'CHANNEL_UPDATED',
   CHANNEL_DELETED = 'CHANNEL_DELETED',
   CHAT_MESSAGE = 'CHAT_MESSAGE',
   CHAT_HISTORY = 'CHAT_HISTORY',
@@ -148,6 +150,21 @@ export interface ChannelCreatePayload {
   name: string;
   type: 'VOICE' | 'TEXT';
   maxParticipants?: number;
+  isPrivate?: boolean;
+  allowedRoleIds?: string[];
+}
+
+/**
+ * Edits an existing channel (#384). Every field but `channelId` is optional and
+ * only the ones present are changed, so the caller can flip privacy without
+ * resending the name.
+ */
+export interface ChannelUpdatePayload {
+  channelId: string;
+  name?: string;
+  maxParticipants?: number;
+  isPrivate?: boolean;
+  allowedRoleIds?: string[];
 }
 
 export interface ChannelDeletePayload {
@@ -328,6 +345,10 @@ export interface UserUpdatedPayload {
 }
 
 export interface ChannelCreatedPayload {
+  channel: ChannelSummary;
+}
+
+export interface ChannelUpdatedPayload {
   channel: ChannelSummary;
 }
 

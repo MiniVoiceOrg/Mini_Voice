@@ -14,6 +14,8 @@ import {
   ChannelCreatedPayload,
   ChannelDeletePayload,
   ChannelDeletedPayload,
+  ChannelUpdatePayload,
+  ChannelUpdatedPayload,
   ChatHistoryPayload,
   ChatLoadHistoryPayload,
   ChatMentionsReadPayload,
@@ -54,6 +56,7 @@ import {
   VoiceUserJoinedPayload,
   VoiceUserLeftPayload,
   WebRtcSignalPayload,
+  canAccessChannel,
 } from '@monky/shared';
 import { AuthService } from '../../application/services/AuthService';
 import { AttachmentService } from '../../application/services/AttachmentService';
@@ -82,6 +85,13 @@ interface ClientSession {
   replaced?: boolean;
   /** True when the client explicitly logged out (graceful disconnect). */
   intentionalLogout?: boolean;
+  /**
+   * Channels this connection currently knows about (#384). The server filters
+   * private channels out before sending, so it has to remember what each client
+   * was told in order to push the difference when a role or a channel's privacy
+   * changes.
+   */
+  visibleChannelIds?: Set<string>;
 }
 
 export class WebSocketServer {
@@ -220,10 +230,12 @@ export class WebSocketServer {
     switch (type) {
       case MessageType.CHAT_SEND:
         if (!(await this.requirePermission(session, Permission.SEND_MESSAGES, requestId))) return;
+        if (!(await this.requireChannelAccess(session, (payload as ChatSendPayload)?.channelId, requestId))) return;
         await this.handleChatSend(session, payload as ChatSendPayload, requestId);
         break;
 
       case MessageType.CHAT_LOAD_HISTORY:
+        if (!(await this.requireChannelAccess(session, (payload as ChatLoadHistoryPayload)?.channelId, requestId))) return;
         await this.handleChatLoadHistory(session, payload as ChatLoadHistoryPayload, requestId);
         break;
 
@@ -233,12 +245,18 @@ export class WebSocketServer {
 
       case MessageType.CHAT_REQUEST_UPLOAD_TOKEN:
         if (!(await this.requirePermission(session, Permission.ATTACH_FILES, requestId))) return;
+        if (!(await this.requireChannelAccess(session, (payload as ChatRequestUploadTokenPayload)?.channelId, requestId))) return;
         this.handleRequestUploadToken(session, payload as ChatRequestUploadTokenPayload, requestId);
         break;
 
       case MessageType.CHANNEL_CREATE:
         if (!(await this.requirePermission(session, Permission.MANAGE_CHANNELS, requestId))) return;
         await this.handleChannelCreate(session, payload as ChannelCreatePayload, requestId);
+        break;
+
+      case MessageType.CHANNEL_UPDATE:
+        if (!(await this.requirePermission(session, Permission.MANAGE_CHANNELS, requestId))) return;
+        await this.handleChannelUpdate(session, payload as ChannelUpdatePayload, requestId);
         break;
 
       case MessageType.CHANNEL_DELETE:
@@ -281,6 +299,7 @@ export class WebSocketServer {
 
       case MessageType.VOICE_JOIN:
         if (!(await this.requirePermission(session, Permission.SPEAK, requestId))) return;
+        if (!(await this.requireChannelAccess(session, (payload as VoiceJoinPayload)?.channelId, requestId))) return;
         await this.handleVoiceJoin(session, payload as VoiceJoinPayload, requestId);
         break;
 
@@ -298,6 +317,7 @@ export class WebSocketServer {
 
       case MessageType.SOUNDBOARD_PLAY:
         if (!(await this.requirePermission(session, Permission.SPEAK, requestId))) return;
+        if (!(await this.requireChannelAccess(session, (payload as SoundboardPlayPayload)?.channelId, requestId))) return;
         await this.handleSoundboardPlay(session, payload as SoundboardPlayPayload, requestId);
         break;
 
@@ -442,6 +462,10 @@ export class WebSocketServer {
     // Populate current voice states into serverDetails
     result.serverDetails.voiceStates = this.signalingService.getAllVoiceStates();
 
+    // Remember exactly which channels this client was told about, so later role
+    // or privacy changes can be reconciled into deltas (#384).
+    session.visibleChannelIds = new Set(result.serverDetails.channels.map((c) => c.id));
+
     // Send AUTH_SUCCESS to the connecting client
     const successPayload: AuthSuccessPayload = {
       server: result.serverDetails,
@@ -493,8 +517,8 @@ export class WebSocketServer {
       return;
     }
 
-    // Broadcast message to all connected users
-    this.broadcast({
+    // Broadcast message to everyone allowed into this channel (#384).
+    await this.broadcastToChannel(result.message.channelId, {
       type: MessageType.CHAT_MESSAGE,
       requestId,
       payload: result.message,
@@ -573,11 +597,60 @@ export class WebSocketServer {
     }
 
     const channelPayload: ChannelCreatedPayload = { channel: result.channel };
-    this.broadcast({
+    // The author gets the correlated reply first — the client awaits it by
+    // requestId — and is marked as already knowing the channel so the
+    // reconciliation below does not send it twice. Everyone else allowed in
+    // learns about it through that same reconciliation (#384).
+    this.send(session.ws, {
       type: MessageType.CHANNEL_CREATED,
       requestId,
       payload: channelPayload,
     });
+    session.visibleChannelIds?.add(result.channel.id);
+
+    await this.reconcileChannelVisibility();
+  }
+
+  private async handleChannelUpdate(
+    session: ClientSession,
+    payload: ChannelUpdatePayload,
+    requestId?: string
+  ): Promise<void> {
+    const result = await this.channelService.updateChannel(payload);
+    if (!result.success || !result.channel) {
+      this.sendError(
+        session.ws,
+        result.errorCode || ProtocolErrorCode.BAD_REQUEST,
+        result.errorMessage || 'Erro ao atualizar canal',
+        requestId
+      );
+      return;
+    }
+
+    const channel = result.channel;
+    const updatedPayload: ChannelUpdatedPayload = { channel };
+    this.send(session.ws, {
+      type: MessageType.CHANNEL_UPDATED,
+      requestId,
+      payload: updatedPayload,
+    });
+
+    // CHANNEL_UPDATED only makes sense for clients that already have the channel
+    // and keep access to it. Those who just gained or lost it are served by the
+    // reconciliation, which sends them a CREATED or a DELETED instead (#384).
+    const audience = await this.resolveChannelAudience(channel);
+    for (const [ws, peer] of this.sessions.entries()) {
+      if (ws === session.ws || !peer.user || ws.readyState !== WebSocket.OPEN) continue;
+      if (!peer.visibleChannelIds?.has(channel.id)) continue;
+      if (!audience.has(peer.user.id)) continue;
+
+      this.send(ws, {
+        type: MessageType.CHANNEL_UPDATED,
+        payload: updatedPayload,
+      });
+    }
+
+    await this.reconcileChannelVisibility();
   }
 
   private async handleChannelDelete(
@@ -613,11 +686,16 @@ export class WebSocketServer {
     }
 
     const channelPayload: ChannelDeletedPayload = { channelId: payload.channelId };
-    this.broadcast({
+    this.send(session.ws, {
       type: MessageType.CHANNEL_DELETED,
       requestId,
       payload: channelPayload,
     });
+    session.visibleChannelIds?.delete(payload.channelId);
+
+    // Everyone else who could see it is told by the reconciliation, which no
+    // longer finds the channel and therefore removes it from their list (#384).
+    await this.reconcileChannelVisibility();
   }
 
   private async handleUserChangeNickname(
@@ -817,8 +895,9 @@ export class WebSocketServer {
       voiceState: result.voiceState,
     };
 
-    // Broadcast to all clients so everyone knows who is in which voice channel
-    this.broadcast({
+    // Scoped to the channel's audience so a private room's activity does not
+    // reach members who cannot see it (#384).
+    await this.broadcastToChannel(payload.channelId, {
       type: MessageType.VOICE_USER_JOINED,
       requestId,
       payload: joinPayload,
@@ -840,7 +919,7 @@ export class WebSocketServer {
         sessionId: session.sessionId,
       };
 
-      this.broadcast({
+      await this.broadcastToChannel(previous.channelId, {
         type: MessageType.VOICE_USER_LEFT,
         requestId,
         payload: leavePayload,
@@ -920,6 +999,12 @@ export class WebSocketServer {
       requestId,
       payload,
     });
+
+    // Roles decide who may see a private channel, so any change to them can
+    // grant or revoke access. Reconciling here covers every role mutation at
+    // once — create, update, delete, assign and unassign all end up in this
+    // method (#384).
+    await this.reconcileChannelVisibility();
   }
 
   private async handleRoleCreate(session: ClientSession, payload: RoleCreatePayload, requestId?: string): Promise<void> {
@@ -1021,6 +1106,18 @@ export class WebSocketServer {
       return;
     }
 
+    // Moving someone into a private channel they cannot access would drop them
+    // into a room that is not even in their channel list (#384).
+    if (!(await this.channelService.canUserAccessChannel(previous.userId, payload.channelId))) {
+      this.sendError(
+        session.ws,
+        ProtocolErrorCode.PERMISSION_DENIED,
+        'O usuário não tem acesso a esse canal.',
+        requestId
+      );
+      return;
+    }
+
     const joinResult = await this.signalingService.joinVoiceChannel(payload.targetSessionId, previous.userId, payload.channelId);
     if (!joinResult.success || !joinResult.voiceState) {
       this.sendError(session.ws, joinResult.errorCode || ProtocolErrorCode.BAD_REQUEST, joinResult.errorMessage || 'Não foi possível mover o usuário.', requestId);
@@ -1033,7 +1130,9 @@ export class WebSocketServer {
       requestId,
       payload: { channelId: previous.channelId, userId: previous.userId, sessionId: previous.sessionId },
     });
-    this.broadcast({
+    // The arrival is scoped like any other join, so a private room's activity
+    // stays with the members who can see it (#384).
+    await this.broadcastToChannel(payload.channelId, {
       type: MessageType.VOICE_USER_JOINED,
       requestId,
       payload: {
@@ -1249,6 +1348,177 @@ export class WebSocketServer {
         ws.send(raw);
       }
     }
+  }
+
+  /**
+   * Broadcasts an event that belongs to a channel, reaching only the members
+   * allowed into it (#384). Public channels take the plain broadcast path, so
+   * the common case costs nothing extra.
+   */
+  private async broadcastToChannelAudience(
+    channel: { isPrivate: boolean; allowedRoleIds: string[] },
+    message: ProtocolMessage,
+    ignoreWs?: WebSocket
+  ): Promise<void> {
+    if (!channel.isPrivate) {
+      this.broadcast(message, ignoreWs);
+      return;
+    }
+
+    const allowedUserIds = await this.resolveChannelAudience(channel);
+    const raw = JSON.stringify(message);
+    for (const [ws, session] of this.sessions.entries()) {
+      if (ws !== ignoreWs && ws.readyState === WebSocket.OPEN && session.user && allowedUserIds.has(session.user.id)) {
+        ws.send(raw);
+      }
+    }
+  }
+
+  /**
+   * Ids of the connected users allowed into a channel. Permissions are resolved
+   * once per person, not per socket, since one member may hold several
+   * connections (#309), and the whole set is settled before anything is sent so
+   * the delivery loop itself stays synchronous.
+   */
+  private async resolveChannelAudience(channel: {
+    isPrivate: boolean;
+    allowedRoleIds: string[];
+  }): Promise<Set<string>> {
+    const userIds = new Set<string>();
+    for (const session of this.sessions.values()) {
+      if (session.user) userIds.add(session.user.id);
+    }
+
+    const allowed = new Set<string>();
+    await Promise.all(
+      Array.from(userIds).map(async (userId) => {
+        const context = await this.channelService.getAccessContext(userId);
+        if (canAccessChannel(channel, context.permissions, context.roleIds)) {
+          allowed.add(userId);
+        }
+      })
+    );
+    return allowed;
+  }
+
+  /**
+   * Guards an action targeting a channel the caller may not be allowed into.
+   *
+   * The refusal deliberately reuses CHANNEL_NOT_FOUND: answering "you lack
+   * access" would confirm that a private channel with that id exists, which is
+   * exactly what hiding it is meant to prevent (#384).
+   */
+  private async requireChannelAccess(
+    session: ClientSession,
+    channelId: string | undefined,
+    requestId?: string
+  ): Promise<boolean> {
+    if (!session.user) return false;
+    if (channelId && (await this.channelService.canUserAccessChannel(session.user.id, channelId))) return true;
+
+    this.sendError(session.ws, ProtocolErrorCode.CHANNEL_NOT_FOUND, 'Canal não encontrado', requestId);
+    return false;
+  }
+
+  /**
+   * Scopes an event to the members allowed into the channel it belongs to
+   * (#384). Falls back to a plain broadcast when the channel is gone, matching
+   * the previous behaviour for events that outlive their channel.
+   */
+  private async broadcastToChannel(
+    channelId: string,
+    message: ProtocolMessage,
+    ignoreWs?: WebSocket
+  ): Promise<void> {
+    const channel = await this.channelService.getChannelSummary(channelId);
+    if (!channel) {
+      this.broadcast(message, ignoreWs);
+      return;
+    }
+    await this.broadcastToChannelAudience(channel, message, ignoreWs);
+  }
+
+  /**
+   * Brings every client's channel list back in sync with what it is allowed to
+   * see (#384), pushing only the difference: channels that just became visible
+   * arrive as CHANNEL_CREATED, ones that no longer are leave as CHANNEL_DELETED.
+   *
+   * Anyone who loses access while sitting in that voice channel is disconnected
+   * from it, otherwise they would keep talking in a room they can no longer see.
+   */
+  private async reconcileChannelVisibility(): Promise<void> {
+    const channels = await this.channelService.listChannels();
+    const channelsById = new Map(channels.map((channel) => [channel.id, channel]));
+
+    const contexts = new Map<string, { permissions: number; roleIds: string[] }>();
+    const userIds = new Set<string>();
+    for (const session of this.sessions.values()) {
+      if (session.user) userIds.add(session.user.id);
+    }
+    await Promise.all(
+      Array.from(userIds).map(async (userId) => {
+        contexts.set(userId, await this.channelService.getAccessContext(userId));
+      })
+    );
+
+    for (const [ws, session] of this.sessions.entries()) {
+      if (!session.user || ws.readyState !== WebSocket.OPEN) continue;
+
+      const context = contexts.get(session.user.id);
+      if (!context) continue;
+
+      const previouslyVisible = session.visibleChannelIds ?? new Set<string>();
+      const nowVisible = new Set(
+        channels
+          .filter((channel) => canAccessChannel(channel, context.permissions, context.roleIds))
+          .map((channel) => channel.id)
+      );
+
+      for (const channelId of nowVisible) {
+        if (previouslyVisible.has(channelId)) continue;
+        const channel = channelsById.get(channelId);
+        if (!channel) continue;
+        this.send(ws, {
+          type: MessageType.CHANNEL_CREATED,
+          payload: { channel } as ChannelCreatedPayload,
+        });
+      }
+
+      for (const channelId of previouslyVisible) {
+        if (nowVisible.has(channelId)) continue;
+        if (session.sessionId) this.evictFromVoiceChannel(session.sessionId, channelId);
+        this.send(ws, {
+          type: MessageType.CHANNEL_DELETED,
+          payload: { channelId } as ChannelDeletedPayload,
+        });
+      }
+
+      session.visibleChannelIds = nowVisible;
+    }
+  }
+
+  /**
+   * Removes one connection from a voice channel it may no longer be in, telling
+   * the remaining participants it left (#384). No-op when it was not connected.
+   */
+  private evictFromVoiceChannel(sessionId: string, channelId: string): void {
+    const participants = this.signalingService.getParticipantsInChannel(channelId);
+    const participant = participants.find((p) => p.sessionId === sessionId);
+    if (!participant) return;
+
+    this.signalingService.leaveVoiceChannel(sessionId);
+    const leavePayload: VoiceUserLeftPayload = {
+      channelId,
+      userId: participant.userId,
+      sessionId,
+    };
+    // Deliberately unscoped: the person being evicted is, by definition, no
+    // longer in the channel's audience, and they still need this event to clear
+    // their own voice state before the channel disappears from their list.
+    this.broadcast({
+      type: MessageType.VOICE_USER_LEFT,
+      payload: leavePayload,
+    });
   }
 
   private async handleGetServerInviteInfo(session: ClientSession, requestId?: string): Promise<void> {

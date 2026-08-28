@@ -35,3 +35,25 @@ export function hasPermission(userPermissions: number, permission: Permission): 
 export function stripAdministrator(permissions: number): number {
   return (permissions & ~Permission.ADMINISTRATOR) >>> 0;
 }
+
+/**
+ * Whether a member may see and use a channel (#384).
+ *
+ * MANAGE_CHANNELS grants full access on purpose: whoever can edit a channel
+ * could simply add their own role to it, so withholding the content would be
+ * an illusion of privacy rather than actual protection. `hasPermission` already
+ * treats ADMINISTRATOR as a wildcard, and the owner is handed
+ * ADMIN_PERMISSIONS, so both are covered by the same check.
+ *
+ * A private channel with no allowed roles resolves to managers only, which is
+ * the safe direction to fail towards when its last allowed role is deleted.
+ */
+export function canAccessChannel(
+  channel: { isPrivate: boolean; allowedRoleIds: readonly string[] },
+  userPermissions: number,
+  userRoleIds: readonly string[]
+): boolean {
+  if (!channel.isPrivate) return true;
+  if (hasPermission(userPermissions, Permission.MANAGE_CHANNELS)) return true;
+  return channel.allowedRoleIds.some((roleId) => userRoleIds.includes(roleId));
+}

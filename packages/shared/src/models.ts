@@ -29,6 +29,18 @@ export interface ChannelSummary {
   position: number;
   createdAt: number;
   maxParticipants?: number;
+  /**
+   * Restricts the channel to members holding one of `allowedRoleIds` (#384).
+   * The server never sends a channel the recipient cannot access, so receiving
+   * one already means it is visible to you — this flag only drives the UI badge
+   * and the editing form.
+   */
+  isPrivate: boolean;
+  /**
+   * Roles allowed into a private channel. Empty on public channels, and also
+   * valid on a private one, where it means "managers only".
+   */
+  allowedRoleIds: string[];
 }
 
 export type AttachmentKind = 'image' | 'video' | 'file';
