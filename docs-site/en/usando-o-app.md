@@ -20,6 +20,8 @@ Each text channel has history saved on the server, avatars, timestamps, basic fo
 
 The `< >` button, next to the smiley, opens a window for pasting code. Pick the language from the list (or leave it on *Plain text*) and send it with the button or with `Ctrl+Enter`.
 
+Inside the window `Tab` indents instead of jumping to the next field, and `Shift+Tab` removes the indentation. With several lines selected it applies to all of them at once.
+
 In the chat the code shows up in a highlighted block, with the language name on top and a **Copy** button that puts the snippet on the clipboard without any formatting. The window's counter already includes the block markers, so it shows the real size of the message that will be sent.
 
 You can also type it straight into the message field: wrapping the snippet in three backticks (```` ``` ````) does the same, and writing the language right after the first backtick (for example ```` ```python ````) turns syntax highlighting on.

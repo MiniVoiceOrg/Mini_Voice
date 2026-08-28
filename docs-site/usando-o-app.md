@@ -20,6 +20,8 @@ Cada canal de texto tem histórico salvo no servidor, avatares, horários, forma
 
 O botão `< >`, ao lado da carinha, abre uma janela para colar código. Escolha a linguagem na lista (ou deixe em *Texto simples*) e envie com o botão ou com `Ctrl+Enter`.
 
+Dentro da janela o `Tab` indenta em vez de pular para o próximo campo, e `Shift+Tab` remove a indentação. Com várias linhas selecionadas, vale para todas de uma vez.
+
 No chat o código aparece em um bloco destacado, com o nome da linguagem no topo e um botão **Copiar** que leva o trecho para a área de transferência sem a formatação. O contador da janela já inclui as marcações do bloco, então ele mostra o tamanho real da mensagem que será enviada.
 
 Quem preferir digitar direto no campo de mensagem também pode: envolver o trecho em três crases (```` ``` ````) tem o mesmo efeito, e escrever a linguagem logo depois da primeira crase (por exemplo ```` ```python ````) liga o destaque de sintaxe.

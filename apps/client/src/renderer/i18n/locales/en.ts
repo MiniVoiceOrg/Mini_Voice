@@ -140,7 +140,7 @@ export const en: TranslationMap = {
   'chat.codeModalPlaceholder': 'Paste or write your code here…',
   'chat.codeModalSubmit': 'Send code',
   'chat.codeModalEmpty': 'Write some code before sending.',
-  'chat.codeModalHint': 'Shift+Enter for a new line. Ctrl+Enter sends.',
+  'chat.codeModalHint': 'Tab indents, Shift+Tab outdents. Ctrl+Enter sends.',
   'chat.codeBlockPlain': 'Code',
   'chat.codeBlockCopy': 'Copy',
   'chat.codeBlockCopied': 'Copied!',
