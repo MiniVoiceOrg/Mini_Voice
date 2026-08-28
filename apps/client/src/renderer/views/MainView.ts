@@ -532,7 +532,7 @@ export class MainView {
         const isRestricted = showRestrictedIcon && !isActive;
 
         return `
-          <div style="display: flex; flex-direction: column;">
+          <div class="voice-channel-group" data-channel-id="${c.id}" style="display: flex; flex-direction: column;">
             <div class="channel-item ${isActive ? 'active' : ''} ${isRestricted ? 'restricted' : ''}" data-channel-id="${c.id}" data-channel-type="VOICE">
               <span class="material-symbols-outlined md-16 channel-icon" style="color: ${isActive ? 'var(--success)' : 'var(--text-muted)'};">volume_up</span>
               <span class="channel-name">${escapeHtml(c.name)}</span>
@@ -607,9 +607,9 @@ export class MainView {
       }
     });
 
-    // Voice channel drop targets for user drag-and-drop (#248)
+    // Voice channel drop targets for user drag-and-drop (#248, #357)
     if (serverStore.hasPermission(Permission.MOVE_MEMBERS)) {
-      this.container.querySelectorAll('.channel-item[data-channel-type="VOICE"]').forEach((item) => {
+      this.container.querySelectorAll('.voice-channel-group').forEach((item) => {
         const el = item as HTMLElement;
         el.addEventListener('dragover', (e: Event) => {
           const de = e as DragEvent;
@@ -632,10 +632,13 @@ export class MainView {
           const sessionId = de.dataTransfer?.getData('text/monky-session-id');
           const channelId = el.getAttribute('data-channel-id');
           if (sessionId && channelId) {
-            void networkClient.sendRequest(MessageType.ADMIN_MOVE_USER, {
-              targetSessionId: sessionId,
-              channelId,
-            }).catch(() => {});
+            const currentParticipant = participantManager.get(sessionId);
+            if (currentParticipant?.voiceState?.channelId !== channelId) {
+              void networkClient.sendRequest(MessageType.ADMIN_MOVE_USER, {
+                targetSessionId: sessionId,
+                channelId,
+              }).catch(() => {});
+            }
           }
         });
       });
@@ -818,7 +821,11 @@ export class MainView {
 
     voiceStore.setChannel(channelId);
     if (!silent) soundEffects.play('join_voice');
-    networkClient.send(MessageType.VOICE_JOIN, { channelId });
+    networkClient.send(MessageType.VOICE_JOIN, {
+      channelId,
+      isMuted: voiceStore.isMuted,
+      isDeafened: voiceStore.isDeafened,
+    });
 
     // Connect to all peers already in this voice channel
     const peersInChannel = participantManager.getInVoiceChannel(channelId);

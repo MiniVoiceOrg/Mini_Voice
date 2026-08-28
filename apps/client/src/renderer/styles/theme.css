@@ -1079,10 +1079,12 @@ input:focus, textarea:focus, select:focus {
   opacity: 0.4;
 }
 
-.channel-item.drop-target {
+.channel-item.drop-target,
+.voice-channel-group.drop-target {
   background: rgba(88, 101, 242, 0.15) !important;
   outline: 2px dashed var(--accent-primary);
   outline-offset: -2px;
+  border-radius: var(--radius-md);
 }
 
 /* Bottom User Bar */
