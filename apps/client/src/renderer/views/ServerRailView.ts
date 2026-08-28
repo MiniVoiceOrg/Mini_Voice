@@ -7,6 +7,11 @@ import { audioProcessor } from '../core/AudioProcessor';
 import { webRtcManager } from '../core/WebRtcManager';
 import { showConfirm, showAlert } from './Dialog';
 import { checkServerOnline, fetchServerPreview } from '../utils/serverStatus';
+import {
+  captureHostedServerLeaveState,
+  confirmStopHostedServer,
+  promptShutdownAfterLeave,
+} from '../utils/hostedServer';
 import { soundEffects } from '../core/SoundEffects';
 import { getAvatarUrl, toAbsoluteServerIconUrl } from '../utils/avatar';
 import { t } from '../i18n';
@@ -68,10 +73,14 @@ export class ServerRailView {
         variant: 'warning',
       });
       if (!confirmed) return;
+      // Captured before the socket closes: afterwards there is no way to tell
+      // whether this user was hosting the server they just left (#334).
+      const leaveState = await captureHostedServerLeaveState();
       soundEffects.play('leave_voice');
       audioProcessor.stopMicrophone();
       webRtcManager.closeAllPeers();
       networkClient.disconnect();
+      if (leaveState) await promptShutdownAfterLeave(leaveState);
     });
 
     railEl.querySelectorAll('.server-rail-avatar').forEach((btn) => {
@@ -223,6 +232,8 @@ export class ServerRailView {
     try {
       const status = await window.api.hostServerStatus?.();
       if (status?.isRunning) {
+        // Somebody else may be on the server that is about to be replaced (#334).
+        if (!(await confirmStopHostedServer())) return false;
         await window.api.hostServerStop?.();
       }
 

@@ -40,7 +40,11 @@ export interface ElectronApi {
   hostServerClearLogs: () => Promise<void>;
   hostServerStats: () => Promise<ServerStats | null>;
   onHostServerLog: (callback: (entry: LogEntry) => void) => () => void;
+  onHostServerStatusChanged: (
+    callback: (status: { isRunning: boolean; port: number | null; serverId: string | null }) => void
+  ) => () => void;
   getDesktopSources: () => Promise<DesktopSource[]>;
+  ensureScreenPermission: () => Promise<boolean>;
   selectImageDialog: () => Promise<ImageSelectionResult | null>;
   selectSoundFile: () => Promise<string | null>;
   selectSoundboardFolder: () => Promise<string | null>;
@@ -53,6 +57,7 @@ export interface ElectronApi {
   minimize: () => Promise<void>;
   maximize: () => Promise<void>;
   toggleMaximize: () => Promise<void>;
+  setWindowInServer: (inServer: boolean) => Promise<void>;
   close: () => Promise<void>;
   getAppVersion: () => Promise<string>;
   checkForUpdates: () => Promise<UpdateCheckResult>;
@@ -116,7 +121,16 @@ const api: ElectronApi = {
     ipcRenderer.on('server-host:log', listener);
     return () => ipcRenderer.removeListener('server-host:log', listener);
   },
+  onHostServerStatusChanged: (callback) => {
+    const listener = (
+      _event: unknown,
+      status: { isRunning: boolean; port: number | null; serverId: string | null }
+    ) => callback(status);
+    ipcRenderer.on('server-host:status-changed', listener);
+    return () => ipcRenderer.removeListener('server-host:status-changed', listener);
+  },
   getDesktopSources: () => ipcRenderer.invoke('screen-share:get-sources'),
+  ensureScreenPermission: (): Promise<boolean> => ipcRenderer.invoke('screen-share:ensure-permission'),
   selectImageDialog: () => ipcRenderer.invoke('dialog:select-image'),
   selectSoundFile: () => ipcRenderer.invoke('dialog:select-sound-file'),
   selectSoundboardFolder: () => ipcRenderer.invoke('dialog:select-soundboard-folder'),
@@ -141,6 +155,7 @@ const api: ElectronApi = {
   minimize: () => ipcRenderer.invoke('window:minimize'),
   maximize: () => ipcRenderer.invoke('window:maximize'),
   toggleMaximize: () => ipcRenderer.invoke('window:toggle-maximize'),
+  setWindowInServer: (inServer) => ipcRenderer.invoke('window:set-in-server', inServer),
   close: () => ipcRenderer.invoke('window:close'),
   getAppVersion: () => ipcRenderer.invoke('app:get-version'),
   checkForUpdates: () => ipcRenderer.invoke('updater:check'),

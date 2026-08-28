@@ -26,6 +26,12 @@ export class ScreenSharePickerModal {
   public async open(): Promise<void> {
     this.close();
 
+    // macOS can silently deny capture after an update (#327); the picker would
+    // only show black thumbnails, so ask the main process to sort it out first.
+    if (window.api?.ensureScreenPermission && !(await window.api.ensureScreenPermission())) {
+      return;
+    }
+
     let sources: DesktopSource[] = [];
     if (window.api?.getDesktopSources) {
       sources = (await window.api.getDesktopSources()) as DesktopSource[];

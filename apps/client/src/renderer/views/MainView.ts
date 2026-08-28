@@ -21,6 +21,7 @@ import { contextMenu, ContextMenuItem } from './ContextMenu';
 import { showConfirm, showAlert } from './Dialog';
 import { setButtonLoading, withButtonLoading } from '../utils/buttonLoading';
 import { checkServerOnline } from '../utils/serverStatus';
+import { captureHostedServerLeaveState, promptShutdownAfterLeave } from '../utils/hostedServer';
 import { userContextMenu } from './UserContextMenu';
 import { soundboardModal } from './SoundboardModal';
 import { soundEffects } from '../core/SoundEffects';
@@ -1099,10 +1100,14 @@ export class MainView {
         variant: 'danger',
       });
       if (confirmed) {
+        // Captured before the socket closes: afterwards there is no way to tell
+        // whether this user was hosting the server they just left (#334).
+        const leaveState = await captureHostedServerLeaveState();
         soundEffects.play('leave_voice');
         audioProcessor.stopMicrophone();
         webRtcManager.closeAllPeers();
         networkClient.disconnect();
+        if (leaveState) await promptShutdownAfterLeave(leaveState);
       }
     });
 

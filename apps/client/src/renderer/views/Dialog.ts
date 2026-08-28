@@ -16,6 +16,8 @@ interface ConfirmOptions {
   confirmLabel?: string;
   cancelLabel?: string;
   variant?: DialogVariant;
+  /** Renders a checkbox above the buttons, e.g. "não perguntar novamente" (#334). */
+  checkboxLabel?: string;
 }
 
 const VARIANT_ICON: Record<DialogVariant, { icon: string; color: string }> = {
@@ -33,7 +35,8 @@ function buildDialog(params: {
   confirmLabel: string;
   cancelLabel: string;
   confirmClass: string;
-  onResolve: (confirmed: boolean) => void;
+  checkboxLabel?: string;
+  onResolve: (confirmed: boolean, checked: boolean) => void;
 }): void {
   const { icon, color } = VARIANT_ICON[params.variant];
 
@@ -48,6 +51,14 @@ function buildDialog(params: {
         </div>
       </div>
       <div class="dialog-message">${escapeHtml(params.message)}</div>
+      ${
+        params.checkboxLabel
+          ? `<label class="dialog-checkbox">
+               <input type="checkbox" data-action="remember">
+               <span>${escapeHtml(params.checkboxLabel)}</span>
+             </label>`
+          : ''
+      }
       <div class="modal-footer">
         ${
           params.showCancel
@@ -59,13 +70,16 @@ function buildDialog(params: {
     </div>
   `;
 
+  const checkbox = backdrop.querySelector('[data-action="remember"]') as HTMLInputElement | null;
+
   let settled = false;
   const settle = (confirmed: boolean): void => {
     if (settled) return;
     settled = true;
+    const checked = !!checkbox?.checked;
     document.removeEventListener('keydown', onKeyDown, true);
     backdrop.remove();
-    params.onResolve(confirmed);
+    params.onResolve(confirmed, checked);
   };
 
   const onKeyDown = (e: KeyboardEvent): void => {
@@ -117,6 +131,28 @@ export function showConfirm(options: ConfirmOptions): Promise<boolean> {
       cancelLabel: options.cancelLabel ?? t('common.cancel'),
       confirmClass: options.variant === 'danger' ? 'btn-danger' : 'btn-primary',
       onResolve: (confirmed) => resolve(confirmed),
+    });
+  });
+}
+
+/**
+ * Confirmation that also reports the state of an opt-out checkbox, so a prompt
+ * can offer "não perguntar novamente" without a bespoke modal (#334).
+ */
+export function showConfirmWithOption(
+  options: ConfirmOptions & { checkboxLabel: string }
+): Promise<{ confirmed: boolean; checked: boolean }> {
+  return new Promise((resolve) => {
+    buildDialog({
+      title: options.title ?? t('dialog.confirmTitle'),
+      message: options.message,
+      variant: options.variant ?? 'warning',
+      showCancel: true,
+      confirmLabel: options.confirmLabel ?? t('common.confirm'),
+      cancelLabel: options.cancelLabel ?? t('common.cancel'),
+      confirmClass: options.variant === 'danger' ? 'btn-danger' : 'btn-primary',
+      checkboxLabel: options.checkboxLabel,
+      onResolve: (confirmed, checked) => resolve({ confirmed, checked }),
     });
   });
 }

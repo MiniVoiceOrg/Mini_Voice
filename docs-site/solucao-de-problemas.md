@@ -77,6 +77,13 @@ liberado.
 
 ### Como voltar a compartilhar a tela
 
+A partir da versão `3.0.0-beta007`, o próprio Monky detecta esse estado. Ao
+clicar em **Compartilhar Tela**, se o macOS estiver negando a captura, aparece um
+aviso com o botão **Reabrir permissão**: ele limpa a autorização antiga e
+reinicia o app, e o macOS pergunta de novo na próxima tentativa. É só conceder.
+
+Se preferir fazer na mão (ou estiver numa versão anterior):
+
 1. Feche o Monky por completo (inclusive o ícone na barra de menus).
 2. No **Terminal**, rode:
 

@@ -7,6 +7,9 @@ Abra pelo ícone de engrenagem na tela de conexão ou na barra inferior.
 - **Sensibilidade de Voz (VAD)** — ajuste olhando o medidor; deixe o marcador acima do nível em silêncio.
 - **Supressão de Ruído (RNNoise)** — reduz teclado, cliques e ruído ambiente.
 - **Perfil de Qualidade e Desempenho** — afeta só o que você transmite.
+- **Comportamento** — manter o Monky na bandeja ao fechar a janela e perguntar
+  antes de desligar um servidor hospedado nesta máquina quando você for a última
+  pessoa a sair dele.
 - **Atualizações** — versão atual e verificação manual.
 - **Comunidade** — atalhos para ideias, votação e bugs.
 

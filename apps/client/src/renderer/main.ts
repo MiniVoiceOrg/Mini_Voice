@@ -296,6 +296,8 @@ class App {
       const previousVoiceChannelId = voiceStore.currentVoiceChannelId;
 
       serverStore.setServerDetails(payload.server, payload.currentUser);
+      // The in-server layout needs more room than the connection card (#342).
+      void window.api?.setWindowInServer?.(true);
       // Seed unread @-mention badges, including mentions received while this
       // user was offline (#14).
       chatStore.setMentions(payload.server.mentionedChannelIds ?? []);
@@ -350,6 +352,7 @@ class App {
 
     appEvents.on('network.disconnected', () => {
       this.hideReconnectOverlay();
+      void window.api?.setWindowInServer?.(false);
       serverStore.clear();
       chatStore.clear();
       voiceStore.reset();

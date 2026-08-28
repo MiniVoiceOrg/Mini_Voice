@@ -72,6 +72,21 @@ export class AboutTab {
             <span class="toggle-slider"></span>
           </label>
         </div>
+        <div style="display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-top: 12px; padding-top: 12px; border-top: 1px dashed var(--border-color);">
+          <div>
+            <label style="display: flex; align-items: center; gap: 6px; margin-bottom: 2px; cursor: pointer; font-weight: 600;" for="checkbox-ask-shutdown">
+              <span class="material-symbols-outlined md-16" style="color: var(--accent-primary);">dns</span>
+              ${t('settings.askShutdownOnLastLeave')}
+            </label>
+            <div style="font-size: 11px; color: var(--text-muted);">
+              ${t('settings.askShutdownOnLastLeaveDesc')}
+            </div>
+          </div>
+          <label class="toggle-switch" aria-label="${t('settings.askShutdownOnLastLeave')}">
+            <input id="checkbox-ask-shutdown" type="checkbox" ${settingsStore.askShutdownOnLastLeave ? 'checked' : ''}>
+            <span class="toggle-slider"></span>
+          </label>
+        </div>
       </div>
 
       <!-- Community -->
@@ -117,6 +132,7 @@ export class AboutTab {
     const checkboxBeta = container.querySelector<HTMLInputElement>('#checkbox-update-beta');
     const checkboxAutoStart = container.querySelector<HTMLInputElement>('#checkbox-auto-start');
     const checkboxMinimizeToTray = container.querySelector<HTMLInputElement>('#checkbox-minimize-to-tray');
+    const checkboxAskShutdown = container.querySelector<HTMLInputElement>('#checkbox-ask-shutdown');
     const btnSuggest = container.querySelector<HTMLButtonElement>('#btn-suggest-idea');
     const btnVote = container.querySelector<HTMLButtonElement>('#btn-vote-ideas');
     const btnReport = container.querySelector<HTMLButtonElement>('#btn-report-bug');
@@ -161,6 +177,11 @@ export class AboutTab {
       if (window.api?.setMinimizeToTray) {
         window.api.setMinimizeToTray(enabled).catch(() => {});
       }
+    });
+
+    checkboxAskShutdown?.addEventListener('change', () => {
+      settingsStore.askShutdownOnLastLeave = checkboxAskShutdown.checked;
+      settingsStore.save();
     });
 
     const openLink = (url: string) => {

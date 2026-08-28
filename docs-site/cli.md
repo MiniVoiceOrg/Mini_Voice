@@ -201,6 +201,10 @@ O processo continua listado no PM2 de propósito: removê-lo descartaria os logs
 justamente quando eles mais importam, logo depois de uma queda ou parada.
 `monky logs` continua funcionando com o servidor parado.
 
+Se houver gente conectada no momento, o CLI avisa quantas pessoas serão
+desconectadas e pede confirmação antes de parar. Em terminal não interativo
+(scripts, cron) o aviso é exibido e a parada segue normalmente.
+
 ---
 
 ## `monky restart`
@@ -213,6 +217,9 @@ monky restart [--port <n>]
 
 O `ecosystem.config.cjs` é regravado antes do reinício, então uma porta ou nome
 alterados desde o último `start` passam a valer.
+
+Assim como no `stop`, se houver gente conectada o CLI avisa e pede confirmação
+antes de reiniciar.
 
 ---
 
@@ -430,6 +437,9 @@ monky destroy [--data <pasta>]
 Remove o banco, anexos, avatares e configurações, encerra o processo PM2 e tira
 o servidor do registro. Pede duas confirmações: digitar `DESTROY` e um "sim"
 final. Só aceita pastas que realmente contenham um servidor Monky.
+
+Se houver gente conectada, o aviso aparece antes das confirmações, informando
+quantas pessoas serão desconectadas.
 
 ---
 

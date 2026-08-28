@@ -923,11 +923,11 @@ export class VoiceStageView {
             ${isMini ? '' : `<span>${isScreenTile ? t('stage.loadingScreen') : t('stage.loadingCamera')}</span>`}
           </div>
         ` : ''}
-        ${(isScreenTile && !isLocked && !isMini && shareIndex <= 0) ? `
+        ${(isScreenTile && !isLocked && !isMini) ? `
           <div
             class="telemetry-overlay position-${settingsStore.screenShareTelemetryPosition}${settingsStore.screenShareTelemetryEnabled ? '' : ' is-hidden'}"
-            data-telemetry-session-id="${sidOf(p)}"
-          >${this.getTelemetryText(sidOf(p))}</div>
+            data-telemetry-key="${escapeHtml(tile.key)}"
+          >${escapeHtml(this.getTelemetryText(tile.key))}</div>
         ` : ''}
         ${isLocked ? `
           <div class="stage-watch-overlay${isMini ? ' stage-watch-overlay--mini' : ''}">
@@ -984,10 +984,11 @@ export class VoiceStageView {
     `;
   }
 
-  private getTelemetryText(sessionId: string): string {
-    const snapshot = this.telemetrySnapshots.get(sessionId);
+  /** Telemetry is keyed by tile, so each share reports its own numbers (#340). */
+  private getTelemetryText(tileKey: string): string {
+    const snapshot = this.telemetrySnapshots.get(tileKey);
     if (!snapshot) {
-      return 'Coletando...';
+      return t('stage.telemetryCollecting');
     }
 
     const lines = [
@@ -1038,19 +1039,31 @@ export class VoiceStageView {
       );
       overlay.classList.add(`position-${settingsStore.screenShareTelemetryPosition}`);
       overlay.classList.toggle('is-hidden', !settingsStore.screenShareTelemetryEnabled);
-      const sessionId = overlay.getAttribute('data-telemetry-session-id');
-      if (sessionId) {
-        overlay.textContent = this.getTelemetryText(sessionId);
+      const tileKey = overlay.getAttribute('data-telemetry-key');
+      if (tileKey) {
+        overlay.textContent = this.getTelemetryText(tileKey);
       }
     });
   }
 
+  /**
+   * Screen tiles currently on the stage. Built the same way as
+   * `buildStageTiles` so the keys match the overlays already in the DOM (#340).
+   */
+  private getScreenTiles(): StageTile[] {
+    if (!this.currentChannelId) return [];
+    const tiles: StageTile[] = [];
+    for (const p of participantManager.getInVoiceChannel(this.currentChannelId)) {
+      const isLocal = serverStore.isMySession(p.user.sessionId);
+      for (const shareId of this.getShareIds(p, isLocal)) {
+        tiles.push({ p, kind: 'screen', key: `${sidOf(p)}:screen:${shareId}`, shareId });
+      }
+    }
+    return tiles;
+  }
+
   private hasActiveScreenShares(): boolean {
-    if (!this.currentChannelId) return false;
-    return participantManager.getInVoiceChannel(this.currentChannelId).some((participant) => {
-      const isLocal = serverStore.isMySession(participant.user.sessionId);
-      return isLocal ? voiceStore.isScreenSharing : (participant.voiceState?.isScreenSharing ?? false);
-    });
+    return this.getScreenTiles().length > 0;
   }
 
   private syncTelemetryMonitor(): void {
@@ -1080,13 +1093,9 @@ export class VoiceStageView {
 
     this.telemetryRefreshInFlight = true;
     try {
-      const participants = participantManager.getInVoiceChannel(this.currentChannelId);
-      const screenParticipants = participants.filter((participant) => {
-        const isLocal = serverStore.isMySession(participant.user.sessionId);
-        return isLocal ? voiceStore.isScreenSharing : (participant.voiceState?.isScreenSharing ?? false);
-      });
+      const screenTiles = this.getScreenTiles();
 
-      if (screenParticipants.length === 0) {
+      if (screenTiles.length === 0) {
         this.telemetrySnapshots.clear();
         this.telemetryByteSamples.clear();
         this.applyTelemetryOverlayState();
@@ -1095,34 +1104,39 @@ export class VoiceStageView {
       }
 
       const nextSnapshots = new Map<string, ScreenTelemetrySnapshot>();
-      await Promise.all(screenParticipants.map(async (participant) => {
-        const snapshot = await this.collectTelemetrySnapshot(participant);
+      await Promise.all(screenTiles.map(async (tile) => {
+        const snapshot = await this.collectTelemetrySnapshot(tile);
         if (snapshot) {
-          nextSnapshots.set(sidOf(participant), snapshot);
+          nextSnapshots.set(tile.key, snapshot);
         }
       }));
 
       this.telemetrySnapshots = nextSnapshots;
-      this.pruneTelemetryByteSamples(Array.from(screenParticipants, (participant) => sidOf(participant)));
+      this.pruneTelemetryByteSamples(Array.from(screenTiles, (tile) => tile.key));
       this.applyTelemetryOverlayState();
     } finally {
       this.telemetryRefreshInFlight = false;
     }
   }
 
-  private async collectTelemetrySnapshot(participant: ParticipantViewModel): Promise<ScreenTelemetrySnapshot | null> {
-    const isLocal = serverStore.isMySession(participant.user.sessionId);
+  private async collectTelemetrySnapshot(tile: StageTile): Promise<ScreenTelemetrySnapshot | null> {
+    const isLocal = serverStore.isMySession(tile.p.user.sessionId);
     return isLocal
-      ? this.collectSenderTelemetry(sidOf(participant))
-      : this.collectReceiverTelemetry(sidOf(participant));
+      ? this.collectSenderTelemetry(tile.key, tile.shareId!)
+      : this.collectReceiverTelemetry(tile);
   }
 
-  private async collectSenderTelemetry(sessionId: string): Promise<ScreenTelemetrySnapshot | null> {
-    const peerConnections = webRtcManager.getPeerConnections();
-    const localTrack = this.getPrimaryLocalScreenTrack();
-    const fallback = this.getLocalScreenFallback();
+  /**
+   * Stats for one local share only (#340). Reading `getStats()` off the
+   * senders that carry this share — instead of the whole peer connection —
+   * keeps a second share's bitrate and resolution out of these numbers.
+   */
+  private async collectSenderTelemetry(tileKey: string, shareId: string): Promise<ScreenTelemetrySnapshot | null> {
+    const senders = webRtcManager.getScreenSendersForShare(shareId);
+    const localTrack = this.getLocalScreenTrack(shareId);
+    const fallback = this.getLocalScreenFallback(shareId);
 
-    if (peerConnections.length === 0) {
+    if (senders.length === 0) {
       return fallback;
     }
 
@@ -1135,9 +1149,9 @@ export class VoiceStageView {
     let totalBitrateKbps = 0;
     let reportCount = 0;
 
-    await Promise.all(peerConnections.map(async (pc, index) => {
+    await Promise.all(senders.map(async (sender, index) => {
       try {
-        const stats = await pc.getStats();
+        const stats = await sender.getStats();
         stats.forEach((report: any) => {
           const kind = report.kind || report.mediaType;
           if (report.type !== 'outbound-rtp' || kind !== 'video' || typeof report.bytesSent !== 'number') {
@@ -1158,7 +1172,7 @@ export class VoiceStageView {
             keyFramesEncoded += report.keyFramesEncoded;
           }
 
-          const bitrate = this.computeBitrateKbps(`sender:${sessionId}:${index}:${report.id}`, report.bytesSent);
+          const bitrate = this.computeBitrateKbps(`sender:${tileKey}:${index}:${report.id}`, report.bytesSent);
           if (bitrate !== null) {
             totalBitrateKbps += bitrate;
           }
@@ -1189,12 +1203,21 @@ export class VoiceStageView {
     };
   }
 
-  private async collectReceiverTelemetry(sessionId: string): Promise<ScreenTelemetrySnapshot | null> {
-    const pc = webRtcManager.getPeerConnection(sessionId);
-    if (!pc) return null;
+  /**
+   * Stats for one remote share only (#340). The receiver is matched by the
+   * routed screen track, so a peer sharing two screens (or a screen plus a
+   * camera) reports separate numbers on each tile.
+   */
+  private async collectReceiverTelemetry(tile: StageTile): Promise<ScreenTelemetrySnapshot | null> {
+    const sessionId = sidOf(tile.p);
+    const track = this.getRemoteScreenStream(tile)?.getVideoTracks()[0];
+    if (!track) return null;
+
+    const receiver = webRtcManager.getReceiverForTrack(sessionId, track.id);
+    if (!receiver) return null;
 
     try {
-      const stats = await pc.getStats();
+      const stats = await receiver.getStats();
       let snapshot: ScreenTelemetrySnapshot | null = null;
 
       stats.forEach((report: any) => {
@@ -1214,7 +1237,7 @@ export class VoiceStageView {
           fps: this.pickTelemetryNumber(null, report.framesPerSecond),
           width: this.pickTelemetryNumber(null, report.frameWidth),
           height: this.pickTelemetryNumber(null, report.frameHeight),
-          bitrateKbps: this.computeBitrateKbps(`receiver:${sessionId}:${report.id}`, report.bytesReceived) ?? 0,
+          bitrateKbps: this.computeBitrateKbps(`receiver:${tile.key}:${report.id}`, report.bytesReceived) ?? 0,
           codec: this.getCodecName(stats, report.codecId),
           framesEncoded: null,
           keyFramesEncoded: null,
@@ -1232,19 +1255,13 @@ export class VoiceStageView {
     }
   }
 
-  /**
-   * Screen telemetry is reported per participant, so with more than one share
-   * active it describes the first one (#253). The overlay is only rendered on
-   * that share's tile, so the numbers always match what they sit on top of.
-   */
-  private getPrimaryLocalScreenTrack(): MediaStreamTrack | null {
-    const [primaryShareId] = voiceStore.screenShareIds;
-    if (!primaryShareId) return null;
-    return videoService.getScreenStream(primaryShareId)?.getVideoTracks()[0] ?? null;
+  /** Local video track backing one screen share (#340). */
+  private getLocalScreenTrack(shareId: string): MediaStreamTrack | null {
+    return videoService.getScreenStream(shareId)?.getVideoTracks()[0] ?? null;
   }
 
-  private getLocalScreenFallback(): ScreenTelemetrySnapshot | null {
-    const track = this.getPrimaryLocalScreenTrack();
+  private getLocalScreenFallback(shareId: string): ScreenTelemetrySnapshot | null {
+    const track = this.getLocalScreenTrack(shareId);
     if (!track) return null;
 
     const settings = track.getSettings();
@@ -1290,10 +1307,10 @@ export class VoiceStageView {
     return (deltaBytes * 8) / (deltaMs / 1000) / 1000;
   }
 
-  private pruneTelemetryByteSamples(activeSessionIds: string[]): void {
-    const activePrefixes = new Set(activeSessionIds.map((sessionId) => `:${sessionId}:`));
+  private pruneTelemetryByteSamples(activeTileKeys: string[]): void {
+    const activeFragments = activeTileKeys.map((tileKey) => `:${tileKey}:`);
     for (const key of this.telemetryByteSamples.keys()) {
-      const isActive = Array.from(activePrefixes).some((prefix) => key.includes(prefix));
+      const isActive = activeFragments.some((fragment) => key.includes(fragment));
       if (!isActive) {
         this.telemetryByteSamples.delete(key);
       }
