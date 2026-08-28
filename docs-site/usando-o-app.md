@@ -18,4 +18,4 @@ Cada canal de texto tem histórico salvo no servidor, avatares, horários, forma
 
 ## Soundboard
 
-Em **Configurações › Soundboard**, escolha uma pasta com `.mp3`, `.wav` ou `.ogg`. Na chamada, toque pelo botão de soundboard. Volume e mudo local ficam nas mesmas configurações. O anfitrião pode desativar o soundboard do servidor inteiro.
+Em **Configurações › Soundboard**, escolha uma pasta com `.mp3`, `.wav` ou `.ogg`. Na chamada, toque pelo botão de soundboard. Volume e mudo local ficam nas mesmas configurações. O anfitrião pode desativar o soundboard do servidor inteiro e, em **Configurações do Servidor › Cargos**, liberar a permissão **Usar soundboard** apenas para os cargos desejados.

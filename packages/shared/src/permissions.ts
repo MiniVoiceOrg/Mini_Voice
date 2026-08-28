@@ -11,13 +11,15 @@ export enum Permission {
   READ_MESSAGES = 1 << 9,
   ATTACH_FILES = 1 << 10,
   ADMINISTRATOR = 1 << 11,
+  USE_SOUNDBOARD = 1 << 12,
 }
 
 export const DEFAULT_PERMISSIONS =
   Permission.SPEAK |
   Permission.SEND_MESSAGES |
   Permission.READ_MESSAGES |
-  Permission.ATTACH_FILES;
+  Permission.ATTACH_FILES |
+  Permission.USE_SOUNDBOARD;
 
 export const ADMIN_PERMISSIONS = 0xFFFFFFFF;
 

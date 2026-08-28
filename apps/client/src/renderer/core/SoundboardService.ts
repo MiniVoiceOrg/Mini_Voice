@@ -1,4 +1,4 @@
-import { MessageType, SoundboardPlayedPayload } from '@monky/shared';
+import { MessageType, Permission, SoundboardPlayedPayload } from '@monky/shared';
 import { appEvents } from './EventBus';
 import { networkClient } from './NetworkClient';
 import { settingsStore } from '../stores/settingsStore';
@@ -227,6 +227,11 @@ export class SoundboardService {
     // Check if server allows soundboard
     if (serverStore.serverDetails?.allowSoundboard === false) {
       console.warn('[SoundboardService] Soundboard is disabled on this server');
+      return false;
+    }
+
+    if (!serverStore.hasPermission(Permission.USE_SOUNDBOARD)) {
+      console.warn('[SoundboardService] Missing USE_SOUNDBOARD permission');
       return false;
     }
 

@@ -736,6 +736,10 @@ export class WebSocketServer {
       return;
     }
 
+    // Checked after the server-wide switch so the more specific "disabled here"
+    // message wins when the whole feature is off (#359).
+    if (!(await this.requirePermission(session, Permission.USE_SOUNDBOARD, requestId))) return;
+
     if (!payload || !payload.channelId || !payload.audioBase64 || !payload.soundName) {
       this.sendError(session.ws, ProtocolErrorCode.BAD_REQUEST, 'Dados de som inválidos', requestId);
       return;

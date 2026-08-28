@@ -165,6 +165,7 @@ export class ServerRolesTab {
       { key: Permission.SEND_MESSAGES, label: t('permissions.sendMessages'), description: t('permissions.sendMessagesDesc') },
       { key: Permission.READ_MESSAGES, label: t('permissions.readMessages'), description: t('permissions.readMessagesDesc') },
       { key: Permission.ATTACH_FILES, label: t('permissions.attachFiles'), description: t('permissions.attachFilesDesc') },
+      { key: Permission.USE_SOUNDBOARD, label: t('permissions.useSoundboard'), description: t('permissions.useSoundboardDesc') },
     ];
 
     return items.map((item) => `
