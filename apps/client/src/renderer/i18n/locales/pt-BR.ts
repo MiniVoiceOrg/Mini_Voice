@@ -47,6 +47,8 @@ export const ptBR = {
   'channelModal.typeLabel': 'Tipo de Canal',
   'channelModal.typeText': 'Texto',
   'channelModal.typeVoice': 'Voz',
+  'channelModal.typeTextDesc': 'Conversas por mensagens, com histórico, anexos e emojis.',
+  'channelModal.typeVoiceDesc': 'Conversas por áudio, com câmera e compartilhamento de tela.',
   'channelModal.nameLabel': 'Nome do Canal',
   'channelModal.namePlaceholder': 'Ex: jogos',
   'channelModal.submit': 'Criar Canal',

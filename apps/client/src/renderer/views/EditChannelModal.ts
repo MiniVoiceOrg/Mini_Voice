@@ -8,7 +8,7 @@ import {
   attachChannelPrivacyFields,
   readChannelPrivacyFields,
   renderChannelPrivacyFields,
-} from './channelPrivacyFields';
+} from './channelFormFields';
 
 /**
  * Editing an existing channel (#384): rename it and control who gets in.

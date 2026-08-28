@@ -6,7 +6,8 @@ import {
   attachChannelPrivacyFields,
   readChannelPrivacyFields,
   renderChannelPrivacyFields,
-} from './channelPrivacyFields';
+  renderChannelTypeFields,
+} from './channelFormFields';
 
 export class CreateChannelModal {
   private modalEl: HTMLElement | null = null;
@@ -27,21 +28,7 @@ export class CreateChannelModal {
         <div id="channel-error-banner" class="error-banner"></div>
 
         <form id="form-create-channel">
-          <div class="form-group">
-            <label>${t('channelModal.typeLabel')}</label>
-            <div style="display: flex; gap: 12px; margin-top: 4px;">
-              <label style="display: flex; align-items: center; gap: 6px; cursor: pointer; text-transform: none; color: var(--text-primary);">
-                <input type="radio" name="channel-type" value="TEXT" ${defaultType === 'TEXT' ? 'checked' : ''}>
-                <span class="material-symbols-outlined md-16" style="color: var(--text-muted);">tag</span>
-                <span>${t('channelModal.typeText')}</span>
-              </label>
-              <label style="display: flex; align-items: center; gap: 6px; cursor: pointer; text-transform: none; color: var(--text-primary);">
-                <input type="radio" name="channel-type" value="VOICE" ${defaultType === 'VOICE' ? 'checked' : ''}>
-                <span class="material-symbols-outlined md-16" style="color: var(--success);">volume_up</span>
-                <span>${t('channelModal.typeVoice')}</span>
-              </label>
-            </div>
-          </div>
+          ${renderChannelTypeFields(defaultType)}
 
           <div class="form-group">
             <label>${t('channelModal.nameLabel')}</label>
