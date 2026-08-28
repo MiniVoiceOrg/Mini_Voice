@@ -10,6 +10,7 @@ import { appEvents } from '../core/EventBus';
 import { participantManager, ParticipantViewModel } from '../core/ParticipantManager';
 import { networkClient } from '../core/NetworkClient';
 import { showAlert } from './Dialog';
+import { warnIfMoveBlocked } from '../utils/channelAccess';
 import { t } from '../i18n';
 
 export class UserContextMenu {
@@ -340,6 +341,10 @@ export class UserContextMenu {
       btn.addEventListener('click', () => {
         const channelId = btn.getAttribute('data-channel-id');
         if (!channelId) return;
+        if (warnIfMoveBlocked(user.id, user.nickname, channelId)) {
+          this.close();
+          return;
+        }
         const target = this.resolveVoiceTarget(user);
         void this.runAdminAction(() => networkClient.sendRequest(MessageType.ADMIN_MOVE_USER, {
           targetSessionId: target?.user.sessionId || user.sessionId || user.id,

@@ -1,4 +1,6 @@
 import { escapeHtml } from './html';
+import { codeLanguageLabel, highlightCode, resolveCodeLanguage } from './codeHighlight';
+import { t } from '../i18n';
 
 /**
  * Renders a small, safe subset of Markdown for chat messages.
@@ -14,7 +16,7 @@ import { escapeHtml } from './html';
  *   - / * / + item        -> <ul><li>
  *   1. item               -> <ol><li>
  *   --- / *** / ___       -> <hr>
- *   ```code block```      -> <pre><code>
+ *   ```lang code```       -> highlighted block with a copy button
  *   `inline code`         -> <code>
  *   **bold**              -> <strong>
  *   *italic* / _italic_   -> <em>
@@ -28,20 +30,55 @@ export interface MarkdownOptions {
   knownNicknames?: string[];
 }
 
+/**
+ * A code block with its language header and copy button (#391).
+ *
+ * The source arrives raw here on purpose: `highlight.js` escapes what it emits,
+ * and handing it already-escaped text would show `&amp;lt;` in the message.
+ * When the language is unknown the code is escaped by hand instead.
+ */
+function renderCodeBlock(tag: string, code: string): string {
+  const language = resolveCodeLanguage(tag);
+  const highlighted = language ? highlightCode(code, language) : '';
+  const body = highlighted || escapeHtml(code);
+  const label = language ? codeLanguageLabel(language) : t('chat.codeBlockPlain');
+  const copyLabel = escapeHtml(t('chat.codeBlockCopy'));
+
+  return (
+    `<div class="md-code">` +
+    `<div class="md-code-header">` +
+    `<span class="md-code-lang">${escapeHtml(label)}</span>` +
+    `<button type="button" class="md-code-copy" title="${copyLabel}">` +
+    `<span class="material-symbols-outlined md-14">content_copy</span>` +
+    `<span class="md-code-copy-label">${copyLabel}</span>` +
+    `</button>` +
+    `</div>` +
+    `<pre class="md-codeblock"><code class="hljs${language ? ` language-${language}` : ''}">${body}</code></pre>` +
+    `</div>`
+  );
+}
+
 export function renderMarkdown(raw: string, options?: MarkdownOptions): string {
   if (!raw) return '';
 
-  // 1. Escape everything up-front - no raw HTML from users can survive this.
-  let text = escapeHtml(raw);
-
-  // 2. Fenced code blocks (```...```). Placeholder them out so their content is
-  //    not touched by any rule below.
+  // 1. Fenced code blocks are pulled out before anything else, while the source
+  //    is still raw — the highlighter needs the original text, and the
+  //    placeholders left behind survive the escaping pass untouched.
   const codeBlocks: string[] = [];
-  text = text.replace(/```([\s\S]*?)```/g, (_m, code) => {
-    const body = code.replace(/^\n/, '').replace(/\n$/, '');
-    const idx = codeBlocks.push(`<pre class="md-codeblock"><code>${body}</code></pre>`) - 1;
+  const stash = (tag: string, code: string): string => {
+    const idx = codeBlocks.push(renderCodeBlock(tag, code)) - 1;
     return `\u0000CB${idx}\u0000`;
-  });
+  };
+
+  //    A language tag only counts on a fence that opens its own line, so a
+  //    single-line ```snippet``` keeps behaving as an untagged block.
+  let text = raw.replace(/```([A-Za-z0-9+#._-]*)[ \t]*\r?\n([\s\S]*?)```/g, (_m, tag: string, code: string) =>
+    stash(tag, code.replace(/\r?\n$/, ''))
+  );
+  text = text.replace(/```([\s\S]*?)```/g, (_m, code: string) => stash('', code.replace(/^\r?\n/, '').replace(/\r?\n$/, '')));
+
+  // 2. Escape everything else - no raw HTML from users can survive this.
+  text = escapeHtml(text);
 
   // 3. Inline code (`...`). Same placeholder treatment.
   const inlineCodes: string[] = [];

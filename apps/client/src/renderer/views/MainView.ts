@@ -22,6 +22,7 @@ import { contextMenu, ContextMenuItem } from './ContextMenu';
 import { showConfirm, showAlert } from './Dialog';
 import { setButtonLoading, withButtonLoading } from '../utils/buttonLoading';
 import { checkServerOnline } from '../utils/serverStatus';
+import { warnIfMoveBlocked } from '../utils/channelAccess';
 import { captureHostedServerLeaveState, promptShutdownAfterLeave } from '../utils/hostedServer';
 import { userContextMenu } from './UserContextMenu';
 import { soundboardModal } from './SoundboardModal';
@@ -637,10 +638,18 @@ export class MainView {
           if (sessionId && channelId) {
             const currentParticipant = participantManager.get(sessionId);
             if (currentParticipant?.voiceState?.channelId !== channelId) {
+              const targetUser = currentParticipant?.user;
+              if (targetUser && warnIfMoveBlocked(targetUser.id, targetUser.nickname, channelId)) return;
               void networkClient.sendRequest(MessageType.ADMIN_MOVE_USER, {
                 targetSessionId: sessionId,
                 channelId,
-              }).catch(() => {});
+              }).catch((err: unknown) => {
+                void showAlert({
+                  title: t('common.error'),
+                  message: (err as Error)?.message || t('userMenu.actionFailed'),
+                  variant: 'danger',
+                });
+              });
             }
           }
         });
