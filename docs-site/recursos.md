@@ -6,6 +6,7 @@
 - Câmera com resolução e bitrate adaptativos.
 - Compartilhamento de tela ou janela, com áudio.
 - Chat com histórico persistente, avatares e proteção anti-flood.
+- Canais privados com visibilidade por cargo: quem não tem acesso não recebe o canal do servidor, nem o nome.
 - Soundboard a partir de uma pasta do PC, com controle do anfitrião.
 - Descoberta automática de servidores na rede local.
 - Perfis de qualidade: Econômico, Normal, Alta Qualidade e Gaming.

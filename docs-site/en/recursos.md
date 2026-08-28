@@ -6,6 +6,7 @@
 - Camera with adaptive resolution and bitrate.
 - Screen or window sharing, with audio.
 - Chat with persistent history, avatars and anti-flood protection.
+- Private channels with per-role visibility: members without access never receive the channel from the server, not even its name.
 - Soundboard from a PC folder, with host-side control.
 - Automatic server discovery on the local network.
 - Quality profiles: Economy, Normal, High Quality and Gaming.
