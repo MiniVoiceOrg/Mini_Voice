@@ -926,13 +926,48 @@ input:focus, textarea:focus, select:focus {
 }
 
 /* Privacy controls in the create/edit channel dialogs (#384). */
-.channel-privacy-toggle {
+.channel-privacy-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px 12px;
+  background: var(--bg-card);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-md);
+}
+
+.channel-privacy-info {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.channel-privacy-title {
   display: flex;
   align-items: center;
   gap: 6px;
-  cursor: pointer;
-  text-transform: none;
+  font-weight: 600;
+  font-size: 13px;
   color: var(--text-primary);
+  text-transform: none;
+  letter-spacing: normal;
+}
+
+.channel-privacy-desc {
+  font-size: 11px;
+  font-weight: 400;
+  color: var(--text-muted);
+  line-height: 1.35;
+  text-transform: none;
+  letter-spacing: normal;
+}
+
+/* .form-group sets `display: flex`, which outranks the `display: none` the
+   user-agent gives [hidden] — without this the role picker never actually hid. */
+.channel-roles-group[hidden] {
+  display: none;
 }
 
 .channel-privacy-hint {
@@ -940,6 +975,91 @@ input:focus, textarea:focus, select:focus {
   font-size: 12px;
   color: var(--text-muted);
   text-transform: none;
+}
+
+/* One channel type per row, the whole row acting as the radio (#384). */
+.channel-type-options {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 4px;
+}
+
+.channel-type-option {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 12px;
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-md);
+  background: var(--bg-card);
+  cursor: pointer;
+  text-transform: none;
+  transition: border-color 0.15s, background 0.15s;
+}
+
+.channel-type-option:hover {
+  background: var(--bg-card-hover);
+}
+
+/* The native radio is replaced by the row itself, so it is removed from view
+   while staying focusable for keyboard and screen readers. */
+.channel-type-option input[type='radio'] {
+  position: absolute;
+  opacity: 0;
+  width: 0;
+  height: 0;
+}
+
+.channel-type-option:has(input:checked) {
+  border-color: var(--accent-primary);
+  background: var(--bg-card-hover);
+}
+
+.channel-type-option:focus-within {
+  border-color: var(--accent-primary);
+}
+
+.channel-type-icon {
+  flex-shrink: 0;
+}
+
+.channel-type-text {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+  flex: 1;
+}
+
+.channel-type-title {
+  font-weight: 600;
+  font-size: 13px;
+  color: var(--text-primary);
+  /* The row is a <label>, and `.form-group label` uppercases it. Declaring these
+     on the children beats inheritance regardless of specificity. */
+  text-transform: none;
+  letter-spacing: normal;
+}
+
+.channel-type-desc {
+  font-size: 11px;
+  font-weight: 400;
+  color: var(--text-muted);
+  line-height: 1.35;
+  text-transform: none;
+  letter-spacing: normal;
+}
+
+.channel-type-check {
+  flex-shrink: 0;
+  color: var(--accent-primary);
+  opacity: 0;
+  transition: opacity 0.15s;
+}
+
+.channel-type-option:has(input:checked) .channel-type-check {
+  opacity: 1;
 }
 
 .channel-role-list {
@@ -959,7 +1079,7 @@ input:focus, textarea:focus, select:focus {
   display: flex;
   align-items: center;
   gap: 8px;
-  padding: 4px 6px;
+  padding: 6px;
   border-radius: 4px;
   cursor: pointer;
   text-transform: none;
@@ -981,6 +1101,12 @@ input:focus, textarea:focus, select:focus {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+  flex: 1;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--text-primary);
+  text-transform: none;
+  letter-spacing: normal;
 }
 
 .channel-role-empty {

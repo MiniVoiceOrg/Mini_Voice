@@ -46,6 +46,8 @@ export const en: TranslationMap = {
   'channelModal.typeLabel': 'Channel type',
   'channelModal.typeText': 'Text',
   'channelModal.typeVoice': 'Voice',
+  'channelModal.typeTextDesc': 'Message-based conversations, with history, attachments and emojis.',
+  'channelModal.typeVoiceDesc': 'Audio conversations, with camera and screen sharing.',
   'channelModal.nameLabel': 'Channel name',
   'channelModal.namePlaceholder': 'e.g. games',
   'channelModal.submit': 'Create Channel',
