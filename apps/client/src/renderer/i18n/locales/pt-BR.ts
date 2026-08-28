@@ -141,7 +141,7 @@ export const ptBR = {
   'chat.codeModalPlaceholder': 'Cole ou escreva seu código aqui…',
   'chat.codeModalSubmit': 'Enviar código',
   'chat.codeModalEmpty': 'Escreva algum código antes de enviar.',
-  'chat.codeModalHint': 'Shift+Enter quebra linha. Ctrl+Enter envia.',
+  'chat.codeModalHint': 'Tab indenta, Shift+Tab remove. Ctrl+Enter envia.',
   'chat.codeBlockPlain': 'Código',
   'chat.codeBlockCopy': 'Copiar',
   'chat.codeBlockCopied': 'Copiado!',

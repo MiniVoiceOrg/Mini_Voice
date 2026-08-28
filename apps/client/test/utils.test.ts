@@ -11,7 +11,7 @@ import { EventBus } from '../src/renderer/core/EventBus';
 import { normalizeSearchString, matchesSearch } from '../src/renderer/utils/search';
 import { compareVersions, feedUrlForTag, isNewer, pickBestRelease } from '../src/main/updateVersions';
 import { extractStickerIds, stickerToken, stripStickerTokens } from '../src/renderer/utils/stickers';
-import { buildCodeMessage } from '../src/renderer/views/CodeBlockModal';
+import { buildCodeMessage, indentEdit } from '../src/renderer/views/CodeBlockModal';
 
 let passed = 0;
 let failed = 0;
@@ -402,6 +402,39 @@ function runTests() {
     (nestedFence.match(/md-codeblock/g) || []).length === 1,
     'Fence digitado dentro do código não parte a mensagem em dois blocos'
   );
+
+  console.log('\n--- Tab no campo de código (#391) ---');
+
+  const tabAtCursor = indentEdit('const a', 7, 7, false);
+  assert(
+    tabAtCursor.text === '  ' && tabAtCursor.from === 7 && !tabAtCursor.reselect,
+    'Tab no cursor insere dois espaços sem reposicionar a seleção'
+  );
+
+  // Sem tratar linha inteira, o Tab apagaria o trecho selecionado.
+  const tabTwoLines = indentEdit('um\ndois', 0, 6, false);
+  assert(tabTwoLines.text === '  um\n  dois', 'Tab com duas linhas selecionadas indenta as duas');
+  assert(tabTwoLines.reselect, 'Bloco reindentado devolve a seleção às linhas afetadas');
+
+  // A seleção começa no meio da primeira linha: a linha inteira ainda conta.
+  const tabFromMiddle = indentEdit('um\ndois', 1, 5, false);
+  assert(
+    tabFromMiddle.from === 0 && tabFromMiddle.text === '  um\n  dois',
+    'Indentação de bloco parte do início da linha, não do cursor'
+  );
+
+  const shiftTab = indentEdit('  um\n  dois', 0, 11, true);
+  assert(shiftTab.text === 'um\ndois', 'Shift+Tab remove a indentação das linhas');
+
+  const shiftTabTab = indentEdit('\tum', 0, 0, true);
+  assert(shiftTabTab.text === 'um', 'Shift+Tab também remove indentação feita com tab');
+
+  const shiftTabNoIndent = indentEdit('um', 0, 0, true);
+  assert(shiftTabNoIndent.text === 'um', 'Shift+Tab em linha sem indentação não corta o texto');
+
+  const roundTripIndent = indentEdit('a\nb', 0, 3, false);
+  const backAgain = indentEdit(roundTripIndent.text, 0, roundTripIndent.text.length, true);
+  assert(backAgain.text === 'a\nb', 'Indentar e desindentar devolve o texto original');
 
   console.log(`\n=== Relatório dos Testes ===`);
   console.log(`Total: ${passed + failed} | Passaram: ${passed} | Falharam: ${failed}`);

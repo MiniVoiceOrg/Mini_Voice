@@ -100,6 +100,19 @@ export class CodeBlockModal {
     select?.addEventListener('change', refresh);
     refresh();
 
+    // Tab indenta em vez de pular para o próximo campo (#391). O campo não
+    // prende quem navega por teclado: Escape fecha e Ctrl+Enter envia.
+    const onTab = (e: KeyboardEvent): void => {
+      if (e.key !== 'Tab' || !textarea) return;
+      e.preventDefault();
+
+      const edit = indentEdit(textarea.value, textarea.selectionStart, textarea.selectionEnd, e.shiftKey);
+      textarea.setSelectionRange(edit.from, edit.to);
+      replaceSelection(textarea, edit.text);
+      if (edit.reselect) textarea.setSelectionRange(edit.from, edit.from + edit.text.length);
+    };
+    textarea?.addEventListener('keydown', onTab);
+
     const onKeyDown = (e: KeyboardEvent): void => {
       if (e.key === 'Escape') {
         this.close();
@@ -161,3 +174,64 @@ export function buildCodeMessage(language: string, code: string): string {
 }
 
 export const codeBlockModal = new CodeBlockModal();
+
+const INDENT = '  ';
+
+export interface IndentEdit {
+  from: number;
+  to: number;
+  text: string;
+  /** Reindentou linhas inteiras: a seleção volta cobrindo o bloco afetado. */
+  reselect: boolean;
+}
+
+function outdentLine(line: string): string {
+  if (line.startsWith(INDENT)) return line.slice(INDENT.length);
+  if (line.startsWith('\t') || line.startsWith(' ')) return line.slice(1);
+  return line;
+}
+
+/**
+ * O que um Tab (ou Shift+Tab) deve escrever no campo de código (#391).
+ *
+ * Fica separada do DOM de propósito: é a única parte com regra de verdade, e
+ * assim dá para testá-la sem montar a janela.
+ *
+ * Um Tab simples indenta no cursor. Quando a seleção passa de uma linha — ou
+ * quando se está desindentando — a operação vale para as linhas inteiras, como
+ * em qualquer editor; sem isso o Tab apagaria o trecho selecionado.
+ */
+export function indentEdit(value: string, start: number, end: number, outdenting: boolean): IndentEdit {
+  const spansLines = value.slice(start, end).includes('\n');
+  if (!spansLines && !outdenting) return { from: start, to: end, text: INDENT, reselect: false };
+
+  const from = value.lastIndexOf('\n', start - 1) + 1;
+  const lineEnd = value.indexOf('\n', end);
+  const to = lineEnd === -1 ? value.length : lineEnd;
+  const text = value
+    .slice(from, to)
+    .split('\n')
+    .map((line) => (outdenting ? outdentLine(line) : INDENT + line))
+    .join('\n');
+
+  return { from, to, text, reselect: true };
+}
+
+/**
+ * Escreve por `execCommand` para preservar o histórico de desfazer: alterar
+ * `value` na mão faz o Ctrl+Z do campo perder tudo o que foi digitado antes,
+ * o que é justamente o que se espera poder desfazer depois de um Tab errado.
+ */
+function replaceSelection(el: HTMLTextAreaElement, text: string): void {
+  el.focus();
+  try {
+    if (document.execCommand('insertText', false, text)) return;
+  } catch {
+    // Sem suporte: segue para a substituição manual abaixo.
+  }
+
+  const { selectionStart, selectionEnd, value } = el;
+  el.value = value.slice(0, selectionStart) + text + value.slice(selectionEnd);
+  el.setSelectionRange(selectionStart + text.length, selectionStart + text.length);
+  el.dispatchEvent(new Event('input', { bubbles: true }));
+}
