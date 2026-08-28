@@ -17,8 +17,9 @@ interface BannerAction {
  * Handles the in-app auto-update flow.
  *
  * - Windows: uses electron-updater (download + install + relaunch on click).
- * - macOS: downloads the matching .dmg and opens it (drag to Applications),
- *   since unsigned auto-update is not permitted by macOS.
+ * - macOS: downloads the matching .dmg, opens it and closes the app, since
+ *   macOS refuses to replace a bundle that is still running (#377). The user
+ *   drags the new version into Applications and reopens it.
  *
  * Checks run on startup and hourly, showing a dismissible banner.
  */
@@ -59,8 +60,10 @@ class UpdateService {
 
     const u2 = window.api.onUpdateDownloaded((info) => {
       if (info.manual) {
+        // macOS: the .dmg is open and the app closes on its own so Finder can
+        // replace the bundle (#377). Nothing left to click, same as Windows.
         this.setText(t('update.installerOpened'));
-        this.setActions([{ label: '×', dismiss: true, onClick: () => this.dismiss() }]);
+        this.setActions([]);
       } else {
         // Windows: the main process installs silently and relaunches on its own.
         this.setText(t('update.installing'));

@@ -67,6 +67,34 @@ let pendingMacAsset: MacAsset | null = null;
 let downloadedMacPath: string | null = null;
 
 /**
+ * Grace period between opening the .dmg and quitting on macOS. Finder needs a
+ * moment to mount the image and bring its window to the front; quitting in the
+ * same tick would make the app vanish before the user sees where the new
+ * version is. The mount itself belongs to Finder, so it survives our exit.
+ */
+const MAC_QUIT_DELAY_MS = 5000;
+
+/**
+ * Quits so Finder can replace the app bundle (#377).
+ *
+ * macOS refuses to overwrite a bundle whose app is running, so the manual
+ * update flow used to dead-end: the .dmg opened, the user dragged Monky into
+ * Applications, and the replace failed with "Monky is in use" — with no obvious
+ * way out other than hunting for the app in the Dock. Closing on our own is the
+ * same thing the Windows flow already does after downloading.
+ */
+function quitForMacInstall(delayMs: number): void {
+  setTimeout(() => {
+    app.quit();
+    // `app.quit()` can be vetoed by a window that refuses to close, which would
+    // strand the user in the exact dead-end this is meant to solve. By this
+    // point `before-quit` has already run its cleanup, so exiting for real is
+    // safe.
+    setTimeout(() => app.exit(0), 4000);
+  }, delayMs);
+}
+
+/**
  * Tag of the release `checkViaGitHub` decided the user should get. The download
  * step points electron-updater straight at it instead of letting the library
  * find a release on its own — see `feedUrlForTag`.
@@ -193,15 +221,24 @@ async function downloadMacDmg(mainWindow: BrowserWindow): Promise<CheckResult> {
   try {
     const destPath = path.join(app.getPath('temp'), pendingMacAsset.name);
     await downloadToFile(pendingMacAsset.url, destPath, (pct) => {
-      mainWindow.webContents.send('update:progress', pct);
+      mainWindow.webContents.send('updater:progress', pct);
     });
     downloadedMacPath = destPath;
-    // Open the .dmg so the user can drag the app into Applications.
-    await shell.openPath(destPath);
-    mainWindow.webContents.send('update:downloaded', { manual: true });
+
+    // Open the .dmg so the user can drag the app into Applications. A failure
+    // here means there is nothing on screen to install from, so the app must
+    // not go ahead and close.
+    const openError = await shell.openPath(destPath);
+    if (openError) {
+      mainWindow.webContents.send('updater:error', openError);
+      return { ok: false, error: openError };
+    }
+
+    mainWindow.webContents.send('updater:downloaded', { manual: true });
+    quitForMacInstall(MAC_QUIT_DELAY_MS);
     return { ok: true };
   } catch (e) {
-    mainWindow.webContents.send('update:error', msg(e));
+    mainWindow.webContents.send('updater:error', msg(e));
     return { ok: false, error: msg(e) };
   }
 }
@@ -308,8 +345,14 @@ export function setupUpdater(mainWindow: BrowserWindow): void {
   ipcMain.handle('updater:install', async (): Promise<CheckResult> => {
     if (isMac) {
       if (downloadedMacPath) {
-        await shell.openPath(downloadedMacPath);
+        const openError = await shell.openPath(downloadedMacPath);
+        if (openError) {
+          return { ok: false, error: openError };
+        }
       }
+      // Asked for explicitly, so there is no reason to wait as long as the
+      // automatic path does.
+      quitForMacInstall(1000);
       return { ok: true };
     }
     const updater = loadAutoUpdater();

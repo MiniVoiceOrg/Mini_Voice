@@ -782,7 +782,8 @@ export const en: TranslationMap = {
   'update.startingDownload': 'Starting download…',
   'update.downloading': 'Downloading update… {percent}%',
   'update.installing': 'Update downloaded. Installing and restarting…',
-  'update.installerOpened': 'Installer opened — drag Monky into your Applications folder and reopen it.',
+  'update.installerOpened':
+    'Installer opened. Monky will close so you can drag the new version into your Applications folder.',
   'update.downloadFailed': 'Could not download the update.',
   'update.downloadManually': 'Download manually',
 
