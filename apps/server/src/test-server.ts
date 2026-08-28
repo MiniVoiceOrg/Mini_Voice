@@ -3,12 +3,16 @@ import path from 'path';
 import fs from 'fs';
 import { RawData, WebSocket } from 'ws';
 import {
+  ADMIN_PERMISSIONS,
+  DEFAULT_PERMISSIONS,
   LIMITS,
   LogEntry,
   MessageType,
+  Permission,
   ProtocolErrorCode,
   ProtocolMessage,
   PROTOCOL_VERSION,
+  hasPermission,
 } from '@monky/shared';
 import { MonkyServer } from './server';
 import { Logger } from './infrastructure/logger/Logger';
@@ -572,6 +576,22 @@ async function runTests() {
     }
     wsVersao.close();
     console.log('✔ Teste 15 passou: Versão de protocolo incompatível responde PROTOCOL_VERSION_UNSUPPORTED');
+
+    // Teste 16: USE_SOUNDBOARD passou a ser exigida para tocar sons (#359). Antes
+    // dela a soundboard só dependia do interruptor do servidor, então ela precisa
+    // continuar ligada por padrão — caso contrário membros comuns perderiam o
+    // recurso silenciosamente ao atualizar.
+    if (!hasPermission(DEFAULT_PERMISSIONS, Permission.USE_SOUNDBOARD)) {
+      throw new Error('Teste 16: membros sem cargo deveriam continuar podendo usar a soundboard');
+    }
+    if (!hasPermission(ADMIN_PERMISSIONS, Permission.USE_SOUNDBOARD)) {
+      throw new Error('Teste 16: administradores deveriam poder usar a soundboard');
+    }
+    const semSoundboard = (DEFAULT_PERMISSIONS & ~Permission.USE_SOUNDBOARD) >>> 0;
+    if (hasPermission(semSoundboard, Permission.USE_SOUNDBOARD)) {
+      throw new Error('Teste 16: um cargo sem a permissão não deveria poder usar a soundboard');
+    }
+    console.log('✔ Teste 16 passou: USE_SOUNDBOARD é exigida sem tirar a soundboard de quem já tinha');
 
     console.log('=== Todos os testes do servidor passaram com sucesso! ===');
   } finally {

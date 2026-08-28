@@ -1,4 +1,5 @@
 import { escapeHtml } from '../utils/html';
+import { Permission } from '@monky/shared';
 import { soundboardService, SoundItem } from '../core/SoundboardService';
 import { settingsStore } from '../stores/settingsStore';
 import { serverStore } from '../stores/serverStore';
@@ -30,6 +31,7 @@ export class SoundboardModal {
     await soundboardService.loadSounds();
     const sounds = soundboardService.getSounds();
     const serverAllows = serverStore.serverDetails?.allowSoundboard !== false;
+    const hasSoundboardPermission = serverStore.hasPermission(Permission.USE_SOUNDBOARD);
     const activePlaybacks = soundboardService.getActivePlaybacks();
 
     this.modalEl = document.createElement('div');
@@ -139,6 +141,12 @@ export class SoundboardModal {
           <div style="margin: 12px 20px 0; padding: 8px 12px; background: rgba(237, 66, 69, 0.15); border: 1px solid rgba(237, 66, 69, 0.3); border-radius: var(--radius-md); color: var(--danger); font-size: 12px; display: flex; align-items: center; gap: 8px;">
             <span class="material-symbols-outlined md-16">block</span>
             <span>${t('soundboard.disabledByAdmin')}</span>
+          </div>
+        ` : ''}
+        ${serverAllows && !hasSoundboardPermission ? `
+          <div style="margin: 12px 20px 0; padding: 8px 12px; background: rgba(237, 66, 69, 0.15); border: 1px solid rgba(237, 66, 69, 0.3); border-radius: var(--radius-md); color: var(--danger); font-size: 12px; display: flex; align-items: center; gap: 8px;">
+            <span class="material-symbols-outlined md-16">block</span>
+            <span>${t('soundboard.noPermission')}</span>
           </div>
         ` : ''}
 
