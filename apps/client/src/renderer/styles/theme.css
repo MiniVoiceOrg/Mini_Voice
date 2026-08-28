@@ -5267,6 +5267,26 @@ button:hover .role-option-check:not(.checked) {
   color: var(--danger) !important;
 }
 
+/* Soundboard List View (#326) */
+.sb-sound-row {
+  user-select: none;
+  transition: all 0.15s ease;
+}
+
+.sb-sound-row:hover {
+  background: var(--bg-card-hover) !important;
+  border-color: var(--border-focus) !important;
+}
+
+.sb-sound-row.is-playing {
+  border-color: var(--accent-primary) !important;
+  box-shadow: 0 0 0 2px rgba(88, 101, 242, 0.35);
+}
+
+.sb-sound-list-btn:hover .sb-sound-icon {
+  transform: scale(1.15);
+}
+
 /* Settings Profile Avatar with Hover Overlay (#71) */
 .settings-avatar-wrapper {
   position: relative;

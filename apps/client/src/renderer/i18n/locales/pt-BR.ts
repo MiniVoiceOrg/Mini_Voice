@@ -216,6 +216,8 @@ export const ptBR = {
   'soundboard.searchPlaceholder': 'Filtrar áudios...',
   'soundboard.noSearchResultsTitle': 'Nenhum áudio encontrado',
   'soundboard.noSearchResultsDesc': 'Nenhum arquivo corresponde à busca "{query}".',
+  'soundboard.viewGrid': 'Modo Cards',
+  'soundboard.viewList': 'Modo Lista',
 
   // ── Compartilhamento de tela (ScreenSharePickerModal.ts) ─────────────────
   'screenShare.title': 'Compartilhar Tela ou Janela',

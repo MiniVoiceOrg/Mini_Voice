@@ -35,6 +35,7 @@ export class SettingsStore {
   public screenShareTelemetryMode: 'simple' | 'complete' = 'simple';
   public customSounds: Partial<Record<string, string>> = {}; // key → file path
   public soundboardShortcuts: Record<string, { accelerator: string; display: string }> = {};
+  public soundboardViewMode: 'grid' | 'list' = 'grid'; // view mode in soundboard modal (#326)
   public keybindShortcuts: Record<string, { accelerator: string; display: string }> = {};
   public chatMessageSoundEnabled: boolean = true; // play a cue when a chat message arrives (#152)
   public chatMessageSoundMentionsOnly: boolean = false; // only play the cue when you are mentioned (#153)
@@ -93,6 +94,9 @@ export class SettingsStore {
         }
         if (!this.soundboardShortcuts || typeof this.soundboardShortcuts !== 'object') {
           this.soundboardShortcuts = {};
+        }
+        if (!['grid', 'list'].includes(this.soundboardViewMode)) {
+          this.soundboardViewMode = 'grid';
         }
         if (!this.keybindShortcuts || typeof this.keybindShortcuts !== 'object') {
           this.keybindShortcuts = {};
@@ -226,6 +230,7 @@ export class SettingsStore {
         customProfile: this.customProfile,
         customSounds: this.customSounds,
         soundboardShortcuts: this.soundboardShortcuts,
+        soundboardViewMode: this.soundboardViewMode,
         keybindShortcuts: this.keybindShortcuts,
         chatMessageSoundEnabled: this.chatMessageSoundEnabled,
         chatMessageSoundMentionsOnly: this.chatMessageSoundMentionsOnly,

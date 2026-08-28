@@ -215,6 +215,8 @@ export const en: TranslationMap = {
   'soundboard.searchPlaceholder': 'Filter sounds...',
   'soundboard.noSearchResultsTitle': 'No sounds found',
   'soundboard.noSearchResultsDesc': 'No audio files match "{query}".',
+  'soundboard.viewGrid': 'Card view',
+  'soundboard.viewList': 'List view',
 
   // ── Screen sharing (ScreenSharePickerModal.ts) ───────────────────────────
   'screenShare.title': 'Share Screen or Window',

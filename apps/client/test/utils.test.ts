@@ -172,6 +172,7 @@ function runTests() {
     toggle_mute: { accelerator: 'CommandOrControl+Shift+M', display: 'Ctrl + Shift + M' },
     toggle_deafen: { accelerator: 'CommandOrControl+Shift+D', display: 'Ctrl + Shift + D' },
   };
+  store1.soundboardViewMode = 'list';
   store1.chatMessageSoundEnabled = false;
   store1.chatMessageSoundMentionsOnly = true;
   store1.setServerChatSoundOverride('srv-1', 'none');
@@ -182,6 +183,7 @@ function runTests() {
   assert(storageMap.has('monky_settings'), 'monky_settings foi salvo no localStorage');
 
   const rawJson = JSON.parse(storageMap.get('monky_settings')!);
+  assert(rawJson.soundboardViewMode === 'list', 'soundboardViewMode serializado no JSON');
   assert(rawJson.keybindShortcuts?.toggle_mute?.accelerator === 'CommandOrControl+Shift+M', 'keybindShortcuts serializado no JSON');
   assert(rawJson.soundboardShortcuts?.Airhorn?.accelerator === 'CommandOrControl+Alt+A', 'soundboardShortcuts serializado no JSON');
   assert(rawJson.minimizeToTrayOnClose === false, 'minimizeToTrayOnClose serializado no JSON');
@@ -189,6 +191,7 @@ function runTests() {
 
   // Cria uma nova instância para simular reabertura / reload da aplicação
   const store2 = new SettingsStore();
+  assert(store2.soundboardViewMode === 'list', 'soundboardViewMode restaurado com sucesso');
   assert(store2.minimizeToTrayOnClose === false, 'minimizeToTrayOnClose restaurado com sucesso');
   assert(store2.updateBetaChannel === true, 'updateBetaChannel restaurado com sucesso');
   assert(store2.askShutdownOnLastLeave === false, 'askShutdownOnLastLeave restaurado com sucesso');
@@ -202,6 +205,11 @@ function runTests() {
   assert(store2.chatMessageSoundMentionsOnly === true, 'chatMessageSoundMentionsOnly restaurado com sucesso');
   assert(store2.getServerChatSoundOverride('srv-1') === 'none', 'serverChatSoundOverride restaurado com sucesso');
   assert(store2.getChannelChatSoundOverride('chan-1') === 'all', 'channelChatSoundOverride restaurado com sucesso');
+
+  // Testa sanitização de valor inválido para soundboardViewMode
+  storageMap.set('monky_settings', JSON.stringify({ soundboardViewMode: 'invalid_mode' }));
+  const store3 = new SettingsStore();
+  assert(store3.soundboardViewMode === 'grid', 'soundboardViewMode inválido é sanitizado para fallback "grid"');
 
   console.log(`\n=== Relatório dos Testes ===`);
   console.log(`Total: ${passed + failed} | Passaram: ${passed} | Falharam: ${failed}`);
