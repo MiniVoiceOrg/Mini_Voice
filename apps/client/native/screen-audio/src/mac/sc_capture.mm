@@ -3,8 +3,8 @@
  *
  * Captures audio EXCLUDING the Monky process using SCStream with
  * excludesCurrentProcessAudio = YES. When a window id is supplied the stream is
- * scoped to that window, so only its application's audio is captured (#298);
- * otherwise the whole display's audio is captured.
+ * scoped to the application that owns it, so only that app's audio is captured
+ * (#298); otherwise the whole display's audio is captured.
  *
  * Output: PCM float32 interleaved, 48kHz stereo (configurable). ScreenCaptureKit
  * delivers planar (non-interleaved) float32, so frames are interleaved here
@@ -19,10 +19,20 @@
 #import <AVFoundation/AVFoundation.h>
 #import <Foundation/Foundation.h>
 #include <atomic>
+#include <string>
 #include <vector>
 
 static std::atomic<bool> g_captureRunning_mac{false};
 static Napi::ThreadSafeFunction g_tsfn_mac;
+
+// Why the last start attempt failed. Written inside the ScreenCaptureKit
+// completion handlers and read back on the calling thread after the semaphore
+// they signal, which orders the two.
+static std::string g_lastError_mac;
+
+const char* platform_get_last_error() {
+  return g_lastError_mac.c_str();
+}
 
 // SCStream delegate that receives audio samples
 @interface MonkyAudioDelegate : NSObject <SCStreamOutput>
@@ -147,10 +157,14 @@ bool platform_start(uint32_t excludePid, uint32_t loopbackMode, int64_t includeW
 
     dispatch_semaphore_t sem = dispatch_semaphore_create(0);
     __block bool startOk = false;
+    g_lastError_mac.clear();
 
     [SCShareableContent getShareableContentWithCompletionHandler:^(
         SCShareableContent* _Nullable content, NSError* _Nullable error) {
       if (error || !content) {
+        g_lastError_mac = error.localizedDescription.UTF8String
+                              ?: "Nao foi possivel listar o conteudo compartilhavel "
+                                 "(verifique a permissao de Gravacao de Tela)";
         g_captureRunning_mac.store(false);
         dispatch_semaphore_signal(sem);
         return;
@@ -160,19 +174,49 @@ bool platform_start(uint32_t excludePid, uint32_t loopbackMode, int64_t includeW
 
       if (includeWindowId > 0) {
         // Sharing a single window used to stream the audio of the whole machine,
-        // while the UI promised only the app's audio (#298). ScreenCaptureKit
-        // scopes audio to the filter, so a desktop-independent window filter
-        // delivers just the owning application's audio.
+        // while the UI promised only the app's audio (#298).
+        //
+        // A desktop-independent window filter is not enough: ScreenCaptureKit
+        // scopes only the *video* to the window, and keeps tapping system-wide
+        // audio, so the first attempt at this fix still leaked other apps. Audio
+        // is scoped per process, so the filter has to name the *application*
+        // that owns the window.
+        SCWindow* targetWindow = nil;
         for (SCWindow* window in content.windows) {
           if ((int64_t)window.windowID == includeWindowId) {
-            filter = [[SCContentFilter alloc] initWithDesktopIndependentWindow:window];
+            targetWindow = window;
             break;
+          }
+        }
+
+        SCRunningApplication* owner = targetWindow.owningApplication;
+        if (targetWindow && owner) {
+          // The stream needs a display, but only its (2x2, discarded) video
+          // depends on which one — the audio comes from the application list.
+          // Prefer the display the window sits on so the pair stays coherent on
+          // multi-monitor setups.
+          SCDisplay* display = nil;
+          for (SCDisplay* candidate in content.displays) {
+            if (CGRectIntersectsRect(candidate.frame, targetWindow.frame)) {
+              display = candidate;
+              break;
+            }
+          }
+          if (!display) display = content.displays.firstObject;
+
+          if (display) {
+            filter = [[SCContentFilter alloc] initWithDisplay:display
+                                        includingApplications:@[ owner ]
+                                             exceptingWindows:@[]];
           }
         }
 
         // Falling back to the full display here would silently leak every other
         // app's audio, which is exactly the bug we are fixing. Fail instead.
         if (!filter) {
+          g_lastError_mac = targetWindow
+                                ? "Nao foi possivel identificar o aplicativo dono da janela"
+                                : "A janela escolhida nao esta mais disponivel para captura";
           g_captureRunning_mac.store(false);
           dispatch_semaphore_signal(sem);
           return;
@@ -181,6 +225,7 @@ bool platform_start(uint32_t excludePid, uint32_t loopbackMode, int64_t includeW
         // Sharing a whole screen: capture that display's audio.
         SCDisplay* display = content.displays.firstObject;
         if (!display) {
+          g_lastError_mac = "Nenhuma tela disponivel para captura";
           g_captureRunning_mac.store(false);
           dispatch_semaphore_signal(sem);
           return;
@@ -212,6 +257,7 @@ bool platform_start(uint32_t excludePid, uint32_t loopbackMode, int64_t includeW
                               error:&addOutputError];
 
       if (addOutputError) {
+        g_lastError_mac = addOutputError.localizedDescription.UTF8String ?: "addStreamOutput falhou";
         g_captureRunning_mac.store(false);
         dispatch_semaphore_signal(sem);
         return;
@@ -220,6 +266,7 @@ bool platform_start(uint32_t excludePid, uint32_t loopbackMode, int64_t includeW
       [g_stream startCaptureWithCompletionHandler:^(NSError* _Nullable startError) {
         startOk = (startError == nil);
         if (!startOk) {
+          g_lastError_mac = startError.localizedDescription.UTF8String ?: "startCapture falhou";
           g_captureRunning_mac.store(false);
         }
         dispatch_semaphore_signal(sem);
@@ -227,9 +274,15 @@ bool platform_start(uint32_t excludePid, uint32_t loopbackMode, int64_t includeW
     }];
 
     dispatch_semaphore_wait(sem, dispatch_time(DISPATCH_TIME_NOW, 10 * NSEC_PER_SEC));
+    if (!startOk && g_lastError_mac.empty()) {
+      // The wait timed out: no completion handler ever ran.
+      g_lastError_mac = "Tempo esgotado ao iniciar a captura de audio";
+      g_captureRunning_mac.store(false);
+    }
     return startOk;
   }
 
+  g_lastError_mac = "Captura de audio da tela exige macOS 13 ou superior";
   return false;
 }
 
