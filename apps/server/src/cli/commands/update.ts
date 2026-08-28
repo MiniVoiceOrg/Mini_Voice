@@ -265,99 +265,28 @@ export async function checkForUpdate(
   };
 }
 
-/**
- * Whether the checkout has changes that a tag switch would clobber.
- */
-function hasLocalChanges(repoRoot: string): boolean {
-  const result = spawnSync('git', ['status', '--porcelain'], { encoding: 'utf8', cwd: repoRoot, shell: true });
-  return result.status === 0 && result.stdout.trim().length > 0;
-}
-
 export async function performUpdate(
   options: { beta?: boolean; targetVersion?: string; tgzUrl?: string } = {}
 ): Promise<boolean> {
-  const repoRoot = getRepoRoot();
-
-  console.log(color('Atualizando servidor Monky...', ANSI.bold));
+  console.log(color('Atualizando Monky CLI...', ANSI.bold));
   console.log();
 
-  if (repoRoot) {
-    // Mode A: Git clone / monorepo installation
-    console.log(color('Ambiente: Repositório Git local', ANSI.dim));
+  const tgzUrl =
+    options.tgzUrl ||
+    (options.targetVersion
+      ? `https://github.com/MonkyOrg/Monky/releases/download/v${options.targetVersion}/monky-cli-${options.targetVersion}.tgz`
+      : null);
 
-    if (!options.targetVersion) {
-      console.log(color('Versão de destino desconhecida — não há o que atualizar.', ANSI.red));
-      return false;
-    }
+  if (!tgzUrl) {
+    console.log(color('URL do pacote da release não encontrada.', ANSI.red));
+    return false;
+  }
 
-    if (hasLocalChanges(repoRoot)) {
-      console.log(color('O repositório tem alterações locais não commitadas.', ANSI.red));
-      console.log(color('Dica: use "git stash" para guardá-las antes de atualizar.', ANSI.dim));
-      return false;
-    }
-
-    console.log(color(`1/3 Buscando a versão v${options.targetVersion}...`, ANSI.cyan));
-    spawnSync('git', ['fetch', '--tags', 'origin'], { cwd: repoRoot, stdio: 'inherit', shell: true });
-
-    // Checking out the tag works the same from a branch or from a previous
-    // update's detached HEAD; "git pull" only worked from a branch and failed
-    // on every update after the first.
-    const checkout = spawnSync(
-      'git',
-      ['-c', 'advice.detachedHead=false', 'checkout', `v${options.targetVersion}`],
-      { cwd: repoRoot, stdio: 'inherit', shell: true }
-    );
-
-    if (checkout.status !== 0) {
-      console.log(color(`Falha ao alternar para a tag v${options.targetVersion}.`, ANSI.red));
-      return false;
-    }
-
-    // Step 2: npm install
-    console.log();
-    console.log(color('2/3 Instalando dependências (npm install)...', ANSI.cyan));
-    const installResult = spawnSync('npm', ['install'], { cwd: repoRoot, stdio: 'inherit', shell: true });
-    if (installResult.status !== 0) {
-      console.log(color('Falha no npm install.', ANSI.red));
-      return false;
-    }
-
-    // Step 3: Compilar APENAS o servidor e shared (evita compilar client / electron)
-    console.log();
-    console.log(color('3/3 Compilando servidor (npm run build:server)...', ANSI.cyan));
-    let buildResult = spawnSync('npm', ['run', 'build:server'], { cwd: repoRoot, stdio: 'inherit', shell: true });
-    if (buildResult.status !== 0) {
-      // Fallback para clones sem o script build:server
-      buildResult = spawnSync(
-        'npm',
-        ['run', 'build', '--workspace=packages/shared', '--workspace=apps/server'],
-        { cwd: repoRoot, stdio: 'inherit', shell: true }
-      );
-      if (buildResult.status !== 0) {
-        console.log(color('Falha no build do servidor.', ANSI.red));
-        return false;
-      }
-    }
-  } else {
-    // Mode B: Standalone global tarball install (npm install -g ...)
-    console.log(color('Ambiente: Pacote Monky CLI standalone', ANSI.dim));
-    const tgzUrl =
-      options.tgzUrl ||
-      (options.targetVersion
-        ? `https://github.com/MonkyOrg/Monky/releases/download/v${options.targetVersion}/monky-cli-${options.targetVersion}.tgz`
-        : null);
-
-    if (!tgzUrl) {
-      console.log(color('URL do pacote da release não encontrada.', ANSI.red));
-      return false;
-    }
-
-    console.log(color(`Instalando versão a partir de: ${tgzUrl}`, ANSI.cyan));
-    const installResult = spawnSync('npm', ['install', '-g', tgzUrl], { stdio: 'inherit', shell: true });
-    if (installResult.status !== 0) {
-      console.log(color('Falha ao instalar pacote global do Monky CLI.', ANSI.red));
-      return false;
-    }
+  console.log(color(`Instalando versão a partir de: ${tgzUrl}`, ANSI.cyan));
+  const installResult = spawnSync('npm', ['install', '-g', tgzUrl], { stdio: 'inherit', shell: true });
+  if (installResult.status !== 0) {
+    console.log(color('Falha ao instalar pacote global do Monky CLI.', ANSI.red));
+    return false;
   }
 
   console.log();
