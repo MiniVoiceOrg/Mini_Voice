@@ -11,6 +11,7 @@ import {
   UserSummary,
   authChallengeResponseSchema,
   authConnectSchema,
+  canAccessChannel,
   deriveClientIdFromPublicKey,
   normalizePublicKeyHex,
 } from '@monky/shared';
@@ -317,6 +318,10 @@ export class AuthService {
     const mentionedChannelIds = await this.mentionRepo.listChannelIdsForUser(userRecord.id);
     const roleState = await this.roleService.getRoleState();
     const myPermissions = await this.permissionService.getUserPermissions(userRecord.id);
+    // Private channels are filtered out here rather than on the client, so a
+    // channel the member cannot access never reaches them — not even its name (#384).
+    const myRoleIds = roleState.userRoles.find((ur) => ur.userId === userRecord.id)?.roleIds ?? [];
+    const visibleChannels = channels.filter((c) => canAccessChannel(c, myPermissions, myRoleIds));
 
     const serverDetails: ServerDetails = {
       id: server.id,
@@ -326,7 +331,7 @@ export class AuthService {
       hasPassword: !!(server.passwordHash && server.passwordHash.length > 0),
       allowSoundboard: server.allowSoundboard !== false,
       iconUrl: this.avatarStorage.getPublicUrl(server.iconPath),
-      channels: channels.map((c) => ({
+      channels: visibleChannels.map((c) => ({
         id: c.id,
         serverId: c.serverId,
         name: c.name,
@@ -334,6 +339,8 @@ export class AuthService {
         position: c.position,
         createdAt: c.createdAt,
         maxParticipants: c.maxParticipants,
+        isPrivate: c.isPrivate,
+        allowedRoleIds: c.allowedRoleIds,
       })),
       members,
       knownMembers,

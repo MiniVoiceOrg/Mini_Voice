@@ -1,6 +1,8 @@
-import { MessageType } from '@monky/shared';
+import { ChannelSummary, MessageType } from '@monky/shared';
 import { networkClient } from '../core/NetworkClient';
+import { serverStore } from '../stores/serverStore';
 import { t } from '../i18n';
+import { escapeHtml } from '../utils/html';
 import { enableBackdropClose } from '../utils/modal';
 import {
   attachChannelPrivacyFields,
@@ -8,66 +10,79 @@ import {
   renderChannelPrivacyFields,
 } from './channelPrivacyFields';
 
-export class CreateChannelModal {
+/**
+ * Editing an existing channel (#384): rename it and control who gets in.
+ *
+ * Separate from CreateChannelModal because the channel type cannot be changed
+ * after creation — turning a text channel into a voice one would strand its
+ * message history — so this dialog shows the type as read-only.
+ */
+export class EditChannelModal {
   private modalEl: HTMLElement | null = null;
   private detachPrivacyFields: (() => void) | null = null;
 
-  public open(defaultType: 'TEXT' | 'VOICE' = 'TEXT'): void {
-    this.close();
+  public open(channelId: string): void {
+    const channel = serverStore.serverDetails?.channels.find((c) => c.id === channelId);
+    if (!channel) return;
 
+    this.close();
     this.modalEl = document.createElement('div');
     this.modalEl.className = 'modal-backdrop';
-    this.modalEl.innerHTML = `
+    this.modalEl.innerHTML = this.buildMarkup(channel);
+
+    document.body.appendChild(this.modalEl);
+    this.attachEvents(channel);
+  }
+
+  private buildMarkup(channel: ChannelSummary): string {
+    const isVoice = channel.type === 'VOICE';
+    const typeIcon = isVoice ? 'volume_up' : 'tag';
+    const typeColor = isVoice ? 'var(--success)' : 'var(--text-muted)';
+    const typeLabel = isVoice ? t('channelModal.typeVoice') : t('channelModal.typeText');
+
+    return `
       <div class="modal-card">
         <div class="modal-header">
-          <div class="modal-title">${t('channelModal.title')}</div>
+          <div class="modal-title">${t('channelModal.editTitle')}</div>
           <button id="modal-close" class="modal-close-btn">&times;</button>
         </div>
 
         <div id="channel-error-banner" class="error-banner"></div>
 
-        <form id="form-create-channel">
+        <form id="form-edit-channel">
           <div class="form-group">
             <label>${t('channelModal.typeLabel')}</label>
-            <div style="display: flex; gap: 12px; margin-top: 4px;">
-              <label style="display: flex; align-items: center; gap: 6px; cursor: pointer; text-transform: none; color: var(--text-primary);">
-                <input type="radio" name="channel-type" value="TEXT" ${defaultType === 'TEXT' ? 'checked' : ''}>
-                <span class="material-symbols-outlined md-16" style="color: var(--text-muted);">tag</span>
-                <span>${t('channelModal.typeText')}</span>
-              </label>
-              <label style="display: flex; align-items: center; gap: 6px; cursor: pointer; text-transform: none; color: var(--text-primary);">
-                <input type="radio" name="channel-type" value="VOICE" ${defaultType === 'VOICE' ? 'checked' : ''}>
-                <span class="material-symbols-outlined md-16" style="color: var(--success);">volume_up</span>
-                <span>${t('channelModal.typeVoice')}</span>
-              </label>
+            <div class="channel-type-readonly">
+              <span class="material-symbols-outlined md-16" style="color: ${typeColor};">${typeIcon}</span>
+              <span>${typeLabel}</span>
             </div>
           </div>
 
           <div class="form-group">
             <label>${t('channelModal.nameLabel')}</label>
-            <input id="input-channel-name" type="text" placeholder="${t('channelModal.namePlaceholder')}" required minlength="2" maxlength="50">
+            <input id="input-channel-name" type="text" value="${escapeHtml(channel.name)}" required minlength="2" maxlength="50">
           </div>
 
-          ${renderChannelPrivacyFields({ isPrivate: false, allowedRoleIds: [] })}
+          ${renderChannelPrivacyFields({
+            isPrivate: channel.isPrivate,
+            allowedRoleIds: channel.allowedRoleIds,
+          })}
 
           <div class="modal-footer">
             <button type="button" id="btn-cancel" class="btn btn-secondary">${t('common.cancel')}</button>
-            <button type="submit" id="btn-create" class="btn btn-primary">${t('channelModal.submit')}</button>
+            <button type="submit" id="btn-save" class="btn btn-primary">${t('channelModal.saveSubmit')}</button>
           </div>
         </form>
       </div>
     `;
-
-    document.body.appendChild(this.modalEl);
-    this.attachEvents();
   }
 
-  private attachEvents(): void {
+  private attachEvents(channel: ChannelSummary): void {
     if (!this.modalEl) return;
 
     const btnClose = this.modalEl.querySelector('#modal-close');
     const btnCancel = this.modalEl.querySelector('#btn-cancel');
-    const form = this.modalEl.querySelector('#form-create-channel') as HTMLFormElement;
+    const form = this.modalEl.querySelector('#form-edit-channel') as HTMLFormElement;
     const inputName = this.modalEl.querySelector('#input-channel-name') as HTMLInputElement;
 
     btnClose?.addEventListener('click', () => this.close());
@@ -78,24 +93,22 @@ export class CreateChannelModal {
     form?.addEventListener('submit', async (e) => {
       e.preventDefault();
       const name = inputName?.value.trim();
-      const type = (this.modalEl?.querySelector('input[name="channel-type"]:checked') as HTMLInputElement)?.value as 'TEXT' | 'VOICE';
-
       if (!name || !this.modalEl) return;
 
       const privacy = readChannelPrivacyFields(this.modalEl);
 
       try {
-        await networkClient.sendRequest(MessageType.CHANNEL_CREATE, {
+        await networkClient.sendRequest(MessageType.CHANNEL_UPDATE, {
+          channelId: channel.id,
           name,
-          type,
           isPrivate: privacy.isPrivate,
           allowedRoleIds: privacy.allowedRoleIds,
         });
         this.close();
       } catch (err: any) {
-        const banner = document.getElementById('channel-error-banner');
+        const banner = this.modalEl?.querySelector('#channel-error-banner') as HTMLElement | null;
         if (banner) {
-          banner.innerText = err.message || t('channelModal.error');
+          banner.innerText = err.message || t('channelModal.editError');
           banner.classList.add('show');
         }
       }
@@ -112,4 +125,4 @@ export class CreateChannelModal {
   }
 }
 
-export const createChannelModal = new CreateChannelModal();
+export const editChannelModal = new EditChannelModal();

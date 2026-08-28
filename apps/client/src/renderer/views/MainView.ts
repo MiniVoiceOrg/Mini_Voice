@@ -13,6 +13,7 @@ import { webRtcManager } from '../core/WebRtcManager';
 import { ChatView } from './ChatView';
 import { VoiceStageView } from './VoiceStageView';
 import { createChannelModal } from './CreateChannelModal';
+import { editChannelModal } from './EditChannelModal';
 import { settingsModal } from './SettingsModal';
 import { serverSettingsModal } from './ServerSettingsModal';
 import { serverMonitorModal } from './ServerMonitorModal';
@@ -512,6 +513,7 @@ export class MainView {
         <div class="channel-item ${c.id === serverStore.activeTextChannelId && this.activeContentView === 'chat' ? 'active' : ''}" data-channel-id="${c.id}" data-channel-type="TEXT">
           <span class="material-symbols-outlined md-16 channel-icon" style="color: var(--text-muted);">tag</span>
           <span class="channel-name">${escapeHtml(c.name)}</span>
+          ${c.isPrivate ? `<span class="material-symbols-outlined md-16 channel-private-icon" title="${t('main.privateChannelBadge')}">lock_person</span>` : ''}
           ${chatStore.hasMention(c.id)
             ? `<span class="channel-mention-badge" title="${t('main.mentionBadge')}">@</span>`
             : chatStore.hasUnread(c.id)
@@ -536,6 +538,7 @@ export class MainView {
             <div class="channel-item ${isActive ? 'active' : ''} ${isRestricted ? 'restricted' : ''}" data-channel-id="${c.id}" data-channel-type="VOICE">
               <span class="material-symbols-outlined md-16 channel-icon" style="color: ${isActive ? 'var(--success)' : 'var(--text-muted)'};">volume_up</span>
               <span class="channel-name">${escapeHtml(c.name)}</span>
+              ${c.isPrivate ? `<span class="material-symbols-outlined md-16 channel-private-icon" title="${t('main.privateChannelBadge')}">lock_person</span>` : ''}
               ${showRestrictedIcon ? `<span class="material-symbols-outlined md-16 channel-restricted-icon" title="${t('main.voiceChannelRestricted')}">lock</span>` : ''}
               ${isActive ? `<span style="font-size: 11px; color: var(--success); font-weight: 600; margin-left: auto;">(${t('common.you')})</span>` : ''}
               <button class="channel-menu-btn" data-menu-channel="${c.id}" title="${t('common.moreOptions')}">
@@ -761,6 +764,13 @@ export class MainView {
     }
 
     if (serverStore.hasPermission(Permission.MANAGE_CHANNELS)) {
+      items.push({
+        label: t('main.editChannel'),
+        icon: 'settings',
+        onClick: () => {
+          editChannelModal.open(channelId);
+        },
+      });
       items.push({
         label: t('main.deleteChannel'),
         icon: 'delete',

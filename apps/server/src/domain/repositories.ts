@@ -22,6 +22,8 @@ export interface IChannelRepository {
   findById(id: string): Promise<ChannelRecord | null>;
   listByServerId(serverId: string): Promise<ChannelRecord[]>;
   create(channel: ChannelRecord): Promise<void>;
+  /** Applies a partial edit; `allowedRoleIds`, when given, replaces the set (#384). */
+  update(id: string, updates: Partial<Omit<ChannelRecord, 'id' | 'serverId'>>): Promise<void>;
   delete(id: string): Promise<void>;
   updatePosition(id: string, position: number): Promise<void>;
 }

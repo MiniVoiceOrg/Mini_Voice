@@ -104,6 +104,17 @@ export class ServerStore {
     }
   }
 
+  /** Applies an edit to a channel already in the list (#384). */
+  public updateChannel(channel: ChannelSummary): void {
+    if (!this.serverDetails) return;
+
+    const index = this.serverDetails.channels.findIndex((c) => c.id === channel.id);
+    if (index === -1) return;
+
+    this.serverDetails.channels[index] = channel;
+    appEvents.emit('server.updated');
+  }
+
   public updateCurrentUser(user: UserSummary): void {
     // Profile updates arrive without connection fields, so ours are kept (#309).
     this.currentUser = {

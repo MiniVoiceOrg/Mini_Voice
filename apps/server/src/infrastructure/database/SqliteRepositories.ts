@@ -1,4 +1,5 @@
 import { IDatabaseDriver } from './SqliteWrapper';
+import { ChannelType } from '@monky/shared';
 import { AttachmentRecord, ChannelRecord, MentionRecord, MessageRecord, RoleRecord, ServerRecord, UserRecord, UserRoleRecord } from '../../domain/entities';
 import { IAttachmentRepository, IChannelRepository, IMentionRepository, IMessageRepository, IRoleRepository, IServerRepository, IUserRepository } from '../../domain/repositories';
 
@@ -156,9 +157,10 @@ export class SqliteUserRepository implements IUserRepository {
   }
 
   async delete(id: string): Promise<void> {
-    // sql.js does not enforce ON DELETE CASCADE, so related rows are removed
-    // explicitly. Chat messages are intentionally preserved (they gracefully
-    // render as an unknown author) to keep channel history intact.
+    // Related rows are removed explicitly rather than relying on the cascade, so
+    // the deletion holds even on a database opened without `foreign_keys = ON`.
+    // Chat messages are intentionally preserved (they gracefully render as an
+    // unknown author) to keep channel history intact.
     this.db.transaction(() => {
       this.db.prepare('DELETE FROM user_roles WHERE user_id = ?').run(id);
       this.db.prepare('DELETE FROM mentions WHERE user_id = ?').run(id);
@@ -181,29 +183,137 @@ export class SqliteUserRepository implements IUserRepository {
   }
 }
 
+interface SqliteChannelRow {
+  id: string;
+  serverId: string;
+  name: string;
+  type: ChannelType;
+  position: number;
+  createdAt: number;
+  maxParticipants: number;
+  isPrivate: number;
+}
+
 export class SqliteChannelRepository implements IChannelRepository {
   constructor(private db: IDatabaseDriver) {}
 
+  private static readonly SELECT_COLUMNS =
+    'id, server_id as serverId, name, type, position, created_at as createdAt, max_participants as maxParticipants, is_private as isPrivate';
+
+  /** Allowed roles for a set of channels, in one query, to avoid N+1 (#384). */
+  private loadAllowedRoles(channelIds: string[]): Map<string, string[]> {
+    const byChannel = new Map<string, string[]>();
+    if (channelIds.length === 0) return byChannel;
+
+    const placeholders = channelIds.map(() => '?').join(', ');
+    const rows = this.db.prepare(
+      `SELECT channel_id as channelId, role_id as roleId FROM channel_allowed_roles WHERE channel_id IN (${placeholders})`
+    ).all(...channelIds) as { channelId: string; roleId: string }[];
+
+    for (const row of rows) {
+      const existing = byChannel.get(row.channelId);
+      if (existing) existing.push(row.roleId);
+      else byChannel.set(row.channelId, [row.roleId]);
+    }
+    return byChannel;
+  }
+
+  private toRecord(row: SqliteChannelRow, allowedRoleIds: string[]): ChannelRecord {
+    return {
+      id: row.id,
+      serverId: row.serverId,
+      name: row.name,
+      type: row.type,
+      position: row.position,
+      createdAt: row.createdAt,
+      maxParticipants: row.maxParticipants,
+      isPrivate: row.isPrivate === 1,
+      allowedRoleIds,
+    };
+  }
+
   async findById(id: string): Promise<ChannelRecord | null> {
     const row = this.db.prepare(
-      'SELECT id, server_id as serverId, name, type, position, created_at as createdAt, max_participants as maxParticipants FROM channels WHERE id = ?'
-    ).get(id) as ChannelRecord | undefined;
-    return row || null;
+      `SELECT ${SqliteChannelRepository.SELECT_COLUMNS} FROM channels WHERE id = ?`
+    ).get(id) as SqliteChannelRow | undefined;
+    if (!row) return null;
+
+    return this.toRecord(row, this.loadAllowedRoles([row.id]).get(row.id) ?? []);
   }
 
   async listByServerId(serverId: string): Promise<ChannelRecord[]> {
-    return this.db.prepare(
-      'SELECT id, server_id as serverId, name, type, position, created_at as createdAt, max_participants as maxParticipants FROM channels WHERE server_id = ? ORDER BY position ASC, created_at ASC'
-    ).all(serverId) as ChannelRecord[];
+    const rows = this.db.prepare(
+      `SELECT ${SqliteChannelRepository.SELECT_COLUMNS} FROM channels WHERE server_id = ? ORDER BY position ASC, created_at ASC`
+    ).all(serverId) as SqliteChannelRow[];
+
+    const allowedRoles = this.loadAllowedRoles(rows.map((row) => row.id));
+    return rows.map((row) => this.toRecord(row, allowedRoles.get(row.id) ?? []));
   }
 
   async create(channel: ChannelRecord): Promise<void> {
-    this.db.prepare(
-      'INSERT INTO channels (id, server_id, name, type, position, created_at, max_participants) VALUES (?, ?, ?, ?, ?, ?, ?)'
-    ).run(channel.id, channel.serverId, channel.name, channel.type, channel.position, channel.createdAt, channel.maxParticipants);
+    this.db.transaction(() => {
+      this.db.prepare(
+        'INSERT INTO channels (id, server_id, name, type, position, created_at, max_participants, is_private) VALUES (?, ?, ?, ?, ?, ?, ?, ?)'
+      ).run(
+        channel.id,
+        channel.serverId,
+        channel.name,
+        channel.type,
+        channel.position,
+        channel.createdAt,
+        channel.maxParticipants,
+        channel.isPrivate ? 1 : 0
+      );
+      this.replaceAllowedRoles(channel.id, channel.allowedRoleIds);
+    })();
+  }
+
+  async update(id: string, updates: Partial<Omit<ChannelRecord, 'id' | 'serverId'>>): Promise<void> {
+    this.db.transaction(() => {
+      const assignments: string[] = [];
+      const values: unknown[] = [];
+
+      if (updates.name !== undefined) {
+        assignments.push('name = ?');
+        values.push(updates.name);
+      }
+      if (updates.position !== undefined) {
+        assignments.push('position = ?');
+        values.push(updates.position);
+      }
+      if (updates.maxParticipants !== undefined) {
+        assignments.push('max_participants = ?');
+        values.push(updates.maxParticipants);
+      }
+      if (updates.isPrivate !== undefined) {
+        assignments.push('is_private = ?');
+        values.push(updates.isPrivate ? 1 : 0);
+      }
+
+      if (assignments.length > 0) {
+        this.db.prepare(`UPDATE channels SET ${assignments.join(', ')} WHERE id = ?`).run(...values, id);
+      }
+      if (updates.allowedRoleIds !== undefined) {
+        this.replaceAllowedRoles(id, updates.allowedRoleIds);
+      }
+    })();
+  }
+
+  /**
+   * Replaces the allowed-role set. Callers must pass ids that exist: the
+   * foreign key is enforced by sql.js and an unknown role would throw.
+   */
+  private replaceAllowedRoles(channelId: string, roleIds: string[]): void {
+    this.db.prepare('DELETE FROM channel_allowed_roles WHERE channel_id = ?').run(channelId);
+    for (const roleId of roleIds) {
+      this.db.prepare(
+        'INSERT OR IGNORE INTO channel_allowed_roles (channel_id, role_id) VALUES (?, ?)'
+      ).run(channelId, roleId);
+    }
   }
 
   async delete(id: string): Promise<void> {
+    // channel_allowed_roles rows go with it through ON DELETE CASCADE.
     this.db.prepare('DELETE FROM channels WHERE id = ?').run(id);
   }
 
