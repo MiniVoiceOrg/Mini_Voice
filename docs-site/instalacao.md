@@ -1,6 +1,6 @@
 # Instalação
 
-Baixe a versão mais recente em [github.com/MonkyOrg/Monky/releases/latest](https://github.com/MonkyOrg/Monky/releases/latest).
+Baixe a versão para o seu sistema na [página de download](/download) — os botões apontam direto para o arquivo certo da última release.
 
 | Sistema | Arquivo | Observação |
 |---|---|---|
@@ -34,7 +34,7 @@ codesign --force --deep --sign - /Applications/Monky.app
 
 ## Atualizações
 
-O app avisa quando sai uma versão nova. Você também pode conferir em **Configurações › Atualizações › Verificar atualizações**.
+O app avisa quando sai uma versão nova. Você também pode conferir em **Configurações › Sobre e Atualizações › Verificar atualizações**.
 
 No Windows a atualização é aplicada sozinha: o Monky baixa, instala e reabre.
 

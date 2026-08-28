@@ -5,6 +5,14 @@ on:
     branches: [main]
     paths:
       - 'docs-site/**'
+  # A pagina de download resolve os links das releases durante o build, entao o
+  # site precisa ser regerado quando sai uma release nova. O gatilho escuta a
+  # conclusao do workflow Release em vez do evento `release: published` porque a
+  # release e criada com o GITHUB_TOKEN, e eventos disparados por esse token nao
+  # iniciam outros workflows — o deploy simplesmente nunca rodaria.
+  workflow_run:
+    workflows: ['Release']
+    types: [completed]
   workflow_dispatch:
 
 permissions:
@@ -18,6 +26,9 @@ concurrency:
 
 jobs:
   build:
+    # Release que falhou nao publicou artefato nenhum; regerar o site so trocaria
+    # os links por outros iguais aos que ja estao no ar.
+    if: github.event_name != 'workflow_run' || github.event.workflow_run.conclusion == 'success'
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
@@ -33,6 +44,10 @@ jobs:
 
       - name: Build docs
         run: npm run docs:build
+        env:
+          # Sem token a API do GitHub libera 60 requisicoes por hora por IP, e o
+          # IP do runner e compartilhado entre varios jobs.
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Upload artifact
         uses: actions/upload-pages-artifact@v3
