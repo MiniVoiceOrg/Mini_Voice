@@ -548,6 +548,8 @@ export class ConnectionView {
   }
 
   private unbindLanListeners: Array<() => void> = [];
+  private isScanningLan: boolean = false;
+  private lanScanTimeout: any = null;
 
   private setupLanDiscoveryListeners(): void {
     for (const unbind of this.unbindLanListeners) {
@@ -657,9 +659,9 @@ export class ConnectionView {
             <span class="material-symbols-outlined md-14" style="color: #3ba55d;">wifi</span>
             ${t('connection.lanServersCount', { count: servers.length })}
           </span>
-          <button type="button" id="btn-scan-lan" class="btn btn-secondary" style="padding: 2px 10px; font-size: 10px; height: 22px;">
+          <button type="button" id="btn-scan-lan" class="btn btn-secondary" ${this.isScanningLan ? 'disabled' : ''} style="padding: 2px 10px; font-size: 10px; height: 22px;">
             <span class="material-symbols-outlined md-14" style="margin-right: 3px;">radar</span>
-            ${t('connection.scan')}
+            ${this.isScanningLan ? t('connection.scanning') : t('connection.scan')}
           </button>
         </div>
         ${servers.length > 0 ? `
@@ -710,18 +712,21 @@ export class ConnectionView {
     // Scan button — starts discovery for 5s then stops
     const scanBtn = this.container.querySelector('#btn-scan-lan') as HTMLButtonElement | null;
     scanBtn?.addEventListener('click', async () => {
-      scanBtn.disabled = true;
-      scanBtn.innerHTML = `<span class="material-symbols-outlined md-14" style="margin-right: 3px;">radar</span> ${t('connection.scanning')}`;
+      if (this.isScanningLan) return;
+      this.isScanningLan = true;
+      if (this.lanScanTimeout) {
+        clearTimeout(this.lanScanTimeout);
+        this.lanScanTimeout = null;
+      }
       this.discoveredServers.clear();
       this.renderDiscoveredServersSection();
       await window.api?.startLanDiscovery?.();
-      setTimeout(async () => {
+
+      this.lanScanTimeout = setTimeout(async () => {
+        this.isScanningLan = false;
+        this.lanScanTimeout = null;
         await window.api?.stopLanDiscovery?.();
-        const btn2 = this.container.querySelector('#btn-scan-lan') as HTMLButtonElement | null;
-        if (btn2) {
-          btn2.disabled = false;
-          btn2.innerHTML = `<span class="material-symbols-outlined md-14" style="margin-right: 3px;">radar</span> ${t('connection.scan')}`;
-        }
+        this.renderDiscoveredServersSection();
       }, 5000);
     });
 
@@ -744,6 +749,11 @@ export class ConnectionView {
   private async syncLanDiscoveryForActiveTab(): Promise<void> {
     // Discovery is manual now — only stop when leaving join tab
     if (this.activeTab !== 'join') {
+      if (this.lanScanTimeout) {
+        clearTimeout(this.lanScanTimeout);
+        this.lanScanTimeout = null;
+      }
+      this.isScanningLan = false;
       this.discoveredServers.clear();
       this.renderDiscoveredServersSection();
       await window.api?.stopLanDiscovery?.();
