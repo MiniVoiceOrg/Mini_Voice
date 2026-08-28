@@ -10,6 +10,7 @@ import { formatBytes, fileIconName } from '../src/renderer/utils/attachment';
 import { EventBus } from '../src/renderer/core/EventBus';
 import { normalizeSearchString, matchesSearch } from '../src/renderer/utils/search';
 import { compareVersions, feedUrlForTag, isNewer, pickBestRelease } from '../src/main/updateVersions';
+import { extractStickerIds, stickerToken, stripStickerTokens } from '../src/renderer/utils/stickers';
 
 let passed = 0;
 let failed = 0;
@@ -291,7 +292,64 @@ function runTests() {
   assert(pickBestRelease([]) === null, 'pickBestRelease devolve null para lista vazia');
   assert(pickBestRelease(null) === null, 'pickBestRelease devolve null quando a resposta não é uma lista');
 
-  console.log(`\n=== Relatório dos Testes ===`);  console.log(`Total: ${passed + failed} | Passaram: ${passed} | Falharam: ${failed}`);
+  // --- Figurinhas do chat (#356) ---
+  // O marcador viaja dentro do texto da mensagem, então precisa ser reconhecido
+  // com precisão: se sobrar no conteúdo o usuário vê "[[sticker:...]]" cru, e se
+  // for reconhecido demais uma mensagem comum some do feed.
+  console.log('\n--- Figurinhas do chat (#356) ---');
+  const stickerId = '2f1b8c4e-0a11-4a55-9c2d-7e6f0b3a91dd';
+  assert(stickerToken(stickerId) === `[[sticker:${stickerId}]]`, 'stickerToken monta o marcador esperado');
+  assert(
+    extractStickerIds(stickerToken(stickerId))[0] === stickerId,
+    'extractStickerIds recupera o id gerado por stickerToken'
+  );
+  assert(
+    stripStickerTokens(stickerToken(stickerId), [stickerId]) === '',
+    'stripStickerTokens deixa a mensagem vazia quando só há a figurinha'
+  );
+  assert(
+    stripStickerTokens(`olha isso ${stickerToken(stickerId)}`, [stickerId]) === 'olha isso',
+    'stripStickerTokens preserva o texto digitado pelo usuário'
+  );
+  // Um marcador que não corresponde a nenhum anexo tem que sobreviver como texto,
+  // senão quem digitasse "[[sticker:teste]]" veria a própria mensagem sumir.
+  assert(
+    stripStickerTokens(`olha ${stickerToken('teste')} isso`, []) === `olha ${stickerToken('teste')} isso`,
+    'marcador sem anexo correspondente permanece como texto literal'
+  );
+  assert(
+    stripStickerTokens(`${stickerToken('aaa')}${stickerToken('bbb')}`, ['aaa']) === stickerToken('bbb'),
+    'stripStickerTokens remove apenas os marcadores que viraram figurinha'
+  );
+  assert(
+    extractStickerIds(`${stickerToken('aaa')} ${stickerToken('bbb')}`).join(',') === 'aaa,bbb',
+    'extractStickerIds mantém a ordem de aparição'
+  );
+  assert(
+    extractStickerIds(`${stickerToken('aaa')} ${stickerToken('aaa')}`).length === 1,
+    'extractStickerIds não repete o mesmo anexo'
+  );
+  assert(extractStickerIds('mensagem normal').length === 0, 'texto comum não vira figurinha');
+  assert(
+    stripStickerTokens('mensagem normal', []) === 'mensagem normal',
+    'stripStickerTokens não altera mensagens sem marcador'
+  );
+  assert(
+    extractStickerIds('[[sticker:id com espaco]]').length === 0,
+    'ids inválidos (com espaço) são ignorados'
+  );
+  assert(
+    extractStickerIds(`[[sticker:${'a'.repeat(65)}]]`).length === 0,
+    'ids absurdamente longos são ignorados'
+  );
+  // O escape de HTML acontece depois; o marcador não pode abrir caminho para injeção.
+  assert(
+    extractStickerIds('[[sticker:<img src=x onerror=alert(1)>]]').length === 0,
+    'marcador com HTML dentro não é aceito'
+  );
+
+  console.log(`\n=== Relatório dos Testes ===`);
+  console.log(`Total: ${passed + failed} | Passaram: ${passed} | Falharam: ${failed}`);
 
   if (failed > 0) {
     process.exit(1);

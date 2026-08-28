@@ -416,8 +416,100 @@ export function setupIpcHandlers(
     }
   });
 
-  let registeredSoundboardShortcuts: Array<{ soundName: string; accelerator: string }> = [];
-  let registeredActionShortcuts: Array<{ action: string; accelerator: string }> = [];
+  // --- Figurinhas do chat (#356) ---
+  // Same shape as the soundboard folder feature: the user points at a folder on
+  // their machine and we only ever read image files out of it.
+  const STICKER_MIME_TYPES: Record<string, string> = {
+    '.png': 'image/png',
+    '.gif': 'image/gif',
+    '.webp': 'image/webp',
+    '.jpg': 'image/jpeg',
+    '.jpeg': 'image/jpeg',
+    '.apng': 'image/apng',
+    '.avif': 'image/avif',
+  };
+  const MAX_STICKER_BYTES = 2 * 1024 * 1024;
+  const MAX_STICKERS_LISTED = 500;
+
+  ipcMain.handle('dialog:select-stickers-folder', async () => {
+    const result = await dialog.showOpenDialog(mainWindow, {
+      title: mt('dialog.selectStickersFolder'),
+      properties: ['openDirectory'],
+    });
+
+    if (result.canceled || result.filePaths.length === 0) {
+      return null;
+    }
+    return result.filePaths[0];
+  });
+
+  ipcMain.handle('stickers:list', async (_, folderPath: string) => {
+    if (!folderPath || typeof folderPath !== 'string') {
+      return [];
+    }
+    try {
+      const folderStat = await fs.promises.stat(folderPath).catch(() => null);
+      if (!folderStat || !folderStat.isDirectory()) {
+        return [];
+      }
+      const entries = await fs.promises.readdir(folderPath, { withFileTypes: true });
+      const candidates = entries
+        .filter((entry) => entry.isFile() && STICKER_MIME_TYPES[path.extname(entry.name).toLowerCase()])
+        .slice(0, MAX_STICKERS_LISTED);
+
+      const stickers = await Promise.all(
+        candidates.map(async (entry) => {
+          const ext = path.extname(entry.name).toLowerCase();
+          const fullPath = path.join(folderPath, entry.name);
+          const stat = await fs.promises.stat(fullPath).catch(() => null);
+          if (!stat || stat.size > MAX_STICKER_BYTES) return null;
+          return {
+            name: path.basename(entry.name, ext),
+            fileName: entry.name,
+            filePath: fullPath,
+            sizeBytes: stat.size,
+            ext,
+            mimeType: STICKER_MIME_TYPES[ext],
+          };
+        })
+      );
+
+      const valid = stickers.filter((s): s is NonNullable<typeof s> => s !== null);
+      valid.sort((a, b) => a.name.localeCompare(b.name));
+      return valid;
+    } catch (e) {
+      console.warn('Error reading stickers folder:', e);
+      return [];
+    }
+  });
+
+  ipcMain.handle('stickers:read', async (_, filePath: string) => {
+    if (!filePath || typeof filePath !== 'string') {
+      return null;
+    }
+    // Only ever hand image bytes back to the renderer, whatever path it asks for.
+    const ext = path.extname(filePath).toLowerCase();
+    const mimeType = STICKER_MIME_TYPES[ext];
+    if (!mimeType) return null;
+    try {
+      const stat = await fs.promises.stat(filePath).catch(() => null);
+      if (!stat || !stat.isFile() || stat.size > MAX_STICKER_BYTES) {
+        return null;
+      }
+      const buffer = await fs.promises.readFile(filePath);
+      return {
+        fileName: path.basename(filePath),
+        mimeType,
+        dataUrl: `data:${mimeType};base64,${buffer.toString('base64')}`,
+        sizeBytes: stat.size,
+      };
+    } catch (e) {
+      console.warn('Error reading sticker file:', e);
+      return null;
+    }
+  });
+
+  let registeredSoundboardShortcuts: Array<{ soundName: string; accelerator: string }> = [];  let registeredActionShortcuts: Array<{ action: string; accelerator: string }> = [];
 
   const syncAllGlobalShortcuts = (): boolean => {
     try {

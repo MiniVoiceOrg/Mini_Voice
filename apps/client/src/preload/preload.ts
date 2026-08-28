@@ -16,6 +16,8 @@ import type {
   SoundboardShortcutBinding,
   SoundboardSoundData,
   SoundboardSoundEntry,
+  StickerData,
+  StickerEntry,
   TrayVoiceStatus,
   UpdateCheckResult,
   UpdateSimpleResult,
@@ -52,6 +54,9 @@ export interface ElectronApi {
   selectSoundboardFolder: () => Promise<string | null>;
   listSoundboardSounds: (folderPath: string) => Promise<SoundboardSoundEntry[]>;
   readSoundboardSound: (filePath: string) => Promise<SoundboardSoundData | null>;
+  selectStickersFolder: () => Promise<string | null>;
+  listStickers: (folderPath: string) => Promise<StickerEntry[]>;
+  readSticker: (filePath: string) => Promise<StickerData | null>;
   registerSoundboardShortcuts: (shortcuts: SoundboardShortcutBinding[]) => Promise<boolean>;
   onSoundboardShortcutTriggered: (cb: (soundName: string) => void) => () => void;
   registerActionShortcuts: (shortcuts: ActionShortcutBinding[]) => Promise<boolean>;
@@ -143,6 +148,9 @@ const api: ElectronApi = {
   selectSoundboardFolder: () => ipcRenderer.invoke('dialog:select-soundboard-folder'),
   listSoundboardSounds: (folderPath) => ipcRenderer.invoke('soundboard:list-sounds', folderPath),
   readSoundboardSound: (filePath) => ipcRenderer.invoke('soundboard:read-sound', filePath),
+  selectStickersFolder: () => ipcRenderer.invoke('dialog:select-stickers-folder'),
+  listStickers: (folderPath) => ipcRenderer.invoke('stickers:list', folderPath),
+  readSticker: (filePath) => ipcRenderer.invoke('stickers:read', filePath),
   registerSoundboardShortcuts: (shortcuts) => ipcRenderer.invoke('soundboard:register-shortcuts', shortcuts),
   onSoundboardShortcutTriggered: (cb) => {
     const listener = (_e: Electron.IpcRendererEvent, soundName: string) => cb(soundName);
