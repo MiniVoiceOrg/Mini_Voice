@@ -120,6 +120,12 @@ npm run test --workspace=apps/server   # testes do servidor
 npm test                               # tudo, incluindo os testes de versionamento
 ```
 
+Para testar o PR de outra pessoa rodando o app, o repositório traz a skill
+`testar-pr` (em `.claude/skills/testar-pr/`): ela lê o contexto do PR, faz o
+checkout da branch, builda, sobe o app e entrega um roteiro de teste do que
+aquele PR mudou. Em um agente com suporte a skills, basta pedir
+"testa o PR 123".
+
 O Monky CLI vive em `apps/server/src/cli/` e é empacotado à parte:
 
 ```bash
