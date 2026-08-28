@@ -22,7 +22,11 @@ The smiley button next to the message field opens a picker with two tabs.
 
 **Emojis** holds the full catalog, split by category and searchable (try `heart`, `party`, `cake`…). Clicking an emoji inserts it at the cursor, so you can mix emoji and text in the same message.
 
-**Stickers** is where you pick a folder on your computer, the same way you do for the soundboard. Every `.png`, `.gif`, `.webp`, `.jpg` or `.avif` image up to 2 MB becomes a sticker — animated GIFs stay animated. Clicking a sticker sends it right away as its own message, and everyone sees it as a fixed-size square.
+**Stickers** is where you pick a folder on your computer, the same way you do for the soundboard — either from the picker itself or in **Settings › Stickers**. Every `.png`, `.gif`, `.webp`, `.jpg`, `.apng` or `.avif` image up to 8 MB becomes a sticker; animated GIFs stay animated. Files over the limit show up dimmed, with the reason, instead of disappearing from the list. Clicking a sticker sends it right away as its own message, and everyone sees it as a fixed-size square.
+
+The folder is re-read every time the picker opens, so adding or deleting files while the app is running just works. If you need to, the reload button (next to *Change Folder*) forces a fresh read.
+
+Got a sticker from someone else? Hover over it and click the save button to copy it into your own folder.
 
 The folder stays on your machine: the image is uploaded to the server when you use the sticker, like any other attachment. That is why sending a sticker requires the **Attach files** permission.
 

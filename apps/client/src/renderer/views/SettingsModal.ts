@@ -6,6 +6,7 @@ import { t } from '../i18n';
 import { AccountTab } from './settings/tabs/AccountTab';
 import { VoiceVideoTab } from './settings/tabs/VoiceVideoTab';
 import { SoundboardTab } from './settings/tabs/SoundboardTab';
+import { StickersTab } from './settings/tabs/StickersTab';
 import { KeybindsTab } from './settings/tabs/KeybindsTab';
 import { NotificationsTab } from './settings/tabs/NotificationsTab';
 import { QualityTab } from './settings/tabs/QualityTab';
@@ -18,6 +19,7 @@ export class SettingsModal {
   private accountTab = new AccountTab();
   private voiceVideoTab = new VoiceVideoTab();
   private soundboardTab = new SoundboardTab();
+  private stickersTab = new StickersTab();
   private keybindsTab = new KeybindsTab();
   private notificationsTab = new NotificationsTab();
   private qualityTab = new QualityTab();
@@ -46,6 +48,10 @@ export class SettingsModal {
           <button type="button" class="settings-tab-btn ${this.activeTab === 'soundboard' ? 'active' : ''}" data-tab="soundboard">
             <span class="material-symbols-outlined md-18">music_note</span>
             <span>${t('settings.tabSoundboard')}</span>
+          </button>
+          <button type="button" class="settings-tab-btn ${this.activeTab === 'stickers' ? 'active' : ''}" data-tab="stickers">
+            <span class="material-symbols-outlined md-18">mood</span>
+            <span>${t('settings.tabStickers')}</span>
           </button>
           <button type="button" class="settings-tab-btn ${this.activeTab === 'keybinds' ? 'active' : ''}" data-tab="keybinds">
             <span class="material-symbols-outlined md-18">keyboard</span>
@@ -95,6 +101,10 @@ export class SettingsModal {
               ${this.soundboardTab.renderHtml()}
             </div>
 
+            <div class="settings-tab-panel" id="tab-panel-stickers" style="${this.activeTab === 'stickers' ? '' : 'display: none;'}">
+              ${this.stickersTab.renderHtml()}
+            </div>
+
             <div class="settings-tab-panel" id="tab-panel-keybinds" style="${this.activeTab === 'keybinds' ? '' : 'display: none;'}">
               ${this.keybindsTab.renderHtml()}
             </div>
@@ -133,6 +143,8 @@ export class SettingsModal {
         return `<span class="material-symbols-outlined" style="color: var(--accent-primary);">mic</span><span>${t('settings.tabVoiceVideo')}</span>`;
       case 'soundboard':
         return `<span class="material-symbols-outlined" style="color: var(--accent-primary);">music_note</span><span>${t('settings.tabSoundboard')}</span>`;
+      case 'stickers':
+        return `<span class="material-symbols-outlined" style="color: var(--accent-primary);">mood</span><span>${t('settings.tabStickers')}</span>`;
       case 'keybinds':
         return `<span class="material-symbols-outlined" style="color: var(--accent-primary);">keyboard</span><span>${t('settings.tabKeybinds')}</span>`;
       case 'notifications':
@@ -198,6 +210,7 @@ export class SettingsModal {
 
     this.voiceVideoTab.attachEvents(this.modalEl);
     this.soundboardTab.attachEvents(this.modalEl);
+    this.stickersTab.attachEvents(this.modalEl);
     this.keybindsTab.attachEvents(this.modalEl);
     this.notificationsTab.attachEvents(this.modalEl);
     this.qualityTab.attachEvents(this.modalEl);

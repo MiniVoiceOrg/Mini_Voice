@@ -190,6 +190,11 @@ export class EmojiPicker {
         return;
       }
 
+      if (target.closest('.emoji-picker-refresh-btn')) {
+        void this.refreshStickers();
+        return;
+      }
+
       if (target.closest('.emoji-picker-folder-btn')) void this.pickFolder();
     };
     footer?.addEventListener('click', onFooterClick);
@@ -238,7 +243,10 @@ export class EmojiPicker {
     this.renderResults();
 
     if (this.stickersLoading) {
-      void stickerService.loadStickers().then(() => {
+      // Always re-read from disk instead of trusting the cached listing: the
+      // user can add or delete files while the app is open, and a stale grid
+      // looks exactly like the feature being broken.
+      void stickerService.loadStickers(true).then(() => {
         this.stickersLoading = false;
         if (this.root && this.tab === 'stickers') this.renderResults();
       });
@@ -363,10 +371,23 @@ export class EmojiPicker {
       <span class="emoji-picker-footer-info" title="${escapeHtml(settingsStore.stickersFolderPath)}">
         ${tCount('emojiPicker.stickersFound', all.length)}
       </span>
+      <button type="button" class="btn btn-secondary emoji-picker-refresh-btn" title="${t('emojiPicker.refresh')}" aria-label="${t('emojiPicker.refresh')}">
+        <span class="material-symbols-outlined md-14">refresh</span>
+      </button>
       ${this.renderFolderButton(t('emojiPicker.changeFolder'))}
     `;
 
     this.observeStickerImages(body);
+  }
+
+  /** Re-reads the folder on demand, for when the user changed it outside the app. */
+  private async refreshStickers(): Promise<void> {
+    this.stickersLoading = true;
+    if (this.root && this.tab === 'stickers') this.renderResults();
+
+    await stickerService.loadStickers(true);
+    this.stickersLoading = false;
+    if (this.root && this.tab === 'stickers') this.renderResults();
   }
 
   /** Opens the folder dialog and reloads the grid with whatever is inside. */
@@ -387,6 +408,15 @@ export class EmojiPicker {
 
   private renderStickerTile(sticker: StickerEntry): string {
     const name = escapeHtml(sticker.name);
+    if (sticker.tooLarge) {
+      // Rendered but not selectable: an oversized file that simply vanished from
+      // the grid was indistinguishable from the feature not working at all.
+      return `
+        <button type="button" class="emoji-picker-item emoji-picker-sticker emoji-picker-sticker--too-large" disabled title="${escapeHtml(t('emojiPicker.stickerTooLarge', { name: sticker.name }))}">
+          <span class="material-symbols-outlined md-18">warning</span>
+        </button>
+      `;
+    }
     return `
       <button type="button" class="emoji-picker-item emoji-picker-sticker" data-sticker-path="${escapeHtml(sticker.filePath)}" title="${name}">
         <img class="emoji-picker-sticker-img" alt="${name}" data-sticker-src="${escapeHtml(sticker.filePath)}">

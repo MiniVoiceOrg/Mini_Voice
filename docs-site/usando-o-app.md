@@ -22,7 +22,11 @@ O botão de carinha ao lado do campo de mensagem abre um seletor com duas abas.
 
 Em **Emojis** há o catálogo completo, dividido por categorias e com busca em português (procure por `coracao`, `festa`, `bolo`…). Clicar em um emoji o insere onde o cursor estiver, então dá para misturar emoji e texto na mesma mensagem.
 
-Em **Figurinhas** você escolhe uma pasta do seu computador, do mesmo jeito que faz com o soundboard. Toda imagem `.png`, `.gif`, `.webp`, `.jpg` ou `.avif` de até 2 MB vira uma figurinha — GIFs animados continuam animados. Clicar em uma figurinha a envia na hora, como uma mensagem própria, e ela aparece para todos em um quadrado de tamanho fixo.
+Em **Figurinhas** você escolhe uma pasta do seu computador, do mesmo jeito que faz com o soundboard — pelo próprio seletor ou em **Configurações › Figurinhas**. Toda imagem `.png`, `.gif`, `.webp`, `.jpg`, `.apng` ou `.avif` de até 8 MB vira uma figurinha; GIFs animados continuam animados. Arquivos acima do limite aparecem esmaecidos, com o motivo, em vez de sumirem da lista. Clicar em uma figurinha a envia na hora, como uma mensagem própria, e ela aparece para todos em um quadrado de tamanho fixo.
+
+A pasta é lida de novo toda vez que o seletor abre, então adicionar ou apagar arquivos com o app aberto funciona. Se precisar, o botão de recarregar (ao lado de *Trocar de Pasta*) força uma nova leitura.
+
+Recebeu uma figurinha de alguém? Passe o mouse sobre ela e clique no botão de salvar para copiá-la para a sua pasta.
 
 A pasta fica só na sua máquina: a imagem é enviada ao servidor quando você usa a figurinha, como qualquer anexo. Por isso enviar figurinha exige a permissão **Anexar arquivos**.
 
