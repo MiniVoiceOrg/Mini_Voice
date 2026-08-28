@@ -1,4 +1,4 @@
-import { bumpVersion, determineBumpType, calculateNextVersion, getNextBetaNumber, promoteBetaTag, formatBetaSuffix } from './calculate-version.js';
+import { bumpVersion, determineBumpType, calculateNextVersion, getNextBetaNumber, promoteBetaTag, formatBetaSuffix, parseVersionTag, compareVersionTags, getLatestReleaseTag, getLatestSemverTag } from './calculate-version.js';
 
 console.log('=== Início dos Testes de Versionamento SemVer (#122) ===');
 
@@ -140,6 +140,90 @@ console.assert(
   'promoteBetaTag deve aceitar o formato antigo'
 );
 console.log('✔ Canal beta e promoção validados com sucesso!');
+
+// 5. Numeração a partir da última release, betas incluídas (#378)
+//
+// Antes, toda a linha de beta mirava a mesma versão: 1.0.0 + feature virava
+// 1.1.0-beta001 e qualquer beta seguinte continuava em 1.1.0, então promover
+// depois de dezenas de mudanças ainda publicava 1.1.0. Agora cada release é
+// numerada a partir da imediatamente anterior.
+console.assert(parseVersionTag('v1.8.0').beta === null, 'tag estável não tem beta');
+console.assert(parseVersionTag('v1.8.0-beta003').beta === 3, 'beta003 deve ser lido como 3');
+console.assert(parseVersionTag('v1.8.0-beta.3').beta === 3, 'formato antigo -beta.3 aceito');
+console.assert(parseVersionTag('1.8.0').major === 1, 'tag sem prefixo v é aceita');
+console.assert(parseVersionTag('nightly') === null, 'tag fora do padrão retorna null');
+console.assert(parseVersionTag('v1.8') === null, 'versão incompleta retorna null');
+
+// Precedência SemVer: a beta fica abaixo da estável de mesmos números.
+console.assert(compareVersionTags('v1.8.0-beta003', 'v1.8.0') < 0, 'beta < estável da mesma base');
+console.assert(compareVersionTags('v1.8.0-beta009', 'v1.8.0-beta014') < 0, 'beta009 < beta014');
+console.assert(compareVersionTags('v1.9.0-beta001', 'v1.8.0') > 0, 'base maior vence a estável menor');
+console.assert(compareVersionTags('v1.8.0', 'v1.8.0') === 0, 'tags iguais empatam');
+
+// A estável criada ao promover aponta para o mesmo commit da beta, então as
+// duas tags têm a mesma data — ordenar por data não distinguiria as duas.
+console.assert(
+  getLatestReleaseTag(['v1.7.0', 'v1.8.0-beta001', 'v1.8.0-beta002']) === 'v1.8.0-beta002',
+  'getLatestReleaseTag deve considerar betas'
+);
+console.assert(
+  getLatestReleaseTag(['v1.8.0-beta002', 'v1.8.0']) === 'v1.8.0',
+  'a estável promovida supera a própria beta'
+);
+console.assert(
+  getLatestReleaseTag(['v1.7.0', 'nightly', 'sem-tag']) === 'v1.7.0',
+  'tags fora do padrão são ignoradas'
+);
+console.assert(getLatestReleaseTag([]) === null, 'sem tags, getLatestReleaseTag retorna null');
+console.assert(
+  getLatestSemverTag(['v1.7.0', 'v1.8.0-beta002', 'v1.8.0-beta003']) === 'v1.7.0',
+  'getLatestSemverTag continua ignorando betas (usado na promoção)'
+);
+
+// O marcador de prerelease é descartado antes do incremento.
+console.assert(bumpVersion('v1.8.0-beta003', 'patch') === '1.8.1', 'patch sobre beta -> 1.8.1');
+console.assert(bumpVersion('v1.8.0-beta003', 'minor') === '1.9.0', 'minor sobre beta -> 1.9.0');
+console.assert(bumpVersion('v1.8.0-beta003', 'major') === '2.0.0', 'major sobre beta -> 2.0.0');
+
+// O cenário descrito na issue: cada push move o número conforme o que carrega.
+const linha1 = calculateNextVersion({
+  prevTag: 'v1.0.0',
+  commits: ['feat: primeira feature'],
+  channel: 'beta',
+  betaNumber: 1,
+});
+console.assert(linha1.nextVersion === '1.1.0-beta001', 'feature sobre 1.0.0 -> 1.1.0-beta001');
+
+const linha2 = calculateNextVersion({
+  prevTag: 'v1.1.0-beta001',
+  commits: ['fix: corrige bug'],
+  channel: 'beta',
+  betaNumber: 1,
+});
+console.assert(linha2.nextVersion === '1.1.1-beta001', 'fix sobre a beta -> 1.1.1-beta001');
+
+const linha3 = calculateNextVersion({
+  prevTag: 'v1.1.1-beta001',
+  commits: ['feat: outra feature'],
+  channel: 'beta',
+  betaNumber: 1,
+});
+console.assert(linha3.nextVersion === '1.2.0-beta001', 'nova feature sobre a beta -> 1.2.0-beta001');
+
+const linhaBreaking = calculateNextVersion({
+  prevTag: 'v1.2.0-beta001',
+  commits: ['feat!: muda o protocolo'],
+  channel: 'beta',
+  betaNumber: 1,
+});
+console.assert(
+  linhaBreaking.nextVersion === '2.0.0-beta001',
+  'breaking change sobre a beta -> 2.0.0-beta001'
+);
+
+// Promover a última beta publica exatamente os números dela.
+console.assert(promoteBetaTag('v1.2.0-beta001') === '1.2.0', 'promoção usa os números da beta');
+console.log('✔ Numeração a partir da última release validada com sucesso! (#378)');
 
 if (failures > 0) {
   console.error(`=== ${failures} asserção(ões) de versionamento falharam ===`);

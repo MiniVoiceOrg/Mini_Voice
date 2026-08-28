@@ -42,17 +42,18 @@ export function determineBumpType(commitMessages = []) {
 
 /**
  * Increments a semver string (e.g. "1.0.55" or "v1.0.55") by bumpType.
+ *
+ * A prerelease marker is dropped before bumping, so `1.8.0-beta003` plus a
+ * patch yields `1.8.1` rather than `1.8.0`. That is deliberate (#378): every
+ * beta is a release people actually run, so each one gets its own number
+ * describing what it carries, instead of the whole beta line sharing a single
+ * target version that never moved no matter how much shipped.
  */
 export function bumpVersion(currentVersion, bumpType = 'patch') {
-  const clean = String(currentVersion || '1.0.0').replace(/^v/, '').trim();
-  const parts = clean.split('.').map((p) => {
-    const n = parseInt(p, 10);
-    return isNaN(n) ? 0 : n;
-  });
-
-  let major = parts[0] || 1;
-  let minor = parts[1] || 0;
-  let patch = parts[2] || 0;
+  const parsed = parseVersionTag(currentVersion);
+  let major = parsed ? parsed.major : 1;
+  let minor = parsed ? parsed.minor : 0;
+  let patch = parsed ? parsed.patch : 0;
 
   if (bumpType === 'major') {
     major += 1;
@@ -69,18 +70,85 @@ export function bumpVersion(currentVersion, bumpType = 'patch') {
 }
 
 /**
- * Gets the latest git tag matching SemVer (e.g. v1.0.55).
+ * Parses a release tag into its comparable parts, or returns null when the
+ * string is not one of our release tags. Accepts the padded `-betaNNN` form and
+ * the legacy `-beta.N` one (#338).
  */
-export function getLatestSemverTag() {
-  try {
-    const tags = execSync('git tag --sort=-creatordate', { encoding: 'utf8' })
-      .split('\n')
-      .map((t) => t.trim())
-      .filter((t) => /^v?[0-9]+\.[0-9]+\.[0-9]+$/.test(t));
-    return tags[0] || null;
-  } catch (e) {
-    return null;
+export function parseVersionTag(tag) {
+  const m = /^v?(\d+)\.(\d+)\.(\d+)(?:-beta\.?(\d+))?$/i.exec(String(tag || '').trim());
+  if (!m) return null;
+  return {
+    major: Number(m[1]),
+    minor: Number(m[2]),
+    patch: Number(m[3]),
+    beta: m[4] != null ? Number(m[4]) : null,
+  };
+}
+
+/**
+ * Orders two release tags by SemVer precedence, where a beta ranks *below* the
+ * stable release sharing its numbers (`1.8.0-beta003` < `1.8.0`).
+ *
+ * Sorting tags by date would not do: promoting a beta creates the stable tag on
+ * the very same commit, and GitHub creates lightweight tags, whose "creator
+ * date" is the commit date — so both tags would tie.
+ */
+export function compareVersionTags(a, b) {
+  const pa = parseVersionTag(a);
+  const pb = parseVersionTag(b);
+  if (!pa && !pb) return 0;
+  if (!pa) return -1;
+  if (!pb) return 1;
+  if (pa.major !== pb.major) return pa.major - pb.major;
+  if (pa.minor !== pb.minor) return pa.minor - pb.minor;
+  if (pa.patch !== pb.patch) return pa.patch - pb.patch;
+  if (pa.beta === pb.beta) return 0;
+  if (pa.beta === null) return 1;
+  if (pb.beta === null) return -1;
+  return pa.beta - pb.beta;
+}
+
+/**
+ * Gets the highest release tag, betas included. This is the starting point for
+ * the next version: each release is numbered from the one immediately before
+ * it, so a fix after a beta becomes a patch above it and a feature becomes a
+ * minor above it (#378).
+ *
+ * A `tagList` may be injected (used by tests) to avoid shelling out to git.
+ */
+export function getLatestReleaseTag(tagList = null) {
+  let tags = tagList;
+  if (!tags) {
+    try {
+      tags = execSync('git tag', { encoding: 'utf8' }).split('\n');
+    } catch (e) {
+      return null;
+    }
   }
+  const releases = tags.map((t) => String(t).trim()).filter((t) => parseVersionTag(t) !== null);
+  if (releases.length === 0) return null;
+  return releases.sort(compareVersionTags)[releases.length - 1];
+}
+
+/**
+ * Gets the latest git tag matching a *stable* SemVer (e.g. v1.0.55), ignoring
+ * betas. Used when promoting a beta, so the stable release notes cover
+ * everything since the previous stable rather than since the last beta.
+ */
+export function getLatestSemverTag(tagList = null) {
+  let tags = tagList;
+  if (!tags) {
+    try {
+      tags = execSync('git tag', { encoding: 'utf8' }).split('\n');
+    } catch (e) {
+      return null;
+    }
+  }
+  const stable = tags
+    .map((t) => String(t).trim())
+    .filter((t) => /^v?[0-9]+\.[0-9]+\.[0-9]+$/.test(t));
+  if (stable.length === 0) return null;
+  return stable.sort(compareVersionTags)[stable.length - 1];
 }
 
 /**
@@ -169,10 +237,17 @@ export function getGitCommitsSinceTag(tag) {
 
 /**
  * Main function to calculate next version.
+ *
+ * The starting point is the latest release tag of any kind, betas included, and
+ * only the commits made since it are read. Numbering from the last *stable* tag
+ * instead meant the whole beta line aimed at one version: 1.0.0 plus a feature
+ * became 1.1.0-beta001, and every later beta — features and fixes alike — kept
+ * that same 1.1.0, so promoting after dozens of changes still published 1.1.0
+ * (#378).
  */
 export function calculateNextVersion(options = {}) {
   const channel = options.channel === 'beta' ? 'beta' : 'stable';
-  const prevTag = options.prevTag || getLatestSemverTag() || 'v1.0.55';
+  const prevTag = options.prevTag || getLatestReleaseTag() || 'v1.0.55';
   const commits = options.commits || getGitCommitsSinceTag(prevTag);
   const bumpType = options.bumpType || determineBumpType(commits);
   const baseVersion = bumpVersion(prevTag, bumpType);
