@@ -256,23 +256,35 @@ function runTests() {
   // --- Seleção de release do atualizador automático (#354) ---
   console.log('\n--- Testando seleção de release do atualizador ---');
 
-  // Betas são marcadas como vN.N.N-betaNNN, sem ponto e com zero à esquerda,
-  // para que a página de releases (que ordena pelo nome da tag) as liste na
-  // ordem certa (#338). A comparação precisa respeitar esse formato.
+  // Betas eram marcadas como vN.N.N-betaNNN, com zero à esquerda, para que a
+  // página de releases (que ordena pelo nome da tag) as listasse na ordem certa
+  // (#338). Hoje a tag traz só `-beta` (#382), mas a comparação precisa dar
+  // conta dos dois formatos: quem está numa build numerada compara a versão
+  // local antiga com a nova.
   assert(compareVersions('3.0.0', '3.0.0-beta007') > 0, 'Release estável supera a própria beta');
+  assert(compareVersions('3.0.0', '3.0.0-beta') > 0, 'Release estável supera a beta sem contador');
   assert(compareVersions('3.0.0-beta010', '3.0.0-beta009') > 0, 'beta010 é mais nova que beta009');
-  assert(compareVersions('3.1.0-beta001', '3.0.0') > 0, 'Beta de uma minor futura supera a estável atual');
+  assert(compareVersions('3.1.0-beta', '3.0.0') > 0, 'Beta de uma minor futura supera a estável atual');
+  assert(
+    compareVersions('3.1.2-beta', '3.1.1-beta001') > 0,
+    'Quem está numa beta numerada recebe a beta seguinte, já sem contador'
+  );
   assert(isNewer('3.0.0', '3.0.0-beta007'), 'Quem está na beta007 recebe a 3.0.0 final');
   assert(!isNewer('3.0.0-beta007', '3.0.0'), 'Quem está na estável não é rebaixado para uma beta antiga');
 
   // O feed é a pasta de assets da própria release: latest.yml fica ao lado do
   // instalador que ele descreve. Apontar o electron-updater para cá evita que
-  // ele procure a release sozinho, coisa que o formato "beta003" quebra por ser
-  // lido como um canal próprio em vez do canal "beta" (#354).
+  // ele procure a release sozinho, coisa que a busca dele faz mal porque aceita
+  // a primeira do canal, ainda que mais antiga que a instalada (#354).
+  assert(
+    feedUrlForTag('v3.1.2-beta') ===
+      'https://github.com/MonkyOrg/Monky/releases/download/v3.1.2-beta',
+    'feedUrlForTag aponta para a pasta de assets da release'
+  );
   assert(
     feedUrlForTag('v3.1.0-beta003') ===
       'https://github.com/MonkyOrg/Monky/releases/download/v3.1.0-beta003',
-    'feedUrlForTag aponta para a pasta de assets da release'
+    'feedUrlForTag continua servindo as tags com contador'
   );
 
   // A listagem da API não vem em ordem cronológica: o GitHub ordena por nome da
@@ -280,10 +292,10 @@ function runTests() {
   const releases = [
     { tag_name: 'v3.1.0-beta001' },
     { tag_name: 'v3.0.0' },
-    { tag_name: 'v3.1.0-beta003' },
+    { tag_name: 'v3.1.2-beta' },
     { tag_name: 'v3.1.0-beta002' },
   ];
-  assert(pickBestRelease(releases)?.tag_name === 'v3.1.0-beta003', 'pickBestRelease escolhe a maior versão, não a primeira da lista');
+  assert(pickBestRelease(releases)?.tag_name === 'v3.1.2-beta', 'pickBestRelease escolhe a maior versão, não a primeira da lista');
   assert(
     pickBestRelease([{ tag_name: 'v9.9.9', draft: true }, { tag_name: 'v3.0.0' }])?.tag_name === 'v3.0.0',
     'pickBestRelease ignora rascunhos'

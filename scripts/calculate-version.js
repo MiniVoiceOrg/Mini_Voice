@@ -43,9 +43,9 @@ export function determineBumpType(commitMessages = []) {
 /**
  * Increments a semver string (e.g. "1.0.55" or "v1.0.55") by bumpType.
  *
- * A prerelease marker is dropped before bumping, so `1.8.0-beta003` plus a
- * patch yields `1.8.1` rather than `1.8.0`. That is deliberate (#378): every
- * beta is a release people actually run, so each one gets its own number
+ * A prerelease marker is dropped before bumping, so `1.8.0-beta` plus a patch
+ * yields `1.8.1` rather than `1.8.0`. That is deliberate (#378): every beta is
+ * a release people actually run, so each one gets its own number
  * describing what it carries, instead of the whole beta line sharing a single
  * target version that never moved no matter how much shipped.
  */
@@ -71,23 +71,29 @@ export function bumpVersion(currentVersion, bumpType = 'patch') {
 
 /**
  * Parses a release tag into its comparable parts, or returns null when the
- * string is not one of our release tags. Accepts the padded `-betaNNN` form and
- * the legacy `-beta.N` one (#338).
+ * string is not one of our release tags. Betas are tagged `-beta`, but the
+ * numbered forms already published — `-betaNNN` and the legacy `-beta.N` — have
+ * to keep parsing, otherwise the next release would ignore them when looking
+ * for where to count from (#338).
+ *
+ * `prerelease` is what tells a beta from a stable release; `beta` only carries
+ * a number when the tag has one.
  */
 export function parseVersionTag(tag) {
-  const m = /^v?(\d+)\.(\d+)\.(\d+)(?:-beta\.?(\d+))?$/i.exec(String(tag || '').trim());
+  const m = /^v?(\d+)\.(\d+)\.(\d+)(-beta(?:\.?(\d+))?)?$/i.exec(String(tag || '').trim());
   if (!m) return null;
   return {
     major: Number(m[1]),
     minor: Number(m[2]),
     patch: Number(m[3]),
-    beta: m[4] != null ? Number(m[4]) : null,
+    prerelease: m[4] != null,
+    beta: m[5] != null ? Number(m[5]) : null,
   };
 }
 
 /**
  * Orders two release tags by SemVer precedence, where a beta ranks *below* the
- * stable release sharing its numbers (`1.8.0-beta003` < `1.8.0`).
+ * stable release sharing its numbers (`1.8.0-beta` < `1.8.0`).
  *
  * Sorting tags by date would not do: promoting a beta creates the stable tag on
  * the very same commit, and GitHub creates lightweight tags, whose "creator
@@ -102,10 +108,11 @@ export function compareVersionTags(a, b) {
   if (pa.major !== pb.major) return pa.major - pb.major;
   if (pa.minor !== pb.minor) return pa.minor - pb.minor;
   if (pa.patch !== pb.patch) return pa.patch - pb.patch;
-  if (pa.beta === pb.beta) return 0;
-  if (pa.beta === null) return 1;
-  if (pb.beta === null) return -1;
-  return pa.beta - pb.beta;
+  if (pa.prerelease !== pb.prerelease) return pa.prerelease ? -1 : 1;
+  if (!pa.prerelease) return 0;
+  // Both are betas of the same base: an unnumbered `-beta` sorts below the
+  // numbered ones, matching how SemVer compares `beta` against `beta001`.
+  return (pa.beta ?? 0) - (pb.beta ?? 0);
 }
 
 /**
@@ -152,62 +159,35 @@ export function getLatestSemverTag(tagList = null) {
 }
 
 /**
- * Width the beta counter is zero-padded to. GitHub orders the releases page by
- * tag name, so unpadded numbers sorted `beta.9` above `beta.14` and buried the
- * newest build in the middle of the list (#338). Padding makes the textual
- * order match the numeric one. SemVer forbids leading zeroes in *numeric*
- * identifiers, hence `beta014` (a single alphanumeric identifier) instead of
- * the invalid `beta.014`.
+ * Suffix that marks a beta tag, as in `v3.1.2-beta`.
+ *
+ * It used to carry a zero-padded counter (`-beta001`) to keep betas *of the
+ * same base* in order on GitHub's releases page, which sorts by tag name and
+ * listed `beta9` after `beta14` without the padding (#338). Now that every
+ * release is numbered from the one immediately before it, betas included
+ * (#378), no base is ever published twice — there is nothing left for the
+ * counter to disambiguate, and it never moved off 1 (#382).
+ *
+ * Sorting by name never ordered *different* bases correctly anyway (`v1.0.10`
+ * sorts below `v1.0.9`, padded or not), which is why both update clients sort
+ * releases themselves instead of trusting the order they come in.
+ *
+ * Dropping it also hands the `beta` channel back to electron-updater, which
+ * read `beta001` as a single identifier and therefore saw a *custom channel*
+ * named after it rather than the `beta` one (#354).
  */
-export const BETA_PAD_WIDTH = 3;
-
-/** Formats a beta iteration as the zero-padded suffix used in tags (#338). */
-export function formatBetaSuffix(betaNumber) {
-  const n = Math.max(1, parseInt(betaNumber, 10) || 1);
-  return `beta${String(n).padStart(BETA_PAD_WIDTH, '0')}`;
-}
-
-/**
- * Given a base stable version (e.g. "1.8.0"), returns the next beta iteration
- * number by inspecting existing beta git tags for that base. Recognises both
- * the padded `vX.Y.Z-betaNNN` form and the legacy `vX.Y.Z-beta.N` one, so the
- * counter keeps climbing across the rename instead of restarting (#338).
- * Returns 1 when no beta exists yet for the base. A `tagList` may be injected
- * (used by tests) to avoid shelling out to git.
- */
-export function getNextBetaNumber(baseVersion, tagList = null) {
-  const clean = String(baseVersion || '').replace(/^v/, '').trim();
-  if (!clean) return 1;
-  let tags = tagList;
-  if (!tags) {
-    try {
-      tags = execSync('git tag', { encoding: 'utf8' }).split('\n');
-    } catch {
-      return 1;
-    }
-  }
-  const re = new RegExp(`^v?${clean.replace(/\./g, '\\.')}-beta\\.?(\\d+)$`);
-  let maxN = 0;
-  for (const raw of tags) {
-    const m = re.exec(String(raw).trim());
-    if (m) {
-      const n = parseInt(m[1], 10);
-      if (!isNaN(n) && n > maxN) maxN = n;
-    }
-  }
-  return maxN + 1;
-}
+export const BETA_SUFFIX = 'beta';
 
 /**
  * Strips the `v` prefix and the beta suffix from a beta tag, yielding the clean
- * stable version to publish when promoting (e.g. "v1.8.0-beta003" -> "1.8.0").
- * Accepts the legacy `-beta.N` form too, so betas published before the rename
- * can still be promoted (#338).
+ * stable version to publish when promoting (e.g. "v1.8.0-beta" -> "1.8.0").
+ * The numbered forms are accepted too, so betas published before the counter
+ * was dropped can still be promoted (#338).
  */
 export function promoteBetaTag(betaTag) {
   return String(betaTag || '')
     .replace(/^v/, '')
-    .replace(/-beta\.?\d+$/i, '')
+    .replace(/-beta\.?\d*$/i, '')
     .trim();
 }
 
@@ -253,16 +233,13 @@ export function calculateNextVersion(options = {}) {
   const baseVersion = bumpVersion(prevTag, bumpType);
 
   if (channel === 'beta') {
-    const betaNumber =
-      options.betaNumber != null ? options.betaNumber : getNextBetaNumber(baseVersion);
-    const nextVersion = `${baseVersion}-${formatBetaSuffix(betaNumber)}`;
+    const nextVersion = `${baseVersion}-${BETA_SUFFIX}`;
     return {
       prevTag,
       bumpType,
       channel,
       prerelease: true,
       baseVersion,
-      betaNumber,
       nextVersion,
       nextTag: `v${nextVersion}`,
       commitsCount: commits.length,

@@ -310,21 +310,21 @@ export function setupUpdater(mainWindow: BrowserWindow): void {
       // as a generic feed, instead of letting its GitHub provider search for one
       // (#354).
       //
-      // That search cannot cope with our tag format. Betas are tagged
-      // `v3.1.0-beta003` — zero padded and without a dot, so that GitHub's
-      // releases page (which sorts by tag name) lists them in order and the
-      // version stays valid SemVer (#338). But `semver.prerelease` then reads
-      // the whole `beta003` as one identifier, so electron-updater sees a
-      // *custom channel* named `beta003` rather than the `beta` channel, and its
-      // release loop only accepts releases whose channel matches. Nothing
-      // matches except the running build itself, so `checkForUpdates` concluded
-      // "no update", `downloadUpdate` had nothing recorded to fetch and failed
-      // with "Please check update first".
+      // Betas used to be tagged `v3.1.0-beta003` — zero padded and without a
+      // dot, so that GitHub's releases page (which sorts by tag name) listed
+      // them in order while the version stayed valid SemVer (#338). But
+      // `semver.prerelease` read the whole `beta003` as one identifier, so
+      // electron-updater saw a *custom channel* named `beta003` rather than the
+      // `beta` channel, and its release loop only accepts releases whose
+      // channel matches. Nothing matched except the running build itself, so
+      // `checkForUpdates` concluded "no update", `downloadUpdate` had nothing
+      // recorded to fetch and failed with "Please check update first". Tags
+      // carry a plain `-beta` since #382, so that trap is gone.
       //
-      // Forcing `channel` is not a fix either: it makes the same loop accept the
-      // first stable release in the feed, which may be *older* than the beta the
-      // user is on. Our own SemVer comparison already picked the right release,
-      // so the library only needs to be told where it is.
+      // Letting the provider search is still wrong, though: its loop takes the
+      // first release of the matching channel in the feed, which may be *older*
+      // than the one the user is on. Our own SemVer comparison already picked
+      // the right release, so the library only needs to be told where it is.
       if (!pendingTag) {
         const recheck = await checkViaGitHub();
         if (!recheck.ok) return recheck;
