@@ -71,6 +71,7 @@ import { IServerRepository } from '../../domain/repositories';
 import { scanServerNetworkInterfaces } from '../discovery/ServerIpScanner';
 import { CoturnManager } from '../turn/CoturnManager';
 import { Logger } from '../logger/Logger';
+import { RateLimiter } from '../security/RateLimiter';
 
 interface ClientSession {
   ws: WebSocket;
@@ -125,9 +126,13 @@ export class WebSocketServer {
     private attachmentService: AttachmentService,
     private permissionService: PermissionService,
     private roleService: RoleService,
-    private coturnManager: CoturnManager
+    private coturnManager: CoturnManager,
+    private rateLimiter: RateLimiter
   ) {
-    this.wss = new WSServer({ server: this.server });
+    // Without a ceiling the ws default of 100 MiB applies, so an
+    // unauthenticated client could have the server buffer and JSON.parse a
+    // frame that size (#372).
+    this.wss = new WSServer({ server: this.server, maxPayload: LIMITS.WS_MAX_PAYLOAD_BYTES });
     this.setupWss();
     this.startHeartbeat();
   }
@@ -244,6 +249,18 @@ export class WebSocketServer {
 
     // Connect / Auth
     if (type === MessageType.AUTH_CONNECT) {
+      // Verifying the server password costs a scrypt derivation, so leaving it
+      // unmetered handed anyone both an unlimited password guessing loop and a
+      // way to keep the server busy (#372).
+      if (!this.rateLimiter.checkLimit(
+        `auth:${session.ip}`,
+        LIMITS.RATE_LIMIT_MAX_AUTH_ATTEMPTS,
+        LIMITS.RATE_LIMIT_AUTH_WINDOW_MS
+      )) {
+        Logger.security(`Authentication rate limit reached for ${session.ip}`);
+        this.sendError(session.ws, ProtocolErrorCode.RATE_LIMITED, 'Muitas tentativas de conexão. Aguarde um pouco.', requestId);
+        return;
+      }
       await this.handleAuthConnect(session, payload as AuthConnectPayload, requestId);
       return;
     }

@@ -20,6 +20,8 @@ import { compareVersions, pickNewestRelease } from './cli/commands/update';
 import { generateEcosystem, getPm2ProcessName } from './cli/pm2';
 import { parseOption } from './cli/formatters';
 import { listServers, registerServer, serverIdFor, unregisterServer } from './cli/registry';
+import { PasswordService } from './infrastructure/security/PasswordService';
+import { RateLimiter } from './infrastructure/security/RateLimiter';
 
 function withTimeout<T>(promise: Promise<T>, ms: number, label: string): Promise<T> {
   return Promise.race([
@@ -784,6 +786,54 @@ async function runTests() {
       await turnServer.stop();
     }
     console.log('✔ Teste 18 passou: ICE servers chegam ao cliente, com STUN, sem vazar TURN quando desligado, e com a disponibilidade do relay');
+
+    // Teste 19: verifyPassword recebia um hash truncado e chegava ao
+    // timingSafeEqual com buffers de tamanhos diferentes, que lança exceção em
+    // vez de responder "senha errada" (#372).
+    const hashValido = PasswordService.hashPassword('senha-secreta-123');
+    if (!(await PasswordService.verifyPassword('senha-secreta-123', hashValido))) {
+      throw new Error('Teste 19: a senha correta deveria ser aceita');
+    }
+    if (await PasswordService.verifyPassword('senha-errada', hashValido)) {
+      throw new Error('Teste 19: a senha errada deveria ser recusada');
+    }
+    const [saltValido, chaveValida] = hashValido.split(':');
+    for (const hashQuebrado of ['', 'sem-separador', `${saltValido}:`, `${saltValido}:${chaveValida.slice(0, 20)}`]) {
+      if (await PasswordService.verifyPassword('senha-secreta-123', hashQuebrado)) {
+        throw new Error('Teste 19: um hash malformado não deveria autenticar ninguém');
+      }
+    }
+    console.log('✔ Teste 19 passou: Hash malformado responde senha inválida em vez de lançar exceção');
+
+    // Teste 20: a autenticação não passava pelo rate limiter, então a senha do
+    // servidor podia ser testada indefinidamente — e cada tentativa custa uma
+    // derivação scrypt (#372).
+    const limitadorAuth = new RateLimiter();
+    let aceitas = 0;
+    for (let i = 0; i < LIMITS.RATE_LIMIT_MAX_AUTH_ATTEMPTS + 3; i++) {
+      if (limitadorAuth.checkLimit('auth:198.51.100.7', LIMITS.RATE_LIMIT_MAX_AUTH_ATTEMPTS, LIMITS.RATE_LIMIT_AUTH_WINDOW_MS)) {
+        aceitas++;
+      }
+    }
+    if (aceitas !== LIMITS.RATE_LIMIT_MAX_AUTH_ATTEMPTS) {
+      throw new Error(`Teste 20: o IP deveria parar em ${LIMITS.RATE_LIMIT_MAX_AUTH_ATTEMPTS} tentativas, parou em ${aceitas}`);
+    }
+    if (!limitadorAuth.checkLimit('auth:203.0.113.9', LIMITS.RATE_LIMIT_MAX_AUTH_ATTEMPTS, LIMITS.RATE_LIMIT_AUTH_WINDOW_MS)) {
+      throw new Error('Teste 20: o limite de um IP não deveria bloquear outro');
+    }
+    limitadorAuth.dispose();
+    console.log('✔ Teste 20 passou: Tentativas de autenticação são limitadas por IP');
+
+    // Teste 21: sem maxPayload valia o padrão da lib ws, 100 MiB, que qualquer
+    // cliente não autenticado podia mandar para o servidor bufferizar (#372).
+    const maiorAvatarEmBase64 = Math.ceil(LIMITS.MAX_AVATAR_SIZE / 3) * 4;
+    if (LIMITS.WS_MAX_PAYLOAD_BYTES <= maiorAvatarEmBase64) {
+      throw new Error('Teste 21: o teto do frame precisa caber o maior avatar legítimo em base64');
+    }
+    if (LIMITS.WS_MAX_PAYLOAD_BYTES >= 100 * 1024 * 1024) {
+      throw new Error('Teste 21: o teto do frame precisa ser menor que o padrão de 100 MiB da lib ws');
+    }
+    console.log('✔ Teste 21 passou: Frame de WebSocket tem teto acima do avatar legítimo e abaixo do padrão da lib');
 
     console.log('=== Todos os testes do servidor passaram com sucesso! ===');
   } finally {

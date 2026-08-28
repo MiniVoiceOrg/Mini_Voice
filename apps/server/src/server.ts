@@ -376,7 +376,8 @@ export class MonkyServer {
       attachmentService,
       permissionService,
       roleService,
-      coturnManager
+      coturnManager,
+      rateLimiter
     );
 
     getOnlineUsers = () => wsServer.getOnlineUsersMap();
