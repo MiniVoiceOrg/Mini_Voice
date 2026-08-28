@@ -77,18 +77,23 @@ const betaPatch = calculateNextVersion({
 });
 console.assert(betaPatch.nextVersion === '1.7.1-beta', 'beta patch deve gerar 1.7.1-beta');
 
-// O sufixo nao carrega mais contador. O zero-padding existia para a pagina de
-// releases do GitHub, que ordena pelo nome da tag (#338); como a base agora
-// muda a cada release (#378), a ordem ja sai correta e o contador so repetia
-// "001" (#382).
+// O sufixo nao carrega mais contador. O zero-padding mantinha em ordem as
+// betas de uma *mesma base* na pagina de releases do GitHub, que ordena pelo
+// nome da tag (#338); como a base sobe a cada release (#378), nao ha duas
+// betas da mesma base para desempatar e o contador so repetia "001" (#382).
 console.assert(BETA_SUFFIX === 'beta', 'o sufixo de beta e apenas "beta"');
 console.assert(
   !/\d/.test(String(betaFirst.nextVersion.split('-')[1])),
   'o sufixo de beta nao pode conter digitos'
 );
+const betaSeguinte = calculateNextVersion({
+  prevTag: 'v1.8.0-beta',
+  commits: ['fix: qualquer coisa'],
+  channel: 'beta',
+});
 console.assert(
-  ['v1.8.0-beta', 'v1.9.0-beta'].sort()[1] === 'v1.9.0-beta',
-  'betas ordenam pela base, que e o que muda a cada release'
+  betaSeguinte.baseVersion !== '1.8.0',
+  'a beta seguinte nunca reutiliza a base da anterior'
 );
 // `semver.prerelease` le "beta" como o canal beta; "beta001" era interpretado
 // como um canal customizado e travava o electron-updater (#354).

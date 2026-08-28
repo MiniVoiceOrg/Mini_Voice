@@ -161,12 +161,16 @@ export function getLatestSemverTag(tagList = null) {
 /**
  * Suffix that marks a beta tag, as in `v3.1.2-beta`.
  *
- * It used to carry a zero-padded counter (`-beta001`), so that GitHub's
- * releases page — which sorts by tag name — would not bury the newest build
- * between older ones (#338). Now that every release is numbered from the one
- * immediately before it, betas included (#378), the base version already
- * differs on every build: the counter never moved off 1, and the ordering rests
- * on MAJOR.MINOR.PATCH alone.
+ * It used to carry a zero-padded counter (`-beta001`) to keep betas *of the
+ * same base* in order on GitHub's releases page, which sorts by tag name and
+ * listed `beta9` after `beta14` without the padding (#338). Now that every
+ * release is numbered from the one immediately before it, betas included
+ * (#378), no base is ever published twice — there is nothing left for the
+ * counter to disambiguate, and it never moved off 1 (#382).
+ *
+ * Sorting by name never ordered *different* bases correctly anyway (`v1.0.10`
+ * sorts below `v1.0.9`, padded or not), which is why both update clients sort
+ * releases themselves instead of trusting the order they come in.
  *
  * Dropping it also hands the `beta` channel back to electron-updater, which
  * read `beta001` as a single identifier and therefore saw a *custom channel*
