@@ -6,6 +6,7 @@ const ptSidebar = [
     text: 'Guia',
     items: [
       { text: 'Início', link: '/' },
+      { text: 'Download', link: '/download' },
       { text: 'Instalação', link: '/instalacao' },
       { text: 'Primeiros Passos', link: '/primeiros-passos' },
     ],
@@ -42,6 +43,7 @@ const enSidebar = [
     text: 'Guide',
     items: [
       { text: 'Home', link: '/en/' },
+      { text: 'Download', link: '/en/download' },
       { text: 'Installation', link: '/en/instalacao' },
       { text: 'Getting Started', link: '/en/primeiros-passos' },
     ],
@@ -87,7 +89,7 @@ export default withMermaid(defineConfig({
         sidebar: ptSidebar,
         nav: [
           { text: 'Guia', link: '/' },
-          { text: 'Download', link: 'https://github.com/MonkyOrg/Monky/releases/latest' },
+          { text: 'Download', link: '/download' },
         ],
         outline: { label: 'Nesta página' },
         docFooter: { prev: 'Anterior', next: 'Próxima' },
@@ -109,7 +111,7 @@ export default withMermaid(defineConfig({
         sidebar: enSidebar,
         nav: [
           { text: 'Guide', link: '/en/' },
-          { text: 'Download', link: 'https://github.com/MonkyOrg/Monky/releases/latest' },
+          { text: 'Download', link: '/en/download' },
         ],
         editLink: {
           pattern: 'https://github.com/MonkyOrg/Monky/edit/main/docs-site/:path',

@@ -13,7 +13,7 @@ hero:
       link: /en/instalacao
     - theme: alt
       text: Download
-      link: https://github.com/MonkyOrg/Monky/releases/latest
+      link: /en/download
 features:
   - icon: 🎙️
     title: P2P Voice & Video
@@ -37,6 +37,7 @@ features:
 
 ## Documentation map
 
+- [Download](/en/download)
 - [Installation](/en/instalacao)
 - [Getting Started](/en/primeiros-passos)
 - [Create Your Server](/en/criar-seu-servidor)

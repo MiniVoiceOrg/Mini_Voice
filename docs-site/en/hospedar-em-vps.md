@@ -10,7 +10,9 @@ Requires **Node.js 20 or newer** (CI uses 22).
 
 ```bash
 # 1. Install the CLI from the release
-npm install -g https://github.com/MonkyOrg/Monky/releases/download/v3.0.0-beta004/monky-cli-3.0.0-beta004.tgz
+#    The ready-to-paste command, already on the latest version, is on the
+#    download page: https://monkyorg.github.io/Monky/en/download
+npm install -g https://github.com/MonkyOrg/Monky/releases/download/vX.Y.Z/monky-cli-X.Y.Z.tgz
 
 # 2. Create the server (interactive)
 monky create

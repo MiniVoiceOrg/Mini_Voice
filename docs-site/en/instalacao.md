@@ -1,6 +1,6 @@
 # Installation
 
-Download the latest version from [github.com/MonkyOrg/Monky/releases/latest](https://github.com/MonkyOrg/Monky/releases/latest).
+Download the build for your system from the [download page](/en/download) — the buttons point straight at the right file from the latest release.
 
 | System | File | Note |
 |---|---|---|
