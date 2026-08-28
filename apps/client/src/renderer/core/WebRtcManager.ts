@@ -97,8 +97,8 @@ export class WebRtcManager {
       await this.handleIncomingSignal(payload);
     });
 
-    appEvents.on('user_volume.changed', (data: { clientId: string; volume: number }) => {
-      this.setPeerVolumeByClientId(data.clientId, data.volume);
+    appEvents.on('user_volume.changed', (data: { sessionId: string; volume: number }) => {
+      this.setPeerVolume(data.sessionId, data.volume);
     });
 
     appEvents.on('participants.updated', () => {
@@ -128,8 +128,7 @@ export class WebRtcManager {
     const screenStream = new MediaStream([track]);
     screenAudioEl.srcObject = screenStream;
     const participant = participantManager.get(peerSessionId);
-    const clientId = participant?.user.clientId;
-    const volume = clientId ? settingsStore.getScreenAudioVolume(clientId) : 100;
+    const volume = settingsStore.getScreenAudioVolume(peerSessionId, participant?.user.clientId);
     screenAudioEl.volume = volume / 100;
     this.applySinkToElement(screenAudioEl).finally(() => {
       screenAudioEl!.play().catch((e) => console.warn('[WebRTC] Screen audio play error:', e));
@@ -525,8 +524,7 @@ export class WebRtcManager {
       if (event.track.kind === 'audio') {
         let audioEl = this.audioElements.get(peerSessionId);
         const participant = participantManager.get(peerSessionId);
-        const clientId = participant?.user.clientId;
-        const volume = clientId ? settingsStore.getUserVolume(clientId) : 100;
+        const volume = settingsStore.getUserVolume(peerSessionId, participant?.user.clientId);
         const isDeaf = this.isDeafened || voiceStore.getEffectiveDeafened();
         if (!audioEl) {
           audioEl = document.createElement('audio');
@@ -1265,24 +1263,11 @@ export class WebRtcManager {
     }
   }
 
-  public setPeerVolumeByClientId(clientId: string, volume0to100: number): void {
-    const targetVolume = Math.max(0, Math.min(100, volume0to100)) / 100;
-    for (const [peerSessionId, audioEl] of this.audioElements.entries()) {
-      const participant = participantManager.get(peerSessionId);
-      if (participant?.user.clientId === clientId) {
-        audioEl.volume = targetVolume;
-      }
-    }
-  }
-
   public applyUserVolumes(): void {
     for (const [peerSessionId, audioEl] of this.audioElements.entries()) {
       const participant = participantManager.get(peerSessionId);
-      const clientId = participant?.user.clientId;
-      if (clientId) {
-        const vol = settingsStore.getUserVolume(clientId);
-        audioEl.volume = vol / 100;
-      }
+      const vol = settingsStore.getUserVolume(peerSessionId, participant?.user.clientId);
+      audioEl.volume = vol / 100;
     }
   }
 

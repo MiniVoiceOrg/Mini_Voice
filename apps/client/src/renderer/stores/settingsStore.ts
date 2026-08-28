@@ -30,12 +30,23 @@ export class SettingsStore {
   public selectedCameraId: string = '';
   public maxUploadKbps: number = 1000;
   public maxDownloadKbps: number = 2000;
+  /**
+   * Per-connection playback volume, keyed by `sessionId` (`userId:deviceId`).
+   *
+   * Until #363 this was keyed by `clientId`, i.e. per *person*. That meant
+   * someone signed in from two machines had a single slider: turning down their
+   * desktop also turned down their notebook. Volume addresses a connection, so
+   * it follows the same rule as voice participants and WebRTC peers (#309).
+   *
+   * `deviceId` lives in this machine's localStorage, so the key is stable
+   * across reconnects and restarts.
+   */
   public userVolumes: Record<string, number> = {};
   public noiseSuppressionEnabled: boolean = true;
   public soundboardFolderPath: string = '';
   public soundboardVolume: number = 80; // 0 - 100
   public soundboardMuted: boolean = false;
-  public screenAudioVolumes: Record<string, number> = {}; // per-user screen audio volume (#75)
+  public screenAudioVolumes: Record<string, number> = {}; // per-connection screen audio volume (#75), keyed by sessionId (#363)
   public screenShareTelemetryEnabled: boolean = false;
   public screenShareTelemetryPosition: 'top-left' | 'top-right' | 'bottom-left' | 'bottom-right' = 'top-right';
   public screenShareTelemetryMode: 'simple' | 'complete' = 'simple';
@@ -148,32 +159,41 @@ export class SettingsStore {
     } catch (e) {}
   }
 
-  public getUserVolume(clientId: string): number {
-    if (!clientId) return 100;
-    const vol = this.userVolumes[clientId];
-    return typeof vol === 'number' && !isNaN(vol) ? Math.max(0, Math.min(100, vol)) : 100;
+  /**
+   * Reads a volume for one connection, falling back to the value saved by
+   * builds before #363 (which keyed these maps by `clientId`) so upgrading
+   * doesn't silently reset everyone's sliders to 100%. The legacy entry stops
+   * being consulted for a device as soon as its slider is touched.
+   */
+  private readVolume(map: Record<string, number>, sessionId: string, legacyClientId?: string): number {
+    const raw = map[sessionId] ?? (legacyClientId ? map[legacyClientId] : undefined);
+    return typeof raw === 'number' && !isNaN(raw) ? Math.max(0, Math.min(100, raw)) : 100;
   }
 
-  public setUserVolume(clientId: string, volume: number): void {
-    if (!clientId) return;
+  public getUserVolume(sessionId: string, legacyClientId?: string): number {
+    if (!sessionId) return 100;
+    return this.readVolume(this.userVolumes, sessionId, legacyClientId);
+  }
+
+  public setUserVolume(sessionId: string, volume: number): void {
+    if (!sessionId) return;
     const clamped = Math.max(0, Math.min(100, Math.round(volume)));
-    this.userVolumes[clientId] = clamped;
+    this.userVolumes[sessionId] = clamped;
     this.save();
-    appEvents.emit('user_volume.changed', { clientId, volume: clamped });
+    appEvents.emit('user_volume.changed', { sessionId, volume: clamped });
   }
 
-  public getScreenAudioVolume(clientId: string): number {
-    if (!clientId) return 100;
-    const vol = this.screenAudioVolumes[clientId];
-    return typeof vol === 'number' && !isNaN(vol) ? Math.max(0, Math.min(100, vol)) : 100;
+  public getScreenAudioVolume(sessionId: string, legacyClientId?: string): number {
+    if (!sessionId) return 100;
+    return this.readVolume(this.screenAudioVolumes, sessionId, legacyClientId);
   }
 
-  public setScreenAudioVolume(clientId: string, volume: number): void {
-    if (!clientId) return;
+  public setScreenAudioVolume(sessionId: string, volume: number): void {
+    if (!sessionId) return;
     const clamped = Math.max(0, Math.min(100, Math.round(volume)));
-    this.screenAudioVolumes[clientId] = clamped;
+    this.screenAudioVolumes[sessionId] = clamped;
     this.save();
-    appEvents.emit('screen_audio_volume.changed', { clientId, volume: clamped });
+    appEvents.emit('screen_audio_volume.changed', { sessionId, volume: clamped });
   }
 
   /** Keep only valid { id: ChatSoundMode } entries, dropping 'inherit'/garbage (#153). */

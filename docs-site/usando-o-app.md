@@ -4,7 +4,7 @@
 
 Clique em um **canal de voz** para entrar na chamada. Quem fala ganha um anel verde no avatar. A barra inferior tem microfone, fone/ensurdecer e desconectar. O painel mostra ping médio e permite sair só da chamada.
 
-Use clique direito em um participante para ajustar o volume individual dele.
+Use clique direito em um participante para ajustar o volume individual dele. O ajuste vale só neste computador e para aquele dispositivo: se a mesma pessoa estiver conectada de duas máquinas, cada uma tem seu próprio volume.
 
 ## Câmera e tela
 

@@ -34,7 +34,8 @@ export class UserContextMenu {
 
     this.close();
 
-    const currentVol = settingsStore.getUserVolume(user.clientId);
+    const volumeSessionId = this.resolveVolumeTarget(user);
+    const currentVol = settingsStore.getUserVolume(volumeSessionId, user.clientId);
     const avatarSrc = getAvatarUrl(user.avatarUrl);
     // Voice moderation addresses a connection, not a person: prefer the exact
     // session the menu was opened from, else any session of theirs in voice (#309).
@@ -251,8 +252,9 @@ export class UserContextMenu {
     this.updateSliderTrackFill(clamped);
     this.updateActiveQuickButton(clamped);
 
-    settingsStore.setUserVolume(user.clientId, clamped);
-    webRtcManager.setPeerVolumeByClientId(user.clientId, clamped);
+    const sessionId = this.resolveVolumeTarget(user);
+    settingsStore.setUserVolume(sessionId, clamped);
+    webRtcManager.setPeerVolume(sessionId, clamped);
   }
 
   private async runAdminAction(action: () => Promise<void>): Promise<void> {
@@ -276,6 +278,16 @@ export class UserContextMenu {
     const exact = participantManager.get(user.sessionId || '');
     if (exact?.voiceState) return exact;
     return participantManager.getByUserId(user.id) ?? exact;
+  }
+
+  /**
+   * The connection the volume slider applies to (#363). Volume is per device,
+   * so it targets the exact session the menu was opened from; the voice-target
+   * fallback covers menus opened from the member list, where the summary
+   * describes the person rather than one of their connections.
+   */
+  private resolveVolumeTarget(user: UserSummary): string {
+    return user.sessionId || this.resolveVoiceTarget(user)?.user.sessionId || '';
   }
 
   private attachEvents(user: UserSummary): void {

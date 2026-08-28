@@ -625,11 +625,11 @@ export class VoiceStageView {
     volSliders.forEach((slider) => {
       slider.addEventListener('input', () => {
         const sessionId = slider.getAttribute('data-session-id');
-        // The volume preference is persisted per person, not per device (#309).
-        const ownerId = slider.getAttribute('data-owner-id');
-        if (!sessionId || !ownerId) return;
+        if (!sessionId) return;
         const vol = parseInt(slider.value, 10);
-        settingsStore.setScreenAudioVolume(ownerId, vol);
+        // Persisted per device, not per person (#363): the same person sharing
+        // from two machines gets one slider each.
+        settingsStore.setScreenAudioVolume(sessionId, vol);
         const audioEl = document.querySelector(`audio[data-screen-audio-session="${sessionId}"]`) as HTMLAudioElement | null;
         if (audioEl) audioEl.volume = vol / 100;
       });
@@ -942,7 +942,7 @@ export class VoiceStageView {
             ${isRemoteScreen ? `
               <div class="stage-volume-wrapper">
                 <div class="stage-volume-popup">
-                  <input type="range" class="stage-screen-volume-slider" data-session-id="${sidOf(p)}" data-owner-id="${p.user.id}" min="0" max="100" value="${settingsStore.getScreenAudioVolume(p.user.id)}" />
+                  <input type="range" class="stage-screen-volume-slider" data-session-id="${sidOf(p)}" min="0" max="100" value="${settingsStore.getScreenAudioVolume(sidOf(p), p.user.clientId)}" />
                 </div>
                 <button class="stage-volume-btn" title="${t('stage.screenAudioVolume')}" aria-label="${t('stage.volumeAria')}">
                   <span class="material-symbols-outlined md-18">volume_up</span>
