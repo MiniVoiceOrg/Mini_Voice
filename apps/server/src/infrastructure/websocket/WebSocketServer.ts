@@ -791,7 +791,9 @@ export class WebSocketServer {
     const result = await this.signalingService.joinVoiceChannel(
       session.sessionId,
       session.user.id,
-      payload.channelId
+      payload.channelId,
+      payload.isMuted,
+      payload.isDeafened
     );
     if (!result.success || !result.voiceState) {
       this.sendError(

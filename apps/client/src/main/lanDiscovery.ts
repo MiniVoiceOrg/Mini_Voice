@@ -82,9 +82,6 @@ export class LanDiscovery {
       this.pruneTimer = null;
     }
 
-    for (const server of this.servers.values()) {
-      this.emitLost(server);
-    }
     this.servers.clear();
 
     const socket = this.socket;

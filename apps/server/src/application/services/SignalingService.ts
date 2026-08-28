@@ -19,7 +19,9 @@ export class SignalingService {
   public async joinVoiceChannel(
     sessionId: string,
     userId: string,
-    channelId: string
+    channelId: string,
+    initialMuted?: boolean,
+    initialDeafened?: boolean
   ): Promise<{
     success: boolean;
     errorCode?: ProtocolErrorCode;
@@ -52,12 +54,15 @@ export class SignalingService {
     const previousState = this.voiceStates.get(sessionId);
     const existingParticipants = othersInChannel;
 
+    const resolvedMuted = initialMuted !== undefined ? initialMuted : (previousState?.isMuted ?? false);
+    const resolvedDeafened = initialDeafened !== undefined ? initialDeafened : (previousState?.isDeafened ?? false);
+
     const newState: VoiceParticipantState = {
       sessionId,
       userId,
       channelId,
-      isMuted: previousState?.isMuted ?? false,
-      isDeafened: previousState?.isDeafened ?? false,
+      isMuted: resolvedMuted,
+      isDeafened: resolvedDeafened,
       serverMuted: previousState?.serverMuted ?? false,
       serverDeafened: previousState?.serverDeafened ?? false,
       isSpeaking: false,

@@ -78,8 +78,8 @@ export class SoundboardModal {
           </div>
         </div>
 
-        <!-- Search Bar (#288) -->
-        <div style="padding: 10px 20px 6px; background: var(--bg-card); display: flex; align-items: center;">
+        <!-- Search Bar & View Mode Switcher (#288, #326) -->
+        <div style="padding: 10px 20px 6px; background: var(--bg-card); display: flex; flex-direction: column; gap: 6px;">
           <div style="position: relative; width: 100%; display: flex; align-items: center;">
             <span class="material-symbols-outlined md-18" style="position: absolute; left: 10px; color: var(--text-muted); pointer-events: none;">search</span>
             <input
@@ -91,6 +91,30 @@ export class SoundboardModal {
             />
             <button id="sb-search-clear" type="button" class="btn btn-icon" style="position: absolute; right: 6px; width: 20px; height: 20px; padding: 0; color: var(--text-muted); display: ${this.searchQuery ? 'inline-flex' : 'none'};" title="${t('common.clear')}">
               <span class="material-symbols-outlined md-16">close</span>
+            </button>
+          </div>
+
+          <!-- View Mode Toggle Toolbar (Grid vs List) -->
+          <div style="display: flex; align-items: center; justify-content: flex-end; gap: 4px;">
+            <button
+              id="sb-btn-view-grid"
+              type="button"
+              class="btn btn-icon ${settingsStore.soundboardViewMode === 'grid' ? 'active' : ''}"
+              style="width: 26px; height: 26px; border-radius: var(--radius-sm); border: 1px solid ${settingsStore.soundboardViewMode === 'grid' ? 'var(--accent-primary)' : 'transparent'}; background: ${settingsStore.soundboardViewMode === 'grid' ? 'rgba(88, 101, 242, 0.15)' : 'transparent'}; color: ${settingsStore.soundboardViewMode === 'grid' ? 'var(--accent-primary)' : 'var(--text-muted)'}; padding: 0;"
+              title="${t('soundboard.viewGrid')}"
+              aria-label="${t('soundboard.viewGrid')}"
+            >
+              <span class="material-symbols-outlined md-18">grid_view</span>
+            </button>
+            <button
+              id="sb-btn-view-list"
+              type="button"
+              class="btn btn-icon ${settingsStore.soundboardViewMode === 'list' ? 'active' : ''}"
+              style="width: 26px; height: 26px; border-radius: var(--radius-sm); border: 1px solid ${settingsStore.soundboardViewMode === 'list' ? 'var(--accent-primary)' : 'transparent'}; background: ${settingsStore.soundboardViewMode === 'list' ? 'rgba(88, 101, 242, 0.15)' : 'transparent'}; color: ${settingsStore.soundboardViewMode === 'list' ? 'var(--accent-primary)' : 'var(--text-muted)'}; padding: 0;"
+              title="${t('soundboard.viewList')}"
+              aria-label="${t('soundboard.viewList')}"
+            >
+              <span class="material-symbols-outlined md-18">view_list</span>
             </button>
           </div>
         </div>
@@ -248,6 +272,10 @@ export class SoundboardModal {
 
     const shortcuts = settingsStore.soundboardShortcuts || {};
 
+    if (settingsStore.soundboardViewMode === 'list') {
+      return this.renderSoundsList(filteredSounds, activeSoundName, shortcuts);
+    }
+
     return `
       <div style="display: grid; grid-template-columns: repeat(auto-fill, minmax(130px, 1fr)); gap: 10px;">
         ${filteredSounds
@@ -271,6 +299,58 @@ export class SoundboardModal {
                     <div class="sb-shortcut-badge" data-soundname="${escapeHtml(s.name)}" title="${t('soundboard.shortcutBadgeTitle', { combo: escapeHtml(shortcut.display) })}" style="display: inline-flex; align-items: center; gap: 3px; padding: 2px 6px; background: rgba(88, 101, 242, 0.15); border: 1px solid rgba(88, 101, 242, 0.4); border-radius: 4px; font-family: var(--font-mono); font-size: 10px; color: #ffffff; cursor: pointer; max-width: 100%;">
                       <span class="material-symbols-outlined" style="font-size: 11px; color: var(--accent-primary);">keyboard</span>
                       <span style="overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 70px;">${escapeHtml(shortcut.display)}</span>
+                      <button type="button" class="sb-btn-remove-shortcut" data-soundname="${escapeHtml(s.name)}" title="${t('soundboard.removeShortcut')}" style="background: none; border: none; color: var(--text-muted); cursor: pointer; display: inline-flex; align-items: center; padding: 0; margin-left: 2px;">
+                        <span class="material-symbols-outlined" style="font-size: 12px;">close</span>
+                      </button>
+                    </div>
+                  ` : `
+                    <button type="button" class="sb-btn-add-shortcut" data-soundname="${escapeHtml(s.name)}" title="${t('soundboard.addShortcut')}" style="display: inline-flex; align-items: center; gap: 3px; padding: 2px 6px; background: transparent; border: 1px dashed var(--border-color); border-radius: 4px; font-size: 10px; color: var(--text-muted); cursor: pointer; transition: all 0.15s ease;">
+                      <span class="material-symbols-outlined" style="font-size: 11px;">keyboard</span>
+                      <span>${t('soundboard.shortcut')}</span>
+                    </button>
+                  `}
+                </div>
+              </div>
+            `;
+          })
+          .join('')}
+      </div>
+    `;
+  }
+
+  private renderSoundsList(
+    sounds: SoundItem[],
+    activeSoundName: string | null = null,
+    shortcuts: Record<string, { accelerator: string; display: string }> = {}
+  ): string {
+    return `
+      <div style="display: flex; flex-direction: column; gap: 4px;">
+        ${sounds
+          .map((s) => {
+            const isPlaying = activeSoundName === s.name;
+            const shortcut = shortcuts[s.name];
+
+            return `
+              <div class="sb-sound-row ${isPlaying ? 'is-playing' : ''}" style="display: flex; align-items: center; justify-content: space-between; padding: 6px 12px; background: var(--bg-card); border: 1px solid ${isPlaying ? 'var(--accent-primary)' : 'var(--border-color)'}; border-radius: var(--radius-sm); gap: 10px; transition: all 0.15s ease;">
+                <!-- Play sound button -->
+                <button type="button" class="sb-sound-btn sb-sound-list-btn" data-filepath="${escapeHtml(s.filePath)}" data-soundname="${escapeHtml(s.name)}" title="Tocar ${escapeHtml(s.name)} (${(s.sizeBytes / 1024).toFixed(0)} KB)" style="flex: 1; display: flex; align-items: center; gap: 10px; background: transparent; border: none; color: var(--text-primary); cursor: pointer; text-align: left; outline: none; min-width: 0; padding: 2px 0;">
+                  <div style="width: 28px; height: 28px; border-radius: 50%; background: ${isPlaying ? 'var(--accent-primary)' : 'rgba(255,255,255,0.06)'}; display: flex; align-items: center; justify-content: center; flex-shrink: 0;">
+                    <span class="material-symbols-outlined sb-sound-icon" style="color: ${isPlaying ? '#ffffff' : 'var(--accent-primary)'}; font-size: 18px;">${isPlaying ? 'volume_up' : 'play_arrow'}</span>
+                  </div>
+                  <span style="font-size: 13px; font-weight: 500; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; flex: 1;">
+                    ${escapeHtml(s.name)}
+                  </span>
+                  <span style="font-size: 11px; color: var(--text-muted); margin-right: 8px;">
+                    ${(s.sizeBytes / 1024).toFixed(0)} KB
+                  </span>
+                </button>
+
+                <!-- Shortcut Badge or Add Shortcut Button -->
+                <div style="display: flex; align-items: center; flex-shrink: 0;">
+                  ${shortcut && shortcut.display ? `
+                    <div class="sb-shortcut-badge" data-soundname="${escapeHtml(s.name)}" title="${t('soundboard.shortcutBadgeTitle', { combo: escapeHtml(shortcut.display) })}" style="display: inline-flex; align-items: center; gap: 3px; padding: 2px 6px; background: rgba(88, 101, 242, 0.15); border: 1px solid rgba(88, 101, 242, 0.4); border-radius: 4px; font-family: var(--font-mono); font-size: 10px; color: #ffffff; cursor: pointer;">
+                      <span class="material-symbols-outlined" style="font-size: 11px; color: var(--accent-primary);">keyboard</span>
+                      <span style="overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 80px;">${escapeHtml(shortcut.display)}</span>
                       <button type="button" class="sb-btn-remove-shortcut" data-soundname="${escapeHtml(s.name)}" title="${t('soundboard.removeShortcut')}" style="background: none; border: none; color: var(--text-muted); cursor: pointer; display: inline-flex; align-items: center; padding: 0; margin-left: 2px;">
                         <span class="material-symbols-outlined" style="font-size: 12px;">close</span>
                       </button>
@@ -501,6 +581,28 @@ export class SoundboardModal {
       }
     });
 
+    // View mode switchers (#326)
+    const btnViewGrid = this.modalEl.querySelector<HTMLButtonElement>('#sb-btn-view-grid');
+    const btnViewList = this.modalEl.querySelector<HTMLButtonElement>('#sb-btn-view-list');
+
+    btnViewGrid?.addEventListener('click', () => {
+      if (settingsStore.soundboardViewMode !== 'grid') {
+        settingsStore.soundboardViewMode = 'grid';
+        settingsStore.save();
+        this.updateViewModeButtons();
+        this.refreshGrid();
+      }
+    });
+
+    btnViewList?.addEventListener('click', () => {
+      if (settingsStore.soundboardViewMode !== 'list') {
+        settingsStore.soundboardViewMode = 'list';
+        settingsStore.save();
+        this.updateViewModeButtons();
+        this.refreshGrid();
+      }
+    });
+
     sliderVol?.addEventListener('input', () => {
       const val = parseInt(sliderVol.value, 10);
       if (volLabel) volLabel.textContent = `${val}%`;
@@ -713,6 +815,27 @@ export class SoundboardModal {
     });
   }
 
+  private updateViewModeButtons(): void {
+    if (!this.modalEl) return;
+    const btnGrid = this.modalEl.querySelector<HTMLButtonElement>('#sb-btn-view-grid');
+    const btnList = this.modalEl.querySelector<HTMLButtonElement>('#sb-btn-view-list');
+    const isGrid = settingsStore.soundboardViewMode === 'grid';
+
+    if (btnGrid) {
+      btnGrid.classList.toggle('active', isGrid);
+      btnGrid.style.borderColor = isGrid ? 'var(--accent-primary)' : 'transparent';
+      btnGrid.style.background = isGrid ? 'rgba(88, 101, 242, 0.15)' : 'transparent';
+      btnGrid.style.color = isGrid ? 'var(--accent-primary)' : 'var(--text-muted)';
+    }
+
+    if (btnList) {
+      btnList.classList.toggle('active', !isGrid);
+      btnList.style.borderColor = !isGrid ? 'var(--accent-primary)' : 'transparent';
+      btnList.style.background = !isGrid ? 'rgba(88, 101, 242, 0.15)' : 'transparent';
+      btnList.style.color = !isGrid ? 'var(--accent-primary)' : 'var(--text-muted)';
+    }
+  }
+
   private updateActiveButtons(): void {
     if (!this.modalEl) return;
     const playingNames = soundboardService.getPlayingSoundNames();
@@ -720,12 +843,15 @@ export class SoundboardModal {
     buttons.forEach((btn) => {
       const soundName = btn.getAttribute('data-soundname');
       const icon = btn.querySelector('.sb-sound-icon');
-      if (soundName && playingNames.has(soundName)) {
-        btn.classList.add('is-playing');
-        if (icon) icon.textContent = 'volume_up';
-      } else {
-        btn.classList.remove('is-playing');
-        if (icon) icon.textContent = 'play_circle';
+      const isPlaying = soundName ? playingNames.has(soundName) : false;
+      const isList = btn.classList.contains('sb-sound-list-btn');
+
+      btn.classList.toggle('is-playing', isPlaying);
+      const parentContainer = btn.closest('.sb-sound-card, .sb-sound-row');
+      if (parentContainer) parentContainer.classList.toggle('is-playing', isPlaying);
+
+      if (icon) {
+        icon.textContent = isPlaying ? 'volume_up' : (isList ? 'play_arrow' : 'play_circle');
       }
     });
   }
@@ -735,8 +861,11 @@ export class SoundboardModal {
     const buttons = this.modalEl.querySelectorAll('.sb-sound-btn');
     buttons.forEach((btn) => {
       btn.classList.remove('is-playing');
+      const parentContainer = btn.closest('.sb-sound-card, .sb-sound-row');
+      if (parentContainer) parentContainer.classList.remove('is-playing');
+      const isList = btn.classList.contains('sb-sound-list-btn');
       const icon = btn.querySelector('.sb-sound-icon');
-      if (icon) icon.textContent = 'play_circle';
+      if (icon) icon.textContent = isList ? 'play_arrow' : 'play_circle';
     });
   }
 
@@ -745,9 +874,10 @@ export class SoundboardModal {
     const buttons = this.modalEl.querySelectorAll('.sb-sound-btn');
     buttons.forEach((btn) => {
       if (btn.getAttribute('data-soundname') === soundName) {
-        btn.classList.add('playing-pulse');
+        const parentContainer = btn.closest('.sb-sound-card, .sb-sound-row') || btn;
+        parentContainer.classList.add('playing-pulse');
         setTimeout(() => {
-          btn.classList.remove('playing-pulse');
+          parentContainer.classList.remove('playing-pulse');
         }, 800);
       }
     });

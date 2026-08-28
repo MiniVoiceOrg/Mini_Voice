@@ -10,6 +10,8 @@ export class VoiceVideoTab {
   private vadMeterCtx: AudioContext | null = null;
   private vadMeterAnalyser: AnalyserNode | null = null;
   private vadMeterRAF: number | null = null;
+  private unbindPttCapture: (() => void) | null = null;
+  private isRecordingPtt = false;
 
   public renderHtml(): string {
     return `
@@ -35,7 +37,30 @@ export class VoiceVideoTab {
         </select>
       </div>
 
-      <div class="form-group">
+      <!-- Input Mode Selector (#186) -->
+      <div class="form-group" style="margin-top: 14px;">
+        <label style="display: flex; align-items: center; gap: 6px; margin-bottom: 6px;">
+          <span class="material-symbols-outlined md-16" style="color: var(--accent-primary);">keyboard_voice</span>
+          ${t('settings.inputMode')}
+        </label>
+        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px;">
+          <label class="input-mode-card ${settingsStore.inputMode === 'voice_activity' ? 'active' : ''}" id="mode-card-vad" style="display: flex; align-items: center; gap: 8px; padding: 10px 12px; background: var(--bg-card); border: 1px solid ${settingsStore.inputMode === 'voice_activity' ? 'var(--accent-primary)' : 'var(--border-color)'}; border-radius: var(--radius-md); cursor: pointer; transition: all 0.2s;">
+            <input type="radio" name="input-mode" value="voice_activity" ${settingsStore.inputMode === 'voice_activity' ? 'checked' : ''} style="margin: 0; cursor: pointer;">
+            <div>
+              <div style="font-size: 12px; font-weight: 600; color: var(--text-primary);">${t('settings.inputModeVad')}</div>
+            </div>
+          </label>
+          <label class="input-mode-card ${settingsStore.inputMode === 'push_to_talk' ? 'active' : ''}" id="mode-card-ptt" style="display: flex; align-items: center; gap: 8px; padding: 10px 12px; background: var(--bg-card); border: 1px solid ${settingsStore.inputMode === 'push_to_talk' ? 'var(--accent-primary)' : 'var(--border-color)'}; border-radius: var(--radius-md); cursor: pointer; transition: all 0.2s;">
+            <input type="radio" name="input-mode" value="push_to_talk" ${settingsStore.inputMode === 'push_to_talk' ? 'checked' : ''} style="margin: 0; cursor: pointer;">
+            <div>
+              <div style="font-size: 12px; font-weight: 600; color: var(--text-primary);">${t('settings.inputModePtt')}</div>
+            </div>
+          </label>
+        </div>
+      </div>
+
+      <!-- VAD Sensitivity Container -->
+      <div id="container-vad-settings" class="form-group" style="display: ${settingsStore.inputMode === 'voice_activity' ? 'block' : 'none'};">
         <label style="display: flex; align-items: center; gap: 6px;">
           <span class="material-symbols-outlined md-16" style="color: var(--accent-primary);">tune</span>
           ${t('settings.vadLabel')}
@@ -48,6 +73,68 @@ export class VoiceVideoTab {
           <div id="vad-meter-threshold" class="vad-meter-threshold"></div>
         </div>
         <div style="font-size: 11px; color: var(--text-muted); margin-top: 2px;">${t('settings.vadHint')}</div>
+      </div>
+
+      <!-- PTT Configuration Container (#186) -->
+      <div id="container-ptt-settings" style="display: ${settingsStore.inputMode === 'push_to_talk' ? 'block' : 'none'}; margin-bottom: 14px;">
+        <!-- Shortcut Key Card -->
+        <div class="form-group" style="padding: 10px 12px; background: var(--bg-card); border: 1px solid var(--border-color); border-radius: var(--radius-md); margin-bottom: 10px;">
+          <div style="display: flex; align-items: center; justify-content: space-between; gap: 12px;">
+            <div>
+              <label style="display: flex; align-items: center; gap: 6px; margin-bottom: 2px; font-weight: 600;">
+                <span class="material-symbols-outlined md-16" style="color: var(--accent-primary);">keyboard</span>
+                ${t('settings.pttShortcut')}
+              </label>
+              <div id="ptt-key-desc" style="font-size: 11px; color: var(--text-muted);">
+                ${t('settings.pttRecordShortcut')}
+              </div>
+            </div>
+            <div style="display: flex; align-items: center; gap: 8px;">
+              <span id="ptt-key-badge" style="font-family: monospace; font-size: 12px; font-weight: 700; background: var(--bg-modifier-selected, rgba(255,255,255,0.08)); padding: 4px 10px; border-radius: 4px; border: 1px solid var(--border-color); color: var(--text-primary); min-width: 48px; text-align: center;">
+                ${settingsStore.pttKey?.display || 'V'}
+              </span>
+              <button id="btn-record-ptt-key" class="btn btn-secondary" style="font-size: 11px; padding: 4px 10px; height: 28px;">
+                ${t('settings.pttRecordShortcut')}
+              </button>
+            </div>
+          </div>
+        </div>
+
+        <!-- Release Delay Slider -->
+        <div class="form-group" style="margin-bottom: 10px;">
+          <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 4px;">
+            <label style="display: flex; align-items: center; gap: 6px; margin-bottom: 0;">
+              <span class="material-symbols-outlined md-16" style="color: var(--accent-primary);">timer</span>
+              ${t('settings.pttReleaseDelay')}
+            </label>
+            <span id="ptt-delay-value" style="font-size: 11px; font-weight: 700; color: var(--accent-primary);">
+              ${settingsStore.pttReleaseDelay} ms
+            </span>
+          </div>
+          <input id="slider-ptt-delay" class="sb-slider" type="range" min="0" max="2000" step="50" value="${settingsStore.pttReleaseDelay}" style="--slider-progress: ${(Math.min(2000, Math.max(0, settingsStore.pttReleaseDelay)) / 2000) * 100}%; width: 100%;">
+          <div style="font-size: 11px; color: var(--text-muted); margin-top: 2px;">
+            ${t('settings.pttReleaseDelayDesc')}
+          </div>
+        </div>
+
+        <!-- Sound Cue Toggle -->
+        <div class="form-group" style="padding: 10px 12px; background: var(--bg-card); border: 1px solid var(--border-color); border-radius: var(--radius-md);">
+          <div style="display: flex; align-items: center; justify-content: space-between; gap: 12px;">
+            <div>
+              <label style="display: flex; align-items: center; gap: 6px; margin-bottom: 2px; cursor: pointer; font-weight: 600;" for="checkbox-ptt-sound">
+                <span class="material-symbols-outlined md-16" style="color: var(--accent-primary);">volume_up</span>
+                ${t('settings.pttSoundCue')}
+              </label>
+              <div style="font-size: 11px; color: var(--text-muted);">
+                ${t('settings.pttSoundCueDesc')}
+              </div>
+            </div>
+            <label class="toggle-switch" aria-label="${t('settings.pttSoundCue')}">
+              <input id="checkbox-ptt-sound" type="checkbox" ${settingsStore.pttSoundCue ? 'checked' : ''}>
+              <span class="toggle-slider"></span>
+            </label>
+          </div>
+        </div>
       </div>
 
       <!-- RNNoise Noise Suppression -->
@@ -157,6 +244,158 @@ export class VoiceVideoTab {
     const checkboxScreenTelemetry = container.querySelector<HTMLInputElement>('#checkbox-screen-telemetry');
     const selectScreenTelemetryPos = container.querySelector<HTMLSelectElement>('#select-screen-telemetry-position');
     const selectScreenTelemetryMode = container.querySelector<HTMLSelectElement>('#select-screen-telemetry-mode');
+
+    // Input Mode Radio & Container toggles (#186)
+    const radioInputModes = container.querySelectorAll<HTMLInputElement>('input[name="input-mode"]');
+    const containerVad = container.querySelector<HTMLElement>('#container-vad-settings');
+    const containerPtt = container.querySelector<HTMLElement>('#container-ptt-settings');
+    const modeCardVad = container.querySelector<HTMLElement>('#mode-card-vad');
+    const modeCardPtt = container.querySelector<HTMLElement>('#mode-card-ptt');
+
+    radioInputModes.forEach((radio) => {
+      radio.addEventListener('change', () => {
+        const mode = radio.value as 'voice_activity' | 'push_to_talk';
+        settingsStore.inputMode = mode;
+        settingsStore.save();
+        audioProcessor.syncPttConfig();
+        audioProcessor.applyTrackEnabled();
+
+        if (mode === 'voice_activity') {
+          if (containerVad) containerVad.style.display = 'block';
+          if (containerPtt) containerPtt.style.display = 'none';
+          modeCardVad?.classList.add('active');
+          if (modeCardVad) modeCardVad.style.borderColor = 'var(--accent-primary)';
+          modeCardPtt?.classList.remove('active');
+          if (modeCardPtt) modeCardPtt.style.borderColor = 'var(--border-color)';
+        } else {
+          if (containerVad) containerVad.style.display = 'none';
+          if (containerPtt) containerPtt.style.display = 'block';
+          modeCardVad?.classList.remove('active');
+          if (modeCardVad) modeCardVad.style.borderColor = 'var(--border-color)';
+          modeCardPtt?.classList.add('active');
+          if (modeCardPtt) modeCardPtt.style.borderColor = 'var(--accent-primary)';
+        }
+      });
+    });
+
+    // PTT Release Delay Slider
+    const sliderPttDelay = container.querySelector<HTMLInputElement>('#slider-ptt-delay');
+    const pttDelayValue = container.querySelector<HTMLElement>('#ptt-delay-value');
+    sliderPttDelay?.addEventListener('input', () => {
+      const val = parseInt(sliderPttDelay.value, 10);
+      sliderPttDelay.style.setProperty('--slider-progress', `${(Math.min(2000, Math.max(0, val)) / 2000) * 100}%`);
+      if (pttDelayValue) pttDelayValue.textContent = `${val} ms`;
+      settingsStore.pttReleaseDelay = val;
+      settingsStore.save();
+    });
+
+    // PTT Sound Cue Checkbox
+    const checkboxPttSound = container.querySelector<HTMLInputElement>('#checkbox-ptt-sound');
+    checkboxPttSound?.addEventListener('change', () => {
+      settingsStore.pttSoundCue = checkboxPttSound.checked;
+      settingsStore.save();
+    });
+
+    // PTT Record Key Button
+    const btnRecordPtt = container.querySelector<HTMLButtonElement>('#btn-record-ptt-key');
+    const pttBadge = container.querySelector<HTMLElement>('#ptt-key-badge');
+    const pttDesc = container.querySelector<HTMLElement>('#ptt-key-desc');
+
+    const stopPttRecording = () => {
+      this.isRecordingPtt = false;
+      if (this.unbindPttCapture) {
+        this.unbindPttCapture();
+        this.unbindPttCapture = null;
+      }
+      if (window.api?.stopPttCapture) {
+        window.api.stopPttCapture().catch(() => {});
+      }
+      if (btnRecordPtt) {
+        btnRecordPtt.textContent = t('settings.pttRecordShortcut');
+        btnRecordPtt.classList.remove('btn-primary');
+      }
+      if (pttDesc) {
+        pttDesc.textContent = t('settings.pttRecordShortcut');
+      }
+      if (pttBadge) {
+        pttBadge.textContent = settingsStore.pttKey?.display || 'V';
+      }
+    };
+
+    btnRecordPtt?.addEventListener('click', () => {
+      if (this.isRecordingPtt) {
+        stopPttRecording();
+        return;
+      }
+
+      this.isRecordingPtt = true;
+      btnRecordPtt.textContent = t('settings.pttRecordingPrompt');
+      btnRecordPtt.classList.add('btn-primary');
+      if (pttDesc) {
+        pttDesc.textContent = t('settings.pttRecordingPrompt');
+      }
+
+      if (window.api?.startPttCapture) {
+        window.api.startPttCapture().catch(() => {});
+      }
+
+      const onCaptured = (binding: any) => {
+        settingsStore.pttKey = binding;
+        settingsStore.save();
+        audioProcessor.syncPttConfig();
+        stopPttRecording();
+      };
+
+      if (window.api?.onPttCaptured) {
+        this.unbindPttCapture = window.api.onPttCaptured((binding) => {
+          onCaptured(binding);
+        });
+      }
+
+      const handleLocalCaptureKey = (e: KeyboardEvent) => {
+        if (!this.isRecordingPtt) return;
+        e.preventDefault();
+        e.stopPropagation();
+        window.removeEventListener('keydown', handleLocalCaptureKey, true);
+        window.removeEventListener('mousedown', handleLocalCaptureMouse, true);
+
+        const keyName = e.key === ' ' ? 'Space' : e.key;
+        const display = e.code === 'Space' ? 'Espaço' : (e.key.length === 1 ? e.key.toUpperCase() : e.key);
+        onCaptured({
+          code: e.code,
+          display,
+          keyType: 'keyboard',
+        });
+      };
+
+      const handleLocalCaptureMouse = (e: MouseEvent) => {
+        if (!this.isRecordingPtt) return;
+        e.preventDefault();
+        e.stopPropagation();
+        window.removeEventListener('keydown', handleLocalCaptureKey, true);
+        window.removeEventListener('mousedown', handleLocalCaptureMouse, true);
+
+        let button = e.button + 1;
+        if (e.button === 1) button = 3;
+        else if (e.button === 2) button = 2;
+        const buttonNames: Record<number, string> = {
+          1: 'Mouse 1 (Esquerdo)',
+          2: 'Mouse 2 (Direito)',
+          3: 'Mouse 3 (Scroll)',
+          4: 'Mouse 4 (Lateral Traseiro)',
+          5: 'Mouse 5 (Lateral Frontal)',
+        };
+        onCaptured({
+          code: `Mouse${button}`,
+          display: buttonNames[button] || `Mouse ${button}`,
+          keyType: 'mouse',
+          mouseButton: button,
+        });
+      };
+
+      window.addEventListener('keydown', handleLocalCaptureKey, true);
+      window.addEventListener('mousedown', handleLocalCaptureMouse, true);
+    });
 
     selectMic?.addEventListener('change', async () => {
       settingsStore.selectedMicrophoneId = selectMic.value;
@@ -402,5 +641,20 @@ export class VoiceVideoTab {
     if (btn) {
       btn.innerHTML = `<span class="material-symbols-outlined md-16" style="margin-right: 4px;">visibility</span>${t('settings.previewCamera')}`;
     }
+  }
+
+  public cleanup(): void {
+    if (this.isRecordingPtt) {
+      this.isRecordingPtt = false;
+      if (this.unbindPttCapture) {
+        this.unbindPttCapture();
+        this.unbindPttCapture = null;
+      }
+      if (window.api?.stopPttCapture) {
+        window.api.stopPttCapture().catch(() => {});
+      }
+    }
+    this.stopVadMeter();
+    this.stopCameraPreview();
   }
 }

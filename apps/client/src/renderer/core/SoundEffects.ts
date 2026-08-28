@@ -178,6 +178,41 @@ export class SoundEffectManager {
     }
   }
 
+  /**
+   * Synthesizes a subtle, pleasant PTT key press/release cue.
+   */
+  public playPttTone(activate: boolean): void {
+    if (!settingsStore.pttSoundCue) return;
+    try {
+      if (!this.toneCtx) {
+        const Ctor = window.AudioContext || (window as any).webkitAudioContext;
+        this.toneCtx = new Ctor();
+        if (settingsStore.selectedSpeakerId && typeof (this.toneCtx as any).setSinkId === 'function') {
+          (this.toneCtx as any).setSinkId(settingsStore.selectedSpeakerId).catch(() => {});
+        }
+      }
+      const ctx = this.toneCtx!;
+      if (ctx.state === 'suspended') ctx.resume().catch(() => {});
+
+      const now = ctx.currentTime;
+      const freq = activate ? 620 : 440;
+      const gain = ctx.createGain();
+      gain.gain.setValueAtTime(0.0001, now);
+      gain.gain.exponentialRampToValueAtTime(0.12, now + 0.01);
+      gain.gain.exponentialRampToValueAtTime(0.0001, now + 0.08);
+      gain.connect(ctx.destination);
+
+      const osc = ctx.createOscillator();
+      osc.type = 'sine';
+      osc.frequency.setValueAtTime(freq, now);
+      osc.connect(gain);
+      osc.start(now);
+      osc.stop(now + 0.08);
+    } catch (e) {
+      console.debug('[SoundEffects] PTT tone synthesis failed:', e);
+    }
+  }
+
   public play(key: SoundEffectType): void {
     if (key === 'screen_share_start') {
       this.playTone(true);

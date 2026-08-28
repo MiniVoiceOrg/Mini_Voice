@@ -1,4 +1,4 @@
-import { QualityPresetType, QualityProfile, DEFAULT_CUSTOM_PROFILE } from '@monky/shared';
+import { QualityPresetType, QualityProfile, DEFAULT_CUSTOM_PROFILE, PttKeyBinding } from '@monky/shared';
 import { appEvents } from '../core/EventBus';
 
 /**
@@ -18,6 +18,12 @@ const CHAT_SOUND_MODES: ChatSoundMode[] = ['inherit', 'all', 'mentions', 'none']
 export class SettingsStore {
   public qualityPreset: QualityPresetType = 'NORMAL';
   public customProfile: QualityProfile = { ...DEFAULT_CUSTOM_PROFILE };
+  public inputMode: 'voice_activity' | 'push_to_talk' = 'voice_activity'; // #186
+  public pttKey: PttKeyBinding = { code: 'KeyV', display: 'V', keyType: 'keyboard', keyCode: 47 };
+  public pttReleaseDelay: number = 200; // 0 - 2000 ms
+  public pttSoundCue: boolean = true;
+  public isMuted: boolean = false; // persistent user mic mute (#358)
+  public isDeafened: boolean = false; // persistent user audio deafen (#358)
   public vadSensitivity: number = 25; // 0 - 100
   public selectedMicrophoneId: string = '';
   public selectedSpeakerId: string = '';
@@ -35,6 +41,7 @@ export class SettingsStore {
   public screenShareTelemetryMode: 'simple' | 'complete' = 'simple';
   public customSounds: Partial<Record<string, string>> = {}; // key → file path
   public soundboardShortcuts: Record<string, { accelerator: string; display: string }> = {};
+  public soundboardViewMode: 'grid' | 'list' = 'grid'; // view mode in soundboard modal (#326)
   public keybindShortcuts: Record<string, { accelerator: string; display: string }> = {};
   public chatMessageSoundEnabled: boolean = true; // play a cue when a chat message arrives (#152)
   public chatMessageSoundMentionsOnly: boolean = false; // only play the cue when you are mentioned (#153)
@@ -93,6 +100,29 @@ export class SettingsStore {
         }
         if (!this.soundboardShortcuts || typeof this.soundboardShortcuts !== 'object') {
           this.soundboardShortcuts = {};
+        }
+        if (!['grid', 'list'].includes(this.soundboardViewMode)) {
+          this.soundboardViewMode = 'grid';
+        }
+        if (!['voice_activity', 'push_to_talk'].includes(this.inputMode)) {
+          this.inputMode = 'voice_activity';
+        }
+        if (!this.pttKey || typeof this.pttKey !== 'object' || !this.pttKey.code || !this.pttKey.display) {
+          this.pttKey = { code: 'KeyV', display: 'V', keyType: 'keyboard', keyCode: 47 };
+        }
+        if (typeof this.pttReleaseDelay !== 'number' || isNaN(this.pttReleaseDelay)) {
+          this.pttReleaseDelay = 200;
+        } else {
+          this.pttReleaseDelay = Math.max(0, Math.min(2000, this.pttReleaseDelay));
+        }
+        if (typeof this.pttSoundCue !== 'boolean') {
+          this.pttSoundCue = true;
+        }
+        if (typeof this.isMuted !== 'boolean') {
+          this.isMuted = false;
+        }
+        if (typeof this.isDeafened !== 'boolean') {
+          this.isDeafened = false;
         }
         if (!this.keybindShortcuts || typeof this.keybindShortcuts !== 'object') {
           this.keybindShortcuts = {};
@@ -216,6 +246,12 @@ export class SettingsStore {
         maxDownloadKbps: this.maxDownloadKbps,
         userVolumes: this.userVolumes,
         noiseSuppressionEnabled: this.noiseSuppressionEnabled,
+        inputMode: this.inputMode,
+        pttKey: this.pttKey,
+        pttReleaseDelay: this.pttReleaseDelay,
+        pttSoundCue: this.pttSoundCue,
+        isMuted: this.isMuted,
+        isDeafened: this.isDeafened,
         soundboardFolderPath: this.soundboardFolderPath,
         soundboardVolume: this.soundboardVolume,
         soundboardMuted: this.soundboardMuted,
@@ -226,6 +262,8 @@ export class SettingsStore {
         customProfile: this.customProfile,
         customSounds: this.customSounds,
         soundboardShortcuts: this.soundboardShortcuts,
+        soundboardViewMode: this.soundboardViewMode,
+        keybindShortcuts: this.keybindShortcuts,
         chatMessageSoundEnabled: this.chatMessageSoundEnabled,
         chatMessageSoundMentionsOnly: this.chatMessageSoundMentionsOnly,
         updateBetaChannel: this.updateBetaChannel,

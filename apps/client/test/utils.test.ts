@@ -145,6 +145,112 @@ function runTests() {
   assert(matchesSearch('Som de Tambor', ''), 'Busca vazia retorna true');
   assert(!matchesSearch('Som de Tambor', 'buzina'), 'Busca não correspondente retorna false');
 
+  // 7. SettingsStore Persistência (#325)
+  console.log('\n--- Testando SettingsStore Persistência (#325) ---');
+  const storageMap = new Map<string, string>();
+  (globalThis as any).localStorage = {
+    getItem: (key: string) => storageMap.get(key) ?? null,
+    setItem: (key: string, val: string) => storageMap.set(key, String(val)),
+    removeItem: (key: string) => storageMap.delete(key),
+    clear: () => storageMap.clear(),
+  };
+
+  const { SettingsStore } = require('../src/renderer/stores/settingsStore');
+  const store1 = new SettingsStore();
+
+  // Define várias configurações incluindo atalhos, minimização e updates beta
+  store1.minimizeToTrayOnClose = false;
+  store1.updateBetaChannel = true;
+  store1.askShutdownOnLastLeave = false;
+  store1.soundboardVolume = 42;
+  store1.soundboardMuted = true;
+  store1.soundboardFolderPath = 'C:\\Sons';
+  store1.soundboardShortcuts = {
+    Airhorn: { accelerator: 'CommandOrControl+Alt+A', display: 'Ctrl + Alt + A' },
+  };
+  store1.keybindShortcuts = {
+    toggle_mute: { accelerator: 'CommandOrControl+Shift+M', display: 'Ctrl + Shift + M' },
+    toggle_deafen: { accelerator: 'CommandOrControl+Shift+D', display: 'Ctrl + Shift + D' },
+  };
+  store1.soundboardViewMode = 'list';
+  store1.inputMode = 'push_to_talk';
+  store1.pttKey = { code: 'Mouse4', display: 'Mouse 4 (Lateral Traseiro)', keyType: 'mouse', mouseButton: 4 };
+  store1.pttReleaseDelay = 350;
+  store1.pttSoundCue = false;
+  store1.isMuted = true;
+  store1.isDeafened = true;
+  store1.chatMessageSoundEnabled = false;
+  store1.chatMessageSoundMentionsOnly = true;
+  store1.setServerChatSoundOverride('srv-1', 'none');
+  store1.setChannelChatSoundOverride('chan-1', 'all');
+
+  store1.save();
+
+  assert(storageMap.has('monky_settings'), 'monky_settings foi salvo no localStorage');
+
+  const rawJson = JSON.parse(storageMap.get('monky_settings')!);
+  assert(rawJson.soundboardViewMode === 'list', 'soundboardViewMode serializado no JSON');
+  assert(rawJson.inputMode === 'push_to_talk', 'inputMode serializado no JSON');
+  assert(rawJson.pttKey?.code === 'Mouse4', 'pttKey serializado no JSON');
+  assert(rawJson.pttReleaseDelay === 350, 'pttReleaseDelay serializado no JSON');
+  assert(rawJson.pttSoundCue === false, 'pttSoundCue serializado no JSON');
+  assert(rawJson.isMuted === true, 'isMuted serializado no JSON (#358)');
+  assert(rawJson.isDeafened === true, 'isDeafened serializado no JSON (#358)');
+  assert(rawJson.keybindShortcuts?.toggle_mute?.accelerator === 'CommandOrControl+Shift+M', 'keybindShortcuts serializado no JSON');
+  assert(rawJson.soundboardShortcuts?.Airhorn?.accelerator === 'CommandOrControl+Alt+A', 'soundboardShortcuts serializado no JSON');
+  assert(rawJson.minimizeToTrayOnClose === false, 'minimizeToTrayOnClose serializado no JSON');
+  assert(rawJson.updateBetaChannel === true, 'updateBetaChannel serializado no JSON');
+
+  // Cria uma nova instância para simular reabertura / reload da aplicação
+  const store2 = new SettingsStore();
+  assert(store2.soundboardViewMode === 'list', 'soundboardViewMode restaurado com sucesso');
+  assert(store2.inputMode === 'push_to_talk', 'inputMode restaurado com sucesso');
+  assert(store2.pttKey?.code === 'Mouse4' && store2.pttKey?.display === 'Mouse 4 (Lateral Traseiro)', 'pttKey restaurado com sucesso');
+  assert(store2.pttReleaseDelay === 350, 'pttReleaseDelay restaurado com sucesso');
+  assert(store2.pttSoundCue === false, 'pttSoundCue restaurado com sucesso');
+  assert(store2.isMuted === true, 'isMuted restaurado com sucesso (#358)');
+  assert(store2.isDeafened === true, 'isDeafened restaurado com sucesso (#358)');
+  assert(store2.minimizeToTrayOnClose === false, 'minimizeToTrayOnClose restaurado com sucesso');
+  assert(store2.updateBetaChannel === true, 'updateBetaChannel restaurado com sucesso');
+  assert(store2.askShutdownOnLastLeave === false, 'askShutdownOnLastLeave restaurado com sucesso');
+  assert(store2.soundboardVolume === 42, 'soundboardVolume restaurado com sucesso');
+  assert(store2.soundboardMuted === true, 'soundboardMuted restaurado com sucesso');
+  assert(store2.soundboardFolderPath === 'C:\\Sons', 'soundboardFolderPath restaurado com sucesso');
+  assert(store2.soundboardShortcuts['Airhorn']?.display === 'Ctrl + Alt + A', 'soundboardShortcuts restaurado com sucesso');
+  assert(store2.keybindShortcuts['toggle_mute']?.display === 'Ctrl + Shift + M', 'keybindShortcuts (toggle_mute) restaurado com sucesso');
+  assert(store2.keybindShortcuts['toggle_deafen']?.display === 'Ctrl + Shift + D', 'keybindShortcuts (toggle_deafen) restaurado com sucesso');
+  assert(store2.chatMessageSoundEnabled === false, 'chatMessageSoundEnabled restaurado com sucesso');
+  assert(store2.chatMessageSoundMentionsOnly === true, 'chatMessageSoundMentionsOnly restaurado com sucesso');
+  assert(store2.getServerChatSoundOverride('srv-1') === 'none', 'serverChatSoundOverride restaurado com sucesso');
+  assert(store2.getChannelChatSoundOverride('chan-1') === 'all', 'channelChatSoundOverride restaurado com sucesso');
+
+  // 8. VoiceStore Mute Persistence & Reset Resilience (#358)
+  console.log('\n--- Testando VoiceStore Mute Universal (#358) ---');
+  const { VoiceStore } = require('../src/renderer/stores/voiceStore');
+  const voice = new VoiceStore();
+  voice.setMuted(true);
+  voice.setDeafened(true);
+  assert(voice.isMuted === true, 'voiceStore.isMuted é true');
+  assert(voice.isDeafened === true, 'voiceStore.isDeafened é true');
+  assert(voice.getEffectiveMuted() === true, 'voiceStore.getEffectiveMuted() é true');
+
+  // Ao chamar reset (ex: sair da sala, reconectar, mudar de servidor), o mute NÃO pode ser perdido
+  voice.reset();
+  assert(voice.isMuted === true, 'voiceStore.reset() NÃO desmuta o microfone do usuário (#358)');
+  assert(voice.isDeafened === true, 'voiceStore.reset() NÃO desensurdece o áudio do usuário (#358)');
+  assert(voice.getEffectiveMuted() === true, 'voiceStore.getEffectiveMuted() permanece true após reset');
+
+  // Testa sanitização de valor inválido para soundboardViewMode e inputMode
+  storageMap.set('monky_settings', JSON.stringify({
+    soundboardViewMode: 'invalid_mode',
+    inputMode: 'invalid_input_mode',
+    pttReleaseDelay: -50,
+  }));
+  const store3 = new SettingsStore();
+  assert(store3.soundboardViewMode === 'grid', 'soundboardViewMode inválido é sanitizado para fallback "grid"');
+  assert(store3.inputMode === 'voice_activity', 'inputMode inválido é sanitizado para fallback "voice_activity"');
+  assert(store3.pttReleaseDelay === 0, 'pttReleaseDelay negativo é sanitizado para mínimo 0');
+
   console.log(`\n=== Relatório dos Testes ===`);
   console.log(`Total: ${passed + failed} | Passaram: ${passed} | Falharam: ${failed}`);
 

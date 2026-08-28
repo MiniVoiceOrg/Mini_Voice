@@ -1,5 +1,7 @@
 import { appEvents } from './EventBus';
 import { settingsStore } from '../stores/settingsStore';
+import { voiceStore } from '../stores/voiceStore';
+import { soundEffects } from './SoundEffects';
 import { RnnoiseWorkletNode, loadRnnoise } from '@sapphi-red/web-noise-suppressor';
 import rnnoiseWorkletUrl from '@sapphi-red/web-noise-suppressor/rnnoiseWorklet.js?url';
 import rnnoiseWasmUrl from '@sapphi-red/web-noise-suppressor/rnnoise.wasm?url';
@@ -17,11 +19,19 @@ export class AudioProcessor {
   private vadInterval: any = null;
   private isSpeaking: boolean = false;
   private vadThreshold: number = settingsStore.vadSensitivity !== undefined ? settingsStore.vadSensitivity : 14;
-  private isMuted: boolean = false;
-  private isDeafened: boolean = false;
+  private isMuted: boolean = voiceStore.getEffectiveMuted();
+  private isDeafened: boolean = voiceStore.getEffectiveDeafened();
+
+  private isPttActive: boolean = false;
+  private pttReleaseTimeout: any = null;
+  private unbindPttEvents: Array<() => void> = [];
 
   private cachedWasmBinary: ArrayBuffer | null = null;
   private isWorkletModuleLoaded: boolean = false;
+
+  constructor() {
+    this.initPtt();
+  }
 
   public async startMicrophone(deviceId?: string): Promise<MediaStream> {
     this.stopMicrophone();
@@ -58,6 +68,9 @@ export class AudioProcessor {
 
     // Setup Web Audio graph (RNNoise + VAD + Destination stream)
     await this.setupAudioGraph(this.rawMicStream);
+    this.isMuted = voiceStore.getEffectiveMuted();
+    this.isDeafened = voiceStore.getEffectiveDeafened();
+    this.applyTrackEnabled();
     return this.localStream || this.rawMicStream;
   }
 
@@ -131,10 +144,152 @@ export class AudioProcessor {
       }
 
       this.localStream = this.destinationNode.stream;
+      this.applyTrackEnabled();
       this.startVadLoop();
     } catch (err) {
       console.warn('[AudioProcessor] AudioContext graph setup failed, falling back to raw stream:', err);
       this.localStream = rawStream;
+      this.applyTrackEnabled();
+    }
+  }
+
+  private initPtt(): void {
+    if (window.api?.onPttStateChanged) {
+      const unbind = window.api.onPttStateChanged((active) => this.handlePttState(active));
+      this.unbindPttEvents.push(unbind);
+    }
+
+    const unbindSettings = appEvents.on('settings.updated', () => {
+      this.syncPttConfig();
+      this.applyTrackEnabled();
+    });
+    this.unbindPttEvents.push(unbindSettings);
+
+    const handleWindowKeyDown = (e: KeyboardEvent) => {
+      if (settingsStore.inputMode !== 'push_to_talk') return;
+      if (!settingsStore.pttKey || settingsStore.pttKey.keyType !== 'keyboard') return;
+      const target = e.target as HTMLElement | null;
+      const isInput = target && (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable);
+      if (isInput && !['Control', 'Alt', 'Shift', 'Meta'].includes(e.key)) {
+        return;
+      }
+      if (e.code === settingsStore.pttKey.code || e.key === settingsStore.pttKey.code) {
+        this.handlePttState(true);
+      }
+    };
+
+    const handleWindowKeyUp = (e: KeyboardEvent) => {
+      if (settingsStore.inputMode !== 'push_to_talk') return;
+      if (!settingsStore.pttKey || settingsStore.pttKey.keyType !== 'keyboard') return;
+      if (e.code === settingsStore.pttKey.code || e.key === settingsStore.pttKey.code) {
+        this.handlePttState(false);
+      }
+    };
+
+    const handleWindowMouseDown = (e: MouseEvent) => {
+      if (settingsStore.inputMode !== 'push_to_talk') return;
+      if (!settingsStore.pttKey || settingsStore.pttKey.keyType !== 'mouse') return;
+      let button = e.button + 1;
+      if (e.button === 1) button = 3;
+      else if (e.button === 2) button = 2;
+      if (settingsStore.pttKey.mouseButton === button) {
+        this.handlePttState(true);
+      }
+    };
+
+    const handleWindowMouseUp = (e: MouseEvent) => {
+      if (settingsStore.inputMode !== 'push_to_talk') return;
+      if (!settingsStore.pttKey || settingsStore.pttKey.keyType !== 'mouse') return;
+      let button = e.button + 1;
+      if (e.button === 1) button = 3;
+      else if (e.button === 2) button = 2;
+      if (settingsStore.pttKey.mouseButton === button) {
+        this.handlePttState(false);
+      }
+    };
+
+    window.addEventListener('keydown', handleWindowKeyDown, true);
+    window.addEventListener('keyup', handleWindowKeyUp, true);
+    window.addEventListener('mousedown', handleWindowMouseDown, true);
+    window.addEventListener('mouseup', handleWindowMouseUp, true);
+
+    this.unbindPttEvents.push(() => {
+      window.removeEventListener('keydown', handleWindowKeyDown, true);
+      window.removeEventListener('keyup', handleWindowKeyUp, true);
+      window.removeEventListener('mousedown', handleWindowMouseDown, true);
+      window.removeEventListener('mouseup', handleWindowMouseUp, true);
+    });
+
+    this.syncPttConfig();
+  }
+
+  public syncPttConfig(): void {
+    if (!window.api?.setPttConfig) return;
+    window.api.setPttConfig({
+      enabled: settingsStore.inputMode === 'push_to_talk',
+      key: settingsStore.pttKey,
+    }).catch((err) => {
+      console.warn('[AudioProcessor] Failed to set PTT config:', err);
+    });
+  }
+
+  public handlePttState(active: boolean): void {
+    if (settingsStore.inputMode !== 'push_to_talk') return;
+
+    if (active) {
+      if (this.pttReleaseTimeout) {
+        clearTimeout(this.pttReleaseTimeout);
+        this.pttReleaseTimeout = null;
+      }
+      if (!this.isPttActive) {
+        this.isPttActive = true;
+        this.applyTrackEnabled();
+        if (!this.isMuted && !this.isDeafened) {
+          this.setSpeaking(true);
+          soundEffects.playPttTone(true);
+        }
+      }
+    } else {
+      if (this.isPttActive) {
+        if (this.pttReleaseTimeout) clearTimeout(this.pttReleaseTimeout);
+        const delay = Math.max(0, settingsStore.pttReleaseDelay || 0);
+        this.pttReleaseTimeout = setTimeout(() => {
+          this.isPttActive = false;
+          this.pttReleaseTimeout = null;
+          if (settingsStore.inputMode === 'push_to_talk') {
+            this.applyTrackEnabled();
+            this.setSpeaking(false);
+            soundEffects.playPttTone(false);
+          }
+        }, delay);
+      }
+    }
+  }
+
+  public applyTrackEnabled(forceState?: boolean): void {
+    const isPtt = settingsStore.inputMode === 'push_to_talk';
+    const isMuted = this.isMuted || this.isDeafened || voiceStore.getEffectiveMuted();
+    let enabled: boolean;
+
+    if (typeof forceState === 'boolean') {
+      enabled = forceState;
+    } else if (isMuted) {
+      enabled = false;
+    } else if (isPtt) {
+      enabled = this.isPttActive;
+    } else {
+      enabled = true;
+    }
+
+    if (this.rawMicStream) {
+      this.rawMicStream.getAudioTracks().forEach((track) => {
+        track.enabled = enabled;
+      });
+    }
+    if (this.localStream) {
+      this.localStream.getAudioTracks().forEach((track) => {
+        track.enabled = enabled;
+      });
     }
   }
 
@@ -203,7 +358,9 @@ export class AudioProcessor {
     let silenceCounter = 0;
 
     this.vadInterval = setInterval(() => {
-      if (!this.analyser || this.isMuted) {
+      const isPtt = settingsStore.inputMode === 'push_to_talk';
+      const effectiveMuted = this.isMuted || this.isDeafened || voiceStore.getEffectiveMuted();
+      if (!this.analyser || effectiveMuted) {
         if (this.isSpeaking) {
           this.setSpeaking(false);
         }
@@ -223,6 +380,16 @@ export class AudioProcessor {
         if (val > peak) peak = val;
       }
       const average = sum / speechBins;
+
+      // In PTT mode, speaking state is controlled by PTT key activation
+      if (isPtt) {
+        if (this.isPttActive && !this.isSpeaking && !this.isMuted && !this.isDeafened) {
+          this.setSpeaking(true);
+        } else if (!this.isPttActive && this.isSpeaking) {
+          this.setSpeaking(false);
+        }
+        return;
+      }
 
       // Calibrated threshold: filters background mic hiss while activating reliably when talking
       const targetAvg = Math.max(16, this.vadThreshold * 0.8);
@@ -253,16 +420,7 @@ export class AudioProcessor {
 
   public setMuted(muted: boolean): void {
     this.isMuted = muted;
-    if (this.rawMicStream) {
-      this.rawMicStream.getAudioTracks().forEach((track) => {
-        track.enabled = !muted;
-      });
-    }
-    if (this.localStream) {
-      this.localStream.getAudioTracks().forEach((track) => {
-        track.enabled = !muted;
-      });
-    }
+    this.applyTrackEnabled();
     if (muted && this.isSpeaking) {
       this.setSpeaking(false);
     }
@@ -274,6 +432,8 @@ export class AudioProcessor {
     // When deafened, also mute microphone
     if (deafened && !this.isMuted) {
       this.setMuted(true);
+    } else {
+      this.applyTrackEnabled();
     }
     appEvents.emit('local.deafened', deafened);
   }
