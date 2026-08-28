@@ -22,6 +22,8 @@ export class SettingsStore {
   public pttKey: PttKeyBinding = { code: 'KeyV', display: 'V', keyType: 'keyboard', keyCode: 47 };
   public pttReleaseDelay: number = 200; // 0 - 2000 ms
   public pttSoundCue: boolean = true;
+  public isMuted: boolean = false; // persistent user mic mute (#358)
+  public isDeafened: boolean = false; // persistent user audio deafen (#358)
   public vadSensitivity: number = 25; // 0 - 100
   public selectedMicrophoneId: string = '';
   public selectedSpeakerId: string = '';
@@ -115,6 +117,12 @@ export class SettingsStore {
         }
         if (typeof this.pttSoundCue !== 'boolean') {
           this.pttSoundCue = true;
+        }
+        if (typeof this.isMuted !== 'boolean') {
+          this.isMuted = false;
+        }
+        if (typeof this.isDeafened !== 'boolean') {
+          this.isDeafened = false;
         }
         if (!this.keybindShortcuts || typeof this.keybindShortcuts !== 'object') {
           this.keybindShortcuts = {};
@@ -242,6 +250,8 @@ export class SettingsStore {
         pttKey: this.pttKey,
         pttReleaseDelay: this.pttReleaseDelay,
         pttSoundCue: this.pttSoundCue,
+        isMuted: this.isMuted,
+        isDeafened: this.isDeafened,
         soundboardFolderPath: this.soundboardFolderPath,
         soundboardVolume: this.soundboardVolume,
         soundboardMuted: this.soundboardMuted,

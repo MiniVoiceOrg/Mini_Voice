@@ -213,6 +213,8 @@ export interface SoundboardPlayPayload {
 
 export interface VoiceJoinPayload {
   channelId: string;
+  isMuted?: boolean;
+  isDeafened?: boolean;
 }
 
 export interface VoiceLeavePayload {

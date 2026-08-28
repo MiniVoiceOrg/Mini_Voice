@@ -1,9 +1,10 @@
 import { appEvents } from '../core/EventBus';
+import { settingsStore } from './settingsStore';
 
 export class VoiceStore {
   public currentVoiceChannelId: string | null = null;
-  public isMuted: boolean = false;
-  public isDeafened: boolean = false;
+  public isMuted: boolean = settingsStore.isMuted;
+  public isDeafened: boolean = settingsStore.isDeafened;
   public serverMuted: boolean = false;
   public serverDeafened: boolean = false;
   private micMutedBeforeDeafen: boolean = false;
@@ -36,6 +37,8 @@ export class VoiceStore {
 
   public setMuted(muted: boolean): void {
     this.isMuted = muted;
+    settingsStore.isMuted = muted;
+    settingsStore.save();
     appEvents.emit('voice.state_updated');
   }
 
@@ -51,6 +54,9 @@ export class VoiceStore {
       }
     }
     this.isDeafened = deafened;
+    settingsStore.isDeafened = deafened;
+    settingsStore.isMuted = this.isMuted;
+    settingsStore.save();
     appEvents.emit('voice.state_updated');
   }
 
@@ -122,11 +128,10 @@ export class VoiceStore {
 
   public reset(): void {
     this.currentVoiceChannelId = null;
-    this.isMuted = false;
-    this.isDeafened = false;
+    // Note (#358): isMuted and isDeafened are persistent user privacy states
+    // and are deliberately NOT reset when leaving a channel, server, or call.
     this.serverMuted = false;
     this.serverDeafened = false;
-    this.micMutedBeforeDeafen = false;
     this.isSpeaking = false;
     this.isCameraOn = false;
     this.screenShareIds = [];

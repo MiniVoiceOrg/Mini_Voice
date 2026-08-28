@@ -1,5 +1,6 @@
 import { appEvents } from './EventBus';
 import { settingsStore } from '../stores/settingsStore';
+import { voiceStore } from '../stores/voiceStore';
 import { soundEffects } from './SoundEffects';
 import { RnnoiseWorkletNode, loadRnnoise } from '@sapphi-red/web-noise-suppressor';
 import rnnoiseWorkletUrl from '@sapphi-red/web-noise-suppressor/rnnoiseWorklet.js?url';
@@ -18,8 +19,8 @@ export class AudioProcessor {
   private vadInterval: any = null;
   private isSpeaking: boolean = false;
   private vadThreshold: number = settingsStore.vadSensitivity !== undefined ? settingsStore.vadSensitivity : 14;
-  private isMuted: boolean = false;
-  private isDeafened: boolean = false;
+  private isMuted: boolean = voiceStore.getEffectiveMuted();
+  private isDeafened: boolean = voiceStore.getEffectiveDeafened();
 
   private isPttActive: boolean = false;
   private pttReleaseTimeout: any = null;
@@ -67,6 +68,9 @@ export class AudioProcessor {
 
     // Setup Web Audio graph (RNNoise + VAD + Destination stream)
     await this.setupAudioGraph(this.rawMicStream);
+    this.isMuted = voiceStore.getEffectiveMuted();
+    this.isDeafened = voiceStore.getEffectiveDeafened();
+    this.applyTrackEnabled();
     return this.localStream || this.rawMicStream;
   }
 
@@ -264,11 +268,12 @@ export class AudioProcessor {
 
   public applyTrackEnabled(forceState?: boolean): void {
     const isPtt = settingsStore.inputMode === 'push_to_talk';
+    const isMuted = this.isMuted || this.isDeafened || voiceStore.getEffectiveMuted();
     let enabled: boolean;
 
     if (typeof forceState === 'boolean') {
       enabled = forceState;
-    } else if (this.isMuted || this.isDeafened) {
+    } else if (isMuted) {
       enabled = false;
     } else if (isPtt) {
       enabled = this.isPttActive;
@@ -354,7 +359,8 @@ export class AudioProcessor {
 
     this.vadInterval = setInterval(() => {
       const isPtt = settingsStore.inputMode === 'push_to_talk';
-      if (!this.analyser || this.isMuted) {
+      const effectiveMuted = this.isMuted || this.isDeafened || voiceStore.getEffectiveMuted();
+      if (!this.analyser || effectiveMuted) {
         if (this.isSpeaking) {
           this.setSpeaking(false);
         }

@@ -177,6 +177,8 @@ function runTests() {
   store1.pttKey = { code: 'Mouse4', display: 'Mouse 4 (Lateral Traseiro)', keyType: 'mouse', mouseButton: 4 };
   store1.pttReleaseDelay = 350;
   store1.pttSoundCue = false;
+  store1.isMuted = true;
+  store1.isDeafened = true;
   store1.chatMessageSoundEnabled = false;
   store1.chatMessageSoundMentionsOnly = true;
   store1.setServerChatSoundOverride('srv-1', 'none');
@@ -192,6 +194,8 @@ function runTests() {
   assert(rawJson.pttKey?.code === 'Mouse4', 'pttKey serializado no JSON');
   assert(rawJson.pttReleaseDelay === 350, 'pttReleaseDelay serializado no JSON');
   assert(rawJson.pttSoundCue === false, 'pttSoundCue serializado no JSON');
+  assert(rawJson.isMuted === true, 'isMuted serializado no JSON (#358)');
+  assert(rawJson.isDeafened === true, 'isDeafened serializado no JSON (#358)');
   assert(rawJson.keybindShortcuts?.toggle_mute?.accelerator === 'CommandOrControl+Shift+M', 'keybindShortcuts serializado no JSON');
   assert(rawJson.soundboardShortcuts?.Airhorn?.accelerator === 'CommandOrControl+Alt+A', 'soundboardShortcuts serializado no JSON');
   assert(rawJson.minimizeToTrayOnClose === false, 'minimizeToTrayOnClose serializado no JSON');
@@ -204,6 +208,8 @@ function runTests() {
   assert(store2.pttKey?.code === 'Mouse4' && store2.pttKey?.display === 'Mouse 4 (Lateral Traseiro)', 'pttKey restaurado com sucesso');
   assert(store2.pttReleaseDelay === 350, 'pttReleaseDelay restaurado com sucesso');
   assert(store2.pttSoundCue === false, 'pttSoundCue restaurado com sucesso');
+  assert(store2.isMuted === true, 'isMuted restaurado com sucesso (#358)');
+  assert(store2.isDeafened === true, 'isDeafened restaurado com sucesso (#358)');
   assert(store2.minimizeToTrayOnClose === false, 'minimizeToTrayOnClose restaurado com sucesso');
   assert(store2.updateBetaChannel === true, 'updateBetaChannel restaurado com sucesso');
   assert(store2.askShutdownOnLastLeave === false, 'askShutdownOnLastLeave restaurado com sucesso');
@@ -217,6 +223,22 @@ function runTests() {
   assert(store2.chatMessageSoundMentionsOnly === true, 'chatMessageSoundMentionsOnly restaurado com sucesso');
   assert(store2.getServerChatSoundOverride('srv-1') === 'none', 'serverChatSoundOverride restaurado com sucesso');
   assert(store2.getChannelChatSoundOverride('chan-1') === 'all', 'channelChatSoundOverride restaurado com sucesso');
+
+  // 8. VoiceStore Mute Persistence & Reset Resilience (#358)
+  console.log('\n--- Testando VoiceStore Mute Universal (#358) ---');
+  const { VoiceStore } = require('../src/renderer/stores/voiceStore');
+  const voice = new VoiceStore();
+  voice.setMuted(true);
+  voice.setDeafened(true);
+  assert(voice.isMuted === true, 'voiceStore.isMuted é true');
+  assert(voice.isDeafened === true, 'voiceStore.isDeafened é true');
+  assert(voice.getEffectiveMuted() === true, 'voiceStore.getEffectiveMuted() é true');
+
+  // Ao chamar reset (ex: sair da sala, reconectar, mudar de servidor), o mute NÃO pode ser perdido
+  voice.reset();
+  assert(voice.isMuted === true, 'voiceStore.reset() NÃO desmuta o microfone do usuário (#358)');
+  assert(voice.isDeafened === true, 'voiceStore.reset() NÃO desensurdece o áudio do usuário (#358)');
+  assert(voice.getEffectiveMuted() === true, 'voiceStore.getEffectiveMuted() permanece true após reset');
 
   // Testa sanitização de valor inválido para soundboardViewMode e inputMode
   storageMap.set('monky_settings', JSON.stringify({
