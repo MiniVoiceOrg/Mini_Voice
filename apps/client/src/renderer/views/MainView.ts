@@ -2,6 +2,9 @@ import { MessageType, Permission } from '@monky/shared';
 import { escapeHtml } from '../utils/html';
 import { appEvents } from '../core/EventBus';
 import { networkClient } from '../core/NetworkClient';
+import { sessionManager } from '../core/SessionManager';
+import { isForegroundEvent } from '../core/sessionRouting';
+import { callClient } from '../core/serverConnection';
 import { participantManager } from '../core/ParticipantManager';
 import { serverStore } from '../stores/serverStore';
 import { voiceStore } from '../stores/voiceStore';
@@ -183,14 +186,22 @@ export class MainView {
     this.setupChannelsResizer();
 
     const centerStageEl = document.getElementById('main-center-stage')!;
+    // Re-rendering happens on every server switch now (#400), so the previous
+    // views must be torn down or their event listeners and ping timers would
+    // pile up on each switch.
+    this.chatView?.destroy();
+    this.voiceStageView?.destroy();
     this.chatView = new ChatView(centerStageEl);
     this.voiceStageView = new VoiceStageView(centerStageEl);
 
     // A re-render (e.g. after switching languages, #16) must not drop someone
-    // who is watching the voice stage back into the text channel.
-    if (this.activeContentView === 'stage' && voiceStore.currentVoiceChannelId) {
+    // who is watching the voice stage back into the text channel. The session
+    // check keeps the stage hidden when the call belongs to another server the
+    // user has walked away from (#400).
+    if (this.activeContentView === 'stage' && this.callIsHere()) {
       this.voiceStageView.setChannel(voiceStore.currentVoiceChannelId);
     } else if (serverStore.activeTextChannelId) {
+      this.activeContentView = 'chat';
       this.chatView.setChannel(serverStore.activeTextChannelId);
     }
 
@@ -200,6 +211,18 @@ export class MainView {
     // cached signature (#282).
     this.screenShareNoticeSignature = null;
     this.updateScreenShareNotice();
+  }
+
+  /**
+   * True when the ongoing call belongs to the server currently on screen. The
+   * call survives a server switch (#400), so anything that draws call UI inside
+   * the server view has to ask this first.
+   */
+  private callIsHere(): boolean {
+    return (
+      voiceStore.currentVoiceChannelId !== null &&
+      voiceStore.voiceSessionKey === sessionManager.getActiveKey()
+    );
   }
 
   /**
@@ -827,6 +850,15 @@ export class MainView {
     // join handler updates the stored voice state to the new room directly.
     if (voiceStore.currentVoiceChannelId) {
       webRtcManager.closeAllPeers();
+      // The call lives on a single server (#400). Joining voice somewhere else
+      // means leaving the previous one for real, otherwise the old server would
+      // keep us listed in a channel we can no longer hear.
+      const previousKey = voiceStore.voiceSessionKey;
+      if (previousKey && previousKey !== sessionManager.getActiveKey()) {
+        sessionManager.get(previousKey)?.client.send(MessageType.VOICE_LEAVE, {
+          channelId: voiceStore.currentVoiceChannelId,
+        });
+      }
     }
 
     // Start local mic
@@ -838,7 +870,11 @@ export class MainView {
       console.warn('Microphone permission or hardware error:', err);
     }
 
-    voiceStore.setChannel(channelId);
+    voiceStore.setChannel(channelId, sessionManager.getActiveKey());
+    // The peer mesh keys off our session id on the server hosting the call, so
+    // it has to follow the call when it moves between servers (#400).
+    const mySessionId = serverStore.currentUser?.sessionId || serverStore.currentUser?.id;
+    if (mySessionId) webRtcManager.setCurrentSessionId(mySessionId);
     if (!silent) soundEffects.play('join_voice');
     networkClient.send(MessageType.VOICE_JOIN, {
       channelId,
@@ -885,8 +921,13 @@ export class MainView {
     });
     if (!confirmed) return;
 
-    // If we are currently in this voice channel, leave it first locally.
-    if (channel.type === 'VOICE' && voiceStore.currentVoiceChannelId === channelId) {
+    // If we are currently in this voice channel, leave it first locally. The
+    // session check keeps a call on another server untouched (#400).
+    if (
+      channel.type === 'VOICE' &&
+      voiceStore.currentVoiceChannelId === channelId &&
+      voiceStore.voiceSessionKey === sessionManager.getActiveKey()
+    ) {
       networkClient.send(MessageType.VOICE_LEAVE, { channelId });
       webRtcManager.closeAllPeers();
       audioProcessor.stopMicrophone();
@@ -1089,7 +1130,7 @@ export class MainView {
         webRtcManager.setDeafened(voiceStore.getEffectiveDeafened());
         undeafened = true;
       }
-      networkClient.send(MessageType.VOICE_STATE_UPDATE, {
+      callClient().send(MessageType.VOICE_STATE_UPDATE, {
         isMuted: newMuted,
         ...(undeafened ? { isDeafened: false } : {}),
       });
@@ -1111,7 +1152,7 @@ export class MainView {
       audioProcessor.setMuted(voiceStore.getEffectiveMuted());
       webRtcManager.setDeafened(voiceStore.getEffectiveDeafened());
       soundEffects.play(newDeafened ? 'deafen' : 'undeafen');
-      networkClient.send(MessageType.VOICE_STATE_UPDATE, { isDeafened: newDeafened, isMuted: voiceStore.isMuted });
+      callClient().send(MessageType.VOICE_STATE_UPDATE, { isDeafened: newDeafened, isMuted: voiceStore.isMuted });
       if (btnDeafen) {
         btnDeafen.className = `btn btn-icon ${newDeafened ? 'danger-active' : ''}`;
         btnDeafen.innerHTML = `<span class="material-symbols-outlined md-18">${newDeafened ? 'headset_off' : 'headphones'}</span>`;
@@ -1130,8 +1171,13 @@ export class MainView {
         // whether this user was hosting the server they just left (#334).
         const leaveState = await captureHostedServerLeaveState();
         soundEffects.play('leave_voice');
-        audioProcessor.stopMicrophone();
-        webRtcManager.closeAllPeers();
+        // Microphone and peer mesh are shared by every session (#400): tearing
+        // them down while the call lives on another server would kill the audio
+        // and still leave the user listed in that server's voice channel.
+        if (this.callIsHere()) {
+          audioProcessor.stopMicrophone();
+          webRtcManager.closeAllPeers();
+        }
         networkClient.disconnect();
         if (leaveState) await promptShutdownAfterLeave(leaveState);
       }
@@ -1237,6 +1283,10 @@ export class MainView {
 
     const u7 = appEvents.on(`message.${MessageType.SERVER_SETTINGS_UPDATED}`, (payload: any) => {
       serverStore.updateServerMeta(payload.name, payload.hasPassword, payload.allowSoundboard, payload.iconUrl, payload.attachmentStorage, payload.maxUsers);
+      // The store above is the one of whichever server sent this. Everything
+      // below writes to the screen and to the saved-server list, so it may only
+      // run for the server actually being looked at (#400).
+      if (!isForegroundEvent()) return;
       const titleEl = document.getElementById('server-name-title');
       if (titleEl) titleEl.innerText = payload.name;
       const iconEl = document.getElementById('server-header-icon') as HTMLImageElement;
@@ -1261,6 +1311,24 @@ export class MainView {
       serverRailView.render();
     });
 
+    // Badges for servers kept alive in the background: the call marker and the
+    // unread dot both live on the rail (#400).
+    const u7c = appEvents.on('session.background_activity', () => {
+      serverRailView.render();
+    });
+
+    const u7d = appEvents.on('session.changed', (payload: { key: string | null }) => {
+      // A null key means every server is gone and the connection screen is
+      // taking over. The DOM check covers the mirror case: while the connection
+      // screen is up, activating a session (a connection starting) must not
+      // paint the server view over it. And a session with no details yet is one
+      // still connecting — rendering it would blank the screen and unbind every
+      // listener while the user waits (#400).
+      if (!payload?.key || !serverStore.serverDetails) return;
+      if (!document.getElementById('main-center-stage')) return;
+      this.render();
+    });
+
     const u8 = appEvents.on(`message.${MessageType.CHANNEL_DELETED}`, () => {
       // If the text channel currently shown was removed, fall back to the
       // remaining active channel so the chat view is never left orphaned.
@@ -1282,6 +1350,8 @@ export class MainView {
       this.updateVoiceConnectionRow();
       this.renderChannels();
       this.updateScreenShareNotice();
+      // Keeps the "call is here" marker on the rail in sync (#400).
+      serverRailView.render();
     });
 
     const u10 = appEvents.on('settings.updated', () => {
@@ -1308,7 +1378,7 @@ export class MainView {
       this.renderChannels();
     });
 
-    this.unbindEvents.push(u1, u2, u3, u4, u5, u6, u7, u7b, u8, u9, u10, u11, u12, u13);
+    this.unbindEvents.push(u1, u2, u3, u4, u5, u6, u7, u7b, u7c, u7d, u8, u9, u10, u11, u12, u13);
   }
 
   /** True when the given text channel is the one currently visible on screen (#14). */

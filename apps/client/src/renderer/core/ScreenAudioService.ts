@@ -15,6 +15,7 @@
 import { appEvents } from './EventBus';
 import { webRtcManager } from './WebRtcManager';
 import { networkClient } from './NetworkClient';
+import { callClient } from './serverConnection';
 import { MessageType } from '@monky/shared';
 import { t } from '../i18n';
 
@@ -198,7 +199,7 @@ class ScreenAudioService {
     }, FRAME_WATCHDOG_TIMEOUT * 1000);
 
     await webRtcManager.setLocalScreenAudioTrack(this.outputTrack);
-    networkClient.send(MessageType.VOICE_STATE_UPDATE, { isSharingScreenAudio: true });
+    callClient().send(MessageType.VOICE_STATE_UPDATE, { isSharingScreenAudio: true });
     appEvents.emit('local.screen_audio_started');
     return this.outputTrack;
   }
@@ -237,7 +238,7 @@ class ScreenAudioService {
     console.log('[ScreenAudio] Test tone started (440 Hz)');
 
     await webRtcManager.setLocalScreenAudioTrack(this.outputTrack);
-    networkClient.send(MessageType.VOICE_STATE_UPDATE, { isSharingScreenAudio: true });
+    callClient().send(MessageType.VOICE_STATE_UPDATE, { isSharingScreenAudio: true });
     appEvents.emit('local.screen_audio_started');
     return this.outputTrack;
   }
@@ -267,7 +268,7 @@ class ScreenAudioService {
     }
 
     await webRtcManager.setLocalScreenAudioTrack(null);
-    networkClient.send(MessageType.VOICE_STATE_UPDATE, { isSharingScreenAudio: false });
+    callClient().send(MessageType.VOICE_STATE_UPDATE, { isSharingScreenAudio: false });
 
     const mode = this.isTestTone ? 'test-tone' : 'native';
     console.log(`[ScreenAudio] Stopped (${mode}). Frames: ${this.frameCount}`);

@@ -1,7 +1,14 @@
 import { AttachmentStorageInfo, ChannelSummary, DEFAULT_PERMISSIONS, Permission, Role, ServerDetails, UserRoleSummary, UserSummary, hasPermission } from '@monky/shared';
-import { appEvents } from '../core/EventBus';
+import { appEvents, EventBus } from '../core/EventBus';
+import { createActiveProxy } from '../core/activeProxy';
 
 export class ServerStore {
+  /**
+   * Where change notifications go. Only the server being looked at points at
+   * the app-wide bus; the others hold a silent one so their updates stay
+   * invisible until the user switches to them (#400).
+   */
+  public bus: EventBus = appEvents;
   public serverDetails: ServerDetails | null = null;
   public currentUser: UserSummary | null = null;
   public activeTextChannelId: string | null = null;
@@ -37,7 +44,7 @@ export class ServerStore {
     if (textChannels.length > 0 && !this.activeTextChannelId) {
       this.activeTextChannelId = textChannels[0].id;
     }
-    appEvents.emit('server.updated');
+    this.bus.emit('server.updated');
   }
 
   /** Keeps the oldest connection of each person, so the list has one row each (#309). */
@@ -83,13 +90,13 @@ export class ServerStore {
 
   public setActiveTextChannel(channelId: string): void {
     this.activeTextChannelId = channelId;
-    appEvents.emit('channel.selected', channelId);
+    this.bus.emit('channel.selected', channelId);
   }
 
   public addChannel(channel: ChannelSummary): void {
     if (this.serverDetails) {
       this.serverDetails.channels.push(channel);
-      appEvents.emit('server.updated');
+      this.bus.emit('server.updated');
     }
   }
 
@@ -100,7 +107,7 @@ export class ServerStore {
         const textChannels = this.serverDetails.channels.filter((c) => c.type === 'TEXT');
         this.activeTextChannelId = textChannels.length > 0 ? textChannels[0].id : null;
       }
-      appEvents.emit('server.updated');
+      this.bus.emit('server.updated');
     }
   }
 
@@ -112,7 +119,7 @@ export class ServerStore {
     if (index === -1) return;
 
     this.serverDetails.channels[index] = channel;
-    appEvents.emit('server.updated');
+    this.bus.emit('server.updated');
   }
 
   public updateCurrentUser(user: UserSummary): void {
@@ -129,7 +136,7 @@ export class ServerStore {
         this.serverDetails.members[idx] = user;
       }
     }
-    appEvents.emit('user.updated', user);
+    this.bus.emit('user.updated', user);
   }
 
   public addMember(user: UserSummary): void {
@@ -141,14 +148,14 @@ export class ServerStore {
       } else {
         this.serverDetails.members.push(user);
       }
-      appEvents.emit('server.members_updated', this.serverDetails.members);
+      this.bus.emit('server.members_updated', this.serverDetails.members);
     }
   }
 
   public removeMember(userId: string): void {
     if (this.serverDetails) {
       this.serverDetails.members = this.serverDetails.members.filter((m) => m.id !== userId);
-      appEvents.emit('server.members_updated', this.serverDetails.members);
+      this.bus.emit('server.members_updated', this.serverDetails.members);
     }
   }
 
@@ -184,8 +191,8 @@ export class ServerStore {
       if (maxUsers !== undefined) {
         this.serverDetails.maxUsers = maxUsers;
       }
-      appEvents.emit('server.updated');
-      appEvents.emit('server.meta_updated', this.serverDetails);
+      this.bus.emit('server.updated');
+      this.bus.emit('server.meta_updated', this.serverDetails);
     }
   }
 
@@ -197,8 +204,8 @@ export class ServerStore {
       this.serverDetails.userRoles = userRoles;
     }
     this.recalculateMyPermissions();
-    appEvents.emit('server.roles_updated');
-    appEvents.emit('server.updated');
+    this.bus.emit('server.roles_updated');
+    this.bus.emit('server.updated');
   }
 
   public getRole(roleId: string): Role | undefined {
@@ -296,8 +303,18 @@ export class ServerStore {
     this.ownerId = null;
     this.myPermissions = 0;
     this.knownMembers = new Map();
-    appEvents.emit('server.updated');
+    this.bus.emit('server.updated');
   }
 }
 
-export const serverStore = new ServerStore();
+export function createServerStore(): ServerStore {
+  return new ServerStore();
+}
+
+let activeServerStore = createServerStore();
+
+export function setActiveServerStore(store: ServerStore): void {
+  activeServerStore = store;
+}
+
+export const serverStore = createActiveProxy<ServerStore>(() => activeServerStore);

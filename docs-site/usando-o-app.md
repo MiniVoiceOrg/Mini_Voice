@@ -6,6 +6,8 @@ Clique em um **canal de voz** para entrar na chamada. Quem fala ganha um anel ve
 
 Use clique direito em um participante para ajustar o volume individual dele. O ajuste vale só neste computador e para aquele dispositivo: se a mesma pessoa estiver conectada de duas máquinas, cada uma tem seu próprio volume.
 
+A chamada acompanha você: se trocar de servidor na coluna da esquerda, ela continua tocando, e o ícone do servidor onde ela está fica marcado. Entrar em um canal de voz de outro servidor move a chamada para lá. Veja [Vários servidores ao mesmo tempo](/entrar-em-um-servidor#varios-servidores-ao-mesmo-tempo).
+
 ## Câmera e tela
 
 Na barra de mídia: **Câmera**, **Compartilhar Tela** e **Soundboard**. O compartilhamento permite escolher uma tela inteira ou uma janela específica, com áudio de tela para os participantes.

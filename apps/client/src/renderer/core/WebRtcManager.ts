@@ -5,10 +5,12 @@ import {
   WebRtcSignalPayload,
 } from '@monky/shared';
 import { appEvents } from './EventBus';
-import { networkClient } from './NetworkClient';
-import { participantManager } from './ParticipantManager';
+import { networkClient, type NetworkClient } from './NetworkClient';
+import { participantManager, type ParticipantManager } from './ParticipantManager';
+import { sessionManager } from './SessionManager';
+import { currentEventOrigin } from './sessionRouting';
 import { settingsStore } from '../stores/settingsStore';
-import { serverStore } from '../stores/serverStore';
+import { serverStore, type ServerStore } from '../stores/serverStore';
 import { voiceStore } from '../stores/voiceStore';
 
 export interface PeerSession {
@@ -87,6 +89,35 @@ export class WebRtcManager {
     this.currentSessionId = sessionId;
   }
 
+  /**
+   * Connection that carries the signalling for the current call.
+   *
+   * The call lives on one server even while the user browses another (#400),
+   * and much of the signalling fires from async callbacks (ICE candidates,
+   * renegotiation) — long after the routing context of the originating event is
+   * gone. Resolving the client from the call itself keeps offers and candidates
+   * going to the right server no matter what is on screen.
+   */
+  private get signalClient(): NetworkClient {
+    const key = voiceStore.voiceSessionKey;
+    const session = key ? sessionManager.get(key) : undefined;
+    return session ? session.client : networkClient;
+  }
+
+  /** Participants of the server hosting the call — see `signalClient` (#400). */
+  private get voiceParticipants(): ParticipantManager {
+    const key = voiceStore.voiceSessionKey;
+    const session = key ? sessionManager.get(key) : undefined;
+    return session ? session.participants : participantManager;
+  }
+
+  /** State of the server hosting the call — see `signalClient` (#400). */
+  private get voiceServerStore(): ServerStore {
+    const key = voiceStore.voiceSessionKey;
+    const session = key ? sessionManager.get(key) : undefined;
+    return session ? session.serverStore : serverStore;
+  }
+
   public setQualityPreset(preset: QualityPresetType): void {
     this.currentPreset = preset;
     this.applyBitrateConstraints();
@@ -94,6 +125,11 @@ export class WebRtcManager {
 
   private setupSignalListeners(): void {
     appEvents.on(`message.${MessageType.RTC_SIGNAL}`, async (payload: WebRtcSignalPayload) => {
+      // Only the server hosting the call may drive the peer mesh; a signal from
+      // any other connected server would tear down or duplicate peers (#400).
+      const voiceKey = voiceStore.voiceSessionKey;
+      const origin = currentEventOrigin();
+      if (voiceKey && origin && origin !== voiceKey) return;
       await this.handleIncomingSignal(payload);
     });
 
@@ -127,7 +163,7 @@ export class WebRtcManager {
     }
     const screenStream = new MediaStream([track]);
     screenAudioEl.srcObject = screenStream;
-    const participant = participantManager.get(peerSessionId);
+    const participant = this.voiceParticipants.get(peerSessionId);
     const volume = settingsStore.getScreenAudioVolume(peerSessionId, participant?.user.clientId);
     screenAudioEl.volume = volume / 100;
     this.applySinkToElement(screenAudioEl).finally(() => {
@@ -153,7 +189,7 @@ export class WebRtcManager {
     // move it out so it doesn't render as the camera.
     if (session.remoteStream.getTrackById(track.id)) {
       session.remoteStream.removeTrack(track);
-      participantManager.setRemoteStream(peerSessionId, session.remoteStream);
+      this.voiceParticipants.setRemoteStream(peerSessionId, session.remoteStream);
     }
 
     let screenStream = session.remoteScreenStreams.get(shareId);
@@ -169,7 +205,7 @@ export class WebRtcManager {
     if (!screenStream.getTrackById(track.id)) {
       screenStream.addTrack(track);
     }
-    participantManager.setRemoteScreenStream(peerSessionId, shareId, screenStream);
+    this.voiceParticipants.setRemoteScreenStream(peerSessionId, shareId, screenStream);
 
     const attach = (el: HTMLVideoElement | null) => {
       if (el) {
@@ -194,7 +230,7 @@ export class WebRtcManager {
       // screen and not a camera. A reconnect ends the track without the sender
       // re-announcing the metadata, so dropping it here would make the share
       // come back misclassified as the camera (#26).
-      participantManager.removeRemoteScreenStream(peerSessionId, shareId);
+      this.voiceParticipants.removeRemoteScreenStream(peerSessionId, shareId);
     };
   }
 
@@ -343,7 +379,7 @@ export class WebRtcManager {
 
     if (!voiceStore.currentVoiceChannelId) return;
     const isPeerStillInVoice =
-      participantManager.get(peerSessionId)?.voiceState?.channelId === voiceStore.currentVoiceChannelId;
+      this.voiceParticipants.get(peerSessionId)?.voiceState?.channelId === voiceStore.currentVoiceChannelId;
     if (!isPeerStillInVoice) return;
 
     const isInitiator = this.currentSessionId.localeCompare(peerSessionId) < 0;
@@ -369,9 +405,9 @@ export class WebRtcManager {
    * feed the speakers of one device into the microphone of the other (#309).
    */
   private isOwnOtherDevice(peerSessionId: string): boolean {
-    const myUserId = serverStore.currentUser?.id;
+    const myUserId = this.voiceServerStore.currentUser?.id;
     if (!myUserId || peerSessionId === this.currentSessionId) return false;
-    return participantManager.get(peerSessionId)?.user.id === myUserId;
+    return this.voiceParticipants.get(peerSessionId)?.user.id === myUserId;
   }
 
   public async connectToPeer(peerSessionId: string, isInitiator: boolean): Promise<void> {
@@ -429,7 +465,7 @@ export class WebRtcManager {
     for (const [shareId, screenTrack] of this.localScreenTracks) {
       const stream = this.localScreenStreams.get(shareId);
       if (!stream) continue;
-      networkClient.send(MessageType.RTC_SIGNAL, {
+      this.signalClient.send(MessageType.RTC_SIGNAL, {
         targetSessionId: peerSessionId,
         fromSessionId: this.currentSessionId,
         signalType: 'screen-video-meta',
@@ -441,7 +477,7 @@ export class WebRtcManager {
     // Setup Screen Audio Track (if currently sharing)
     if (this.localScreenAudioTrack && this.screenAudioStream) {
       // Announce stream ID before adding track
-      networkClient.send(MessageType.RTC_SIGNAL, {
+      this.signalClient.send(MessageType.RTC_SIGNAL, {
         targetSessionId: peerSessionId,
         fromSessionId: this.currentSessionId,
         signalType: 'screen-audio-meta',
@@ -453,7 +489,7 @@ export class WebRtcManager {
     // ICE Candidate handler
     pc.onicecandidate = (event) => {
       if (event.candidate) {
-        networkClient.send(MessageType.RTC_SIGNAL, {
+        this.signalClient.send(MessageType.RTC_SIGNAL, {
           targetSessionId: peerSessionId,
           fromSessionId: this.currentSessionId,
           signalType: 'candidate',
@@ -519,11 +555,11 @@ export class WebRtcManager {
       }
 
       remoteStream.addTrack(event.track);
-      participantManager.setRemoteStream(peerSessionId, remoteStream);
+      this.voiceParticipants.setRemoteStream(peerSessionId, remoteStream);
 
       if (event.track.kind === 'audio') {
         let audioEl = this.audioElements.get(peerSessionId);
-        const participant = participantManager.get(peerSessionId);
+        const participant = this.voiceParticipants.get(peerSessionId);
         const volume = settingsStore.getUserVolume(peerSessionId, participant?.user.clientId);
         const isDeaf = this.isDeafened || voiceStore.getEffectiveDeafened();
         if (!audioEl) {
@@ -567,11 +603,11 @@ export class WebRtcManager {
 
       event.track.onended = () => {
         remoteStream.removeTrack(event.track);
-        participantManager.setRemoteStream(peerSessionId, remoteStream);
+        this.voiceParticipants.setRemoteStream(peerSessionId, remoteStream);
       };
 
       event.track.onunmute = () => {
-        participantManager.setRemoteStream(peerSessionId, remoteStream);
+        this.voiceParticipants.setRemoteStream(peerSessionId, remoteStream);
         if (event.track.kind === 'audio') {
           const audioEl = this.audioElements.get(peerSessionId);
           if (audioEl) {
@@ -639,7 +675,7 @@ export class WebRtcManager {
         session.iceRestartAttempts = 0;
         session.reconnectAttempts = 0;
         this.applyBitrateConstraints();
-        participantManager.setRemoteStream(peerSessionId, remoteStream);
+        this.voiceParticipants.setRemoteStream(peerSessionId, remoteStream);
       } else if (state === 'failed') {
         this.clearPeerTimers(session);
         appEvents.emit('remote.peer_degraded', { sessionId: peerSessionId });
@@ -677,7 +713,7 @@ export class WebRtcManager {
       });
       await session.pc.setLocalDescription(offer);
 
-      networkClient.send(MessageType.RTC_SIGNAL, {
+      this.signalClient.send(MessageType.RTC_SIGNAL, {
         targetSessionId: session.peerSessionId,
         fromSessionId: this.currentSessionId,
         signalType: 'offer',
@@ -797,7 +833,7 @@ export class WebRtcManager {
         const answer = await session.pc.createAnswer();
         await session.pc.setLocalDescription(answer);
 
-        networkClient.send(MessageType.RTC_SIGNAL, {
+        this.signalClient.send(MessageType.RTC_SIGNAL, {
           targetSessionId: fromSessionId,
           fromSessionId: this.currentSessionId,
           signalType: 'answer',
@@ -895,7 +931,7 @@ export class WebRtcManager {
 
     // Announce stream ID to all peers BEFORE adding the track.
     for (const session of this.peers.values()) {
-      networkClient.send(MessageType.RTC_SIGNAL, {
+      this.signalClient.send(MessageType.RTC_SIGNAL, {
         targetSessionId: session.peerSessionId,
         fromSessionId: this.currentSessionId,
         signalType: 'screen-video-meta',
@@ -983,7 +1019,7 @@ export class WebRtcManager {
 
       // Announce stream ID to all peers BEFORE adding the track
       for (const session of this.peers.values()) {
-        networkClient.send(MessageType.RTC_SIGNAL, {
+        this.signalClient.send(MessageType.RTC_SIGNAL, {
           targetSessionId: session.peerSessionId,
           fromSessionId: this.currentSessionId,
           signalType: 'screen-audio-meta',
@@ -1192,13 +1228,13 @@ export class WebRtcManager {
           silenceCounter = 0;
           if (!isSpeaking) {
             isSpeaking = true;
-            participantManager.setSpeaking(peerSessionId, true);
+            this.voiceParticipants.setSpeaking(peerSessionId, true);
           }
         } else {
           silenceCounter++;
           if (silenceCounter > 4 && isSpeaking) {
             isSpeaking = false;
-            participantManager.setSpeaking(peerSessionId, false);
+            this.voiceParticipants.setSpeaking(peerSessionId, false);
           }
         }
       }, 50);
@@ -1265,7 +1301,7 @@ export class WebRtcManager {
 
   public applyUserVolumes(): void {
     for (const [peerSessionId, audioEl] of this.audioElements.entries()) {
-      const participant = participantManager.get(peerSessionId);
+      const participant = this.voiceParticipants.get(peerSessionId);
       const vol = settingsStore.getUserVolume(peerSessionId, participant?.user.clientId);
       audioEl.volume = vol / 100;
     }

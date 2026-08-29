@@ -2,6 +2,7 @@ import { MessageType } from '@monky/shared';
 import { escapeHtml } from '../utils/html';
 import { appEvents } from '../core/EventBus';
 import { networkClient } from '../core/NetworkClient';
+import { callClient } from '../core/serverConnection';
 import { participantManager, ParticipantViewModel } from '../core/ParticipantManager';
 import { screenAudioService } from '../core/ScreenAudioService';
 import { serverStore } from '../stores/serverStore';
@@ -1404,7 +1405,7 @@ export class VoiceStageView {
     this.stopPingMonitor();
     this.stopTelemetryMonitor();
     soundEffects.play('leave_voice');
-    networkClient.send(MessageType.VOICE_LEAVE, { channelId: this.currentChannelId });
+    callClient().send(MessageType.VOICE_LEAVE, { channelId: this.currentChannelId });
     audioProcessor.stopMicrophone();
     videoService.stopCamera();
     videoService.stopScreenShare();
@@ -1419,7 +1420,7 @@ export class VoiceStageView {
       videoService.stopScreenShare();
       await webRtcManager.removeAllLocalScreenTracks();
       voiceStore.setScreenSharing(false);
-      networkClient.send(MessageType.VOICE_STATE_UPDATE, {
+      callClient().send(MessageType.VOICE_STATE_UPDATE, {
         screenShareIds: [],
         isScreenSharing: false,
       });
@@ -1430,7 +1431,7 @@ export class VoiceStageView {
       videoService.stopCamera();
       await webRtcManager.setLocalCameraTrack(null);
       voiceStore.setCameraOn(false);
-      networkClient.send(MessageType.VOICE_STATE_UPDATE, { isCameraOn: false });
+      callClient().send(MessageType.VOICE_STATE_UPDATE, { isCameraOn: false });
     }
     this.updateControlsUI();
     this.renderParticipants();
@@ -1448,20 +1449,20 @@ export class VoiceStageView {
       videoService.stopCamera();
       await webRtcManager.setLocalCameraTrack(null);
       voiceStore.setCameraOn(false);
-      networkClient.send(MessageType.VOICE_STATE_UPDATE, { isCameraOn: false });
+      callClient().send(MessageType.VOICE_STATE_UPDATE, { isCameraOn: false });
     } else {
       try {
         const stream = await videoService.startCamera();
         const track = stream.getVideoTracks()[0];
         await webRtcManager.setLocalCameraTrack(track);
         voiceStore.setCameraOn(true);
-        networkClient.send(MessageType.VOICE_STATE_UPDATE, { isCameraOn: true });
+        callClient().send(MessageType.VOICE_STATE_UPDATE, { isCameraOn: true });
       } catch (err: any) {
         // Fully revert local camera state (screen share, if any, is untouched).
         videoService.stopCamera();
         await webRtcManager.setLocalCameraTrack(null);
         voiceStore.setCameraOn(false);
-        networkClient.send(MessageType.VOICE_STATE_UPDATE, { isCameraOn: false });
+        callClient().send(MessageType.VOICE_STATE_UPDATE, { isCameraOn: false });
         await showAlert({
           title: t('stage.cameraErrorTitle'),
           message: t('stage.cameraErrorMessage', { error: err?.message || err }),
@@ -1495,7 +1496,7 @@ export class VoiceStageView {
         webRtcManager.setDeafened(voiceStore.getEffectiveDeafened());
         undeafened = true;
       }
-      networkClient.send(MessageType.VOICE_STATE_UPDATE, {
+      callClient().send(MessageType.VOICE_STATE_UPDATE, {
         isMuted: newMuted,
         ...(undeafened ? { isDeafened: false } : {}),
       });
@@ -1511,7 +1512,7 @@ export class VoiceStageView {
       audioProcessor.setMuted(voiceStore.getEffectiveMuted());
       webRtcManager.setDeafened(voiceStore.getEffectiveDeafened());
       soundEffects.play(newDeafened ? 'deafen' : 'undeafen');
-      networkClient.send(MessageType.VOICE_STATE_UPDATE, { isDeafened: newDeafened, isMuted: voiceStore.isMuted });
+      callClient().send(MessageType.VOICE_STATE_UPDATE, { isDeafened: newDeafened, isMuted: voiceStore.isMuted });
       this.updateControlsUI();
       this.renderParticipants();
     });

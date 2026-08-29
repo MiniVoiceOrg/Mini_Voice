@@ -3,6 +3,7 @@ import { escapeHtml } from '../utils/html';
 import { appEvents } from '../core/EventBus';
 import { enableBackdropClose } from '../utils/modal';
 import { networkClient } from '../core/NetworkClient';
+import { callClient } from '../core/serverConnection';
 import { screenAudioService } from '../core/ScreenAudioService';
 import { videoService } from '../core/VideoService';
 import { voiceStore, VoiceStore } from '../stores/voiceStore';
@@ -237,7 +238,7 @@ export class ScreenSharePickerModal {
       await webRtcManager.addLocalScreenTrack(stream);
       voiceStore.addScreenShare(stream.id);
       // Camera and screen are independent (#26) — do not disturb camera state.
-      networkClient.send(MessageType.VOICE_STATE_UPDATE, {
+      callClient().send(MessageType.VOICE_STATE_UPDATE, {
         screenShareIds: voiceStore.screenShareIds,
         isScreenSharing: true,
       });

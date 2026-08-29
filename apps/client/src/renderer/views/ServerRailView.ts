@@ -1,7 +1,9 @@
 import { escapeHtml } from '../utils/html';
 import { appEvents } from '../core/EventBus';
 import { networkClient } from '../core/NetworkClient';
-import { serverStore } from '../stores/serverStore';
+import { sessionManager, sessionKeyFor } from '../core/SessionManager';
+import { openServerSession, showServerSession } from '../core/serverConnection';
+import { voiceStore } from '../stores/voiceStore';
 import { connectionStore, SavedServer, CreatedServer } from '../stores/connectionStore';
 import { audioProcessor } from '../core/AudioProcessor';
 import { webRtcManager } from '../core/WebRtcManager';
@@ -13,7 +15,7 @@ import {
   promptShutdownAfterLeave,
 } from '../utils/hostedServer';
 import { soundEffects } from '../core/SoundEffects';
-import { getAvatarUrl, toAbsoluteServerIconUrl } from '../utils/avatar';
+import { toAbsoluteServerIconUrl } from '../utils/avatar';
 import { t } from '../i18n';
 
 export class ServerRailView {
@@ -32,7 +34,9 @@ export class ServerRailView {
     const railEl = document.getElementById('server-rail');
     if (!railEl) return;
 
-    const currentUrl = networkClient.getCurrentServerUrl();
+    // The active key (not the proxied client) is what identifies the server on
+    // screen: during a background event the proxy points elsewhere (#400).
+    const currentUrl = sessionManager.getActiveKey();
     const saved = connectionStore.savedServers || [];
     const busy = this.connectingKey !== null;
 
@@ -40,16 +44,40 @@ export class ServerRailView {
       const url = `ws://${srv.host.trim().replace(/^wss?:\/\//, '')}:${srv.port}`;
       const isCurrent = url === currentUrl;
       const isConnecting = this.connectingKey === ServerRailView.keyOf(srv.host, srv.port);
+      // Servers kept connected while the user looks elsewhere (#400): they may
+      // be hosting the call or have collected messages meanwhile. A session that
+      // is merely retrying does not count as online.
+      const live = sessionManager.get(url);
+      const background = !isCurrent && live?.client.getStatus() === 'CONNECTED' ? live : undefined;
+      const hasCall = voiceStore.voiceSessionKey === url;
+      const hasUnread = !!background?.chatStore.hasAnyUnread();
       const initial = (srv.name || srv.host || '?').trim().charAt(0).toUpperCase();
-      const iconUrl = isCurrent && serverStore.serverDetails?.iconUrl ? serverStore.serverDetails.iconUrl : srv.iconUrl;
+      // Read from the session that owns this row, never from the proxied store:
+      // a render triggered inside a background event would otherwise paint that
+      // server's icon on whichever row is current (#400). Relative paths are
+      // resolved against that same session's host, never the visible one (#312).
+      const liveIcon = live?.serverStore.serverDetails?.iconUrl;
+      const liveBase = live?.client.getHttpBaseUrl();
+      const resolvedLiveIcon = liveIcon?.startsWith('/') ? (liveBase ? `${liveBase}${liveIcon}` : null) : liveIcon;
+      const iconUrl = resolvedLiveIcon || srv.iconUrl;
       const label = srv.name || `${srv.host}:${srv.port}`;
-      const title = isConnecting ? t('main.connectingTo', { name: label }) : label;
+      const title = isConnecting
+        ? t('main.connectingTo', { name: label })
+        : hasCall && !isCurrent
+          ? t('main.serverHostingCall', { name: label })
+          : label;
+      const badge = hasCall
+        ? `<span class="server-rail-badge" data-kind="call" title="${escapeHtml(t('main.callHereTooltip'))}"><span class="material-symbols-outlined md-14">graphic_eq</span></span>`
+        : hasUnread
+          ? `<span class="server-rail-badge" data-kind="unread" title="${escapeHtml(t('main.unreadHereTooltip'))}"></span>`
+          : '';
       return `
         <div class="server-rail-item ${isCurrent ? 'active' : ''}">
           <span class="server-rail-pill" aria-hidden="true"></span>
           <button class="server-rail-avatar ${isCurrent ? 'active' : ''}" data-host="${escapeHtml(srv.host)}" data-port="${srv.port}" title="${escapeHtml(title)}" ${isConnecting ? 'data-loading="1" aria-busy="true"' : ''} ${busy ? 'disabled' : ''} style="padding: 0;">
-            ${iconUrl ? `<img src="${getAvatarUrl(iconUrl)}" style="width: 100%; height: 100%; object-fit: cover; border-radius: inherit; display: block;">` : `<span>${escapeHtml(initial)}</span>`}
-            <span class="server-rail-status-dot" data-status="${isCurrent ? 'online' : 'checking'}"></span>
+            ${iconUrl ? `<img src="${escapeHtml(iconUrl)}" style="width: 100%; height: 100%; object-fit: cover; border-radius: inherit; display: block;">` : `<span>${escapeHtml(initial)}</span>`}
+            <span class="server-rail-status-dot" data-status="${isCurrent || background ? 'online' : 'checking'}"></span>
+            ${badge}
           </button>
         </div>
       `;
@@ -79,7 +107,9 @@ export class ServerRailView {
       soundEffects.play('leave_voice');
       audioProcessor.stopMicrophone();
       webRtcManager.closeAllPeers();
-      networkClient.disconnect();
+      // Going home means leaving everything, including servers kept alive in
+      // the background for an ongoing call (#400).
+      sessionManager.removeAll();
       if (leaveState) await promptShutdownAfterLeave(leaveState);
     });
 
@@ -153,9 +183,14 @@ export class ServerRailView {
   }
 
   private async connectToSavedServer(server: SavedServer): Promise<void> {
-    const targetUrl = `ws://${server.host.trim().replace(/^wss?:\/\//, '')}:${server.port}`;
-    if (targetUrl === networkClient.getCurrentServerUrl()) return;
+    const targetUrl = sessionKeyFor(server.host, server.port);
+    if (targetUrl === sessionManager.getActiveKey()) return;
     if (this.connectingKey) return;
+
+    // Already connected in the background: switching back is just repointing
+    // the views at the state that was kept alive (#400). No probe, no
+    // confirmation, no reconnection.
+    if (showServerSession(targetUrl)) return;
 
     // Everything below is async and used to happen with no feedback at all: the
     // online probe alone can hang for 2.5s before the confirmation even shows up
@@ -183,25 +218,27 @@ export class ServerRailView {
       return;
     }
 
-    const confirmed = await showConfirm({
-      title: online ? t('main.switchServerTitle') : t('main.serverOfflineStartTitle'),
-      message: online
-        ? t('main.switchServerMessage', { name: label })
-        : t('main.serverOfflineStartMessage', { name: label }),
-      confirmLabel: online ? t('main.connect') : t('main.serverOfflineStartConfirm'),
-      variant: 'warning',
-    });
-    if (!confirmed) return;
-
-    // Tear the session down *before* touching the hosted server: startOwnServer may
-    // stop the very server we are connected to, and a socket that dies while
-    // `manualDisconnect` is false schedules an endless reconnect to a server that
-    // is never coming back (#312).
-    audioProcessor.stopMicrophone();
-    webRtcManager.closeAllPeers();
-    networkClient.disconnect();
-
+    // Connecting to another server no longer costs anything: the current one
+    // stays connected in the background (#400). Only the destructive path —
+    // booting one of our own servers, which may stop the one we are on — still
+    // asks for confirmation.
     if (!online && mine) {
+      const confirmed = await showConfirm({
+        title: t('main.serverOfflineStartTitle'),
+        message: t('main.serverOfflineStartMessage', { name: label }),
+        confirmLabel: t('main.serverOfflineStartConfirm'),
+        variant: 'warning',
+      });
+      if (!confirmed) return;
+
+      // Booting one of our own servers may stop the very server we are talking
+      // to, and a socket that dies while `manualDisconnect` is false schedules
+      // an endless reconnect to a server that is never coming back (#312). This
+      // is the one path that still has to close the current session up front.
+      audioProcessor.stopMicrophone();
+      webRtcManager.closeAllPeers();
+      sessionManager.removeAll();
+
       const started = await this.startOwnServer(mine);
       if (!started) return;
     }
@@ -212,7 +249,7 @@ export class ServerRailView {
         : await window.api.getIdentity();
       connectionStore.setIdentity(identity);
       const nickname = connectionStore.savedNickname || t('connection.unknownUser');
-      const res = await networkClient.connect(server.host, server.port, identity, nickname, server.password);
+      const res = await openServerSession(server.host, server.port, identity, nickname, server.password);
       connectionStore.addSavedServer({
         host: server.host,
         port: server.port,
@@ -221,7 +258,14 @@ export class ServerRailView {
         lastConnected: Date.now(),
       });
     } catch (err: any) {
-      appEvents.emit('network.disconnected');
+      // The failed session was already dropped and the previous server restored
+      // by `openServerSession`. Emitting a global disconnect here would tear
+      // down that still-healthy server and dump the user on the home screen
+      // (#400) — showing the error is enough.
+      await showAlert({
+        title: t('main.serverOfflineTitle'),
+        message: err?.message || t('main.serverOfflineMessage', { name: server.name || server.host }),
+      });
     }
   }
 

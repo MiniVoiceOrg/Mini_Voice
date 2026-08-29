@@ -3,6 +3,7 @@ import { LIMITS, MessageType } from '@monky/shared';
 import { connectionStore, type CreatedServer } from '../stores/connectionStore';
 import { serverStore } from '../stores/serverStore';
 import { networkClient } from '../core/NetworkClient';
+import { openServerSession } from '../core/serverConnection';
 import { getAvatarUrl } from '../utils/avatar';
 import { settingsModal } from './SettingsModal';
 import { withButtonLoading } from '../utils/buttonLoading';
@@ -502,7 +503,7 @@ export class ConnectionView {
       : await window.api.getIdentity();
     connectionStore.setIdentity(identity);
 
-    await networkClient.connect('127.0.0.1', updatedServer.port, identity, nickname, updatedServer.password);
+    await openServerSession('127.0.0.1', updatedServer.port, identity, nickname, updatedServer.password);
 
     if (this.selectedAvatarBase64) {
       try {
@@ -808,7 +809,7 @@ export class ConnectionView {
         : await window.api.getIdentity();
       connectionStore.setIdentity(identity);
 
-      const res = await networkClient.connect(host, port, identity, nickname, password);
+      const res = await openServerSession(host, port, identity, nickname, password);
 
       if (this.selectedAvatarBase64) {
         try {

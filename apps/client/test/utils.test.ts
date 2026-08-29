@@ -12,6 +12,9 @@ import { normalizeSearchString, matchesSearch } from '../src/renderer/utils/sear
 import { compareVersions, feedUrlForTag, isNewer, pickBestRelease } from '../src/main/updateVersions';
 import { extractStickerIds, stickerToken, stripStickerTokens } from '../src/renderer/utils/stickers';
 import { buildCodeMessage, indentEdit } from '../src/renderer/views/CodeBlockModal';
+import { createActiveProxy, silentBus } from '../src/renderer/core/activeProxy';
+import { createChatStore, setActiveChatStore, chatStore } from '../src/renderer/stores/chatStore';
+import { appEvents } from '../src/renderer/core/EventBus';
 
 let passed = 0;
 let failed = 0;
@@ -435,6 +438,57 @@ function runTests() {
   const roundTripIndent = indentEdit('a\nb', 0, 3, false);
   const backAgain = indentEdit(roundTripIndent.text, 0, roundTripIndent.text.length, true);
   assert(backAgain.text === 'a\nb', 'Indentar e desindentar devolve o texto original');
+
+  // Multi-servidor (#400): proxy da instância ativa e bus silencioso
+  console.log('\n--- Multi-servidor: instância ativa e bus silencioso (#400) ---');
+
+  const alvoA = { valor: 1, dobro() { return this.valor * 2; } };
+  const alvoB = { valor: 10, dobro() { return this.valor * 2; } };
+  let atual = alvoA;
+  const proxy = createActiveProxy<typeof alvoA>(() => atual);
+
+  assert(proxy.valor === 1, 'Proxy lê a propriedade da instância ativa');
+  assert(proxy.dobro() === 2, 'Método do proxy roda com o "this" da instância real');
+  atual = alvoB;
+  assert(proxy.valor === 10 && proxy.dobro() === 20, 'Trocar a instância ativa muda o que o proxy enxerga');
+  proxy.valor = 11;
+  assert(alvoB.valor === 11 && alvoA.valor === 1, 'Escrita pelo proxy atinge só a instância ativa');
+  assert('dobro' in proxy, 'Operador "in" enxerga os membros da instância ativa');
+
+  const chatVisivel = createChatStore();
+  const chatFundo = createChatStore();
+  chatFundo.bus = silentBus;
+  setActiveChatStore(chatVisivel);
+
+  let avisos = 0;
+  const desligar = appEvents.on('chat.message_added', () => { avisos++; });
+
+  const mensagem = (id: string) => ({
+    id,
+    channelId: 'c1',
+    userId: 'u1',
+    userNickname: 'alguem',
+    content: 'oi',
+    createdAt: Date.now(),
+  });
+
+  chatFundo.addMessage(mensagem('m1'));
+  assert(avisos === 0, 'Mensagem em servidor de fundo não notifica a interface');
+  assert(chatFundo.getMessages('c1').length === 1, 'Mensagem de fundo é guardada na store daquele servidor');
+  assert(chatVisivel.getMessages('c1').length === 0, 'Servidor visível não recebe a mensagem do outro servidor');
+
+  chatVisivel.addMessage(mensagem('m2'));
+  assert(avisos === 1, 'Mensagem do servidor visível notifica a interface');
+
+  assert(chatStore.getMessages('c1').length === 1, 'Singleton exportado resolve para a store ativa');
+  setActiveChatStore(chatFundo);
+  assert(chatStore.getMessages('c1')[0].id === 'm1', 'Ativar outra sessão troca o conteúdo visto pelo singleton');
+  setActiveChatStore(chatVisivel);
+
+  chatFundo.markUnread('c1');
+  assert(chatFundo.hasAnyUnread(), 'Servidor de fundo com mensagem nova reporta não lidas para o badge da rail');
+  assert(!chatVisivel.hasAnyUnread(), 'Servidor visível sem mensagem nova não pede badge');
+  desligar();
 
   console.log(`\n=== Relatório dos Testes ===`);
   console.log(`Total: ${passed + failed} | Passaram: ${passed} | Falharam: ${failed}`);

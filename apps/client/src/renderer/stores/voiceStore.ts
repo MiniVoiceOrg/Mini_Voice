@@ -1,8 +1,15 @@
 import { appEvents } from '../core/EventBus';
+import { emitOutsideRouting } from '../core/sessionRouting';
 import { settingsStore } from './settingsStore';
 
 export class VoiceStore {
   public currentVoiceChannelId: string | null = null;
+  /**
+   * Which server the active call lives on (#400). Voice is a single physical
+   * resource, so it stays on the server where it started even while the user
+   * browses another one; this is what tells the UI where to point them back to.
+   */
+  public voiceSessionKey: string | null = null;
   public isMuted: boolean = settingsStore.isMuted;
   public isDeafened: boolean = settingsStore.isDeafened;
   public serverMuted: boolean = false;
@@ -23,16 +30,19 @@ export class VoiceStore {
   /** Hard cap on simultaneous screen shares per participant (#253). */
   public static readonly MAX_SCREEN_SHARES = 2;
 
-  public setChannel(channelId: string | null): void {
+  public setChannel(channelId: string | null, sessionKey: string | null = null): void {
     this.currentVoiceChannelId = channelId;
-    if (!channelId) {
+    if (channelId) {
+      this.voiceSessionKey = sessionKey;
+    } else {
+      this.voiceSessionKey = null;
       this.isCameraOn = false;
       this.screenShareIds = [];
       this.isScreenSharing = false;
       this.screenAudioShareId = null;
       this.isSpeaking = false;
     }
-    appEvents.emit('voice.channel_changed', channelId);
+    emitOutsideRouting(() => appEvents.emit('voice.channel_changed', channelId));
   }
 
   public setMuted(muted: boolean): void {
@@ -127,7 +137,9 @@ export class VoiceStore {
   }
 
   public reset(): void {
+    const hadChannel = this.currentVoiceChannelId !== null;
     this.currentVoiceChannelId = null;
+    this.voiceSessionKey = null;
     // Note (#358): isMuted and isDeafened are persistent user privacy states
     // and are deliberately NOT reset when leaving a channel, server, or call.
     this.serverMuted = false;
@@ -137,7 +149,13 @@ export class VoiceStore {
     this.screenShareIds = [];
     this.isScreenSharing = false;
     this.screenAudioShareId = null;
-    appEvents.emit('voice.state_updated');
+    emitOutsideRouting(() => {
+      appEvents.emit('voice.state_updated');
+      // Ending a call is a channel change: without this the sidebar row and the
+      // rail badge would linger when the call's server drops while the user is
+      // looking at another one (#400).
+      if (hadChannel) appEvents.emit('voice.channel_changed', null);
+    });
   }
 }
 

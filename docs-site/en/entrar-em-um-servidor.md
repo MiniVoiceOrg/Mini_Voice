@@ -14,6 +14,20 @@ Every server you join is saved. The dot shows whether it is **online** or **offl
 
 Fill in **Your Nickname**, **Server IP / Host**, **Port** (usually `3000`) and **Server Password** if one exists. Then click **Join Server**.
 
+## Several servers at once
+
+Once you are in, the icon column on the left lists your servers. Clicking one takes you there **without disconnecting from the previous one**: the old connection stays alive in the background.
+
+In practice that means:
+
+- **Your voice call does not drop when you switch servers.** While it is running on another server, that server's icon in the left column gets a green audio marker.
+- **Messages arriving on a background server are received normally** and put a dot on its icon. The app plays no sound in that case — the alert would be about a conversation you are not looking at.
+- **Going back to a server you are already connected to is instant**, with no new authentication and no loading screen.
+
+You talk on one server at a time, because there is only one microphone: joining a voice channel on another server **moves the call** and takes you out of the previous channel automatically. Text chat, on the other hand, stays active everywhere at once.
+
+The **Home** button (the little house at the top of the column) disconnects from every server at once.
+
 ## Several devices at once
 
 You can join the same server from more than one computer using the same identity — your desktop and your laptop, for instance. Each device shows up as its own entry in the voice list, with a `(2)`, `(3)` suffix to tell them apart, yet you remain a single person in the member list and take up only one server slot.

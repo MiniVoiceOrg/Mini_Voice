@@ -1,7 +1,10 @@
 import { ChatMessage } from '@monky/shared';
-import { appEvents } from '../core/EventBus';
+import { appEvents, EventBus } from '../core/EventBus';
+import { createActiveProxy } from '../core/activeProxy';
 
 export class ChatStore {
+  /** See ServerStore.bus: background servers get a silent bus (#400). */
+  public bus: EventBus = appEvents;
   // Map of channelId -> ChatMessage[]
   private messages: Map<string, ChatMessage[]> = new Map();
   // Text channels with an unread @-mention for the current user (#14).
@@ -17,7 +20,7 @@ export class ChatStore {
         ? msgs.slice(-ChatStore.MAX_MESSAGES_PER_CHANNEL)
         : msgs;
     this.messages.set(channelId, trimmed);
-    appEvents.emit('chat.history_loaded', { channelId, messages: trimmed });
+    this.bus.emit('chat.history_loaded', { channelId, messages: trimmed });
   }
 
   public addMessage(message: ChatMessage): void {
@@ -31,7 +34,7 @@ export class ChatStore {
     if (list.length > ChatStore.MAX_MESSAGES_PER_CHANNEL) {
       list.splice(0, list.length - ChatStore.MAX_MESSAGES_PER_CHANNEL);
     }
-    appEvents.emit('chat.message_added', message);
+    this.bus.emit('chat.message_added', message);
   }
 
   public getMessages(channelId: string): ChatMessage[] {
@@ -42,7 +45,7 @@ export class ChatStore {
   public markMention(channelId: string): void {
     if (this.mentionChannels.has(channelId)) return;
     this.mentionChannels.add(channelId);
-    appEvents.emit('chat.mentions_updated');
+    this.bus.emit('chat.mentions_updated');
   }
 
   /**
@@ -52,13 +55,13 @@ export class ChatStore {
    */
   public setMentions(channelIds: string[]): void {
     this.mentionChannels = new Set(channelIds);
-    appEvents.emit('chat.mentions_updated');
+    this.bus.emit('chat.mentions_updated');
   }
 
   /** Clear the unread @-mention flag for a channel (e.g. when opened). */
   public clearMention(channelId: string): void {
     if (!this.mentionChannels.delete(channelId)) return;
-    appEvents.emit('chat.mentions_updated');
+    this.bus.emit('chat.mentions_updated');
   }
 
   public hasMention(channelId: string): boolean {
@@ -69,25 +72,40 @@ export class ChatStore {
   public markUnread(channelId: string): void {
     if (this.unreadChannels.has(channelId)) return;
     this.unreadChannels.add(channelId);
-    appEvents.emit('chat.unread_updated');
+    this.bus.emit('chat.unread_updated');
   }
 
   /** Clear the unread flag for a channel (opened or marked as read) (#263). */
   public clearUnread(channelId: string): void {
     if (!this.unreadChannels.delete(channelId)) return;
-    appEvents.emit('chat.unread_updated');
+    this.bus.emit('chat.unread_updated');
   }
 
   public hasUnread(channelId: string): boolean {
     return this.unreadChannels.has(channelId);
   }
 
+  /** Whether anything is unread anywhere, used by the server rail badge (#400). */
+  public hasAnyUnread(): boolean {
+    return this.unreadChannels.size > 0 || this.mentionChannels.size > 0;
+  }
+
   public clear(): void {
     this.messages.clear();
     this.mentionChannels.clear();
     this.unreadChannels.clear();
-    appEvents.emit('chat.cleared');
+    this.bus.emit('chat.cleared');
   }
 }
 
-export const chatStore = new ChatStore();
+export function createChatStore(): ChatStore {
+  return new ChatStore();
+}
+
+let activeChatStore = createChatStore();
+
+export function setActiveChatStore(store: ChatStore): void {
+  activeChatStore = store;
+}
+
+export const chatStore = createActiveProxy<ChatStore>(() => activeChatStore);
