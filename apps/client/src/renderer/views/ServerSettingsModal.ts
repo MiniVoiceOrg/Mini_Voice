@@ -1,4 +1,5 @@
 import {
+  LIMITS,
   MessageType,
   Permission,
   ServerUpdateSettingsPayload,
@@ -22,6 +23,7 @@ export class ServerSettingsModal {
   private shouldRemovePassword = false;
   private pendingIconBase64: string | null | undefined = undefined;
   private activeTab = 'general';
+  private detachGeneralTab: (() => void) | null = null;
 
   private generalTab = new ServerGeneralTab();
   private securityTab = new ServerSecurityTab();
@@ -188,6 +190,8 @@ export class ServerSettingsModal {
     btnClose?.addEventListener('click', () => this.close());
     btnCancel?.addEventListener('click', () => this.close());
 
+    this.detachGeneralTab = this.generalTab.attach(this.modalEl);
+
     // Close on ESC key (#243)
     const handleEsc = (e: KeyboardEvent) => {
       if (e.key === 'Escape') { this.close(); }
@@ -311,12 +315,25 @@ export class ServerSettingsModal {
         payload.maxAttachmentStorageBytes &&
         payload.maxAttachmentFileBytes > payload.maxAttachmentStorageBytes
       ) {
-        const banner = document.getElementById('server-settings-banner');
-        if (banner) {
-          banner.innerText = t('serverSettings.limitError');
-          banner.classList.add('show');
-        }
+        this.showBannerError(t('serverSettings.limitError'));
         return;
+      }
+
+      // Membership cap (#403). An unchecked switch clears the limit entirely,
+      // which is why 0 is sent rather than simply omitting the field.
+      const toggleLimit = this.modalEl?.querySelector('#checkbox-limit-members') as HTMLInputElement | null;
+      if (toggleLimit) {
+        if (!toggleLimit.checked) {
+          payload.maxUsers = LIMITS.MAX_USERS_UNLIMITED;
+        } else {
+          const inputMaxUsers = this.modalEl?.querySelector('#input-max-users') as HTMLInputElement | null;
+          const maxUsersVal = parseInt(inputMaxUsers?.value ?? '', 10);
+          if (!Number.isFinite(maxUsersVal) || maxUsersVal < 1) {
+            this.showBannerError(t('serverSettings.memberLimitInvalid'));
+            return;
+          }
+          payload.maxUsers = maxUsersVal;
+        }
       }
 
       const btnSave = this.modalEl?.querySelector('#btn-save') as HTMLButtonElement;
@@ -410,10 +427,20 @@ export class ServerSettingsModal {
     });
   }
 
+  private showBannerError(message: string): void {
+    const banner = document.getElementById('server-settings-banner');
+    if (banner) {
+      banner.innerText = message;
+      banner.classList.add('show');
+    }
+  }
+
   public close(): void {
     if (this.modalEl) {
       const handler = (this.modalEl as any)._escHandler;
       if (handler) window.removeEventListener('keydown', handler);
+      this.detachGeneralTab?.();
+      this.detachGeneralTab = null;
       this.modalEl.remove();
       this.modalEl = null;
       this.shouldRemovePassword = false;

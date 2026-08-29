@@ -166,7 +166,8 @@ export class ServerStore {
     hasPassword: boolean,
     allowSoundboard?: boolean,
     iconUrl?: string | null,
-    attachmentStorage?: AttachmentStorageInfo
+    attachmentStorage?: AttachmentStorageInfo,
+    maxUsers?: number
   ): void {
     if (this.serverDetails) {
       this.serverDetails.name = name;
@@ -179,6 +180,9 @@ export class ServerStore {
       }
       if (attachmentStorage !== undefined) {
         this.serverDetails.attachmentStorage = attachmentStorage;
+      }
+      if (maxUsers !== undefined) {
+        this.serverDetails.maxUsers = maxUsers;
       }
       appEvents.emit('server.updated');
       appEvents.emit('server.meta_updated', this.serverDetails);

@@ -16,6 +16,8 @@ export interface IUserRepository {
   delete(id: string): Promise<void>;
   findByIds(ids: string[]): Promise<UserRecord[]>;
   listAll(): Promise<UserRecord[]>;
+  /** Registered members, which is what the membership cap counts (#403). */
+  count(): Promise<number>;
 }
 
 export interface IChannelRepository {

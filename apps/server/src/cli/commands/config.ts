@@ -11,7 +11,7 @@ import {
   DEFAULT_SERVER_NAME,
 } from '../constants';
 import { CliContext, readLocalConfig, writeLocalConfig } from '../context';
-import { formatBool, formatDate, parseBoolean, parsePositiveInt } from '../formatters';
+import { formatBool, formatDate, parseBoolean, parseMemberLimit, parsePositiveInt } from '../formatters';
 import {
   getPm2ProcessName,
   isMonkyServerRunning,
@@ -35,7 +35,7 @@ export async function showConfig(ctx: CliContext): Promise<void> {
   console.log(`name: ${server.name}`);
   console.log(`port: ${localConfig.port || LIMITS.DEFAULT_PORT}`);
   console.log(`hasPassword: ${formatBool(Boolean(server.passwordHash))}`);
-  console.log(`maxUsers: ${server.maxUsers}`);
+  console.log(`maxUsers: ${server.maxUsers > LIMITS.MAX_USERS_UNLIMITED ? server.maxUsers : 'sem limite'}`);
   console.log(`ownerUserId: ${server.ownerUserId ?? '-'}`);
   console.log(`ownerNickname: ${owner?.nickname ?? '-'}`);
   console.log(`allowSoundboard: ${formatBool(server.allowSoundboard !== false)}`);
@@ -95,7 +95,10 @@ export async function setConfig(ctx: CliContext, key: string, value?: string): P
         break;
       case 'autoUpdate':
         nextValue = await askChoice('Habilitar atualização automática?', ['true', 'false']);
-        break;      case 'maxUsers':
+        break;
+      case 'maxUsers':
+        nextValue = await ask('Limite de membros (0 para sem limite)', currentValues.maxUsers);
+        break;
       case 'maxAttachmentFileBytes':
       case 'maxAttachmentStorageBytes':
         nextValue = await ask(`Valor para ${normalizedKey}`, currentValues[normalizedKey]);
@@ -168,9 +171,21 @@ export async function setConfig(ctx: CliContext, key: string, value?: string): P
       }
       break;
     }
-    case 'maxUsers':
-      await ctx.serverRepo.updateServer({ maxUsers: parsePositiveInt(normalizedKey, nextValue) });
+    case 'maxUsers': {
+      const nextMax = parseMemberLimit(normalizedKey, nextValue);
+      // Mirrors the rule enforced over the wire (#403): never leave the server
+      // above its own cap, since the only way out would be kicking members.
+      if (nextMax > LIMITS.MAX_USERS_UNLIMITED) {
+        const memberCount = await ctx.userRepo.count();
+        if (nextMax < memberCount) {
+          throw new Error(
+            `O servidor já tem ${memberCount} membros. Remova membros antes de definir um limite menor.`
+          );
+        }
+      }
+      await ctx.serverRepo.updateServer({ maxUsers: nextMax });
       break;
+    }
     case 'allowSoundboard':
       await ctx.serverRepo.updateServer({ allowSoundboard: parseBoolean(nextValue) });
       break;

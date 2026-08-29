@@ -1,6 +1,6 @@
 # Create Your Server
 
-Under **My Servers › Create Server**, fill in the host nickname, server name, local port, optional password and starting text and voice channels.
+Under **My Servers › Create Server**, fill in the host nickname, server name, local port, optional password, the starting text and voice channels and, if you want, a member limit.
 
 Click **Create and Start Server**. The server starts on your machine, listens on every network interface on the chosen port, and you join automatically.
 
@@ -22,7 +22,9 @@ Allow the port through the firewall, forward port `3000` (or the one you chose) 
 
 ## Administer
 
-Under **Server Settings** you can rename the server, change/remove the password and allow or block the soundboard. Channel headers have **+** to create and a bin icon to delete.
+Under **Server Settings** you can rename the server, change/remove the password, set or remove the member limit and allow or block the soundboard. Channel headers have **+** to create and a bin icon to delete.
+
+The limit counts **registered members**, not who is online: a person takes the seat from their first join onwards, even while disconnected. To free the seat, kick the member. With the limit off, the server accepts as many people as want to join.
 
 ## Server Monitor
 
@@ -30,7 +32,7 @@ While the server is running on your machine, the app shows what is going on insi
 
 The panel shows:
 
-- **Live metrics**, refreshed every 3 seconds: uptime, people online (and the limit), registered members, channels and messages.
+- **Live metrics**, refreshed every 3 seconds: uptime, people online, registered members (and the limit, when there is one), channels and messages.
 - **Live logs**, with a level filter (`INFO`, `WARN`, `ERROR`), text search, auto-scroll, a button to copy what is visible and a button to clear.
 
 The app keeps the most recent entries in memory — restarting the server starts the list over. For servers running on a VPS, use [`monky logs`](/en/hospedar-em-vps).

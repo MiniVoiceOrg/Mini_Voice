@@ -4,6 +4,10 @@ export const LIMITS = {
   MAX_MESSAGE_LENGTH: 2000,
   MAX_AVATAR_SIZE: 5 * 1024 * 1024, // 5 MB
   MAX_USERS_DEFAULT: 20,
+  // Sentinel stored in `max_users` when the owner chose not to cap membership
+  // (#403). The column is NOT NULL, so "no limit" needs a value rather than
+  // NULL; 0 is safe because a server capped at zero members is meaningless.
+  MAX_USERS_UNLIMITED: 0,
   MAX_PARTICIPANTS_PER_CHANNEL_DEFAULT: 10,
   MIN_NICKNAME_LENGTH: 2,
   MAX_NICKNAME_LENGTH: 32,

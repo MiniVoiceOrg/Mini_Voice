@@ -44,6 +44,7 @@ export class ServerManager {
       password: options.password || '',
       initialVoiceChannel: options.initialVoiceChannel || 'Geral',
       initialTextChannel: options.initialTextChannel || 'geral',
+      maxUsers: options.maxUsers,
     };
 
     try {

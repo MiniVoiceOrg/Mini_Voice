@@ -63,7 +63,7 @@ export async function ensureServerSeedData(
       name: config.serverName || 'Monky Server',
       passwordHash,
       createdAt: now,
-      maxUsers: config.maxUsers || LIMITS.MAX_USERS_DEFAULT,
+      maxUsers: config.maxUsers ?? LIMITS.MAX_USERS_DEFAULT,
       ownerUserId: null,
       allowSoundboard: true,
     });
@@ -273,9 +273,8 @@ export class MonkyServer {
             nickname: entry.user.nickname,
             avatarUrl: entry.user.avatarUrl || null,
           }));
-        serverRepo
-          .getServer()
-          .then((server) => {
+        Promise.all([serverRepo.getServer(), userRepo.count()])
+          .then(([server, memberCount]) => {
             res.writeHead(200, {
               'Content-Type': 'application/json',
               'Access-Control-Allow-Origin': '*',
@@ -287,7 +286,12 @@ export class MonkyServer {
                 iconUrl: avatarStorage.getPublicUrl(server?.iconPath),
                 // Distinct people, matching the per-person maxUsers semantics (#309).
                 userCount: seenUserIds.size,
-                maxUsers: server?.maxUsers || LIMITS.MAX_USERS_DEFAULT,
+                // Registered members and the cap they count against, so a visitor
+                // can tell whether there is room before trying to join (#403).
+                // `??` rather than `||`: 0 is the "unlimited" sentinel and must
+                // survive, otherwise it would silently become the default of 20.
+                memberCount,
+                maxUsers: server?.maxUsers ?? LIMITS.MAX_USERS_DEFAULT,
                 users,
               })
             );

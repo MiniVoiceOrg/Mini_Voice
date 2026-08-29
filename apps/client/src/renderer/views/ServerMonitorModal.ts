@@ -147,8 +147,10 @@ export class ServerMonitorModal {
     }
 
     set('uptime', this.formatUptime(stats.uptimeMs));
-    set('online', `${stats.onlineUsers}/${stats.maxUsers}`);
-    set('members', String(stats.members));
+    // Online and the membership cap are different things (#403): the cap counts
+    // registered members, so pairing it with the online count would be wrong.
+    set('online', String(stats.onlineUsers));
+    set('members', stats.maxUsers > 0 ? `${stats.members}/${stats.maxUsers}` : String(stats.members));
     set('channels', String(stats.channels));
     set('messages', String(stats.messages));
     set('port', String(stats.port));

@@ -19,6 +19,8 @@ export interface CreatedServer {
   textChannel: string;
   createdAt: number;
   lastStarted: number;
+  /** Member cap picked on creation; 0/undefined means no limit (#403). */
+  maxUsers?: number;
 }
 
 export class ConnectionStore {

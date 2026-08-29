@@ -219,9 +219,10 @@ person.
 - Connecting **from another device** creates a new session, up to a cap of **3
   simultaneous sessions** per identity.
 
-The cap exists because server capacity (`maxUsers`) counts *people*. Without it,
-an already-connected identity could open unlimited connections and bypass that
-limit.
+The cap exists so a single identity cannot exhaust the server's resources
+(connections, audio, bandwidth) by opening endless devices. It is independent
+from `maxUsers`, which counts *registrations* — several sessions of the same
+person still take a single seat.
 
 ### Database
 

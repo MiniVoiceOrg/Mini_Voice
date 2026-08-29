@@ -1,6 +1,6 @@
 # Criar Seu Servidor
 
-Na aba **Meus Servidores › Criar Servidor**, preencha nickname do anfitrião, nome do servidor, porta local, senha opcional e os canais iniciais de texto e voz.
+Na aba **Meus Servidores › Criar Servidor**, preencha nickname do anfitrião, nome do servidor, porta local, senha opcional, os canais iniciais de texto e voz e, se quiser, um limite de membros.
 
 Clique em **Criar e Iniciar Servidor**. O servidor sobe na sua máquina, escuta em todas as interfaces de rede na porta escolhida e você entra automaticamente.
 
@@ -22,7 +22,9 @@ Libere a porta no firewall, faça port forwarding da porta `3000` (ou a escolhid
 
 ## Administrar
 
-Em **Configurações do Servidor** é possível renomear o servidor, alterar/remover senha e permitir ou bloquear o soundboard. Os cabeçalhos de canais têm **+** para criar e lixeira para apagar.
+Em **Configurações do Servidor** é possível renomear o servidor, alterar/remover senha, definir ou remover o limite de membros e permitir ou bloquear o soundboard. Os cabeçalhos de canais têm **+** para criar e lixeira para apagar.
+
+O limite conta **membros cadastrados**, não quem está online: uma pessoa ocupa a vaga a partir da primeira entrada, mesmo desconectada. Para liberar a vaga, expulse o membro. Com o limite desligado, o servidor aceita quantas pessoas quiserem entrar.
 
 ## Monitor do Servidor
 
@@ -30,7 +32,7 @@ Enquanto o servidor está rodando na sua máquina, o app mostra o que está acon
 
 O painel traz:
 
-- **Métricas ao vivo**, atualizadas a cada 3 segundos: tempo ativo, pessoas conectadas (e o limite), membros registrados, canais e mensagens.
+- **Métricas ao vivo**, atualizadas a cada 3 segundos: tempo ativo, pessoas conectadas, membros registrados (e o limite, quando houver), canais e mensagens.
 - **Logs em tempo real**, com filtro por nível (`INFO`, `WARN`, `ERROR`), busca por texto, rolagem automática, botão para copiar o que está visível e botão para limpar.
 
 O app guarda os registros mais recentes em memória — ao reiniciar o servidor, a lista recomeça. Para servidores rodando numa VPS, use [`monky logs`](/hospedar-em-vps).

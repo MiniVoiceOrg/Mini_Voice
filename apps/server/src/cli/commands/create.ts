@@ -1,4 +1,5 @@
 import { v4 as uuidv4 } from 'uuid';
+import { LIMITS } from '@monky/shared';
 import { UserRecord } from '../../domain/entities';
 import {
   ANSI,
@@ -18,7 +19,7 @@ import {
   writeLocalConfig,
 } from '../context';
 import { DecryptedIdentity, decryptIdentityExport } from '../identity';
-import { parseOption, parsePositiveInt } from '../formatters';
+import { parseOption, parseMemberLimit, parsePositiveInt } from '../formatters';
 import { hasServerDatabase, registerServer } from '../registry';
 import { setConfig } from './config';
 import { startServerCommand } from './serverLifecycle';
@@ -128,6 +129,35 @@ async function askDataDir(globalArgs: GlobalArgs): Promise<string> {
   }
 }
 
+/**
+ * Asks whether the server should cap how many members can register (#403).
+ *
+ * The default is no limit: the cap used to be silently applied at 20 to every
+ * server, which meant owners only discovered it when someone was refused.
+ */
+async function askMemberLimit(args: string[]): Promise<number> {
+  const fromFlag = parseOption(args, '--max-users');
+  if (fromFlag !== undefined) {
+    return parseMemberLimit('max-users', fromFlag);
+  }
+
+  const wantsLimit = await confirm('Deseja limitar o número de membros do servidor?', false);
+  if (!wantsLimit) {
+    return LIMITS.MAX_USERS_UNLIMITED;
+  }
+
+  while (true) {
+    const answer = await ask('Limite de membros', String(LIMITS.MAX_USERS_DEFAULT));
+    try {
+      const parsed = parseMemberLimit('max-users', answer);
+      if (parsed > LIMITS.MAX_USERS_UNLIMITED) return parsed;
+      console.log(color('Informe um número maior que zero.', ANSI.yellow));
+    } catch (error) {
+      console.log(color(error instanceof Error ? error.message : String(error), ANSI.yellow));
+    }
+  }
+}
+
 export async function createCommand(globalArgs: GlobalArgs, args: string[]): Promise<void> {
   const dataDir = await askDataDir(globalArgs);
 
@@ -144,6 +174,7 @@ export async function createCommand(globalArgs: GlobalArgs, args: string[]): Pro
   const portValue = parseOption(args, '--port') || (await ask('Porta do servidor', String(DEFAULT_BOOTSTRAP_PORT)));
   const serverPassword = parseOption(args, '--password') ?? (await promptPassword('Senha do servidor (deixe vazio para sem senha): '));
   const port = parsePositiveInt('port', portValue);
+  const maxUsers = await askMemberLimit(args);
 
   console.log();
   console.log(color('Resumo do novo servidor', ANSI.bold));
@@ -151,6 +182,7 @@ export async function createCommand(globalArgs: GlobalArgs, args: string[]): Pro
   console.log(`serverName: ${serverName}`);
   console.log(`port: ${port}`);
   console.log(`serverPassword: ${serverPassword ? 'definida' : 'sem senha'}`);
+  console.log(`limite de membros: ${maxUsers > LIMITS.MAX_USERS_UNLIMITED ? maxUsers : 'sem limite'}`);
   console.log(`identity: ${identityCode.slice(0, Math.min(identityCode.length, 40))}${identityCode.length > 40 ? '...' : ''}`);
 
   const accepted = await confirm('Confirma?', true);
@@ -163,6 +195,7 @@ export async function createCommand(globalArgs: GlobalArgs, args: string[]): Pro
     await applyBootstrap(ctx, identityCode, identityPassword, DEFAULT_OWNER_NICKNAME);
     await setConfig(ctx, 'name', serverName);
     await setConfig(ctx, 'password', serverPassword);
+    await setConfig(ctx, 'maxUsers', String(maxUsers));
   });
 
   const config = readLocalConfig(dataDir);

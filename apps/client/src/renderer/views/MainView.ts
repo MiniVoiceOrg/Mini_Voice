@@ -1236,7 +1236,7 @@ export class MainView {
     });
 
     const u7 = appEvents.on(`message.${MessageType.SERVER_SETTINGS_UPDATED}`, (payload: any) => {
-      serverStore.updateServerMeta(payload.name, payload.hasPassword, payload.allowSoundboard, payload.iconUrl, payload.attachmentStorage);
+      serverStore.updateServerMeta(payload.name, payload.hasPassword, payload.allowSoundboard, payload.iconUrl, payload.attachmentStorage, payload.maxUsers);
       const titleEl = document.getElementById('server-name-title');
       if (titleEl) titleEl.innerText = payload.name;
       const iconEl = document.getElementById('server-header-icon') as HTMLImageElement;

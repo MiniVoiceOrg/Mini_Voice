@@ -188,6 +188,9 @@ export interface ServerUpdateSettingsPayload {
   // Attachment storage limits in bytes (#11).
   maxAttachmentFileBytes?: number;
   maxAttachmentStorageBytes?: number;
+  // Membership cap counted in registered members, or LIMITS.MAX_USERS_UNLIMITED
+  // to remove the cap entirely (#403).
+  maxUsers?: number;
 }
 
 export interface RoleCreatePayload {
@@ -307,6 +310,8 @@ export interface ServerSettingsUpdatedPayload {
   iconUrl?: string | null;
   // Current attachment-storage limits + usage, so the settings UI stays in sync (#11).
   attachmentStorage?: AttachmentStorageInfo;
+  // Membership cap in registered members; LIMITS.MAX_USERS_UNLIMITED means none (#403).
+  maxUsers?: number;
 }
 
 export interface SoundboardPlayedPayload {

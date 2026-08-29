@@ -219,9 +219,10 @@ pessoa só.
 - Conectar **de outro aparelho** cria uma sessão nova, até o limite de **3
   sessões simultâneas** por identidade.
 
-O limite existe porque a capacidade do servidor (`maxUsers`) conta *pessoas*.
-Sem o teto, uma identidade já conectada poderia abrir conexões sem fim e furar
-esse limite.
+O limite existe para uma identidade só não esgotar os recursos do servidor
+(conexões, áudio, banda) abrindo aparelhos sem fim. Ele é independente do
+`maxUsers`, que conta *cadastros* — várias sessões da mesma pessoa continuam
+valendo uma vaga só.
 
 ### Banco de dados
 

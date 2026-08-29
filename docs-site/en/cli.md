@@ -121,6 +121,8 @@ The command is interactive and asks, in order:
 5. **Server name**
 6. **Server port** (default: `3000`)
 7. **Server password** — leave empty for an open server.
+8. **Member limit** — asks whether you want a cap on registrations. The default
+   is no limit.
 
 It then prints a summary, asks for confirmation and offers to start the server.
 
@@ -132,6 +134,7 @@ It then prints a summary, asks for confirmation and offers to start the server.
 | `--name <name>` | Server name | `Servidor dos Amigos` |
 | `--port <n>` | Server port | `3000` |
 | `--password <password>` | Server password (empty = no password) | asked |
+| `--max-users <n>` | Registered member limit (`0` = no limit) | asked |
 
 The identity password is never accepted as an option: it is always typed
 hidden in the terminal.
@@ -362,7 +365,7 @@ monky config set <key> [value]     # change it directly
 | `password` | Join password. Empty, `none` or `clear` removes it | no password |
 | `port` | TCP port | `3000` |
 | `icon` | Path to an image, copied into the data directory. Empty or `clear` removes it | no icon |
-| `maxUsers` | Maximum simultaneous users | `20` |
+| `maxUsers` | Maximum registered members. `0` removes the limit | `20` |
 | `allowSoundboard` | Allows the soundboard (`true`/`false`) | `true` |
 | `maxAttachmentFileBytes` | Maximum size per attachment, in bytes | no limit |
 | `maxAttachmentStorageBytes` | Total attachment storage, in bytes | no limit |

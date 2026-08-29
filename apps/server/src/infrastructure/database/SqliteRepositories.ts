@@ -174,6 +174,11 @@ export class SqliteUserRepository implements IUserRepository {
     ).all() as UserRecord[];
   }
 
+  async count(): Promise<number> {
+    const row = this.db.prepare('SELECT COUNT(*) as total FROM users').get() as { total: number } | undefined;
+    return row?.total ?? 0;
+  }
+
   async findByIds(ids: string[]): Promise<UserRecord[]> {
     if (ids.length === 0) return [];
     const placeholders = ids.map(() => '?').join(', ');

@@ -244,6 +244,7 @@ export class ServerRailView {
         initialTextChannel: created.textChannel,
         initialVoiceChannel: created.voiceChannel,
         serverId: created.id,
+        maxUsers: created.maxUsers,
       });
 
       if (!res.success) {
