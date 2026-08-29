@@ -9,6 +9,7 @@ import { settingsStore, ChatSoundMode } from '../stores/settingsStore';
 import { t } from '../i18n';
 import logoUrl from '../assets/logo.png';
 import { pickAndCropImage } from './ImageCropModal';
+import { attachInputEmojiPicker } from '../utils/inputEmojiPicker';
 import { ServerGeneralTab } from './serverSettings/tabs/ServerGeneralTab';
 import { ServerSecurityTab } from './serverSettings/tabs/ServerSecurityTab';
 import { ServerVoiceVideoTab } from './serverSettings/tabs/ServerVoiceVideoTab';
@@ -22,6 +23,7 @@ export class ServerSettingsModal {
   private shouldRemovePassword = false;
   private pendingIconBase64: string | null | undefined = undefined;
   private activeTab = 'general';
+  private detachEmojiPicker: (() => void) | null = null;
 
   private generalTab = new ServerGeneralTab();
   private securityTab = new ServerSecurityTab();
@@ -232,6 +234,12 @@ export class ServerSettingsModal {
       });
     }
 
+    const btnEmojiServerName = this.modalEl.querySelector('#btn-emoji-server-name') as HTMLElement | null;
+    const generalPanel = this.modalEl.querySelector('#tab-panel-general') as HTMLElement | null;
+    if (btnEmojiServerName && inputName && generalPanel) {
+      this.detachEmojiPicker = attachInputEmojiPicker(generalPanel, inputName, btnEmojiServerName, 'bottom-right');
+    }
+
     serverIconWrapper?.addEventListener('click', async () => {
       if (!canManageServer) return;
       const s = serverStore.serverDetails;
@@ -411,6 +419,8 @@ export class ServerSettingsModal {
   }
 
   public close(): void {
+    this.detachEmojiPicker?.();
+    this.detachEmojiPicker = null;
     if (this.modalEl) {
       const handler = (this.modalEl as any)._escHandler;
       if (handler) window.removeEventListener('keydown', handler);

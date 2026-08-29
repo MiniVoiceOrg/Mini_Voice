@@ -26,6 +26,9 @@ export class ChatStore {
       list = [];
       this.messages.set(message.channelId, list);
     }
+    if (list.some((m) => m.id === message.id)) {
+      return;
+    }
     list.push(message);
     // Keep only the most recent messages to prevent unbounded memory growth.
     if (list.length > ChatStore.MAX_MESSAGES_PER_CHANNEL) {

@@ -11,6 +11,7 @@
   "bugs": {
     "url": "https://github.com/MonkyOrg/Monky/issues"
   },
+  "funding": "https://buymeacoffee.com/monkyorg",
   "homepage": "https://github.com/MonkyOrg/Monky#readme",
   "workspaces": [
     "packages/*",

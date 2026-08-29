@@ -183,6 +183,8 @@ export class MainView {
     this.setupChannelsResizer();
 
     const centerStageEl = document.getElementById('main-center-stage')!;
+    this.chatView?.destroy();
+    this.voiceStageView?.destroy();
     this.chatView = new ChatView(centerStageEl);
     this.voiceStageView = new VoiceStageView(centerStageEl);
 

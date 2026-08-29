@@ -6,8 +6,11 @@ import { getLanguage, setLanguage, SUPPORTED_LANGUAGES, t, SupportedLanguage } f
 import { pickAndCropImage } from '../../ImageCropModal';
 import { showIdentityExportDialog, showIdentityImportDialog } from '../../IdentityDialogs';
 import { showAlert } from '../../Dialog';
+import { attachInputEmojiPicker } from '../../../utils/inputEmojiPicker';
 
 export class AccountTab {
+  private detachEmojiPicker: (() => void) | null = null;
+
   public renderHtml(): string {
     return `
       <div style="font-size: 12px; color: var(--text-muted); margin-bottom: 12px;">
@@ -25,7 +28,12 @@ export class AccountTab {
           <div class="form-group" style="margin-bottom: 0;">
             <label>${t('connection.nicknameLabel')}</label>
             <div style="display: flex; gap: 8px; margin-top: 6px;">
-              <input id="settings-nickname-input" type="text" value="${serverStore.currentUser?.nickname || connectionStore.savedNickname || ''}" style="flex: 1;" maxlength="32">
+              <div class="input-with-emoji-container" style="flex: 1;">
+                <input id="settings-nickname-input" type="text" value="${escapeHtml(serverStore.currentUser?.nickname || connectionStore.savedNickname || '')}" style="width: 100%; padding-right: 36px;" maxlength="32">
+                <button type="button" id="btn-emoji-nickname" class="btn-input-emoji" title="${t('chat.emojiPickerTitle')}">
+                  <span class="material-symbols-outlined md-18">mood</span>
+                </button>
+              </div>
               <button id="btn-save-nickname" class="btn btn-secondary" style="font-size: 12px; padding: 6px 12px;">${t('common.save')}</button>
             </div>
           </div>
@@ -99,6 +107,12 @@ export class AccountTab {
     const btnExportIdentity = container.querySelector<HTMLButtonElement>('#btn-export-identity');
     const btnImportIdentity = container.querySelector<HTMLButtonElement>('#btn-import-identity-settings');
 
+    const btnEmojiNickname = container.querySelector<HTMLElement>('#btn-emoji-nickname');
+    const accountPanel = container.querySelector<HTMLElement>('#tab-panel-account') || container;
+    if (btnEmojiNickname && inputNickname) {
+      this.detachEmojiPicker = attachInputEmojiPicker(accountPanel, inputNickname, btnEmojiNickname, 'bottom-right');
+    }
+
     btnSaveNickname?.addEventListener('click', async () => {
       const nextNick = inputNickname?.value.trim();
       if (!nextNick) {
@@ -140,5 +154,10 @@ export class AccountTab {
         callbacks.onReloadModal();
       }
     });
+  }
+
+  public cleanup(): void {
+    this.detachEmojiPicker?.();
+    this.detachEmojiPicker = null;
   }
 }
