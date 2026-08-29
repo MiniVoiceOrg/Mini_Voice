@@ -44,21 +44,36 @@ export function uploadAttachment(
       // keeps the request simple and predictable across platforms.
       request.setRequestHeader('Content-Type', 'application/octet-stream');
 
+      const cleanupListeners = () => {
+        request.upload.onprogress = null;
+        request.onload = null;
+        request.onerror = null;
+        request.onabort = null;
+      };
+
       request.upload.onprogress = (e) => {
         if (onProgress && e.lengthComputable) onProgress(e.loaded / e.total);
       };
 
       request.onload = () => {
         const body = request.response;
-        if (request.status === 200 && body && body.id) {
+        const status = request.status;
+        cleanupListeners();
+        if (status === 200 && body && body.id) {
           onProgress?.(1);
           resolve(body as AttachmentMeta);
         } else {
-          reject(new Error(mapUploadError(request.status, body)));
+          reject(new Error(mapUploadError(status, body)));
         }
       };
-      request.onerror = () => reject(new Error('Falha de rede ao enviar o arquivo'));
-      request.onabort = () => reject(new Error('Upload cancelado'));
+      request.onerror = () => {
+        cleanupListeners();
+        reject(new Error('Falha de rede ao enviar o arquivo'));
+      };
+      request.onabort = () => {
+        cleanupListeners();
+        reject(new Error(t('upload.cancelled')));
+      };
 
       request.send(file);
     });
@@ -73,6 +88,7 @@ export function uploadAttachment(
       } catch {
         /* ignore */
       }
+      xhr = null;
     },
   };
 }

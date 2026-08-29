@@ -70,25 +70,25 @@ async function downloadToFile(url: string, destPath: string): Promise<void> {
         file.on('error', fail);
         file.on('finish', () => {
           if (settled) return;
-          file.close((closeErr) => {
+          file.close(async (closeErr) => {
             if (closeErr) {
               fail(closeErr);
               return;
             }
-            fs.rm(destPath, { force: true }, (removeErr) => {
-              if (removeErr) {
-                fail(removeErr);
-                return;
+            try {
+              try {
+                await fs.promises.rm(destPath, { force: true });
+                await fs.promises.rename(tempPath, destPath);
+              } catch {
+                // Fallback para cross-device ou locks temporários do Windows
+                await fs.promises.copyFile(tempPath, destPath);
+                await fs.promises.unlink(tempPath).catch(() => {});
               }
-              fs.rename(tempPath, destPath, (renameErr) => {
-                if (renameErr) {
-                  fail(renameErr);
-                  return;
-                }
-                settled = true;
-                resolve();
-              });
-            });
+              settled = true;
+              resolve();
+            } catch (err: any) {
+              fail(err instanceof Error ? err : new Error(String(err)));
+            }
           });
         });
         response.pipe(file);
@@ -826,10 +826,35 @@ export function setupIpcHandlers(
     };
   });
 
+  // Screen Audio buffer aggregation (batching) to avoid IPC message saturation (#55)
+  let audioBufferAccumulator: Buffer[] = [];
+  let accumulatedBytes = 0;
+  let audioFlushTimer: NodeJS.Timeout | null = null;
+
+  const flushScreenAudioFrames = (): void => {
+    if (audioBufferAccumulator.length === 0) return;
+    const merged = Buffer.concat(audioBufferAccumulator, accumulatedBytes);
+    audioBufferAccumulator = [];
+    accumulatedBytes = 0;
+    if (!mainWindow.isDestroyed()) {
+      mainWindow.webContents.send('screen-audio:frame', merged);
+    }
+  };
+
+  const clearAudioBufferAccumulator = (): void => {
+    if (audioFlushTimer) {
+      clearTimeout(audioFlushTimer);
+      audioFlushTimer = null;
+    }
+    audioBufferAccumulator = [];
+    accumulatedBytes = 0;
+  };
+
   ipcMain.handle('screen-audio:start', (_event, sourceId?: string) => {
     if (!screenAudio || !screenAudio.isSupported()) {
       return { success: false, error: 'Not supported on this platform' };
     }
+    clearAudioBufferAccumulator();
     const excludePid = process.pid;
     // Electron encodes a window source id as `window:<id>:<n>` — the HWND on
     // Windows, the CGWindowID on macOS. When the user shares a single application
@@ -845,8 +870,31 @@ export function setupIpcHandlers(
     const result = screenAudio.start(
       opts,
       (buffer: Buffer) => {
-        if (!mainWindow.isDestroyed()) {
-          mainWindow.webContents.send('screen-audio:frame', buffer);
+        if (!buffer || buffer.length === 0) {
+          console.warn('[ScreenAudio:Main] Native capture stream error detected (0-byte frame).');
+          const lastErr = screenAudio?.getLastError() || 'Audio device invalidated or disconnected';
+          clearAudioBufferAccumulator();
+          if (mainWindow && !mainWindow.isDestroyed()) {
+            mainWindow.webContents.send('screen-audio:error', lastErr);
+          }
+          return;
+        }
+
+        audioBufferAccumulator.push(buffer);
+        accumulatedBytes += buffer.length;
+
+        // Flush when we accumulate ~16KB of PCM (~40ms) or via timer every ~35ms
+        if (accumulatedBytes >= 16384) {
+          if (audioFlushTimer) {
+            clearTimeout(audioFlushTimer);
+            audioFlushTimer = null;
+          }
+          flushScreenAudioFrames();
+        } else if (!audioFlushTimer) {
+          audioFlushTimer = setTimeout(() => {
+            audioFlushTimer = null;
+            flushScreenAudioFrames();
+          }, 35);
         }
       }
     );
@@ -855,11 +903,13 @@ export function setupIpcHandlers(
   });
 
   ipcMain.handle('screen-audio:stop', () => {
+    clearAudioBufferAccumulator();
     if (!screenAudio) return { success: false };
     return screenAudio.stop();
   });
 
   mainWindow.on('closed', () => {
+    clearAudioBufferAccumulator();
     void lanDiscovery.stop();
     globalInputHook.destroy();
   });
