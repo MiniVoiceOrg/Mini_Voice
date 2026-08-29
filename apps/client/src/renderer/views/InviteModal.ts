@@ -1,6 +1,8 @@
 import { MessageType, ServerInviteInfoPayload, ServerNetworkInterface } from '@monky/shared';
 import { networkClient } from '../core/NetworkClient';
 import { serverStore } from '../stores/serverStore';
+import { connectionStore } from '../stores/connectionStore';
+import { escapeHtml } from '../utils/html';
 import { enableBackdropClose } from '../utils/modal';
 import { t } from '../i18n';
 
@@ -21,6 +23,18 @@ export class InviteModal {
     this.isLoading = true;
     this.networkInterfaces = [];
 
+    const currentUrl = networkClient.getCurrentServerUrl();
+    let defaultPassword = '';
+    if (currentUrl) {
+      try {
+        const parsed = new URL(currentUrl);
+        const host = parsed.hostname;
+        const port = parsed.port ? parseInt(parsed.port, 10) : 3000;
+        const found = connectionStore.savedServers.find((s) => s.host === host && s.port === port);
+        if (found?.password) defaultPassword = found.password;
+      } catch {}
+    }
+
     this.modalEl = document.createElement('div');
     this.modalEl.className = 'modal-backdrop';
     this.modalEl.innerHTML = `
@@ -34,13 +48,13 @@ export class InviteModal {
         </div>
 
         <div style="font-size: 13px; color: var(--text-secondary); line-height: 1.5;">
-          ${t('invite.intro')}
+          ${t('invite.intro', { tab: t('connection.tabJoin') })}
         </div>
 
         <div style="background: var(--bg-card); border: 1px solid var(--border-color); border-radius: var(--radius-md); padding: 16px; display: flex; flex-direction: column; gap: 12px;">
           <div style="display: flex; justify-content: space-between; align-items: center; font-size: 13px;">
             <span style="color: var(--text-muted); font-weight: 500;">${t('invite.serverLabel')}</span>
-            <span style="font-weight: 700; color: var(--text-primary);">${this.serverName}</span>
+            <span style="font-weight: 700; color: var(--text-primary);">${escapeHtml(this.serverName)}</span>
           </div>
 
           <div class="form-group" style="margin-bottom: 0;">
@@ -64,6 +78,22 @@ export class InviteModal {
             <span style="color: var(--text-muted); font-weight: 500;">${t('invite.portLabel')}</span>
             <span id="invite-port" style="font-family: var(--font-mono); font-weight: 700; color: var(--accent-primary); font-size: 14px;">${this.selectedPort}</span>
           </div>
+
+          <!-- Password Option -->
+          <div style="border-top: 1px solid var(--border-color); padding-top: 10px; margin-top: 2px; display: flex; flex-direction: column; gap: 8px;">
+            <label style="display: flex; align-items: center; gap: 8px; font-size: 12px; cursor: pointer; user-select: none;">
+              <input id="chk-invite-password" type="checkbox" ${defaultPassword ? 'checked' : ''} style="cursor: pointer;">
+              <span style="font-weight: 500; color: var(--text-primary);">${t('invite.includePassword')}</span>
+            </label>
+            <div id="invite-password-container" style="${defaultPassword ? 'display: block;' : 'display: none;'}">
+              <input id="input-invite-password" type="text" value="${escapeHtml(defaultPassword)}" placeholder="${t('invite.passwordPlaceholder')}" style="width: 100%; font-size: 12px; padding: 6px 10px;">
+            </div>
+          </div>
+        </div>
+
+        <!-- Explanatory Notice -->
+        <div style="background: rgba(255, 255, 255, 0.03); border: 1px solid var(--border-color); border-radius: var(--radius-md); padding: 10px 12px; font-size: 11px; color: var(--text-muted); line-height: 1.4;">
+          ${t('invite.notice')}
         </div>
 
         <!-- Dynamic Context Tip Box -->
@@ -79,14 +109,10 @@ export class InviteModal {
           ${t('invite.copied')}
         </div>
 
-        <div class="modal-footer" style="display: flex; gap: 8px; flex-wrap: wrap;">
-          <button id="btn-copy-ip-only" class="btn btn-secondary" style="flex: 1; font-size: 12px; padding: 8px 12px; white-space: nowrap;">
-            <span class="material-symbols-outlined md-16" style="margin-right: 4px;">pin</span>
-            ${t('invite.copyIpOnly')}
-          </button>
-          <button id="btn-copy-invite" class="btn btn-primary" style="flex: 2; font-size: 12px; padding: 8px 16px; white-space: nowrap;">
-            <span class="material-symbols-outlined md-16" style="margin-right: 6px;">content_copy</span>
-            ${t('invite.copyButton')}
+        <div class="modal-footer">
+          <button id="btn-copy-invite" class="btn btn-primary" style="width: 100%; font-size: 13px; padding: 10px 16px; display: flex; align-items: center; justify-content: center; gap: 8px;">
+            <span class="material-symbols-outlined md-18">content_copy</span>
+            <span>${t('invite.copyButton')}</span>
           </button>
         </div>
       </div>
@@ -247,14 +273,23 @@ export class InviteModal {
 
     const btnClose = this.modalEl.querySelector('#modal-close');
     const btnCopy = this.modalEl.querySelector('#btn-copy-invite');
-    const btnCopyIpOnly = this.modalEl.querySelector('#btn-copy-ip-only');
     const selectIp = this.modalEl.querySelector('#select-invite-ip') as HTMLSelectElement | null;
     const customContainer = this.modalEl.querySelector('#custom-ip-container') as HTMLElement | null;
     const inputCustomIp = this.modalEl.querySelector('#input-custom-ip') as HTMLInputElement | null;
+    const chkPassword = this.modalEl.querySelector('#chk-invite-password') as HTMLInputElement | null;
+    const passwordContainer = this.modalEl.querySelector('#invite-password-container') as HTMLElement | null;
+    const inputPassword = this.modalEl.querySelector('#input-invite-password') as HTMLInputElement | null;
     const copyMsg = this.modalEl.querySelector('#copy-success-msg') as HTMLElement | null;
 
     btnClose?.addEventListener('click', () => this.close());
     enableBackdropClose(this.modalEl, () => this.close());
+
+    chkPassword?.addEventListener('change', () => {
+      if (passwordContainer) {
+        passwordContainer.style.display = chkPassword.checked ? 'block' : 'none';
+        if (chkPassword.checked) inputPassword?.focus();
+      }
+    });
 
     selectIp?.addEventListener('change', () => {
       if (selectIp.value === '__custom__') {
@@ -285,28 +320,21 @@ export class InviteModal {
 
     btnCopy?.addEventListener('click', async () => {
       const host = this.selectedIp || this.getFallbackHost();
+      const includePass = chkPassword?.checked;
+      const passValue = inputPassword?.value.trim() || '';
+      const passwordLine = includePass && passValue ? t('invite.clipboardPassword', { password: passValue }) : '';
+
       const textToCopy = t('invite.clipboardText', {
         server: this.serverName,
         host,
         port: this.selectedPort,
+        passwordLine,
         tab: t('connection.tabJoin'),
       });
 
       try {
         await navigator.clipboard.writeText(textToCopy);
         triggerCopyFeedback(t('invite.copied'));
-      } catch (err) {
-        console.warn('Could not copy to clipboard', err);
-      }
-    });
-
-    btnCopyIpOnly?.addEventListener('click', async () => {
-      const host = this.selectedIp || this.getFallbackHost();
-      const textToCopy = `${host}:${this.selectedPort}`;
-
-      try {
-        await navigator.clipboard.writeText(textToCopy);
-        triggerCopyFeedback(t('invite.addressCopied', { address: textToCopy }));
       } catch (err) {
         console.warn('Could not copy to clipboard', err);
       }

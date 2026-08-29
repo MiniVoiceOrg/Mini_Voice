@@ -352,26 +352,73 @@ function getLegacyUpdaterScriptPath(dataDir: string): string {
   return path.join(dataDir, 'auto-update.sh');
 }
 
+export interface AutoUpdateSchedule {
+  type: 'daily' | 'interval';
+  value: string | number;
+}
+
 /**
- * Auto-updater run by PM2 on a schedule.
+ * Auto-updater run by PM2 as a daemon on a schedule.
  *
- * It shells out to the CLI itself instead of reimplementing the update, which
- * is what lets it work for tarball installs too — the previous bash script
- * hardcoded `git pull`, so it required a Git checkout and never ran on Windows.
+ * It runs as a long-lived Node.js process managed by PM2, calculating the next check time
+ * and calling the CLI entry point with `update --yes`.
  */
-export function generateUpdaterScript(options: { dataDir: string; cliEntry: string; beta: boolean }): string {
+export function generateUpdaterScript(options: {
+  dataDir: string;
+  cliEntry: string;
+  beta: boolean;
+  schedule?: AutoUpdateSchedule;
+}): string {
   const args = [options.cliEntry, '--data', options.dataDir, 'update', '--yes'];
   if (options.beta) args.push('--beta');
+  const scheduleType = options.schedule?.type || 'daily';
+  const scheduleValue = options.schedule?.value ?? '04:00';
 
-  return `// Monky auto-updater — gerado pelo "monky config set autoUpdate true".
-// Não edite: o arquivo é reescrito sempre que o auto-update é reabilitado.
+  return `// Monky auto-updater daemon — gerado pelo "monky config set autoUpdate".
+// Não edite: o arquivo é reescrito sempre que o auto-update é reconfigurado.
 const { spawnSync } = require('child_process');
 
 const args = ${JSON.stringify(args, null, 2)};
+const scheduleType = ${JSON.stringify(scheduleType)};
+const scheduleValue = ${JSON.stringify(scheduleValue)};
 
-console.log('[monky-updater] Verificando atualizações...');
-const result = spawnSync(process.execPath, args, { stdio: 'inherit' });
-process.exit(result.status === null ? 1 : result.status);
+function getMsUntilNextRun() {
+  if (scheduleType === 'interval') {
+    const hours = typeof scheduleValue === 'number' ? scheduleValue : parseInt(scheduleValue, 10) || 2;
+    return Math.max(1, hours) * 60 * 60 * 1000;
+  }
+  const parts = String(scheduleValue || '04:00').split(':').map(Number);
+  const targetH = isNaN(parts[0]) ? 4 : parts[0];
+  const targetM = isNaN(parts[1]) ? 0 : parts[1];
+  const now = new Date();
+  const next = new Date(now);
+  next.setHours(targetH, targetM, 0, 0);
+  if (next.getTime() <= now.getTime()) {
+    next.setDate(next.getDate() + 1);
+  }
+  return next.getTime() - now.getTime();
+}
+
+function runUpdateCheck() {
+  console.log('[' + new Date().toISOString() + '] [monky-updater] Verificando atualizações programadas...');
+  try {
+    const result = spawnSync(process.execPath, args, { stdio: 'inherit' });
+    console.log('[monky-updater] Verificação finalizada com código:', result.status);
+  } catch (err) {
+    console.error('[monky-updater] Erro ao executar verificação de atualização:', err);
+  }
+  scheduleNext();
+}
+
+function scheduleNext() {
+  const delayMs = getMsUntilNextRun();
+  const nextDate = new Date(Date.now() + delayMs);
+  console.log('[' + new Date().toISOString() + '] [monky-updater] Próxima verificação agendada para:', nextDate.toLocaleString());
+  setTimeout(runUpdateCheck, delayMs);
+}
+
+console.log('[monky-updater] Daemon de atualização automática iniciado (modo: ' + scheduleType + ', valor: ' + scheduleValue + ').');
+scheduleNext();
 `;
 }
 
@@ -386,14 +433,14 @@ export function isAutoUpdateEnabled(dataDir: string): boolean {
   );
 }
 
-export async function enableAutoUpdate(dataDir: string): Promise<void> {
+export async function enableAutoUpdate(dataDir: string, schedule?: AutoUpdateSchedule): Promise<void> {
   ensurePm2();
 
   const scriptPath = getUpdaterScriptPath(dataDir);
   const beta = parseSemver(getLocalVersion()).isBeta;
   await fs.promises.writeFile(
     scriptPath,
-    generateUpdaterScript({ dataDir, cliEntry: getCliEntryPath(), beta }),
+    generateUpdaterScript({ dataDir, cliEntry: getCliEntryPath(), beta, schedule }),
     'utf8'
   );
 
@@ -416,9 +463,6 @@ export async function enableAutoUpdate(dataDir: string): Promise<void> {
       scriptPath,
       '--name',
       processName,
-      '--cron',
-      AUTO_UPDATE_CRON,
-      '--no-autorestart',
       '--interpreter',
       'node',
     ],
@@ -431,8 +475,12 @@ export async function enableAutoUpdate(dataDir: string): Promise<void> {
 
   spawnSync('pm2', ['save'], { stdio: 'ignore', shell: true });
 
-  console.log(color('Auto-update habilitado!', ANSI.green));
-  console.log(`Verificação diária às 4h da manhã.`);
+  const schedType = schedule?.type || 'daily';
+  const schedVal = schedule?.value ?? '04:00';
+  const scheduleLabel = schedType === 'interval' ? `a cada ${schedVal} hora(s)` : `diariamente às ${schedVal}`;
+
+  console.log(color('Auto-update habilitado com sucesso!', ANSI.green));
+  console.log(`Agendamento: ${scheduleLabel}`);
   console.log(`Canal: ${beta ? 'beta (inclui prereleases)' : 'estável'}`);
   console.log(`Script: ${scriptPath}`);
   console.log(color('Use "monky config set autoUpdate false" para desabilitar.', ANSI.dim));

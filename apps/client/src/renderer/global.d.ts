@@ -13,5 +13,17 @@ declare module '*.mp3' {
   export default src;
 }
 
+declare module 'highlight.js/lib/core' {
+  import { HLJSApi } from 'highlight.js';
+  const hljs: HLJSApi;
+  export default hljs;
+}
+
+declare module 'highlight.js/lib/languages/*' {
+  import { LanguageFn } from 'highlight.js';
+  const language: LanguageFn;
+  export default language;
+}
+
 export {};
 

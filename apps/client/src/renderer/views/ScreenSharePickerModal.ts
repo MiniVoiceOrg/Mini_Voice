@@ -8,6 +8,7 @@ import { screenAudioService } from '../core/ScreenAudioService';
 import { videoService } from '../core/VideoService';
 import { voiceStore, VoiceStore } from '../stores/voiceStore';
 import { webRtcManager } from '../core/WebRtcManager';
+import { setButtonLoading } from '../utils/buttonLoading';
 import { showAlert } from './Dialog';
 import { t } from '../i18n';
 
@@ -23,6 +24,7 @@ export class ScreenSharePickerModal {
   private modalEl: HTMLElement | null = null;
   private selectedSourceId: string | null = null;
   private activeTab: 'screen' | 'window' = 'screen';
+  private isStarting = false;
 
   public async open(): Promise<void> {
     this.close();
@@ -213,6 +215,7 @@ export class ScreenSharePickerModal {
    * existing ones, up to VoiceStore.MAX_SCREEN_SHARES (#253).
    */
   private async startSharing(mode: 'add' | 'replace'): Promise<void> {
+    if (this.isStarting) return;
     if (mode === 'add' && !voiceStore.canAddScreenShare()) {
       await showAlert({
         title: t('screenShare.limitTitle'),
@@ -221,6 +224,19 @@ export class ScreenSharePickerModal {
       });
       return;
     }
+
+    this.isStarting = true;
+    const btnShare = this.modalEl?.querySelector('#btn-share') as HTMLButtonElement | null;
+    const btnShareAdd = this.modalEl?.querySelector('#btn-share-add') as HTMLButtonElement | null;
+    const btnCancel = this.modalEl?.querySelector('#btn-cancel') as HTMLButtonElement | null;
+    const btnClose = this.modalEl?.querySelector('#modal-close') as HTMLButtonElement | null;
+    const targetBtn = mode === 'add' && btnShareAdd ? btnShareAdd : btnShare;
+
+    setButtonLoading(targetBtn, true);
+    if (btnShare && btnShare !== targetBtn) btnShare.disabled = true;
+    if (btnShareAdd && btnShareAdd !== targetBtn) btnShareAdd.disabled = true;
+    if (btnCancel) btnCancel.disabled = true;
+    if (btnClose) btnClose.disabled = true;
 
     try {
       // Acquire the new capture BEFORE tearing anything down: if the user
@@ -267,6 +283,15 @@ export class ScreenSharePickerModal {
         message: t('screenShare.errorMessage', { error: err.message }),
         variant: 'danger',
       });
+    } finally {
+      this.isStarting = false;
+      if (this.modalEl) {
+        setButtonLoading(targetBtn, false);
+        if (btnShare) btnShare.disabled = !this.selectedSourceId;
+        if (btnShareAdd) btnShareAdd.disabled = !this.selectedSourceId;
+        if (btnCancel) btnCancel.disabled = false;
+        if (btnClose) btnClose.disabled = false;
+      }
     }
   }
 
@@ -277,6 +302,7 @@ export class ScreenSharePickerModal {
       this.modalEl.remove();
       this.modalEl = null;
       this.selectedSourceId = null;
+      this.isStarting = false;
     }
     // Let callers (e.g. the screen-share button loading state) know the picker
     // is no longer open, including on cancel (#48). Only emit when something was

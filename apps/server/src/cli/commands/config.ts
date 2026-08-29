@@ -19,7 +19,7 @@ import {
 } from '../pm2';
 import { registerServer } from '../registry';
 import { ask, askChoice, confirm, promptPassword } from '../prompts';
-import { disableAutoUpdate, enableAutoUpdate, isAutoUpdateEnabled } from './update';
+import { disableAutoUpdate, enableAutoUpdate, isAutoUpdateEnabled, AutoUpdateSchedule } from './update';
 
 export async function showConfig(ctx: CliContext): Promise<void> {
   const server = await ctx.serverRepo.getServer();
@@ -198,7 +198,22 @@ export async function setConfig(ctx: CliContext, key: string, value?: string): P
     case 'autoUpdate': {
       const enabled = parseBoolean(nextValue);
       if (enabled) {
-        await enableAutoUpdate(ctx.dataDir);
+        let schedule: AutoUpdateSchedule = { type: 'daily', value: '04:00' };
+        if (process.stdin.isTTY) {
+          const scheduleMode = await askChoice('Tipo de agendamento do auto-update:', [
+            'Diário em horário fixo (ex: 04:00)',
+            'Intervalo de horas (ex: a cada 2 horas)',
+          ]);
+          if (scheduleMode.startsWith('Intervalo')) {
+            const hoursStr = await ask('Intervalo em horas para verificar atualizações', '2');
+            const hours = Math.max(1, parseInt(hoursStr, 10) || 2);
+            schedule = { type: 'interval', value: hours };
+          } else {
+            const timeStr = await ask('Horário diário da verificação (HH:MM)', '04:00');
+            schedule = { type: 'daily', value: timeStr.trim() || '04:00' };
+          }
+        }
+        await enableAutoUpdate(ctx.dataDir, schedule);
       } else {
         await disableAutoUpdate(ctx.dataDir);
       }

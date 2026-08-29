@@ -2,6 +2,7 @@ import { MessageType } from '@monky/shared';
 import { networkClient } from '../core/NetworkClient';
 import { t } from '../i18n';
 import { enableBackdropClose } from '../utils/modal';
+import { attachInputEmojiPicker } from '../utils/inputEmojiPicker';
 import {
   attachChannelPrivacyFields,
   readChannelPrivacyFields,
@@ -12,6 +13,7 @@ import {
 export class CreateChannelModal {
   private modalEl: HTMLElement | null = null;
   private detachPrivacyFields: (() => void) | null = null;
+  private detachEmojiPicker: (() => void) | null = null;
 
   public open(defaultType: 'TEXT' | 'VOICE' = 'TEXT'): void {
     this.close();
@@ -32,7 +34,12 @@ export class CreateChannelModal {
 
           <div class="form-group">
             <label>${t('channelModal.nameLabel')}</label>
-            <input id="input-channel-name" type="text" placeholder="${t('channelModal.namePlaceholder')}" required minlength="2" maxlength="50">
+            <div class="input-with-emoji-container">
+              <input id="input-channel-name" type="text" placeholder="${t('channelModal.namePlaceholder')}" required minlength="2" maxlength="50" style="padding-right: 36px;">
+              <button type="button" id="btn-emoji-channel-name" class="btn-input-emoji" title="${t('chat.emojiPickerTitle')}">
+                <span class="material-symbols-outlined md-18">mood</span>
+              </button>
+            </div>
           </div>
 
           ${renderChannelPrivacyFields({ isPrivate: false, allowedRoleIds: [] })}
@@ -56,11 +63,17 @@ export class CreateChannelModal {
     const btnCancel = this.modalEl.querySelector('#btn-cancel');
     const form = this.modalEl.querySelector('#form-create-channel') as HTMLFormElement;
     const inputName = this.modalEl.querySelector('#input-channel-name') as HTMLInputElement;
+    const btnEmoji = this.modalEl.querySelector('#btn-emoji-channel-name') as HTMLElement | null;
+    const modalCard = this.modalEl.querySelector('.modal-card') as HTMLElement | null;
 
     btnClose?.addEventListener('click', () => this.close());
     btnCancel?.addEventListener('click', () => this.close());
     enableBackdropClose(this.modalEl, () => this.close());
     this.detachPrivacyFields = attachChannelPrivacyFields(this.modalEl);
+
+    if (btnEmoji && inputName) {
+      this.detachEmojiPicker = attachInputEmojiPicker(inputName, btnEmoji);
+    }
 
     form?.addEventListener('submit', async (e) => {
       e.preventDefault();
@@ -90,6 +103,8 @@ export class CreateChannelModal {
   }
 
   public close(): void {
+    this.detachEmojiPicker?.();
+    this.detachEmojiPicker = null;
     this.detachPrivacyFields?.();
     this.detachPrivacyFields = null;
     if (this.modalEl) {

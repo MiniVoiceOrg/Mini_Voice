@@ -53,8 +53,7 @@ export class WebRtcManager {
   private pendingScreenAudioTracks: Map<string, { track: MediaStreamTrack; peerSessionId: string }> = new Map();
   // Screen video tracks received before screen-video-meta arrived, keyed by streamId
   private pendingScreenVideoTracks: Map<string, { track: MediaStreamTrack; peerSessionId: string }> = new Map();
-  private sharedVadAudioContext: AudioContext | null = null;
-  private remoteAudioVads: Map<string, { source: MediaStreamAudioSourceNode; analyser: AnalyserNode; interval: any }> = new Map();
+  private remoteAudioVads: Map<string, { interval: any }> = new Map();
   private localAudioTrack: MediaStreamTrack | null = null;
   private localCameraTrack: MediaStreamTrack | null = null;
   /** Local screen video tracks keyed by share id (#253). */
@@ -137,6 +136,13 @@ export class WebRtcManager {
       this.setPeerVolume(data.sessionId, data.volume);
     });
 
+    appEvents.on('screen_audio_volume.changed', (data: { sessionId: string; volume: number }) => {
+      const screenAudioEl = this.screenAudioElements.get(data.sessionId);
+      if (screenAudioEl) {
+        screenAudioEl.volume = Math.max(0, Math.min(100, data.volume)) / 100;
+      }
+    });
+
     appEvents.on('participants.updated', () => {
       this.applyUserVolumes();
     });
@@ -165,7 +171,7 @@ export class WebRtcManager {
     screenAudioEl.srcObject = screenStream;
     const participant = this.voiceParticipants.get(peerSessionId);
     const volume = settingsStore.getScreenAudioVolume(peerSessionId, participant?.user.clientId);
-    screenAudioEl.volume = volume / 100;
+    screenAudioEl.volume = Math.max(0, Math.min(100, volume)) / 100;
     this.applySinkToElement(screenAudioEl).finally(() => {
       screenAudioEl!.play().catch((e) => console.warn('[WebRTC] Screen audio play error:', e));
     });
@@ -570,8 +576,9 @@ export class WebRtcManager {
           this.audioElements.set(peerSessionId, audioEl);
         }
         audioEl.muted = isDeaf;
-        audioEl.volume = volume / 100;
+        audioEl.volume = Math.max(0, Math.min(100, volume)) / 100;
         audioEl.srcObject = remoteStream;
+
         // Route voice to the user-selected speaker (not the OS default) BEFORE
         // playing, otherwise Chromium may start playback on the default device
         // and never switch (#46).
@@ -579,7 +586,7 @@ export class WebRtcManager {
         this.applySinkToElement(el).finally(() => {
           el.play().catch((e) => console.warn('[WebRTC] Audio play error:', e));
         });
-        this.setupRemoteVad(peerSessionId, remoteStream);
+        this.setupRemoteVad(peerSessionId);
       }
 
       if (event.track.kind === 'video') {
@@ -1180,81 +1187,57 @@ export class WebRtcManager {
     return Math.round(pings.reduce((a, b) => a + b, 0) / pings.length);
   }
 
-  private getSharedVadContext(): AudioContext {
-    if (!this.sharedVadAudioContext || this.sharedVadAudioContext.state === 'closed') {
-      const AudioCtx = window.AudioContext || (window as any).webkitAudioContext;
-      this.sharedVadAudioContext = new AudioCtx();
-    }
-    if (this.sharedVadAudioContext.state === 'suspended') {
-      this.sharedVadAudioContext.resume().catch(() => {});
-    }
-    return this.sharedVadAudioContext;
-  }
-
-  private setupRemoteVad(peerSessionId: string, stream: MediaStream): void {
+  private setupRemoteVad(peerSessionId: string): void {
     this.cleanupRemoteVad(peerSessionId);
-    try {
-      const ctx = this.getSharedVadContext();
-      const analyser = ctx.createAnalyser();
-      analyser.fftSize = 256;
-      analyser.smoothingTimeConstant = 0.3;
-      const source = ctx.createMediaStreamSource(stream);
-      source.connect(analyser);
+    let isSpeaking = false;
+    let silenceCounter = 0;
 
-      const bufferLength = analyser.frequencyBinCount;
-      const dataArray = new Uint8Array(bufferLength);
-      let isSpeaking = false;
-      let silenceCounter = 0;
-
-      const speechBins = Math.min(36, bufferLength);
-
-      const interval = setInterval(() => {
-        if (ctx.state === 'suspended') {
-          ctx.resume().catch(() => {});
-        }
-        analyser.getByteFrequencyData(dataArray);
-        let sum = 0;
-        let peak = 0;
-        for (let i = 0; i < speechBins; i++) {
-          const val = dataArray[i];
-          sum += val;
-          if (val > peak) peak = val;
-        }
-        const average = sum / speechBins;
-
-        const isVoiceActive = (average > 16 && peak > 40) || average > 24;
-
-        if (isVoiceActive) {
-          silenceCounter = 0;
-          if (!isSpeaking) {
-            isSpeaking = true;
-            this.voiceParticipants.setSpeaking(peerSessionId, true);
-          }
-        } else {
-          silenceCounter++;
-          if (silenceCounter > 4 && isSpeaking) {
-            isSpeaking = false;
-            this.voiceParticipants.setSpeaking(peerSessionId, false);
+    const interval = setInterval(async () => {
+      const session = this.peers.get(peerSessionId);
+      if (!session || !session.pc || session.pc.connectionState === 'closed') {
+        return;
+      }
+      try {
+        const stats = await session.pc.getStats();
+        let audioLevel: number | undefined;
+        for (const report of stats.values()) {
+          if (report.type === 'inbound-rtp' && (report.kind === 'audio' || report.mediaType === 'audio')) {
+            if (typeof report.audioLevel === 'number') {
+              audioLevel = report.audioLevel;
+              break;
+            }
           }
         }
-      }, 50);
 
-      this.remoteAudioVads.set(peerSessionId, { source, analyser, interval });
-    } catch (err) {
-      console.warn(`[WebRTC] Could not setup remote VAD for ${peerSessionId}:`, err);
-    }
+        if (audioLevel !== undefined) {
+          // WebRTC RFC 6464 audioLevel ranges from 0.0 to 1.0 (linear scale).
+          // Packets with active voice are typically above 0.01.
+          const isVoiceActive = audioLevel > 0.01;
+
+          if (isVoiceActive) {
+            silenceCounter = 0;
+            if (!isSpeaking) {
+              isSpeaking = true;
+              this.voiceParticipants.setSpeaking(peerSessionId, true);
+            }
+          } else {
+            silenceCounter++;
+            if (silenceCounter > 4 && isSpeaking) {
+              isSpeaking = false;
+              this.voiceParticipants.setSpeaking(peerSessionId, false);
+            }
+          }
+        }
+      } catch (e) {}
+    }, 50);
+
+    this.remoteAudioVads.set(peerSessionId, { interval });
   }
 
   private cleanupRemoteVad(peerSessionId: string): void {
     const vad = this.remoteAudioVads.get(peerSessionId);
     if (vad) {
       clearInterval(vad.interval);
-      try {
-        vad.source.disconnect();
-      } catch {}
-      try {
-        vad.analyser.disconnect();
-      } catch {}
       this.remoteAudioVads.delete(peerSessionId);
     }
   }
@@ -1292,10 +1275,11 @@ export class WebRtcManager {
     return session.pc.getReceivers().find((receiver) => receiver.track?.id === trackId) ?? null;
   }
 
-  public setPeerVolume(peerSessionId: string, volume0to100: number): void {
+  public setPeerVolume(peerSessionId: string, volume: number): void {
+    const clamped = Math.max(0, Math.min(100, volume));
     const audioEl = this.audioElements.get(peerSessionId);
     if (audioEl) {
-      audioEl.volume = Math.max(0, Math.min(100, volume0to100)) / 100;
+      audioEl.volume = clamped / 100;
     }
   }
 
@@ -1303,7 +1287,7 @@ export class WebRtcManager {
     for (const [peerSessionId, audioEl] of this.audioElements.entries()) {
       const participant = this.voiceParticipants.get(peerSessionId);
       const vol = settingsStore.getUserVolume(peerSessionId, participant?.user.clientId);
-      audioEl.volume = vol / 100;
+      audioEl.volume = Math.max(0, Math.min(100, vol)) / 100;
     }
   }
 
@@ -1311,12 +1295,18 @@ export class WebRtcManager {
     this.cleanupRemoteVad(peerSessionId);
     const audioEl = this.audioElements.get(peerSessionId);
     if (audioEl) {
+      try {
+        audioEl.pause();
+      } catch {}
       audioEl.srcObject = null;
       audioEl.remove();
       this.audioElements.delete(peerSessionId);
     }
     const screenAudioEl = this.screenAudioElements.get(peerSessionId);
     if (screenAudioEl) {
+      try {
+        screenAudioEl.pause();
+      } catch {}
       screenAudioEl.srcObject = null;
       screenAudioEl.remove();
       this.screenAudioElements.delete(peerSessionId);
@@ -1335,12 +1325,24 @@ export class WebRtcManager {
       this.removePeer(peerSessionId);
     }
     this.peers.clear();
+    for (const audioEl of this.audioElements.values()) {
+      try {
+        audioEl.pause();
+      } catch {}
+      audioEl.srcObject = null;
+      audioEl.remove();
+    }
+    this.audioElements.clear();
+    for (const screenAudioEl of this.screenAudioElements.values()) {
+      try {
+        screenAudioEl.pause();
+      } catch {}
+      screenAudioEl.srcObject = null;
+      screenAudioEl.remove();
+    }
+    this.screenAudioElements.clear();
     for (const peerSessionId of Array.from(this.remoteAudioVads.keys())) {
       this.cleanupRemoteVad(peerSessionId);
-    }
-    if (this.sharedVadAudioContext && this.sharedVadAudioContext.state !== 'closed') {
-      this.sharedVadAudioContext.close().catch(() => {});
-      this.sharedVadAudioContext = null;
     }
   }
 }

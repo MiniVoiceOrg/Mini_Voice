@@ -117,7 +117,29 @@ Every large client responsibility lives in its own class, under
 
 ### What is stored on your machine
 
-Everything on the client side is `localStorage` — there is no local database:
+There is no local database, but it is not all `localStorage` either: the client
+stores in **two places with different guarantees**, and the difference matters.
+
+```mermaid
+flowchart TB
+    subgraph LS["localStorage — the renderer reads and writes"]
+        direction TB
+        L1["<b>monky_settings</b><br/>quality, devices,<br/>volumes, shortcuts, soundboard"]
+        L2["<b>monky_nickname</b> · <b>monky_avatar</b><br/>your visual identity"]
+        L3["<b>monky_saved_servers</b> · <b>monky_created_servers</b><br/>saved and created servers"]
+        L4["<b>monky_device_id</b> · <b>monky_language</b><br/>this device and the language"]
+    end
+
+    subgraph UD["userData on disk — only the main process reaches it"]
+        direction TB
+        D1["<b>identity.json</b><br/>your key pair,<br/>encrypted with safeStorage"]
+        D2["<b>server-data/</b><br/>the server database,<br/>when you host from the app"]
+    end
+
+    R["Renderer"] --> LS
+    R -->|window.api| M["Main"]
+    M --> UD
+```
 
 | Key | Contents |
 |---|---|
@@ -128,7 +150,40 @@ Everything on the client side is `localStorage` — there is no local database:
 | `monky_device_id` | Identifies **this device** (lets the same person use two machines) |
 | `monky_language` | Interface language |
 
+The **private key is deliberately absent from that list**. It is what proves who
+you are (see [Authentication](#authentication-the-server-never-sees-a-password-of-yours))
+and it never reaches the renderer: it lives in `identity.json`, inside the
+`userData` folder, encrypted with Electron's `safeStorage` — the operating
+system's own vault. Where the system offers no encryption the file is written in
+the clear, and the record itself says which of the two happened.
+
 ## The server
+
+### The three ways to run it
+
+The same server code goes up in three shapes, and the difference is not
+technical — it is about who looks after it:
+
+```mermaid
+flowchart TB
+    CODE["<b>apps/server</b><br/>WebSocket + SQLite<br/>the same code in all three"]
+
+    CODE --> A["<b>From the app</b><br/>Electron imports the server<br/>and runs it in its own process"]
+    CODE --> B["<b>From the Monky CLI</b><br/>PM2 daemon, registry<br/>in ~/.monky/servers.json"]
+    CODE --> C["<b>On a VPS</b><br/>the same CLI, on a machine<br/>that stays on"]
+
+    A --> A1["dies when you close the app<br/>and depends on your home IP"]
+    B --> B1["survives logout and comes<br/>back after a reboot"]
+    C --> C1["a stable address for<br/>people joining from outside"]
+```
+
+Hosting **from the app** is the two-click path, and that is why the client
+imports `@monky/server` directly: no separate process, no admin port. The price
+is that the server lives only as long as the app does.
+
+The **CLI** exists for the opposite case — a server that should not depend on
+somebody keeping a window open. It manages several servers on the same machine,
+each with its own data folder and its own PM2 process.
 
 ### Layers
 
@@ -439,14 +494,41 @@ packet loss and jitter.
 ## Reconnection
 
 When the WebSocket drops, the client tries to come back on its own with growing
-waits (1s, 2s, 3s, 5s). The server keeps the session alive for a grace period, so a
-quick Wi-Fi hiccup does not throw anyone off the list.
+waits (1s, 2s, 3s, 5s — the last one repeats). The server keeps the session alive
+for **20 seconds** before announcing the departure, so a quick Wi-Fi hiccup does
+not throw anyone off the list.
 
-On reconnect the client **tears down every P2P connection and starts over**. It
-sounds drastic, but it is the most reliable path: while the WebSocket was away,
-other people may have joined, left or switched channels, and the old peer state
-cannot be trusted. Server state is reloaded from scratch and the voice channel is
-rejoined.
+```mermaid
+sequenceDiagram
+    participant A as Ana (client)
+    participant S as Server
+    participant B as Bruno (peer)
+
+    Note over A,S: Ana's network drops
+    A--xS: WebSocket closes
+    Note over S: holds the session for 20 s<br/>instead of announcing the departure
+    S-->>B: (nobody is told yet)
+
+    loop 1s · 2s · 3s · 5s
+        A->>S: retries the connection
+    end
+
+    A->>S: AUTH_CONNECT + challenge again
+    S->>A: server state reloaded from scratch
+    Note over A: tears down EVERY P2P connection<br/>and rebuilds from the new list
+    A->>S: VOICE_JOIN (rejoins the channel)
+    A-->>B: new P2P connection
+```
+
+Notice the least intuitive step: on the way back the client **tears down every
+P2P connection and starts over**, including the ones that looked alive. It sounds
+drastic, but it is the most reliable path — while the WebSocket was away other
+people may have joined, left or switched channels, and there is no way to know
+which of the old peers still hold. Rebuilding from the new state is cheaper than
+finding out, peer by peer, who is left.
+
+If the 20 seconds run out before the client is back, the session is closed and
+the departure is announced normally — the reconnection becomes a fresh join.
 
 ## Where everything lives
 

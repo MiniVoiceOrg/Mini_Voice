@@ -220,6 +220,7 @@ export interface IpcInvokeChannels {
   'server-host:logs': { args: []; returnType: LogEntry[] };
   'server-host:clear-logs': { args: []; returnType: void };
   'server-host:stats': { args: []; returnType: ServerStats | null };
+  'server-host:delete-data': { args: [serverId: string]; returnType: { success: boolean; error?: string } };
 
   // LAN Discovery
   'lan:start': { args: []; returnType: void };

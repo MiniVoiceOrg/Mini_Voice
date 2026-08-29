@@ -117,7 +117,29 @@ Cada responsabilidade grande do cliente vive em uma classe própria, em
 
 ### O que fica salvo na sua máquina
 
-Tudo do lado do cliente é `localStorage` — não há banco local:
+Não há banco local, mas também não é tudo `localStorage`: o cliente guarda em
+**dois lugares com garantias diferentes**, e a diferença importa.
+
+```mermaid
+flowchart TB
+    subgraph LS["localStorage — o renderer lê e escreve"]
+        direction TB
+        L1["<b>monky_settings</b><br/>qualidade, dispositivos,<br/>volumes, atalhos, soundboard"]
+        L2["<b>monky_nickname</b> · <b>monky_avatar</b><br/>sua identidade visual"]
+        L3["<b>monky_saved_servers</b> · <b>monky_created_servers</b><br/>servidores salvos e criados"]
+        L4["<b>monky_device_id</b> · <b>monky_language</b><br/>este aparelho e o idioma"]
+    end
+
+    subgraph UD["userData em disco — só o processo main alcança"]
+        direction TB
+        D1["<b>identity.json</b><br/>seu par de chaves,<br/>cifrado com safeStorage"]
+        D2["<b>server-data/</b><br/>o banco do servidor,<br/>quando você hospeda pelo app"]
+    end
+
+    R["Renderer"] --> LS
+    R -->|window.api| M["Main"]
+    M --> UD
+```
 
 | Chave | Conteúdo |
 |---|---|
@@ -128,7 +150,40 @@ Tudo do lado do cliente é `localStorage` — não há banco local:
 | `monky_device_id` | Identifica **este dispositivo** (permite a mesma pessoa em dois aparelhos) |
 | `monky_language` | Idioma da interface |
 
+A **chave privada fica de fora dessa lista de propósito**. Ela é o que prova
+quem você é (veja [Autenticação](#autenticacao-o-servidor-nunca-ve-uma-senha-sua))
+e nunca chega ao renderer: mora em `identity.json`, na pasta `userData`, cifrada
+com o `safeStorage` do Electron — o cofre do sistema operacional. Onde o sistema
+não oferece cifragem, o arquivo é gravado em claro e o próprio registro diz qual
+dos dois casos aconteceu.
+
 ## O servidor
+
+### As três formas de rodar
+
+O mesmo código de servidor sobe de três maneiras, e a diferença não é técnica —
+é de quem cuida dele:
+
+```mermaid
+flowchart TB
+    CODE["<b>apps/server</b><br/>WebSocket + SQLite<br/>o mesmo código nos três casos"]
+
+    CODE --> A["<b>Pelo app</b><br/>o Electron importa o servidor<br/>e roda dentro do próprio processo"]
+    CODE --> B["<b>Pelo Monky CLI</b><br/>daemon do PM2, registro<br/>em ~/.monky/servers.json"]
+    CODE --> C["<b>Em VPS</b><br/>o mesmo CLI, numa máquina<br/>que fica sempre ligada"]
+
+    A --> A1["morre quando você fecha o app<br/>e depende do seu IP em casa"]
+    B --> B1["sobrevive ao logout e volta<br/>depois de um reboot"]
+    C --> C1["endereço estável para<br/>quem entra de fora"]
+```
+
+Hospedar **pelo app** é o caminho de dois cliques, e é por isso que o cliente
+importa `@monky/server` diretamente: não há processo separado nem porta de
+administração. O preço é que o servidor vive enquanto o app viver.
+
+O **CLI** existe para o caso oposto — um servidor que não deveria depender de
+alguém manter uma janela aberta. Ele administra vários servidores na mesma
+máquina, cada um com sua pasta de dados e seu processo no PM2.
 
 ### Camadas
 
@@ -440,14 +495,41 @@ pacotes e jitter.
 ## Reconexão
 
 Quando o WebSocket cai, o cliente tenta voltar sozinho, com esperas crescentes
-(1s, 2s, 3s, 5s). O servidor mantém a sessão viva por um tempo de tolerância,
-então uma queda rápida de Wi-Fi não expulsa ninguém da lista.
+(1s, 2s, 3s, 5s — a última se repete). O servidor mantém a sessão viva por **20
+segundos** antes de anunciar a saída, então uma queda rápida de Wi-Fi não
+expulsa ninguém da lista.
 
-Ao reconectar, o cliente **derruba todas as conexões P2P e recomeça**. Parece
-drástico, mas é o caminho mais confiável: enquanto o WebSocket esteve fora,
-outras pessoas podem ter entrado, saído ou trocado de canal, e não há como
-confiar no estado antigo dos pares. O estado do servidor é recarregado do zero e
-o canal de voz é reingressado.
+```mermaid
+sequenceDiagram
+    participant A as Ana (cliente)
+    participant S as Servidor
+    participant B as Bruno (par)
+
+    Note over A,S: a rede de Ana cai
+    A--xS: WebSocket fecha
+    Note over S: guarda a sessão por 20 s<br/>em vez de anunciar a saída
+    S-->>B: (ninguém é avisado ainda)
+
+    loop 1s · 2s · 3s · 5s
+        A->>S: tenta reconectar
+    end
+
+    A->>S: AUTH_CONNECT + desafio de novo
+    S->>A: estado do servidor recarregado do zero
+    Note over A: derruba TODAS as conexões P2P<br/>e refaz a partir da lista nova
+    A->>S: VOICE_JOIN (reingressa no canal)
+    A-->>B: nova conexão P2P
+```
+
+Repare no passo mais contraintuitivo: ao voltar, o cliente **derruba todas as
+conexões P2P e recomeça**, mesmo as que pareciam vivas. Parece drástico, mas é o
+caminho mais confiável — enquanto o WebSocket esteve fora, outras pessoas podem
+ter entrado, saído ou trocado de canal, e não há como saber quais dos pares
+antigos ainda valem. Reconstruir a partir do estado novo é mais barato que
+descobrir, par a par, quem sobrou.
+
+Se os 20 segundos estourarem antes da volta, a sessão é encerrada e a saída é
+anunciada normalmente — a reconexão vira uma entrada nova.
 
 ## Onde cada coisa mora
 

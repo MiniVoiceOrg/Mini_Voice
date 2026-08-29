@@ -254,6 +254,7 @@ export class SettingsModal {
 
   public close(): void {
     this.voiceVideoTab.cleanup();
+    this.accountTab.cleanup();
     if (this.modalEl) {
       const handler = (this.modalEl as any)._escHandler;
       if (handler) window.removeEventListener('keydown', handler);

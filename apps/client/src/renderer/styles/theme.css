@@ -2435,7 +2435,7 @@ input:focus, textarea:focus, select:focus {
   position: absolute;
   bottom: calc(100% - 8px);
   left: 20px;
-  z-index: 60;
+  z-index: 1000;
   display: flex;
   flex-direction: column;
   width: 360px;
@@ -2447,6 +2447,82 @@ input:focus, textarea:focus, select:focus {
   border-radius: var(--radius-md);
   box-shadow: 0 12px 32px rgba(0, 0, 0, 0.45);
   overflow: hidden;
+}
+
+.emoji-picker--bottom-right {
+  top: calc(100% + 6px);
+  bottom: auto;
+  left: auto;
+  right: 0;
+}
+
+.emoji-picker--bottom-left {
+  top: calc(100% + 6px);
+  bottom: auto;
+  left: 0;
+  right: auto;
+}
+
+.emoji-picker--top-right {
+  bottom: calc(100% + 6px);
+  top: auto;
+  left: auto;
+  right: 0;
+}
+
+.emoji-picker--top-left {
+  bottom: calc(100% + 6px);
+  top: auto;
+  left: 0;
+  right: auto;
+}
+
+.emoji-picker--emoji-only {
+  height: 380px;
+}
+
+.emoji-picker--floating {
+  position: fixed !important;
+  z-index: 10005 !important;
+  box-shadow: 0 16px 40px rgba(0, 0, 0, 0.6) !important;
+}
+
+.input-with-emoji-container {
+  position: relative;
+  display: flex;
+  align-items: center;
+  width: 100%;
+  flex: 1;
+}
+
+.input-with-emoji-container input {
+  width: 100% !important;
+  flex: 1 !important;
+  padding-right: 38px !important;
+  box-sizing: border-box;
+}
+
+.btn-input-emoji {
+  position: absolute;
+  right: 6px;
+  top: 50%;
+  transform: translateY(-50%);
+  background: transparent;
+  border: none;
+  color: var(--text-muted);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 6px;
+  border-radius: var(--radius-sm);
+  transition: all 0.15s ease;
+  z-index: 5;
+}
+
+.btn-input-emoji:hover {
+  color: var(--accent-primary);
+  background: rgba(255, 255, 255, 0.08);
 }
 
 .emoji-picker-tabs {
@@ -5180,14 +5256,23 @@ body > .reconnect-overlay {
     to right,
     var(--accent-primary) 0%,
     var(--accent-primary) var(--slider-fill, 100%),
-    var(--bg-active) var(--slider-fill, 100%),
-    var(--bg-active) 100%
-  );
+    rgba(255, 255, 255, 0.2) var(--slider-fill, 100%),
+    rgba(255, 255, 255, 0.2) 100%
+  ) !important;
   outline: none;
   cursor: pointer;
   border: none;
   padding: 0;
   margin: 0;
+}
+
+.user-volume-slider::-webkit-slider-runnable-track {
+  width: 100%;
+  height: 6px;
+  cursor: pointer;
+  background: transparent !important;
+  border-radius: var(--radius-full);
+  border: none;
 }
 
 .user-volume-slider::-webkit-slider-thumb {
@@ -5199,7 +5284,8 @@ body > .reconnect-overlay {
   background: #ffffff;
   box-shadow: 0 1px 4px rgba(0, 0, 0, 0.5);
   cursor: pointer;
-  transition: transform 0.1s ease, box-shadow 0.1s ease;
+  margin-top: -5px;
+  transition: transform 0.1s ease, box-shadow 0.1s ease, background-color 0.15s ease;
 }
 
 .user-volume-slider::-webkit-slider-thumb:hover {
@@ -5749,24 +5835,30 @@ button:hover .role-option-check:not(.checked) {
 .sb-players-container {
   display: flex;
   flex-direction: column;
-  max-height: 150px;
+  gap: 8px;
+  max-height: 220px;
   overflow-y: auto;
-  background: rgba(88, 101, 242, 0.08);
-  border-bottom: 1px solid rgba(88, 101, 242, 0.25);
+  background: var(--bg-card);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-md);
+  margin: 10px 20px 0;
+  padding: 10px 14px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.25);
+  flex-shrink: 0;
+  box-sizing: border-box;
 }
 
 .sb-player-bar {
   display: flex;
   align-items: center;
-  gap: 12px;
-  padding: 8px 20px;
-  background: transparent;
-  border-bottom: 1px solid rgba(88, 101, 242, 0.15);
+  gap: 14px;
+  padding: 10px 14px;
+  min-height: 52px;
+  box-sizing: border-box;
+  background: rgba(88, 101, 242, 0.1);
+  border: 1px solid rgba(88, 101, 242, 0.3);
+  border-radius: var(--radius-md);
   animation: sbSlideDown 0.15s ease-out;
-}
-
-.sb-player-bar:last-child {
-  border-bottom: none;
 }
 
 @keyframes sbSlideDown {
@@ -5785,12 +5877,13 @@ button:hover .role-option-check:not(.checked) {
   align-items: center;
   gap: 8px;
   min-width: 0;
-  max-width: 180px;
+  max-width: 200px;
 }
 
 .sb-player-icon {
   color: var(--accent-primary);
-  font-size: 18px;
+  font-size: 20px;
+  flex-shrink: 0;
   animation: sbPulseIcon 1.2s infinite ease-in-out;
 }
 
@@ -5801,21 +5894,22 @@ button:hover .role-option-check:not(.checked) {
 }
 
 .sb-player-name, .sb-player-item-name {
-  font-size: 12px;
+  font-size: 13px;
   font-weight: 600;
   color: var(--text-primary);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+  line-height: 1.3;
 }
 
 .sb-player-user {
-  font-size: 10px;
+  font-size: 11px;
   font-weight: 600;
   color: var(--text-muted);
   background: var(--bg-tertiary);
-  padding: 1px 6px;
-  border-radius: 6px;
+  padding: 2px 7px;
+  border-radius: 8px;
   white-space: nowrap;
   flex-shrink: 0;
 }
@@ -5823,16 +5917,16 @@ button:hover .role-option-check:not(.checked) {
 .sb-player-progress-container {
   display: flex;
   flex-direction: column;
-  gap: 4px;
+  gap: 6px;
   flex: 1;
   min-width: 0;
 }
 
 .sb-player-progress-track {
   width: 100%;
-  height: 4px;
-  background: rgba(255, 255, 255, 0.12);
-  border-radius: 2px;
+  height: 5px;
+  background: rgba(255, 255, 255, 0.14);
+  border-radius: 3px;
   overflow: hidden;
   position: relative;
 }
@@ -5841,25 +5935,28 @@ button:hover .role-option-check:not(.checked) {
   height: 100%;
   width: 0%;
   background: linear-gradient(90deg, #5865f2, #7289da);
-  border-radius: 2px;
+  border-radius: 3px;
   transition: width 0.08s linear;
 }
 
 .sb-player-time {
   font-family: var(--font-mono);
-  font-size: 10px;
+  font-size: 11px;
+  font-weight: 600;
   color: var(--text-muted);
   display: flex;
-  justify-content: space-between;
+  align-items: center;
+  gap: 3px;
+  flex-shrink: 0;
 }
 
 .sb-player-stop-btn {
   display: inline-flex;
   align-items: center;
-  gap: 4px;
-  padding: 4px 8px;
-  height: 26px;
-  font-size: 11px;
+  gap: 5px;
+  padding: 5px 12px;
+  height: 30px;
+  font-size: 12px;
   font-weight: 600;
   background: rgba(237, 66, 69, 0.15);
   border: 1px solid rgba(237, 66, 69, 0.35);
@@ -5868,6 +5965,7 @@ button:hover .role-option-check:not(.checked) {
   cursor: pointer;
   transition: all 0.15s ease;
   white-space: nowrap;
+  flex-shrink: 0;
 }
 
 .sb-player-stop-btn:hover {
@@ -5940,7 +6038,12 @@ button:hover .role-option-check:not(.checked) {
 
 .sb-sound-row.is-playing {
   border-color: var(--accent-primary) !important;
+  background: rgba(88, 101, 242, 0.12) !important;
   box-shadow: 0 0 0 2px rgba(88, 101, 242, 0.35);
+}
+
+.sb-sound-row.is-playing .sb-sound-icon {
+  animation: sbPulseIcon 1s infinite ease-in-out;
 }
 
 .sb-sound-list-btn:hover .sb-sound-icon {

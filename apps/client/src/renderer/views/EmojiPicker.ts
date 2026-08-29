@@ -9,12 +9,18 @@ import { normalizeSearchString } from '../utils/search';
 type PickerTab = 'emojis' | 'stickers';
 
 export interface EmojiPickerOptions {
-  /** Positioned ancestor the popover is anchored inside (`.chat-input-container`). */
+  /** Positioned ancestor the popover is anchored inside (`.chat-input-container` or document.body). */
   container: HTMLElement;
   /** Button that toggles the picker; clicks on it must not count as "outside". */
   anchor: HTMLElement;
   onSelectEmoji: (emoji: string) => void;
-  onSelectSticker: (sticker: StickerEntry) => void;
+  onSelectSticker?: (sticker: StickerEntry) => void;
+  /** If true, only emojis are available (no stickers tab) */
+  emojiOnly?: boolean;
+  /** Alignment / position styling (when using static relative container) */
+  position?: 'bottom-right' | 'bottom-left' | 'top-right' | 'top-left';
+  /** If true, uses fixed viewport coordinates based on anchor bounding rect */
+  floating?: boolean;
 }
 
 /** One representative emoji per category, used as the quick-nav icon. */
@@ -80,16 +86,50 @@ export class EmojiPicker {
     if (this.isOpen()) return;
 
     this.query = '';
+    this.tab = 'emojis';
     const root = document.createElement('div');
-    root.className = 'emoji-picker';
+    const posClass = this.options.position ? ` emoji-picker--${this.options.position}` : '';
+    const emojiOnlyClass = this.options.emojiOnly ? ' emoji-picker--emoji-only' : '';
+    const floatingClass = this.options.floating ? ' emoji-picker--floating' : '';
+    root.className = `emoji-picker${posClass}${emojiOnlyClass}${floatingClass}`;
     root.innerHTML = this.renderShell();
     this.options.container.appendChild(root);
     this.root = root;
+
+    if (this.options.floating) {
+      this.positionFloating(root);
+    }
 
     this.bindShell();
     this.renderBody();
 
     root.querySelector<HTMLInputElement>('.emoji-picker-search-input')?.focus();
+  }
+
+  private positionFloating(root: HTMLElement): void {
+    const anchorRect = this.options.anchor.getBoundingClientRect();
+    const pickerWidth = 360;
+    const pickerHeight = this.options.emojiOnly ? 380 : 420;
+
+    // By default, open below the anchor if there is room, otherwise open above
+    let top = anchorRect.bottom + 6;
+    if (top + pickerHeight > window.innerHeight - 12) {
+      top = Math.max(12, anchorRect.top - pickerHeight - 6);
+    }
+
+    // Align right edge of picker with right edge of anchor
+    let left = anchorRect.right - pickerWidth;
+    if (left < 12) {
+      left = 12;
+    }
+    if (left + pickerWidth > window.innerWidth - 12) {
+      left = Math.max(12, window.innerWidth - pickerWidth - 12);
+    }
+
+    root.style.position = 'fixed';
+    root.style.top = `${Math.round(top)}px`;
+    root.style.left = `${Math.round(left)}px`;
+    root.style.zIndex = '10005';
   }
 
   public close(): void {
@@ -110,7 +150,7 @@ export class EmojiPicker {
   // --- shell -------------------------------------------------------------
 
   private renderShell(): string {
-    return `
+    const tabsHtml = this.options.emojiOnly ? '' : `
       <div class="emoji-picker-tabs">
         <button type="button" class="emoji-picker-tab" data-picker-tab="emojis">
           <span class="material-symbols-outlined md-16">mood</span>
@@ -121,6 +161,10 @@ export class EmojiPicker {
           ${t('emojiPicker.tabStickers')}
         </button>
       </div>
+    `;
+
+    return `
+      ${tabsHtml}
       <div class="emoji-picker-search">
         <span class="material-symbols-outlined md-16">search</span>
         <input type="text" class="emoji-picker-search-input" spellcheck="false">
@@ -173,7 +217,7 @@ export class EmojiPicker {
       }
 
       const filePath = target.closest<HTMLElement>('[data-sticker-path]')?.getAttribute('data-sticker-path');
-      if (filePath) {
+      if (filePath && !this.options.emojiOnly && this.options.onSelectSticker) {
         const sticker = stickerService.getStickers().find((s) => s.filePath === filePath);
         if (sticker) this.options.onSelectSticker(sticker);
       }

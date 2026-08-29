@@ -94,13 +94,14 @@ export class UserContextMenu {
             max="100"
             value="${currentVol}"
             step="1"
+            style="--slider-fill: ${currentVol}%;"
           >
         </div>
 
         <div class="context-menu-quick-btns">
           <button id="ctx-vol-0" class="btn-ctx-quick" title="${t('userMenu.muteUserTitle')}">${t('userMenu.volumeMuted')}</button>
-          <button id="ctx-vol-50" class="btn-ctx-quick" title="${t('userMenu.setVolume50')}">50%</button>
-          <button id="ctx-vol-100" class="btn-ctx-quick active" title="${t('userMenu.restoreVolume')}">100%</button>
+          <button id="ctx-vol-50" class="btn-ctx-quick" title="50%">50%</button>
+          <button id="ctx-vol-100" class="btn-ctx-quick" title="${t('userMenu.restoreVolume')}">100%</button>
         </div>
       </div>
 

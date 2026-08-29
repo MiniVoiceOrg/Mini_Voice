@@ -428,6 +428,9 @@ class App {
         return;
       }
 
+      // Nothing left to show: the view has to be torn down, or its listeners
+      // and ping timer would outlive the server view behind the home screen.
+      this.mainView.destroy();
       void window.api?.setWindowInServer?.(false);
       this.connectionView.render();
     });

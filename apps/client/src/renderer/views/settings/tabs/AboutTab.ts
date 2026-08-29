@@ -2,9 +2,10 @@ import { settingsStore } from '../../../stores/settingsStore';
 import { updateService } from '../../../core/UpdateService';
 import { t } from '../../../i18n';
 
-const IDEAS_URL = 'https://github.com/MonkyOrg/Monky/discussions/categories/ideias';
-const NEW_IDEA_URL = 'https://github.com/MonkyOrg/Monky/discussions/new?category=ideias';
-const NEW_ISSUE_URL = 'https://github.com/MonkyOrg/Monky/issues/new/choose';
+const IDEAS_URL = 'https://github.com/MonkyOrg/Monky/discussions/categories/ideas';
+const NEW_IDEA_URL = 'https://github.com/MonkyOrg/Monky/discussions/new?category=ideas';
+const NEW_BUG_URL = 'https://github.com/MonkyOrg/Monky/discussions/new?category=bug-reports';
+const DONATE_URL = 'https://buymeacoffee.com/monkyorg';
 
 export class AboutTab {
   public renderHtml(): string {
@@ -99,6 +100,10 @@ export class AboutTab {
           ${t('settings.communityDesc')}
         </small>
         <div style="display: flex; gap: 8px; flex-wrap: wrap;">
+          <button id="btn-support-project" class="btn btn-secondary" style="font-size: 12px; padding: 6px 12px; color: #ffdd00; border-color: rgba(255, 221, 0, 0.4); background: rgba(255, 221, 0, 0.08);">
+            <span class="material-symbols-outlined md-16" style="margin-right: 4px; color: #ffdd00;">coffee</span>
+            ${t('settings.supportProject')}
+          </button>
           <button id="btn-suggest-idea" class="btn btn-secondary" style="font-size: 12px; padding: 6px 12px;">
             <span class="material-symbols-outlined md-16" style="margin-right: 4px;">lightbulb</span>
             ${t('settings.suggestIdea')}
@@ -133,6 +138,7 @@ export class AboutTab {
     const checkboxAutoStart = container.querySelector<HTMLInputElement>('#checkbox-auto-start');
     const checkboxMinimizeToTray = container.querySelector<HTMLInputElement>('#checkbox-minimize-to-tray');
     const checkboxAskShutdown = container.querySelector<HTMLInputElement>('#checkbox-ask-shutdown');
+    const btnSupport = container.querySelector<HTMLButtonElement>('#btn-support-project');
     const btnSuggest = container.querySelector<HTMLButtonElement>('#btn-suggest-idea');
     const btnVote = container.querySelector<HTMLButtonElement>('#btn-vote-ideas');
     const btnReport = container.querySelector<HTMLButtonElement>('#btn-report-bug');
@@ -184,16 +190,26 @@ export class AboutTab {
       settingsStore.save();
     });
 
-    const openLink = (url: string) => {
-      if (window.api?.openExternal) {
-        window.api.openExternal(url);
-      } else {
-        window.open(url, '_blank');
-      }
+    const openInBrowser = (url: string) => {
+      window.open(url, '_blank', 'noopener');
     };
 
+    const openLink = (url: string) => {
+      if (!window.api?.openExternal) {
+        openInBrowser(url);
+        return;
+      }
+
+      window.api.openExternal(url)
+        .then((res) => {
+          if (!res?.success) openInBrowser(url);
+        })
+        .catch(() => openInBrowser(url));
+    };
+
+    btnSupport?.addEventListener('click', () => openLink(DONATE_URL));
     btnSuggest?.addEventListener('click', () => openLink(NEW_IDEA_URL));
     btnVote?.addEventListener('click', () => openLink(IDEAS_URL));
-    btnReport?.addEventListener('click', () => openLink(NEW_ISSUE_URL));
+    btnReport?.addEventListener('click', () => openLink(NEW_BUG_URL));
   }
 }

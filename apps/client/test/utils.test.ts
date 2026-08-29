@@ -12,9 +12,13 @@ import { normalizeSearchString, matchesSearch } from '../src/renderer/utils/sear
 import { compareVersions, feedUrlForTag, isNewer, pickBestRelease } from '../src/main/updateVersions';
 import { extractStickerIds, stickerToken, stripStickerTokens } from '../src/renderer/utils/stickers';
 import { buildCodeMessage, indentEdit } from '../src/renderer/views/CodeBlockModal';
+import { isSafeServerId, migrateLegacyServerData, serverDataDirFor } from '../src/main/serverDataDir';
 import { createActiveProxy, silentBus } from '../src/renderer/core/activeProxy';
 import { createChatStore, setActiveChatStore, chatStore } from '../src/renderer/stores/chatStore';
 import { appEvents } from '../src/renderer/core/EventBus';
+import fs from 'fs';
+import os from 'os';
+import path from 'path';
 
 let passed = 0;
 let failed = 0;
@@ -254,11 +258,28 @@ function runTests() {
     soundboardViewMode: 'invalid_mode',
     inputMode: 'invalid_input_mode',
     pttReleaseDelay: -50,
+    userVolumes: {
+      'sess-1': 75,
+      'sess-2': 150,
+      'sess-3': -20,
+    },
+    screenAudioVolumes: {
+      'sess-screen': 100,
+    },
   }));
   const store3 = new SettingsStore();
   assert(store3.soundboardViewMode === 'grid', 'soundboardViewMode inválido é sanitizado para fallback "grid"');
   assert(store3.inputMode === 'voice_activity', 'inputMode inválido é sanitizado para fallback "voice_activity"');
   assert(store3.pttReleaseDelay === 0, 'pttReleaseDelay negativo é sanitizado para mínimo 0');
+  assert(store3.getUserVolume('sess-1') === 75, 'Volume de usuário 75% lido corretamente');
+  assert(store3.getUserVolume('sess-2') === 100, 'Volume de usuário > 100% clamped para 100%');
+  assert(store3.getUserVolume('sess-3') === 0, 'Volume de usuário < 0% clamped para 0%');
+  assert(store3.getScreenAudioVolume('sess-screen') === 100, 'Volume de screen audio 100% lido corretamente');
+
+  store3.setUserVolume('sess-test', 80);
+  assert(store3.getUserVolume('sess-test') === 80, 'setUserVolume aceita 80%');
+  store3.setUserVolume('sess-test-overflow', 150);
+  assert(store3.getUserVolume('sess-test-overflow') === 100, 'setUserVolume 150% é clamped para 100%');
 
   // --- Seleção de release do atualizador automático (#354) ---
   console.log('\n--- Testando seleção de release do atualizador ---');
@@ -489,6 +510,41 @@ function runTests() {
   assert(chatFundo.hasAnyUnread(), 'Servidor de fundo com mensagem nova reporta não lidas para o badge da rail');
   assert(!chatVisivel.hasAnyUnread(), 'Servidor visível sem mensagem nova não pede badge');
   desligar();
+
+  // Dados dos servidores criados (#364)
+  console.log('--- Testando pasta de dados por servidor ---');
+  assert(isSafeServerId('created-1756400000000-a1b2c3'), 'Id gerado pelo app é aceito');
+  assert(!isSafeServerId('..'), 'Id ".." é rejeitado');
+  assert(!isSafeServerId('../../etc'), 'Id com travessia de caminho é rejeitado');
+  assert(!isSafeServerId('pasta/servidor'), 'Id com barra é rejeitado');
+  assert(!isSafeServerId(''), 'Id vazio é rejeitado');
+  assert(
+    serverDataDirFor('/base', 'created-1') === path.join('/base', 'created-1'),
+    'Cada servidor recebe uma pasta própria dentro de server-data'
+  );
+
+  const baseDir = fs.mkdtempSync(path.join(os.tmpdir(), 'monky-server-data-'));
+  fs.writeFileSync(path.join(baseDir, 'server.db'), 'db-antigo');
+  fs.mkdirSync(path.join(baseDir, 'avatars'));
+  fs.writeFileSync(path.join(baseDir, 'avatars', 'a.png'), 'x');
+
+  const firstDir = path.join(baseDir, 'created-1');
+  assert(migrateLegacyServerData(baseDir, firstDir), 'Layout antigo é adotado pelo primeiro servidor que inicia');
+  assert(
+    fs.readFileSync(path.join(firstDir, 'server.db'), 'utf-8') === 'db-antigo',
+    'O banco antigo é preservado, não descartado'
+  );
+  assert(fs.existsSync(path.join(firstDir, 'avatars', 'a.png')), 'Avatares acompanham o banco na migração');
+  assert(!fs.existsSync(path.join(baseDir, 'server.db')), 'O banco solto some da raiz de server-data');
+
+  const secondDir = path.join(baseDir, 'created-2');
+  assert(
+    !migrateLegacyServerData(baseDir, secondDir),
+    'Um segundo servidor não herda nada: é essa herança que trazia o nome antigo de volta (#364)'
+  );
+  assert(!fs.existsSync(path.join(secondDir, 'server.db')), 'O segundo servidor nasce com a pasta vazia');
+
+  fs.rmSync(baseDir, { recursive: true, force: true });
 
   console.log(`\n=== Relatório dos Testes ===`);
   console.log(`Total: ${passed + failed} | Passaram: ${passed} | Falharam: ${failed}`);
