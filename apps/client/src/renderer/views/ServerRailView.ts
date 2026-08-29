@@ -1,10 +1,14 @@
 import { escapeHtml } from '../utils/html';
-import { appEvents } from '../core/EventBus';
-import { networkClient } from '../core/NetworkClient';
 import { sessionManager, sessionKeyFor } from '../core/SessionManager';
 import { openServerSession, showServerSession } from '../core/serverConnection';
 import { voiceStore } from '../stores/voiceStore';
-import { connectionStore, SavedServer, CreatedServer } from '../stores/connectionStore';
+import {
+  connectionStore,
+  SavedServer,
+  CreatedServer,
+  RailFolderNode,
+  RailNode,
+} from '../stores/connectionStore';
 import { audioProcessor } from '../core/AudioProcessor';
 import { webRtcManager } from '../core/WebRtcManager';
 import { showConfirm, showAlert } from './Dialog';
@@ -17,6 +21,11 @@ import {
 import { soundEffects } from '../core/SoundEffects';
 import { toAbsoluteServerIconUrl } from '../utils/avatar';
 import { t } from '../i18n';
+import { contextMenu } from './ContextMenu';
+
+type DraggedRailItem =
+  | { type: 'server'; host: string; port: number }
+  | { type: 'folder'; folderId: string };
 
 export class ServerRailView {
   /**
@@ -25,6 +34,8 @@ export class ServerRailView {
    * network events and would wipe any attribute set by hand (#332).
    */
   private connectingKey: string | null = null;
+  private draggedRailItem: DraggedRailItem | null = null;
+   private skipNextFolderToggle = false;
 
   private static keyOf(host: string, port: number): string {
     return `${host.trim().replace(/^wss?:\/\//, '')}:${port}`;
@@ -34,53 +45,21 @@ export class ServerRailView {
     const railEl = document.getElementById('server-rail');
     if (!railEl) return;
 
+    contextMenu.close();
+
     // The active key (not the proxied client) is what identifies the server on
     // screen: during a background event the proxy points elsewhere (#400).
     const currentUrl = sessionManager.getActiveKey();
-    const saved = connectionStore.savedServers || [];
     const busy = this.connectingKey !== null;
+    const savedByKey = new Map(
+      (connectionStore.savedServers || []).map((server) => [ServerRailView.keyOf(server.host, server.port), server])
+    );
+    const layout = connectionStore.railLayout || [];
 
-    const serverButtons = saved.map((srv) => {
-      const url = `ws://${srv.host.trim().replace(/^wss?:\/\//, '')}:${srv.port}`;
-      const isCurrent = url === currentUrl;
-      const isConnecting = this.connectingKey === ServerRailView.keyOf(srv.host, srv.port);
-      // Servers kept connected while the user looks elsewhere (#400): they may
-      // be hosting the call or have collected messages meanwhile. A session that
-      // is merely retrying does not count as online.
-      const live = sessionManager.get(url);
-      const background = !isCurrent && live?.client.getStatus() === 'CONNECTED' ? live : undefined;
-      const hasCall = voiceStore.voiceSessionKey === url;
-      const hasUnread = !!background?.chatStore.hasAnyUnread();
-      const initial = (srv.name || srv.host || '?').trim().charAt(0).toUpperCase();
-      // Read from the session that owns this row, never from the proxied store:
-      // a render triggered inside a background event would otherwise paint that
-      // server's icon on whichever row is current (#400). Relative paths are
-      // resolved against that same session's host, never the visible one (#312).
-      const liveIcon = live?.serverStore.serverDetails?.iconUrl;
-      const liveBase = live?.client.getHttpBaseUrl();
-      const resolvedLiveIcon = liveIcon?.startsWith('/') ? (liveBase ? `${liveBase}${liveIcon}` : null) : liveIcon;
-      const iconUrl = resolvedLiveIcon || srv.iconUrl;
-      const label = srv.name || `${srv.host}:${srv.port}`;
-      const title = isConnecting
-        ? t('main.connectingTo', { name: label })
-        : hasCall && !isCurrent
-          ? t('main.serverHostingCall', { name: label })
-          : label;
-      const badge = hasCall
-        ? `<span class="server-rail-badge" data-kind="call" title="${escapeHtml(t('main.callHereTooltip'))}"><span class="material-symbols-outlined md-14">graphic_eq</span></span>`
-        : hasUnread
-          ? `<span class="server-rail-badge" data-kind="unread" title="${escapeHtml(t('main.unreadHereTooltip'))}"></span>`
-          : '';
-      return `
-        <div class="server-rail-item ${isCurrent ? 'active' : ''}">
-          <span class="server-rail-pill" aria-hidden="true"></span>
-          <button class="server-rail-avatar ${isCurrent ? 'active' : ''}" data-host="${escapeHtml(srv.host)}" data-port="${srv.port}" title="${escapeHtml(title)}" ${isConnecting ? 'data-loading="1" aria-busy="true"' : ''} ${busy ? 'disabled' : ''} style="padding: 0;">
-            ${iconUrl ? `<img src="${escapeHtml(iconUrl)}" style="width: 100%; height: 100%; object-fit: cover; border-radius: inherit; display: block;">` : `<span>${escapeHtml(initial)}</span>`}
-            <span class="server-rail-status-dot" data-status="${isCurrent || background ? 'online' : 'checking'}"></span>
-            ${badge}
-          </button>
-        </div>
-      `;
+    const nodesHtml = layout.map((node, index) => {
+      const nodeHtml = this.renderRailNode(node, index, currentUrl, savedByKey, busy);
+      if (!nodeHtml) return '';
+      return `${this.renderRootDropZone(index)}${nodeHtml}`;
     }).join('');
 
     railEl.innerHTML = `
@@ -89,7 +68,8 @@ export class ServerRailView {
       </button>
       <div class="server-rail-divider"></div>
       <div class="server-rail-list">
-        ${serverButtons}
+        ${nodesHtml}
+        ${this.renderRootDropZone(layout.length)}
       </div>
     `;
 
@@ -113,16 +93,10 @@ export class ServerRailView {
       if (leaveState) await promptShutdownAfterLeave(leaveState);
     });
 
-    railEl.querySelectorAll('.server-rail-avatar').forEach((btn) => {
-      btn.addEventListener('click', () => {
-        if (this.connectingKey) return;
-        const host = btn.getAttribute('data-host');
-        const port = parseInt(btn.getAttribute('data-port') || '0', 10);
-        if (!host || !port) return;
-        const target = saved.find((s) => s.host === host && s.port === port);
-        if (target) void this.connectToSavedServer(target);
-      });
-    });
+    this.bindServerClicks();
+    this.bindFolderToggles();
+    this.bindDragAndDrop();
+    this.bindContextMenus();
 
     void this.refreshServerRailStatuses();
   }
@@ -180,6 +154,451 @@ export class ServerRailView {
     if (this.connectingKey === key) return;
     this.connectingKey = key;
     this.render();
+  }
+
+  private renderRailNode(
+    node: RailNode,
+    rootIndex: number,
+    currentUrl: string | null,
+    savedByKey: Map<string, SavedServer>,
+    busy: boolean
+  ): string {
+    if (node.type === 'server') {
+      const server = savedByKey.get(ServerRailView.keyOf(node.host, node.port));
+      if (!server) return '';
+      return this.renderServerItem(server, currentUrl, busy);
+    }
+
+    return this.renderFolder(node, rootIndex, currentUrl, savedByKey, busy);
+  }
+
+  private renderFolder(
+    folder: RailFolderNode,
+    rootIndex: number,
+    currentUrl: string | null,
+    savedByKey: Map<string, SavedServer>,
+    busy: boolean
+  ): string {
+    const childrenHtml = folder.children.map((child, childIndex) => {
+      const server = savedByKey.get(ServerRailView.keyOf(child.host, child.port));
+      if (!server) return '';
+      return `${this.renderFolderChildDropZone(folder.id, childIndex)}${this.renderServerItem(
+        server,
+        currentUrl,
+        busy,
+        folder.id
+      )}`;
+    }).join('');
+
+    return `
+      <div class="server-rail-folder ${folder.collapsed ? 'collapsed' : ''}" data-folder-id="${escapeHtml(folder.id)}">
+        <div
+          class="server-rail-folder-header"
+          data-node-type="folder"
+          data-folder-id="${escapeHtml(folder.id)}"
+          data-root-index="${rootIndex}"
+          draggable="${busy ? 'false' : 'true'}"
+          title="${escapeHtml(folder.name)}"
+        >
+          <button
+            type="button"
+            class="server-rail-folder-toggle"
+            data-folder-toggle="${escapeHtml(folder.id)}"
+            aria-label="${escapeHtml(folder.name)}"
+            title="${escapeHtml(folder.name)}"
+            draggable="false"
+          >
+            <span class="server-rail-folder-arrow" aria-hidden="true">${folder.collapsed ? '▸' : '▾'}</span>
+          </button>
+          <span class="material-symbols-outlined md-16 server-rail-folder-icon" aria-hidden="true">
+            ${folder.collapsed ? 'folder' : 'folder_open'}
+          </span>
+          <span class="server-rail-folder-name">${escapeHtml(folder.name)}</span>
+        </div>
+        <div class="server-rail-folder-children">
+          ${childrenHtml}
+          ${this.renderFolderChildDropZone(folder.id, folder.children.length)}
+        </div>
+      </div>
+    `;
+  }
+
+  private renderServerItem(
+    srv: SavedServer,
+    currentUrl: string | null,
+    busy: boolean,
+    folderId?: string
+  ): string {
+    const url = `ws://${srv.host.trim().replace(/^wss?:\/\//, '')}:${srv.port}`;
+    const isCurrent = url === currentUrl;
+    const isConnecting = this.connectingKey === ServerRailView.keyOf(srv.host, srv.port);
+    // Servers kept connected while the user looks elsewhere (#400): they may
+    // be hosting the call or have collected messages meanwhile. A session that
+    // is merely retrying does not count as online.
+    const live = sessionManager.get(url);
+    const background = !isCurrent && live?.client.getStatus() === 'CONNECTED' ? live : undefined;
+    const hasCall = voiceStore.voiceSessionKey === url;
+    const hasUnread = !!background?.chatStore.hasAnyUnread();
+    const initial = (srv.name || srv.host || '?').trim().charAt(0).toUpperCase();
+    // Read from the session that owns this row, never from the proxied store:
+    // a render triggered inside a background event would otherwise paint that
+    // server's icon on whichever row is current (#400). Relative paths are
+    // resolved against that same session's host, never the visible one (#312).
+    const liveIcon = live?.serverStore.serverDetails?.iconUrl;
+    const liveBase = live?.client.getHttpBaseUrl();
+    const resolvedLiveIcon = liveIcon?.startsWith('/') ? (liveBase ? `${liveBase}${liveIcon}` : null) : liveIcon;
+    const iconUrl = resolvedLiveIcon || srv.iconUrl;
+    const label = srv.name || `${srv.host}:${srv.port}`;
+    const title = isConnecting
+      ? t('main.connectingTo', { name: label })
+      : hasCall && !isCurrent
+        ? t('main.serverHostingCall', { name: label })
+        : label;
+    const badge = hasCall
+      ? `<span class="server-rail-badge" data-kind="call" title="${escapeHtml(t('main.callHereTooltip'))}"><span class="material-symbols-outlined md-14">graphic_eq</span></span>`
+      : hasUnread
+        ? `<span class="server-rail-badge" data-kind="unread" title="${escapeHtml(t('main.unreadHereTooltip'))}"></span>`
+        : '';
+
+    return `
+      <div
+        class="server-rail-item ${isCurrent ? 'active' : ''} ${folderId ? 'server-rail-item--nested' : ''}"
+        data-node-type="server"
+        data-host="${escapeHtml(srv.host)}"
+        data-port="${srv.port}"
+        ${folderId ? `data-folder-id="${escapeHtml(folderId)}"` : ''}
+        draggable="${busy ? 'false' : 'true'}"
+      >
+        <span class="server-rail-pill" aria-hidden="true"></span>
+        <button
+          class="server-rail-avatar ${isCurrent ? 'active' : ''}"
+          data-host="${escapeHtml(srv.host)}"
+          data-port="${srv.port}"
+          ${folderId ? `data-folder-id="${escapeHtml(folderId)}"` : ''}
+          title="${escapeHtml(title)}"
+          ${isConnecting ? 'data-loading="1" aria-busy="true"' : ''}
+          ${busy ? 'disabled' : ''}
+          style="padding: 0;"
+        >
+          ${iconUrl ? `<img src="${escapeHtml(iconUrl)}" style="width: 100%; height: 100%; object-fit: cover; border-radius: inherit; display: block;">` : `<span>${escapeHtml(initial)}</span>`}
+          <span class="server-rail-status-dot" data-status="${isCurrent || background ? 'online' : 'checking'}"></span>
+          ${badge}
+        </button>
+      </div>
+    `;
+  }
+
+  private renderRootDropZone(index: number): string {
+    return `
+      <div
+        class="server-rail-drop-zone"
+        data-drop-kind="root"
+        data-root-index="${index}"
+        aria-hidden="true"
+      ></div>
+    `;
+  }
+
+  private renderFolderChildDropZone(folderId: string, index: number): string {
+    return `
+      <div
+        class="server-rail-drop-zone server-rail-drop-zone--nested"
+        data-drop-kind="folder-child"
+        data-folder-id="${escapeHtml(folderId)}"
+        data-child-index="${index}"
+        aria-hidden="true"
+      ></div>
+    `;
+  }
+
+  private bindServerClicks(): void {
+    const railEl = document.getElementById('server-rail');
+    if (!railEl) return;
+
+    railEl.querySelectorAll('.server-rail-avatar').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        if (this.connectingKey) return;
+        const host = btn.getAttribute('data-host');
+        const port = parseInt(btn.getAttribute('data-port') || '0', 10);
+        if (!host || !port) return;
+        const target = (connectionStore.savedServers || []).find((s) => s.host === host && s.port === port);
+        if (target) void this.connectToSavedServer(target);
+      });
+    });
+  }
+
+  private bindFolderToggles(): void {
+    const railEl = document.getElementById('server-rail');
+    if (!railEl) return;
+
+    railEl.querySelectorAll('.server-rail-folder-toggle').forEach((button) => {
+      button.addEventListener('click', (event) => {
+        event.preventDefault();
+        event.stopPropagation();
+        const folderId = button.getAttribute('data-folder-toggle');
+        if (folderId) connectionStore.toggleFolderCollapsed(folderId);
+      });
+    });
+
+    railEl.querySelectorAll('.server-rail-folder-header').forEach((header) => {
+      header.addEventListener('click', () => {
+        if (this.skipNextFolderToggle) return;
+        const folderId = header.getAttribute('data-folder-id');
+        if (folderId) connectionStore.toggleFolderCollapsed(folderId);
+      });
+    });
+  }
+
+  private bindContextMenus(): void {
+    const railEl = document.getElementById('server-rail');
+    if (!railEl) return;
+
+    railEl.querySelector('.server-rail-list')?.addEventListener('contextmenu', (event) => {
+      const mouseEvent = event as MouseEvent;
+      const target = event.target as HTMLElement | null;
+      if (!target) return;
+      if (target.closest('.server-rail-avatar, .server-rail-folder-header')) return;
+      event.preventDefault();
+      contextMenu.open(mouseEvent.clientX, mouseEvent.clientY, [
+        {
+          label: t('main.createFolder'),
+          icon: 'create_new_folder',
+          onClick: () => {
+            const name = this.promptFolderName();
+            if (name) connectionStore.createFolder(name);
+          },
+        },
+      ]);
+    });
+
+    railEl.querySelectorAll('.server-rail-avatar[data-folder-id]').forEach((btn) => {
+      btn.addEventListener('contextmenu', (event) => {
+        const mouseEvent = event as MouseEvent;
+        event.preventDefault();
+        event.stopPropagation();
+        const host = btn.getAttribute('data-host');
+        const port = parseInt(btn.getAttribute('data-port') || '0', 10);
+        if (!host || !port) return;
+        const folderId = btn.getAttribute('data-folder-id');
+        if (!folderId) return;
+        contextMenu.open(mouseEvent.clientX, mouseEvent.clientY, [
+          {
+            label: t('main.removeFromFolder'),
+            icon: 'drive_file_move',
+            onClick: () => connectionStore.moveServerToFolder(host, port, null),
+          },
+        ]);
+      });
+    });
+
+    railEl.querySelectorAll('.server-rail-folder-header').forEach((header) => {
+      header.addEventListener('contextmenu', (event) => {
+        const mouseEvent = event as MouseEvent;
+        event.preventDefault();
+        event.stopPropagation();
+        const folderId = header.getAttribute('data-folder-id');
+        if (!folderId) return;
+        const folder = connectionStore.railLayout.find(
+          (node): node is RailFolderNode => node.type === 'folder' && node.id === folderId
+        );
+        if (!folder) return;
+        contextMenu.open(mouseEvent.clientX, mouseEvent.clientY, [
+          {
+            label: t('main.renameFolder'),
+            icon: 'edit',
+            onClick: () => {
+              const name = this.promptFolderName(folder.name);
+              if (name) connectionStore.renameFolder(folderId, name);
+            },
+          },
+          {
+            label: t('main.deleteFolder'),
+            icon: 'delete',
+            danger: true,
+            onClick: () => connectionStore.deleteFolder(folderId),
+          },
+        ]);
+      });
+    });
+  }
+
+  private bindDragAndDrop(): void {
+    const railEl = document.getElementById('server-rail');
+    if (!railEl) return;
+
+    const draggableNodes = Array.from(
+      railEl.querySelectorAll('.server-rail-item[data-node-type="server"], .server-rail-folder-header[data-node-type="folder"]')
+    ) as HTMLElement[];
+
+    draggableNodes.forEach((element) => {
+      element.addEventListener('dragstart', (event) => {
+        if (this.connectingKey) {
+          event.preventDefault();
+          return;
+        }
+
+        if (element.getAttribute('data-node-type') === 'folder') {
+          const folderId = element.getAttribute('data-folder-id');
+          if (!folderId) {
+            event.preventDefault();
+            return;
+          }
+          this.draggedRailItem = { type: 'folder', folderId };
+          const transfer = (event as DragEvent).dataTransfer;
+          if (transfer) {
+            transfer.effectAllowed = 'move';
+            transfer.setData('text/monky-rail-folder-id', folderId);
+          }
+        } else {
+          const host = element.getAttribute('data-host');
+          const port = parseInt(element.getAttribute('data-port') || '0', 10);
+          if (!host || !port) {
+            event.preventDefault();
+            return;
+          }
+          this.draggedRailItem = { type: 'server', host, port };
+          const transfer = (event as DragEvent).dataTransfer;
+          if (transfer) {
+            transfer.effectAllowed = 'move';
+            transfer.setData('text/monky-rail-server', `${host}:${port}`);
+          }
+        }
+
+        setTimeout(() => element.classList.add('dragging'), 0);
+      });
+
+      element.addEventListener('dragend', () => {
+        element.classList.remove('dragging');
+        if (element.getAttribute('data-node-type') === 'folder') {
+          this.skipNextFolderToggle = true;
+          setTimeout(() => { this.skipNextFolderToggle = false; }, 0);
+        }
+        this.clearDragState();
+      });
+    });
+
+    const dropZones = Array.from(railEl.querySelectorAll('.server-rail-drop-zone')) as HTMLElement[];
+    dropZones.forEach((zone) => {
+      zone.addEventListener('dragover', (event) => {
+        if (!this.draggedRailItem || !this.canDropOnZone(zone)) return;
+        event.preventDefault();
+        const transfer = (event as DragEvent).dataTransfer;
+        if (transfer) transfer.dropEffect = 'move';
+        this.activateDropZone(zone);
+      });
+
+      zone.addEventListener('drop', (event) => {
+        if (!this.draggedRailItem || !this.canDropOnZone(zone)) return;
+        event.preventDefault();
+        const dragged = this.draggedRailItem;
+        const dropKind = zone.getAttribute('data-drop-kind');
+        if (dropKind === 'root') {
+          const rootIndex = parseInt(zone.getAttribute('data-root-index') || '-1', 10);
+          if (rootIndex >= 0) this.applyRootDrop(dragged, rootIndex);
+        } else if (dropKind === 'folder-child' && dragged.type === 'server') {
+          const folderId = zone.getAttribute('data-folder-id');
+          const childIndex = parseInt(zone.getAttribute('data-child-index') || '-1', 10);
+          if (folderId && childIndex >= 0) {
+            connectionStore.moveServerToFolder(dragged.host, dragged.port, folderId, childIndex);
+          }
+        }
+        this.clearDragState();
+      });
+    });
+
+    const folderHeaders = Array.from(railEl.querySelectorAll('.server-rail-folder-header')) as HTMLElement[];
+    folderHeaders.forEach((header) => {
+      header.addEventListener('dragover', (event) => {
+        if (!this.draggedRailItem || this.draggedRailItem.type !== 'server') return;
+        const folderId = header.getAttribute('data-folder-id');
+        if (!folderId) return;
+        event.preventDefault();
+        const transfer = (event as DragEvent).dataTransfer;
+        if (transfer) transfer.dropEffect = 'move';
+        this.activateFolderHeader(header);
+      });
+
+      header.addEventListener('dragleave', (event) => {
+        const next = (event as DragEvent).relatedTarget as Node | null;
+        if (next && header.contains(next)) return;
+        header.classList.remove('drag-over');
+      });
+
+      header.addEventListener('drop', (event) => {
+        if (!this.draggedRailItem || this.draggedRailItem.type !== 'server') return;
+        const folderId = header.getAttribute('data-folder-id');
+        if (!folderId) return;
+        event.preventDefault();
+        connectionStore.moveServerToFolder(
+          this.draggedRailItem.host,
+          this.draggedRailItem.port,
+          folderId
+        );
+        this.clearDragState();
+      });
+    });
+  }
+
+  private activateDropZone(zone: HTMLElement): void {
+    const railEl = document.getElementById('server-rail');
+    if (!railEl) return;
+    railEl.querySelectorAll('.server-rail-drop-zone.active').forEach((item) => {
+      if (item !== zone) item.classList.remove('active');
+    });
+    railEl.querySelectorAll('.server-rail-folder-header.drag-over').forEach((item) => {
+      item.classList.remove('drag-over');
+    });
+    zone.classList.add('active');
+  }
+
+  private activateFolderHeader(header: HTMLElement): void {
+    const railEl = document.getElementById('server-rail');
+    if (!railEl) return;
+    railEl.querySelectorAll('.server-rail-drop-zone.active').forEach((item) => {
+      item.classList.remove('active');
+    });
+    railEl.querySelectorAll('.server-rail-folder-header.drag-over').forEach((item) => {
+      if (item !== header) item.classList.remove('drag-over');
+    });
+    header.classList.add('drag-over');
+  }
+
+  private clearDragState(): void {
+    this.draggedRailItem = null;
+    const railEl = document.getElementById('server-rail');
+    if (!railEl) return;
+    railEl.querySelectorAll('.server-rail-drop-zone.active').forEach((item) => {
+      item.classList.remove('active');
+    });
+    railEl.querySelectorAll('.server-rail-folder-header.drag-over, .dragging').forEach((item) => {
+      item.classList.remove('drag-over', 'dragging');
+    });
+  }
+
+  private canDropOnZone(zone: HTMLElement): boolean {
+    if (!this.draggedRailItem) return false;
+    const dropKind = zone.getAttribute('data-drop-kind');
+    if (dropKind === 'root') return true;
+    return dropKind === 'folder-child' && this.draggedRailItem.type === 'server';
+  }
+
+  private applyRootDrop(dragged: DraggedRailItem, rootIndex: number): void {
+    if (dragged.type === 'folder') {
+      const fromIndex = connectionStore.railLayout.findIndex(
+        (node) => node.type === 'folder' && node.id === dragged.folderId
+      );
+      if (fromIndex >= 0) connectionStore.moveRailNode(fromIndex, rootIndex);
+      return;
+    }
+
+    connectionStore.moveServerToFolder(dragged.host, dragged.port, null, rootIndex);
+  }
+
+  private promptFolderName(initialValue: string = ''): string | null {
+    const value = window.prompt(t('main.folderNamePrompt'), initialValue);
+    if (value === null) return null;
+    const trimmed = value.trim();
+    return trimmed || null;
   }
 
   private async connectToSavedServer(server: SavedServer): Promise<void> {
@@ -257,14 +676,17 @@ export class ServerRailView {
         password: server.password,
         lastConnected: Date.now(),
       });
-    } catch (err: any) {
+    } catch (err: unknown) {
+      const message = err instanceof Error
+        ? err.message
+        : t('main.serverOfflineMessage', { name: server.name || server.host });
       // The failed session was already dropped and the previous server restored
       // by `openServerSession`. Emitting a global disconnect here would tear
       // down that still-healthy server and dump the user on the home screen
       // (#400) — showing the error is enough.
       await showAlert({
         title: t('main.serverOfflineTitle'),
-        message: err?.message || t('main.serverOfflineMessage', { name: server.name || server.host }),
+        message,
       });
     }
   }
@@ -301,10 +723,10 @@ export class ServerRailView {
 
       connectionStore.saveCreatedServer({ ...created, lastStarted: Date.now() });
       return true;
-    } catch (err: any) {
+    } catch (err: unknown) {
       await showAlert({
         title: t('main.serverStartFailedTitle'),
-        message: err?.message || t('main.serverStartFailedMessage'),
+        message: err instanceof Error ? err.message : t('main.serverStartFailedMessage'),
       });
       return false;
     }
