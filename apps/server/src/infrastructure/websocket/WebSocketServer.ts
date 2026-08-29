@@ -504,7 +504,12 @@ export class WebSocketServer {
 
     // Send AUTH_SUCCESS to the connecting client
     const successPayload: AuthSuccessPayload = {
-      server: result.serverDetails,
+      server: {
+        ...result.serverDetails,
+        // Told at login because it never changes while the process lives: it
+        // depends on the host OS and on coturn being installed (#429).
+        turnAvailability: CoturnManager.describeAvailability(),
+      },
       currentUser: result.user,
       roles: result.serverDetails.roles,
       userRoles: result.serverDetails.userRoles,
@@ -847,7 +852,7 @@ export class WebSocketServer {
     if (payload.turnEnabled === true) {
       const reason = CoturnManager.getUnavailabilityReason();
       if (reason) {
-        this.sendError(session.ws, ProtocolErrorCode.BAD_REQUEST, reason, requestId);
+        this.sendError(session.ws, ProtocolErrorCode.TURN_UNAVAILABLE, reason, requestId);
         return;
       }
     }

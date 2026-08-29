@@ -3,7 +3,7 @@ import fs from 'fs';
 import os from 'os';
 import path from 'path';
 import { ChildProcess, spawn, spawnSync } from 'child_process';
-import { IceServerConfig } from '@monky/shared';
+import { IceServerConfig, TurnAvailability, TurnUnavailableReason } from '@monky/shared';
 import { Logger } from '../logger/Logger';
 
 /** Default STUN servers, used whether or not the relay is on (#425). */
@@ -83,19 +83,39 @@ export class CoturnManager {
   }
 
   /**
+   * Why the relay cannot run here, as a code, or null when it can.
+   *
+   * A code rather than a sentence because this crosses the wire to clients that
+   * may be running in another language (#429). The CLI, which is always read by
+   * whoever administers the host, keeps the prose version below.
+   */
+  public static getUnavailability(): TurnUnavailableReason | null {
+    if (!CoturnManager.isSupportedPlatform()) return 'unsupported-platform';
+    if (!CoturnManager.isInstalled()) return 'not-installed';
+    return null;
+  }
+
+  /** Availability as reported to clients, so the UI can disable the toggle. */
+  public static describeAvailability(): TurnAvailability {
+    const reason = CoturnManager.getUnavailability();
+    return reason ? { supported: false, reason } : { supported: true };
+  }
+
+  /**
    * Explains why the relay cannot start here, or null when it can.
    *
    * Returning the reason rather than a bare boolean lets both the CLI and the
    * desktop client show the operator something actionable.
    */
   public static getUnavailabilityReason(): string | null {
-    if (!CoturnManager.isSupportedPlatform()) {
-      return 'O relay TURN só é suportado em servidores Linux. Não existe pacote do coturn para Windows ou macOS.';
+    switch (CoturnManager.getUnavailability()) {
+      case 'unsupported-platform':
+        return 'O relay TURN só é suportado em servidores Linux. Não existe pacote do coturn para Windows ou macOS.';
+      case 'not-installed':
+        return 'O coturn não está instalado. Rode "sudo bash scripts/install-turn.sh" no host do servidor.';
+      default:
+        return null;
     }
-    if (!CoturnManager.isInstalled()) {
-      return 'O coturn não está instalado. Rode "sudo bash scripts/install-turn.sh" no host do servidor.';
-    }
-    return null;
   }
 
   public isRunning(): boolean {

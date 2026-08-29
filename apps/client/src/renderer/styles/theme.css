@@ -6341,3 +6341,11 @@ button:hover .role-option-check:not(.checked) {
   transform: translateX(16px);
   background: #ffffff;
 }
+/* A switch the host cannot honour has to look inert, not merely refuse the
+   click silently (#429). */
+.toggle-switch:has(input:disabled) {
+  cursor: not-allowed;
+}
+.toggle-switch input:disabled + .toggle-slider {
+  opacity: 0.45;
+}

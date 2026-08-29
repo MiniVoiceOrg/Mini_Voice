@@ -26,6 +26,7 @@ const ERROR_KEYS: Record<ProtocolErrorCode, TranslationKey> = {
   [ProtocolErrorCode.ATTACHMENT_TOO_LARGE]: 'protocolError.attachmentTooLarge',
   [ProtocolErrorCode.ATTACHMENT_INVALID_TYPE]: 'protocolError.attachmentInvalidType',
   [ProtocolErrorCode.STORAGE_FULL]: 'protocolError.storageFull',
+  [ProtocolErrorCode.TURN_UNAVAILABLE]: 'protocolError.turnUnavailable',
 };
 
 /**
