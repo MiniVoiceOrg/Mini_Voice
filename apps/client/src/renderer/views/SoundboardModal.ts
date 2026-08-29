@@ -191,10 +191,10 @@ export class SoundboardModal {
 
     return `
       <div class="sb-player-bar" data-userid="${escapeHtml(userId)}">
-        <span class="material-symbols-outlined md-18 sb-player-icon">graphic_eq</span>
+        <span class="material-symbols-outlined md-20 sb-player-icon">graphic_eq</span>
         
         <div class="sb-player-progress-container">
-          <div style="display: flex; align-items: center; justify-content: space-between; gap: 8px;">
+          <div style="display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 2px;">
             <div style="display: flex; align-items: center; gap: 6px; min-width: 0; overflow: hidden;">
               <span class="sb-player-item-name" title="${escapeHtml(soundName)}">
                 ${escapeHtml(soundName)}
@@ -219,7 +219,7 @@ export class SoundboardModal {
         </div>
 
         <button type="button" class="sb-player-stop-btn" data-userid="${escapeHtml(userId)}" title="${t('soundboard.stopPlayback')}">
-          <span class="material-symbols-outlined md-14">stop</span>
+          <span class="material-symbols-outlined md-16">stop</span>
           <span>${t('stage.stop')}</span>
         </button>
       </div>

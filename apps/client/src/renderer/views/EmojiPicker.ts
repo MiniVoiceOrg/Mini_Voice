@@ -9,7 +9,7 @@ import { normalizeSearchString } from '../utils/search';
 type PickerTab = 'emojis' | 'stickers';
 
 export interface EmojiPickerOptions {
-  /** Positioned ancestor the popover is anchored inside (`.chat-input-container` or input wrapper). */
+  /** Positioned ancestor the popover is anchored inside (`.chat-input-container` or document.body). */
   container: HTMLElement;
   /** Button that toggles the picker; clicks on it must not count as "outside". */
   anchor: HTMLElement;
@@ -17,8 +17,10 @@ export interface EmojiPickerOptions {
   onSelectSticker?: (sticker: StickerEntry) => void;
   /** If true, only emojis are available (no stickers tab) */
   emojiOnly?: boolean;
-  /** Alignment / position styling */
+  /** Alignment / position styling (when using static relative container) */
   position?: 'bottom-right' | 'bottom-left' | 'top-right' | 'top-left';
+  /** If true, uses fixed viewport coordinates based on anchor bounding rect */
+  floating?: boolean;
 }
 
 /** One representative emoji per category, used as the quick-nav icon. */
@@ -88,15 +90,46 @@ export class EmojiPicker {
     const root = document.createElement('div');
     const posClass = this.options.position ? ` emoji-picker--${this.options.position}` : '';
     const emojiOnlyClass = this.options.emojiOnly ? ' emoji-picker--emoji-only' : '';
-    root.className = `emoji-picker${posClass}${emojiOnlyClass}`;
+    const floatingClass = this.options.floating ? ' emoji-picker--floating' : '';
+    root.className = `emoji-picker${posClass}${emojiOnlyClass}${floatingClass}`;
     root.innerHTML = this.renderShell();
     this.options.container.appendChild(root);
     this.root = root;
+
+    if (this.options.floating) {
+      this.positionFloating(root);
+    }
 
     this.bindShell();
     this.renderBody();
 
     root.querySelector<HTMLInputElement>('.emoji-picker-search-input')?.focus();
+  }
+
+  private positionFloating(root: HTMLElement): void {
+    const anchorRect = this.options.anchor.getBoundingClientRect();
+    const pickerWidth = 360;
+    const pickerHeight = this.options.emojiOnly ? 380 : 420;
+
+    // By default, open below the anchor if there is room, otherwise open above
+    let top = anchorRect.bottom + 6;
+    if (top + pickerHeight > window.innerHeight - 12) {
+      top = Math.max(12, anchorRect.top - pickerHeight - 6);
+    }
+
+    // Align right edge of picker with right edge of anchor
+    let left = anchorRect.right - pickerWidth;
+    if (left < 12) {
+      left = 12;
+    }
+    if (left + pickerWidth > window.innerWidth - 12) {
+      left = Math.max(12, window.innerWidth - pickerWidth - 12);
+    }
+
+    root.style.position = 'fixed';
+    root.style.top = `${Math.round(top)}px`;
+    root.style.left = `${Math.round(left)}px`;
+    root.style.zIndex = '10005';
   }
 
   public close(): void {

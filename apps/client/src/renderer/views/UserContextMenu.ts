@@ -91,16 +91,17 @@ export class UserContextMenu {
             class="user-volume-slider"
             type="range"
             min="0"
-            max="200"
+            max="100"
             value="${currentVol}"
             step="1"
+            style="--slider-fill: ${currentVol}%;"
           >
         </div>
 
         <div class="context-menu-quick-btns">
           <button id="ctx-vol-0" class="btn-ctx-quick" title="${t('userMenu.muteUserTitle')}">${t('userMenu.volumeMuted')}</button>
+          <button id="ctx-vol-50" class="btn-ctx-quick" title="50%">50%</button>
           <button id="ctx-vol-100" class="btn-ctx-quick" title="${t('userMenu.restoreVolume')}">100%</button>
-          <button id="ctx-vol-200" class="btn-ctx-quick" title="${t('userMenu.maxVolume')}">200%</button>
         </div>
       </div>
 
@@ -223,7 +224,7 @@ export class UserContextMenu {
   private updateSliderTrackFill(volume: number): void {
     const slider = this.menuEl?.querySelector('#ctx-volume-slider') as HTMLInputElement | null;
     if (slider) {
-      const percentage = Math.max(0, Math.min(100, (volume / 200) * 100));
+      const percentage = Math.max(0, Math.min(100, volume));
       slider.style.setProperty('--slider-fill', `${percentage}%`);
     }
   }
@@ -234,12 +235,12 @@ export class UserContextMenu {
     btns.forEach((b) => b.classList.remove('active'));
 
     if (volume === 0) this.menuEl.querySelector('#ctx-vol-0')?.classList.add('active');
+    else if (volume === 50) this.menuEl.querySelector('#ctx-vol-50')?.classList.add('active');
     else if (volume === 100) this.menuEl.querySelector('#ctx-vol-100')?.classList.add('active');
-    else if (volume === 200) this.menuEl.querySelector('#ctx-vol-200')?.classList.add('active');
   }
 
   private applyVolume(user: UserSummary, volume: number): void {
-    const clamped = Math.max(0, Math.min(200, Math.round(volume)));
+    const clamped = Math.max(0, Math.min(100, Math.round(volume)));
     const badge = this.menuEl?.querySelector('#ctx-volume-badge');
     const icon = this.menuEl?.querySelector('#ctx-volume-icon');
     const slider = this.menuEl?.querySelector('#ctx-volume-slider') as HTMLInputElement | null;
@@ -297,8 +298,8 @@ export class UserContextMenu {
     const slider = this.menuEl.querySelector('#ctx-volume-slider') as HTMLInputElement | null;
     slider?.addEventListener('input', () => this.applyVolume(user, parseInt(slider.value, 10)));
     this.menuEl.querySelector('#ctx-vol-0')?.addEventListener('click', () => this.applyVolume(user, 0));
+    this.menuEl.querySelector('#ctx-vol-50')?.addEventListener('click', () => this.applyVolume(user, 50));
     this.menuEl.querySelector('#ctx-vol-100')?.addEventListener('click', () => this.applyVolume(user, 100));
-    this.menuEl.querySelector('#ctx-vol-200')?.addEventListener('click', () => this.applyVolume(user, 200));
     // Each submenu toggles on click and closes its siblings, so opening "Move"
     // never leaves "Roles" hanging open next to it (#258).
     this.menuEl.querySelectorAll<HTMLElement>('.ctx-submenu-wrap').forEach((wrap) => {
