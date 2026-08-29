@@ -893,7 +893,8 @@ export class VoiceStageView {
     const isSelfDeafened = isLocal ? voiceStore.isDeafened : (p.voiceState?.isDeafened ?? false);
     const isMicMuted = isSelfMuted || isServerMuted || isSelfDeafened || isServerDeafened;
     const isPeerFailed = !isLocal && (p.peerConnectionFailed ?? false);
-    const isRelayed = !isLocal && !isPeerFailed && (p.isRelayed ?? false);
+    const isConnecting = !isLocal && !isPeerFailed && (p.isConnecting ?? false);
+    const isRelayed = !isLocal && !isPeerFailed && !isConnecting && (p.isRelayed ?? false);
     const avatarSrc = getAvatarUrl(p.user.avatarUrl);
 
     const isVideoTile = tile.kind === 'camera' || tile.kind === 'screen';
@@ -973,6 +974,7 @@ export class VoiceStageView {
       <div class="stage-badges-overlay">
         <span>${label}</span>
         ${isPeerFailed ? `<span class="material-symbols-outlined md-14 stage-peer-failed-icon" title="${peerFailureTooltip('stage.peerConnectionFailed')}">link_off</span>` : ''}
+        ${isConnecting ? `<span class="material-symbols-outlined md-14 stage-peer-connecting-icon" title="${t('stage.peerConnecting')}">sync</span>` : ''}
         ${isRelayed ? `<span class="material-symbols-outlined md-14" style="color: var(--warning, #f0b232);" title="${t('stage.peerRelayed')}">swap_horiz</span>` : ''}
         ${isServerDeafened ? `<span class="material-symbols-outlined md-14" style="color: #f0b232;" title="${t('permissions.serverDeafened')}">hearing_disabled</span>` : ''}
         ${isServerMuted ? `<span class="material-symbols-outlined md-14" style="color: #f0b232;" title="${t('permissions.serverMuted')}">admin_panel_settings</span>` : ''}

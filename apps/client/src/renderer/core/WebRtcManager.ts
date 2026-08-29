@@ -551,6 +551,11 @@ export class WebRtcManager {
   private beginPeerFailureCountdown(peerSessionId: string): void {
     if (this.peerFailureTimers.has(peerSessionId) || this.failedPeers.has(peerSessionId)) return;
 
+    // Both entry points for this countdown (first attempt and recovery) are
+    // exactly the moments when media is not flowing yet, which is what the
+    // "connecting" indicator reports (#433).
+    this.voiceParticipants.setPeerConnecting(peerSessionId, true);
+
     const timer = setTimeout(() => {
       this.peerFailureTimers.delete(peerSessionId);
       const session = this.peers.get(peerSessionId);
@@ -581,6 +586,7 @@ export class WebRtcManager {
     if (this.failedPeers.has(peerSessionId)) return;
     this.failedPeers.add(peerSessionId);
     this.clearPeerFailureCountdown(peerSessionId);
+    this.voiceParticipants.setPeerConnecting(peerSessionId, false);
     this.voiceParticipants.setPeerConnectionFailed(peerSessionId, true);
     void this.sendDiagnosticsReport(peerSessionId, session);
     appEvents.emit('remote.peer_failed', { sessionId: peerSessionId });
@@ -609,6 +615,7 @@ export class WebRtcManager {
 
   private forgetPeerFailureState(peerSessionId: string): void {
     this.clearPeerFailureCountdown(peerSessionId);
+    this.voiceParticipants.setPeerConnecting(peerSessionId, false);
     this.failedPeers.delete(peerSessionId);
     this.everConnectedPeers.delete(peerSessionId);
   }
@@ -922,6 +929,7 @@ export class WebRtcManager {
 
       if (state === 'connected') {
         this.clearPeerTimers(session);
+        this.voiceParticipants.setPeerConnecting(peerSessionId, false);
         session.iceRestartAttempts = 0;
         session.reconnectAttempts = 0;
         this.applyBitrateConstraints();
