@@ -191,7 +191,7 @@ export class SettingsModal {
       onSaveNickname: async (name: string) => {
         if (serverStore.currentUser) {
           serverStore.currentUser.nickname = name;
-          networkClient.send(MessageType.USER_CHANGE_NICKNAME, { nickname: name });
+          networkClient.send(MessageType.USER_CHANGE_NICKNAME, { newNickname: name });
         }
         connectionStore.saveUserProfile(name);
       },
