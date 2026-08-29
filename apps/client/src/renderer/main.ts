@@ -344,6 +344,9 @@ class App {
         this.syncLocalVoiceMediaState();
 
         webRtcManager.setCurrentSessionId(payload.currentUser.sessionId || payload.currentUser.id);
+        // Adopt the relay this server offers before any peer connection is
+        // opened, so calls started right after login can already use it (#425).
+        webRtcManager.setIceServers(payload.iceServers);
         // Drop any stale peer connections left over from a dropped session.
         webRtcManager.closeAllPeers();
       }

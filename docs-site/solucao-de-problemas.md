@@ -10,6 +10,7 @@
 | Tela compartilhada sem som | Compartilhe uma tela inteira e confira o volume do app de origem |
 | Nada em Servidores na Rede | A descoberta só funciona na mesma LAN; clique em Buscar de novo e verifique UDP `41234` no firewall |
 | Um participante ficou mudo só para mim | Clique com o botão direito nele e volte o volume individual para 100% |
+| Só não consigo falar com **uma** pessoa específica (com o resto funciona) | Aparece um ícone vermelho `link_off` ao lado dela. Os dois provavelmente estão atrás de CGNAT e não há rota direta. Quem hospeda pode ligar o [relay TURN](/cli#relay-de-midia-turn); a alternativa é os dois entrarem numa VPN |
 | O Avast (ou outro antivírus) apita ao instalar/atualizar | Falso positivo — veja [Antivírus: Avast e similares](#antivirus-avast-e-similares) |
 | No macOS, o compartilhamento de tela pede autorização mesmo já estando liberado | A permissão ficou presa na versão anterior — veja [macOS: a permissão de tela para de valer após atualizar](#macos-a-permissao-de-tela-para-de-valer-apos-atualizar) |
 

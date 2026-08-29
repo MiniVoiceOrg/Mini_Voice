@@ -333,6 +333,7 @@ export class AuthService {
       maxUsers: server.maxUsers,
       hasPassword: !!(server.passwordHash && server.passwordHash.length > 0),
       allowSoundboard: server.allowSoundboard !== false,
+      turnEnabled: Boolean(server.turnEnabled),
       iconUrl: this.avatarStorage.getPublicUrl(server.iconPath),
       channels: visibleChannels.map((c) => ({
         id: c.id,
@@ -397,6 +398,7 @@ export class AuthService {
     maxAttachmentFileBytes?: number;
     maxAttachmentStorageBytes?: number;
     maxUsers?: number;
+    turnEnabled?: boolean;
   }): Promise<{
     success: boolean;
     name?: string;
@@ -405,6 +407,7 @@ export class AuthService {
     iconUrl?: string | null;
     attachmentStorage?: AttachmentStorageInfo;
     maxUsers?: number;
+    turnEnabled?: boolean;
     errorMessage?: string;
   }> {
     const server = await this.serverRepo.getServer();
@@ -465,6 +468,16 @@ export class AuthService {
       updates.allowSoundboard = Boolean(payload.allowSoundboard);
     }
 
+    if (payload.turnEnabled !== undefined) {
+      updates.turnEnabled = Boolean(payload.turnEnabled);
+      // Mint the shared secret the first time the relay is switched on, and
+      // keep it afterwards: rotating it would invalidate every credential
+      // already handed out, dropping the calls currently being relayed.
+      if (updates.turnEnabled && !server.turnSecret) {
+        updates.turnSecret = randomBytes(32).toString('hex');
+      }
+    }
+
     if (payload.iconBase64 !== undefined) {
       if (!payload.iconBase64 || payload.iconBase64.trim() === '') {
         if (server.iconPath) {
@@ -503,6 +516,7 @@ export class AuthService {
       iconUrl: this.avatarStorage.getPublicUrl(updatedServer?.iconPath),
       attachmentStorage: await this.attachmentService.getStorageInfo(),
       maxUsers: updatedServer?.maxUsers ?? server.maxUsers,
+      turnEnabled: Boolean(updatedServer?.turnEnabled),
     };
   }
 }

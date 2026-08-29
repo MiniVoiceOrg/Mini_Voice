@@ -16,7 +16,7 @@ export class SqliteServerRepository implements IServerRepository {
   constructor(private db: IDatabaseDriver) {}
 
   async getServer(): Promise<ServerRecord | null> {
-    const row = this.db.prepare('SELECT id, name, password_hash as passwordHash, created_at as createdAt, max_users as maxUsers, owner_user_id as ownerUserId, allow_soundboard as allowSoundboard, icon_path as iconPath, max_attachment_file_bytes as maxAttachmentFileBytes, max_attachment_storage_bytes as maxAttachmentStorageBytes FROM server_meta LIMIT 1').get() as any;
+    const row = this.db.prepare('SELECT id, name, password_hash as passwordHash, created_at as createdAt, max_users as maxUsers, owner_user_id as ownerUserId, allow_soundboard as allowSoundboard, icon_path as iconPath, max_attachment_file_bytes as maxAttachmentFileBytes, max_attachment_storage_bytes as maxAttachmentStorageBytes, turn_enabled as turnEnabled, turn_secret as turnSecret FROM server_meta LIMIT 1').get() as any;
     if (!row) return null;
     return {
       id: row.id,
@@ -29,6 +29,8 @@ export class SqliteServerRepository implements IServerRepository {
       iconPath: row.iconPath || null,
       maxAttachmentFileBytes: row.maxAttachmentFileBytes ?? null,
       maxAttachmentStorageBytes: row.maxAttachmentStorageBytes ?? null,
+      turnEnabled: Boolean(row.turnEnabled),
+      turnSecret: row.turnSecret ?? null,
     };
   }
 
@@ -82,6 +84,14 @@ export class SqliteServerRepository implements IServerRepository {
     if (server.maxAttachmentStorageBytes !== undefined) {
       fields.push('max_attachment_storage_bytes = ?');
       values.push(server.maxAttachmentStorageBytes);
+    }
+    if (server.turnEnabled !== undefined) {
+      fields.push('turn_enabled = ?');
+      values.push(server.turnEnabled ? 1 : 0);
+    }
+    if (server.turnSecret !== undefined) {
+      fields.push('turn_secret = ?');
+      values.push(server.turnSecret);
     }
 
     if (fields.length === 0) return;

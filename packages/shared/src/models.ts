@@ -149,6 +149,14 @@ export interface ServerDetails {
   myPermissions?: number;
   // Attachment-storage limits + current usage for the settings UI (#11).
   attachmentStorage?: AttachmentStorageInfo;
+  /**
+   * Whether the host is relaying media through its own TURN server (#425).
+   *
+   * Purely informational for the settings UI: the credentials clients actually
+   * dial live in `AuthSuccessPayload.iceServers`, never here, because they are
+   * per-user and short-lived.
+   */
+  turnEnabled?: boolean;
 }
 
 export interface WebRtcSignalPayload {

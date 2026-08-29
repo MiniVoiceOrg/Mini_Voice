@@ -69,6 +69,7 @@ import { SignalingService } from '../../application/services/SignalingService';
 import { UserService } from '../../application/services/UserService';
 import { IServerRepository } from '../../domain/repositories';
 import { scanServerNetworkInterfaces } from '../discovery/ServerIpScanner';
+import { CoturnManager } from '../turn/CoturnManager';
 import { Logger } from '../logger/Logger';
 
 interface ClientSession {
@@ -93,6 +94,15 @@ interface ClientSession {
    * changes.
    */
   visibleChannelIds?: Set<string>;
+  /**
+   * Hostname this client used to reach the server, from the upgrade request's
+   * `Host` header (#425).
+   *
+   * TURN URLs are built from it instead of an address the server guesses about
+   * itself, which would be wrong behind a reverse proxy, on a multi-homed host
+   * or on a LAN. Whatever brought the client here is reachable by definition.
+   */
+  requestHost?: string;
 }
 
 export class WebSocketServer {
@@ -114,7 +124,8 @@ export class WebSocketServer {
     private serverRepo: IServerRepository,
     private attachmentService: AttachmentService,
     private permissionService: PermissionService,
-    private roleService: RoleService
+    private roleService: RoleService,
+    private coturnManager: CoturnManager
   ) {
     this.wss = new WSServer({ server: this.server });
     this.setupWss();
@@ -157,8 +168,27 @@ export class WebSocketServer {
     return targets.length;
   }
 
-  private setupWss(): void {
-    this.wss.on('connection', (ws: WebSocket, req: http.IncomingMessage) => {
+  /**
+   * Extracts the hostname from a `Host` header, dropping the port (#425).
+   *
+   * The port has to go because the TURN listener is on 3478, not on whatever
+   * port the client used to reach the API. IPv6 literals arrive bracketed
+   * (`[::1]:3000`) and the brackets are kept, since ICE URLs need them too.
+   */
+  private static parseRequestHostname(header: string | undefined): string | undefined {
+    const raw = (header || '').trim();
+    if (!raw) return undefined;
+
+    if (raw.startsWith('[')) {
+      const end = raw.indexOf(']');
+      return end > 0 ? raw.slice(0, end + 1) : undefined;
+    }
+
+    const host = raw.split(':')[0].trim();
+    return host.length > 0 ? host : undefined;
+  }
+
+  private setupWss(): void {    this.wss.on('connection', (ws: WebSocket, req: http.IncomingMessage) => {
       const ip = req.socket.remoteAddress || 'unknown';
       Logger.info('NETWORK', `New connection established from ${ip}`);
 
@@ -166,6 +196,7 @@ export class WebSocketServer {
         ws,
         isAlive: true,
         ip,
+        requestHost: WebSocketServer.parseRequestHostname(req.headers.host),
       };
       this.sessions.set(ws, session);
 
@@ -479,6 +510,7 @@ export class WebSocketServer {
       userRoles: result.serverDetails.userRoles,
       ownerId: result.serverDetails.ownerId,
       myPermissions: result.serverDetails.myPermissions,
+      iceServers: await this.buildIceServersFor(result.user.id, session),
     };
 
     this.send(session.ws, {
@@ -499,8 +531,52 @@ export class WebSocketServer {
     Logger.info('NETWORK', `User ${result.user.nickname} (${result.user.id}) joined the server.`);
   }
 
-  private async handleChatSend(
-    session: ClientSession,
+  /**
+   * ICE servers for one client: STUN always, plus the relay when it is up (#425).
+   *
+   * The credentials are minted per connection and expire on their own, so a
+   * leaked `AUTH_SUCCESS` cannot be replayed forever, and a member removed from
+   * the server loses relay access once their current set lapses.
+   */
+  /**
+   * Brings the relay in line with the freshly saved setting (#425).
+   *
+   * Members already in a call keep the ICE servers they were given at login, so
+   * switching the relay on only helps the calls started afterwards — which is
+   * why the UI tells the operator to reconnect.
+   */
+  private async applyTurnState(enabled: boolean): Promise<void> {
+    try {
+      if (!enabled) {
+        await this.coturnManager.stop();
+        return;
+      }
+      const server = await this.serverRepo.getServer();
+      if (!server?.turnSecret) {
+        Logger.warn('NETWORK', 'TURN relay enabled without a shared secret; leaving it off.');
+        return;
+      }
+      await this.coturnManager.start(server.turnSecret);
+    } catch (error) {
+      Logger.error('NETWORK', 'Failed to apply the TURN relay state', error);
+    }
+  }
+
+  private async buildIceServersFor(userId: string, session: ClientSession) {
+    try {
+      const server = await this.serverRepo.getServer();
+      return this.coturnManager.buildIceServers(
+        userId,
+        session.requestHost ?? null,
+        server?.turnSecret ?? null
+      );
+    } catch (error) {
+      Logger.warn('NETWORK', 'Failed to build the ICE server list; sending STUN only.', error);
+      return this.coturnManager.buildIceServers(userId, null, null);
+    }
+  }
+
+  private async handleChatSend(    session: ClientSession,
     payload: ChatSendPayload,
     requestId?: string
   ): Promise<void> {
@@ -766,6 +842,16 @@ export class WebSocketServer {
   ): Promise<void> {
     if (!session.user) return;
 
+    // Reject an impossible relay before persisting it, so the toggle never
+    // shows "on" while nothing is actually relaying (#425).
+    if (payload.turnEnabled === true) {
+      const reason = CoturnManager.getUnavailabilityReason();
+      if (reason) {
+        this.sendError(session.ws, ProtocolErrorCode.BAD_REQUEST, reason, requestId);
+        return;
+      }
+    }
+
     const result = await this.authService.updateServerSettings(payload);
     if (!result.success) {
       this.sendError(
@@ -777,6 +863,10 @@ export class WebSocketServer {
       return;
     }
 
+    if (payload.turnEnabled !== undefined) {
+      await this.applyTurnState(Boolean(result.turnEnabled));
+    }
+
     const broadcastPayload: ServerSettingsUpdatedPayload = {
       name: result.name!,
       hasPassword: result.hasPassword!,
@@ -784,6 +874,7 @@ export class WebSocketServer {
       iconUrl: result.iconUrl,
       attachmentStorage: result.attachmentStorage,
       maxUsers: result.maxUsers,
+      turnEnabled: result.turnEnabled,
     };
 
     // Broadcast updated server settings to all clients

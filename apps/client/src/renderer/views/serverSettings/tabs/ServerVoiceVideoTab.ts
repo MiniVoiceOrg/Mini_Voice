@@ -22,6 +22,22 @@ export class ServerVoiceVideoTab {
           <span class="toggle-slider"></span>
         </label>
       </div>
+
+      <div style="display: flex; align-items: center; justify-content: space-between; background: var(--bg-card); padding: 12px 14px; border-radius: var(--radius-md); border: 1px solid var(--border-color); margin-top: 10px;">
+        <div>
+          <label for="checkbox-turn-enabled" style="font-size: 13px; font-weight: 600; color: var(--text-primary); display: flex; align-items: center; gap: 6px; cursor: pointer; margin-bottom: 2px;">
+            <span class="material-symbols-outlined md-18" style="color: var(--accent-primary);">swap_horiz</span>
+            <span>${t('serverSettings.turnEnabled')}</span>
+          </label>
+          <div style="font-size: 11px; color: var(--text-muted);">
+            ${t('serverSettings.turnEnabledDesc')}
+          </div>
+        </div>
+        <label class="toggle-switch" aria-label="${t('serverSettings.turnEnabled')}">
+          <input id="checkbox-turn-enabled" type="checkbox" ${s.turnEnabled ? 'checked' : ''}>
+          <span class="toggle-slider"></span>
+        </label>
+      </div>
     `;
   }
 }

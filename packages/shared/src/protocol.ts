@@ -192,6 +192,8 @@ export interface ServerUpdateSettingsPayload {
   // Membership cap counted in registered members, or LIMITS.MAX_USERS_UNLIMITED
   // to remove the cap entirely (#403).
   maxUsers?: number;
+  /** Turn the host's TURN relay on or off (#425). Linux-only; see CoturnManager. */
+  turnEnabled?: boolean;
 }
 
 export interface RoleCreatePayload {
@@ -302,6 +304,21 @@ export interface RtcCandidateInfo {
 }
 
 // Server Responses & Broadcast Payloads
+
+/**
+ * One ICE server the client should dial, shaped exactly like the browser's
+ * `RTCIceServer` so it can be handed to `RTCPeerConnection` untouched (#425).
+ *
+ * TURN entries carry ephemeral credentials derived per user, so this is
+ * deliberately sent in `AUTH_SUCCESS` (addressed to one client) rather than in
+ * `ServerDetails`, which is broadcast.
+ */
+export interface IceServerConfig {
+  urls: string[];
+  username?: string;
+  credential?: string;
+}
+
 export interface AuthSuccessPayload {
   server: ServerDetails;
   currentUser: UserSummary;
@@ -309,6 +326,13 @@ export interface AuthSuccessPayload {
   userRoles?: UserRoleSummary[];
   ownerId?: string | null;
   myPermissions?: number;
+  /**
+   * STUN/TURN servers for this client's WebRTC connections (#425).
+   *
+   * Optional: servers released before TURN support omit it, and clients fall
+   * back to their built-in STUN list, which is the previous behaviour.
+   */
+  iceServers?: IceServerConfig[];
 }
 
 export interface ServerErrorPayload {
@@ -333,6 +357,8 @@ export interface ServerSettingsUpdatedPayload {
   attachmentStorage?: AttachmentStorageInfo;
   // Membership cap in registered members; LIMITS.MAX_USERS_UNLIMITED means none (#403).
   maxUsers?: number;
+  /** Current state of the host's TURN relay (#425). */
+  turnEnabled?: boolean;
 }
 
 export interface SoundboardPlayedPayload {

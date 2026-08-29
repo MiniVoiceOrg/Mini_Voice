@@ -174,7 +174,8 @@ export class ServerStore {
     allowSoundboard?: boolean,
     iconUrl?: string | null,
     attachmentStorage?: AttachmentStorageInfo,
-    maxUsers?: number
+    maxUsers?: number,
+    turnEnabled?: boolean
   ): void {
     if (this.serverDetails) {
       this.serverDetails.name = name;
@@ -190,6 +191,9 @@ export class ServerStore {
       }
       if (maxUsers !== undefined) {
         this.serverDetails.maxUsers = maxUsers;
+      }
+      if (turnEnabled !== undefined) {
+        this.serverDetails.turnEnabled = turnEnabled;
       }
       this.bus.emit('server.updated');
       this.bus.emit('server.meta_updated', this.serverDetails);

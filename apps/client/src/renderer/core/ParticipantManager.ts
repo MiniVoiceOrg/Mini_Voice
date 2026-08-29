@@ -12,6 +12,14 @@ export interface ParticipantViewModel {
   isReconnecting?: boolean;
   /** True when all WebRTC recovery attempts with this peer have been exhausted. */
   peerConnectionFailed?: boolean;
+  /**
+   * True when media with this peer is going through the server's TURN relay
+   * instead of a direct link (#425).
+   *
+   * Worth surfacing because a relayed call costs the host bandwidth and adds
+   * latency, so the operator benefits from seeing when it is being used.
+   */
+  isRelayed?: boolean;
 }
 
 export class ParticipantManager {
@@ -84,6 +92,14 @@ export class ParticipantManager {
     const participant = this.participants.get(sessionId);
     if (participant && participant.peerConnectionFailed !== failed) {
       participant.peerConnectionFailed = failed;
+      this.scheduleUpdate();
+    }
+  }
+
+  public setPeerRelayed(sessionId: string, relayed: boolean): void {
+    const participant = this.participants.get(sessionId);
+    if (participant && participant.isRelayed !== relayed) {
+      participant.isRelayed = relayed;
       this.scheduleUpdate();
     }
   }

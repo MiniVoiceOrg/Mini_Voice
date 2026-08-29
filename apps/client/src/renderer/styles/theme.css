@@ -4696,6 +4696,14 @@ button[data-loading="1"]::after {
   animation: peer-failed-pulse 2s ease-in-out infinite;
 }
 
+/*
+ * A relayed peer is working, just not directly (#425), so this stays a calm
+ * static amber rather than borrowing the pulsing red used for real failures.
+ */
+.voice-mini-icon.relayed {
+  color: #f0b232;
+}
+
 .share-active-banner {
   display: flex;
   align-items: center;

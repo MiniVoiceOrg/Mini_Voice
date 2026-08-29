@@ -10,6 +10,7 @@
 | Shared screen has no sound | Share a whole screen and check the source app volume |
 | Nothing under Servers on the Network | Discovery only works on the same LAN; click Scan again and check UDP `41234` in the firewall |
 | One participant is silent only for me | Right-click them and set individual volume back to 100% |
+| I can only fail to talk to **one** specific person (everyone else works) | A red `link_off` icon shows next to them. You are both likely behind CGNAT with no direct route. The host can enable the [TURN relay](/en/cli#media-relay-turn); otherwise both of you need a VPN |
 | Avast (or another antivirus) flags the installer/updater | False positive — see [Antivirus: Avast and similar](#antivirus-avast-and-similar) |
 | On macOS, screen sharing keeps asking for permission even though it is already allowed | The permission is stuck on the previous version — see [macOS: screen permission stops working after an update](#macos-screen-permission-stops-working-after-an-update) |
 
