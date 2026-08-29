@@ -491,6 +491,7 @@ export const en: TranslationMap = {
   'main.micMuted': 'Microphone muted',
   'main.audioMuted': 'Audio muted',
   'main.sharingScreen': 'Sharing screen',
+  'main.peerConnectionFailed': 'No direct connection with this participant',
   'main.screenShareNoticeOne': '{name} is sharing their screen',
   'main.screenShareNoticeTwo': '{first} and {second} are sharing their screens',
   'main.screenShareNoticeMany.one': '{first}, {second} and {count} other are sharing their screens',

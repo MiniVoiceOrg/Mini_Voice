@@ -46,6 +46,18 @@ export interface PeerSession {
  * would require an SFU (Selective Forwarding Unit) instead of a mesh.
  */
 export class WebRtcManager {
+  /**
+   * How long a peer may stay unconnected before the user is told the direct
+   * link is not happening (#426).
+   *
+   * This is deliberately independent of the recovery ladder: waiting for the
+   * ICE restarts and hard reconnects to run out took over two minutes, and any
+   * momentary `connected` reset the counters and started it over, so the
+   * warning could never show. The ladder still runs in the background — this
+   * only decides when to warn.
+   */
+  private static readonly PEER_FAILURE_THRESHOLD_MS = 20000;
+
   private peers: Map<string, PeerSession> = new Map();
   private audioElements: Map<string, HTMLAudioElement> = new Map();
   private screenAudioElements: Map<string, HTMLAudioElement> = new Map();
@@ -56,6 +68,25 @@ export class WebRtcManager {
   // Screen video tracks received before screen-video-meta arrived, keyed by streamId
   private pendingScreenVideoTracks: Map<string, { track: MediaStreamTrack; peerSessionId: string }> = new Map();
   private remoteAudioVads: Map<string, { interval: any }> = new Map();
+  /**
+   * One-shot timers that flag a peer as unreachable (#426).
+   *
+   * Keyed by session id rather than stored on the `PeerSession`, because a hard
+   * reconnect throws the session away and builds a new one: a budget living on
+   * the session would restart from zero on every retry and the warning would
+   * never fire.
+   */
+  private peerFailureTimers: Map<string, any> = new Map();
+  /** Peers already flagged as unreachable, so the warning is raised once (#426). */
+  private failedPeers: Set<string> = new Set();
+  /**
+   * Peers we have talked to at least once in this call (#426).
+   *
+   * Separates "never managed to connect" from "connected and dropped": only the
+   * former is reported the moment ICE gives up, since a drop on a link that was
+   * working is usually a blip worth waiting out.
+   */
+  private everConnectedPeers: Set<string> = new Set();
   private localAudioTrack: MediaStreamTrack | null = null;
   private localCameraTrack: MediaStreamTrack | null = null;
   /** Local screen video tracks keyed by share id (#253). */
@@ -367,8 +398,7 @@ export class WebRtcManager {
 
     if (attempts > 3) {
       console.warn(`[WebRTC] Max hard reconnect attempts reached for peer ${peerSessionId}. Aborting recovery.`);
-      this.sendDiagnosticsReport(peerSessionId, existing);
-      appEvents.emit('remote.peer_failed', { sessionId: peerSessionId });
+      this.markPeerFailed(peerSessionId, existing);
       return;
     }
 
@@ -469,11 +499,85 @@ export class WebRtcManager {
   }
 
   private recoverPeerConnection(session: PeerSession, reason: string): void {
+    // Any degradation reopens the window that decides whether to warn the user,
+    // so a peer that drops long after connecting is reported too (#426).
+    this.beginPeerFailureCountdown(session.peerSessionId);
     if (session.iceRestartAttempts < 2) {
       this.triggerIceRestart(session, reason);
     } else {
       this.hardReconnectPeer(session.peerSessionId);
     }
+  }
+
+  /**
+   * Starts counting down to the "no direct connection" warning for a peer.
+   *
+   * Idempotent: an already running countdown is left alone so the elapsed time
+   * survives every ICE restart and hard reconnect in between.
+   */
+  private beginPeerFailureCountdown(peerSessionId: string): void {
+    if (this.peerFailureTimers.has(peerSessionId) || this.failedPeers.has(peerSessionId)) return;
+
+    const timer = setTimeout(() => {
+      this.peerFailureTimers.delete(peerSessionId);
+      const session = this.peers.get(peerSessionId);
+      if (session?.pc.connectionState === 'connected') return;
+      this.markPeerFailed(peerSessionId, session);
+    }, WebRtcManager.PEER_FAILURE_THRESHOLD_MS);
+
+    this.peerFailureTimers.set(peerSessionId, timer);
+  }
+
+  private clearPeerFailureCountdown(peerSessionId: string): void {
+    const timer = this.peerFailureTimers.get(peerSessionId);
+    if (timer) {
+      clearTimeout(timer);
+      this.peerFailureTimers.delete(peerSessionId);
+    }
+  }
+
+  /**
+   * Flags a peer as unreachable and reports the ICE candidates to the server.
+   *
+   * The participant state is written here, at the source, instead of relying on
+   * a view listening to the event: the failure often happens while the user is
+   * somewhere other than the voice stage, and a warning nobody was mounted to
+   * receive was silently lost (#426).
+   */
+  private markPeerFailed(peerSessionId: string, session: PeerSession | undefined): void {
+    if (this.failedPeers.has(peerSessionId)) return;
+    this.failedPeers.add(peerSessionId);
+    this.clearPeerFailureCountdown(peerSessionId);
+    this.voiceParticipants.setPeerConnectionFailed(peerSessionId, true);
+    void this.sendDiagnosticsReport(peerSessionId, session);
+    appEvents.emit('remote.peer_failed', { sessionId: peerSessionId });
+  }
+
+  /**
+   * Reports a peer the moment ICE gives up, but only if it never connected.
+   *
+   * `failed` is ICE's own verdict that every candidate pair was exhausted, so
+   * for a link that never worked there is nothing left to wait for — warning
+   * right away beats sitting on the timer. A link that had been up keeps the
+   * grace period so a brief network blip does not flash the warning (#426).
+   */
+  private reportIfNeverConnected(peerSessionId: string, session: PeerSession): void {
+    if (this.everConnectedPeers.has(peerSessionId)) return;
+    this.markPeerFailed(peerSessionId, session);
+  }
+
+  /** Clears the warning once the peer is reachable again (#426). */
+  private markPeerReachable(peerSessionId: string): void {
+    this.clearPeerFailureCountdown(peerSessionId);
+    if (!this.failedPeers.delete(peerSessionId)) return;
+    this.voiceParticipants.setPeerConnectionFailed(peerSessionId, false);
+    appEvents.emit('remote.peer_recovered', { sessionId: peerSessionId });
+  }
+
+  private forgetPeerFailureState(peerSessionId: string): void {
+    this.clearPeerFailureCountdown(peerSessionId);
+    this.failedPeers.delete(peerSessionId);
+    this.everConnectedPeers.delete(peerSessionId);
   }
 
   /**
@@ -499,6 +603,10 @@ export class WebRtcManager {
       } catch (e) {}
       this.peers.delete(peerSessionId);
     }
+
+    // The clock towards the "no direct connection" warning starts on the first
+    // attempt and keeps running across every retry for this peer (#426).
+    this.beginPeerFailureCountdown(peerSessionId);
 
     const pc = new RTCPeerConnection(this.rtcConfig);
     const remoteStream = new MediaStream();
@@ -740,6 +848,7 @@ export class WebRtcManager {
       } else if (iceState === 'failed') {
         this.clearPeerTimers(session);
         console.warn(`[WebRTC] Peer ${peerSessionId} ICE state failed. Recovering immediately.`);
+        this.reportIfNeverConnected(peerSessionId, session);
         this.recoverPeerConnection(session, 'ice_failed');
       }
     };
@@ -754,10 +863,12 @@ export class WebRtcManager {
         session.reconnectAttempts = 0;
         this.applyBitrateConstraints();
         this.voiceParticipants.setRemoteStream(peerSessionId, remoteStream);
-        appEvents.emit('remote.peer_recovered', { sessionId: peerSessionId });
+        this.everConnectedPeers.add(peerSessionId);
+        this.markPeerReachable(peerSessionId);
       } else if (state === 'failed') {
         this.clearPeerTimers(session);
         appEvents.emit('remote.peer_degraded', { sessionId: peerSessionId });
+        this.reportIfNeverConnected(peerSessionId, session);
         this.recoverPeerConnection(session, 'connection_failed');
       } else if (state === 'disconnected') {
         appEvents.emit('remote.peer_degraded', { sessionId: peerSessionId });
@@ -1373,6 +1484,7 @@ export class WebRtcManager {
 
   public removePeer(peerSessionId: string): void {
     this.cleanupRemoteVad(peerSessionId);
+    this.forgetPeerFailureState(peerSessionId);
     const audioEl = this.audioElements.get(peerSessionId);
     if (audioEl) {
       try {

@@ -4691,6 +4691,11 @@ button[data-loading="1"]::after {
   color: var(--danger);
 }
 
+.voice-mini-icon.peer-failed {
+  color: var(--danger);
+  animation: peer-failed-pulse 2s ease-in-out infinite;
+}
+
 .share-active-banner {
   display: flex;
   align-items: center;
