@@ -13,6 +13,8 @@ import { settingsStore, ChatSoundMode } from '../stores/settingsStore';
 import { connectionStore, SavedServer } from '../stores/connectionStore';
 import { audioProcessor } from '../core/AudioProcessor';
 import { webRtcManager } from '../core/WebRtcManager';
+import { videoService } from '../core/VideoService';
+import { screenAudioService } from '../core/ScreenAudioService';
 import { ChatView } from './ChatView';
 import { VoiceStageView } from './VoiceStageView';
 import { createChannelModal } from './CreateChannelModal';
@@ -332,40 +334,78 @@ export class MainView {
     if (!slot) return;
 
     const sharers = this.getRemoteScreenSharers();
-    const signature = `${this.activeContentView}|${sharers.map((s) => `${s.id}:${s.nickname}`).join(',')}`;
+    const isSelfSharing = voiceStore.isScreenSharing;
+    const signature = `${this.activeContentView}|${isSelfSharing}|${sharers.map((s) => `${s.id}:${s.nickname}`).join(',')}`;
     if (signature === this.screenShareNoticeSignature) return;
     this.screenShareNoticeSignature = signature;
 
-    if (this.activeContentView === 'stage' || sharers.length === 0) {
+    if (this.activeContentView === 'stage' || (sharers.length === 0 && !isSelfSharing)) {
       slot.innerHTML = '';
       return;
     }
 
-    const names = sharers.map((s) => escapeHtml(s.nickname));
-    let label: string;
-    if (names.length === 1) {
-      label = t('main.screenShareNoticeOne', { name: names[0] });
-    } else if (names.length === 2) {
-      label = t('main.screenShareNoticeTwo', { first: names[0], second: names[1] });
-    } else {
-      label = tCount('main.screenShareNoticeMany', names.length - 2, {
-        first: names[0],
-        second: names[1],
-      });
+    const parts: string[] = [];
+
+    // Local user sharing notice with stop button (#416)
+    if (isSelfSharing) {
+      parts.push(`
+        <div class="screenshare-notice screenshare-notice--self">
+          <span class="material-symbols-outlined md-16 screenshare-notice-icon">screen_share</span>
+          <span class="screenshare-notice-text">${t('main.screenShareSelfNotice')}</span>
+          <button id="screenshare-self-stop-btn" class="screenshare-notice-btn screenshare-notice-btn--danger">${t('screenShare.stopSharing')}</button>
+        </div>
+      `);
     }
 
-    const single = sharers.length === 1;
-    slot.innerHTML = `
-      <div class="screenshare-notice">
-        <span class="material-symbols-outlined md-16 screenshare-notice-icon">screen_share</span>
-        <span class="screenshare-notice-text" title="${label}">${label}</span>
-        <button id="screenshare-notice-btn" class="screenshare-notice-btn">${single ? t('main.screenShareWatch') : t('main.screenShareGoToStage')}</button>
-      </div>
-    `;
+    // Remote sharers notice
+    if (sharers.length > 0) {
+      const names = sharers.map((s) => escapeHtml(s.nickname));
+      let label: string;
+      if (names.length === 1) {
+        label = t('main.screenShareNoticeOne', { name: names[0] });
+      } else if (names.length === 2) {
+        label = t('main.screenShareNoticeTwo', { first: names[0], second: names[1] });
+      } else {
+        label = tCount('main.screenShareNoticeMany', names.length - 2, {
+          first: names[0],
+          second: names[1],
+        });
+      }
 
-    document.getElementById('screenshare-notice-btn')?.addEventListener('click', () => {
-      this.openVoiceStage(single ? sharers[0].id : undefined);
+      const single = sharers.length === 1;
+      parts.push(`
+        <div class="screenshare-notice">
+          <span class="material-symbols-outlined md-16 screenshare-notice-icon">screen_share</span>
+          <span class="screenshare-notice-text" title="${label}">${label}</span>
+          <button id="screenshare-notice-btn" class="screenshare-notice-btn">${single ? t('main.screenShareWatch') : t('main.screenShareGoToStage')}</button>
+        </div>
+      `);
+    }
+
+    slot.innerHTML = parts.join('');
+
+    // Stop self-sharing handler
+    document.getElementById('screenshare-self-stop-btn')?.addEventListener('click', async () => {
+      videoService.stopScreenShare();
+      await webRtcManager.removeAllLocalScreenTracks();
+      voiceStore.setScreenSharing(false);
+      callClient().send(MessageType.VOICE_STATE_UPDATE, {
+        screenShareIds: [],
+        isScreenSharing: false,
+      });
+      if (screenAudioService.getIsCapturing()) {
+        await screenAudioService.stop();
+      }
+      this.updateScreenShareNotice();
     });
+
+    // Watch remote sharer handler
+    if (sharers.length > 0) {
+      const single = sharers.length === 1;
+      document.getElementById('screenshare-notice-btn')?.addEventListener('click', () => {
+        this.openVoiceStage(single ? sharers[0].id : undefined);
+      });
+    }
   }
 
   /**

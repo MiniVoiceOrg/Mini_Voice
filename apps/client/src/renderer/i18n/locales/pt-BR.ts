@@ -490,6 +490,7 @@ export const ptBR = {
   'main.screenShareNoticeMany.one': '{first}, {second} e +{count} pessoa estão transmitindo tela',
   'main.screenShareNoticeMany.other': '{first}, {second} e +{count} pessoas estão transmitindo tela',
   'main.screenShareWatch': 'Assistir',
+  'main.screenShareSelfNotice': 'Você está compartilhando sua tela',
   'main.screenShareGoToStage': 'Ir para o palco',
   'main.cameraOn': 'Câmera ligada',
   'main.reconnecting': 'Reconectando…',
