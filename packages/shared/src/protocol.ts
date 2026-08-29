@@ -49,6 +49,7 @@ export enum MessageType {
   ADMIN_MOVE_USER = 'ADMIN_MOVE_USER',
   MEMBER_KICK = 'MEMBER_KICK',
   RTC_SIGNAL = 'RTC_SIGNAL',
+  RTC_DIAGNOSTICS_REPORT = 'RTC_DIAGNOSTICS_REPORT',
   PING = 'PING',
   USER_LOGOUT = 'USER_LOGOUT',
   SOUNDBOARD_PLAY = 'SOUNDBOARD_PLAY',
@@ -278,6 +279,26 @@ export interface MemberKickPayload {
 export interface MemberKickedPayload {
   userId: string;
   nickname: string;
+}
+
+/** Sent by a client when all P2P recovery attempts with a peer are exhausted. */
+export interface RtcDiagnosticsReportPayload {
+  targetSessionId: string;
+  /** Why recovery was abandoned (e.g. 'ice_failed', 'watchdog_timeout'). */
+  reason: string;
+  iceGatheringState: string;
+  signalingState: string;
+  iceRestartAttempts: number;
+  hardReconnectAttempts: number;
+  localCandidate: RtcCandidateInfo | null;
+  remoteCandidate: RtcCandidateInfo | null;
+}
+
+export interface RtcCandidateInfo {
+  type: string;
+  address?: string;
+  port?: number;
+  protocol?: string;
 }
 
 // Server Responses & Broadcast Payloads

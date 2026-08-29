@@ -505,6 +505,7 @@ export const ptBR = {
   'stage.noChannelSubtitle': 'Clique em um canal de voz na barra lateral para entrar na chamada!',
   'stage.pingCalculating': 'Latência de Voz P2P: Calculando...',
   'stage.connectedMesh': 'Conectado (Mesh P2P)',
+  'stage.peerConnectionFailed': 'Não foi possível estabelecer conexão direta com este participante',
   'stage.muteMic': 'Mutar Microfone',
   'stage.unmuteMic': 'Desmutar Microfone',
   'stage.deafen': 'Mutar Tudo',

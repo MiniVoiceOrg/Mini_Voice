@@ -2,6 +2,8 @@ import {
   MessageType,
   QUALITY_PRESETS,
   QualityPresetType,
+  RtcCandidateInfo,
+  RtcDiagnosticsReportPayload,
   WebRtcSignalPayload,
 } from '@monky/shared';
 import { appEvents } from './EventBus';
@@ -365,7 +367,8 @@ export class WebRtcManager {
 
     if (attempts > 3) {
       console.warn(`[WebRTC] Max hard reconnect attempts reached for peer ${peerSessionId}. Aborting recovery.`);
-      appEvents.emit('remote.peer_degraded', { sessionId: peerSessionId });
+      this.sendDiagnosticsReport(peerSessionId, existing);
+      appEvents.emit('remote.peer_failed', { sessionId: peerSessionId });
       return;
     }
 
@@ -395,6 +398,74 @@ export class WebRtcManager {
     if (newSession) {
       newSession.reconnectAttempts = attempts;
     }
+  }
+
+  /**
+   * Collects ICE candidate-pair stats from a (possibly failed) peer connection
+   * and sends an RTC_DIAGNOSTICS_REPORT to the server so the admin can
+   * diagnose NAT/connectivity problems from the server log.
+   */
+  private async sendDiagnosticsReport(peerSessionId: string, session: PeerSession | undefined): Promise<void> {
+    let localCandidate: RtcCandidateInfo | null = null;
+    let remoteCandidate: RtcCandidateInfo | null = null;
+    let iceGatheringState = 'unknown';
+    let signalingState = 'unknown';
+
+    if (session?.pc) {
+      try {
+        iceGatheringState = session.pc.iceGatheringState;
+        signalingState = session.pc.signalingState;
+
+        const stats = await session.pc.getStats();
+        // Find the candidate pair that was nominated or last attempted
+        for (const report of stats.values()) {
+          if (report.type === 'candidate-pair' && (report.nominated || report.state === 'failed' || report.state === 'succeeded')) {
+            const localId: string | undefined = report.localCandidateId;
+            const remoteId: string | undefined = report.remoteCandidateId;
+
+            if (localId) {
+              const local = stats.get(localId);
+              if (local) {
+                localCandidate = {
+                  type: local.candidateType ?? 'unknown',
+                  address: local.address ?? local.ip,
+                  port: local.port,
+                  protocol: local.protocol,
+                };
+              }
+            }
+
+            if (remoteId) {
+              const remote = stats.get(remoteId);
+              if (remote) {
+                remoteCandidate = {
+                  type: remote.candidateType ?? 'unknown',
+                  address: remote.address ?? remote.ip,
+                  port: remote.port,
+                  protocol: remote.protocol,
+                };
+              }
+            }
+            break;
+          }
+        }
+      } catch (e) {
+        console.warn('[WebRTC] Failed to collect diagnostics stats:', e);
+      }
+    }
+
+    const payload: RtcDiagnosticsReportPayload = {
+      targetSessionId: peerSessionId,
+      reason: `ice_restart=${session?.iceRestartAttempts ?? 0}, hard_reconnect=${session?.reconnectAttempts ?? 0}`,
+      iceGatheringState,
+      signalingState,
+      iceRestartAttempts: session?.iceRestartAttempts ?? 0,
+      hardReconnectAttempts: session?.reconnectAttempts ?? 0,
+      localCandidate,
+      remoteCandidate,
+    };
+
+    this.signalClient.send(MessageType.RTC_DIAGNOSTICS_REPORT, payload);
   }
 
   private recoverPeerConnection(session: PeerSession, reason: string): void {
@@ -683,6 +754,7 @@ export class WebRtcManager {
         session.reconnectAttempts = 0;
         this.applyBitrateConstraints();
         this.voiceParticipants.setRemoteStream(peerSessionId, remoteStream);
+        appEvents.emit('remote.peer_recovered', { sessionId: peerSessionId });
       } else if (state === 'failed') {
         this.clearPeerTimers(session);
         appEvents.emit('remote.peer_degraded', { sessionId: peerSessionId });

@@ -4036,6 +4036,16 @@ input:focus, textarea:focus, select:focus {
   z-index: 2;
 }
 
+.stage-peer-failed-icon {
+  color: var(--danger);
+  animation: peer-failed-pulse 2s ease-in-out infinite;
+}
+
+@keyframes peer-failed-pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.4; }
+}
+
 .telemetry-overlay {
   position: absolute;
   z-index: 4;
