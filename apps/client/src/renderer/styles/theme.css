@@ -4393,6 +4393,23 @@ input:focus, textarea:focus, select:focus {
   background-color: var(--warning, #faa61a);
 }
 
+.status-indicator.offline {
+  background-color: var(--text-dim, #72767d);
+}
+
+.member-item.member-offline {
+  opacity: 0.45;
+}
+
+.member-section-header {
+  padding: 8px 12px 4px;
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--text-dim);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
 .member-item.reconnecting {
   opacity: 0.7;
 }

@@ -455,6 +455,8 @@ export const ptBR = {
   'main.disconnect': 'Desconectar',
   'main.disconnectMessage': 'Deseja realmente desconectar do servidor?',
   'main.membersCount': 'MEMBROS — {count}',
+  'main.membersOnline': 'ONLINE',
+  'main.membersOffline': 'OFFLINE',
   'main.voiceConnected': 'Voz conectada',
   'main.averagePing': 'Latência média',
   'main.leaveCall': 'Sair da chamada',
