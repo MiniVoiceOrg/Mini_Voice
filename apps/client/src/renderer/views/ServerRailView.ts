@@ -35,7 +35,10 @@ export class ServerRailView {
    */
   private connectingKey: string | null = null;
   private draggedRailItem: DraggedRailItem | null = null;
-   private skipNextFolderToggle = false;
+  private skipNextFolderToggle = false;
+  private lastProbeTime = 0;
+  private probeDebounceTimer: any = null;
+  private static readonly PROBE_INTERVAL_MS = 15000;
 
   private static keyOf(host: string, port: number): string {
     return `${host.trim().replace(/^wss?:\/\//, '')}:${port}`;
@@ -98,7 +101,24 @@ export class ServerRailView {
     this.bindDragAndDrop();
     this.bindContextMenus();
 
-    void this.refreshServerRailStatuses();
+    this.scheduleStatusRefresh();
+  }
+
+  private scheduleStatusRefresh(): void {
+    const now = Date.now();
+    if (now - this.lastProbeTime < ServerRailView.PROBE_INTERVAL_MS) {
+      return;
+    }
+
+    if (this.probeDebounceTimer) {
+      clearTimeout(this.probeDebounceTimer);
+    }
+
+    this.probeDebounceTimer = setTimeout(() => {
+      this.probeDebounceTimer = null;
+      this.lastProbeTime = Date.now();
+      void this.refreshServerRailStatuses();
+    }, 1000);
   }
 
   public async refreshServerRailStatuses(): Promise<void> {

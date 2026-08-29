@@ -12,7 +12,7 @@ export class ChatStore {
   // Text channels with unread messages for the current user (#263).
   private unreadChannels: Set<string> = new Set();
   // Maximum number of messages kept in memory per channel to bound memory usage.
-  private static readonly MAX_MESSAGES_PER_CHANNEL = 500;
+  private static readonly MAX_MESSAGES_PER_CHANNEL = 250;
 
   public setHistory(channelId: string, msgs: ChatMessage[]): void {
     const trimmed =

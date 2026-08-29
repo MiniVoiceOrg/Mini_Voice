@@ -1,6 +1,7 @@
 import { MessageType, Permission, SoundboardPlayedPayload } from '@monky/shared';
 import { appEvents } from './EventBus';
-import { networkClient } from './NetworkClient';
+import { callClient } from './serverConnection';
+import { sessionManager } from './SessionManager';
 import { settingsStore } from '../stores/settingsStore';
 import { voiceStore } from '../stores/voiceStore';
 import { serverStore } from '../stores/serverStore';
@@ -218,21 +219,25 @@ export class SoundboardService {
 
     // Must be in a voice channel to broadcast sound to the room
     const currentChannelId = voiceStore.currentVoiceChannelId;
-    if (!currentChannelId) {
+    const voiceKey = voiceStore.voiceSessionKey;
+    if (!currentChannelId || !voiceKey) {
       console.warn('[SoundboardService] Cannot play sound: not in a voice channel');
       // Local preview if clicked outside call
       await this.playLocalPreview(filePath);
       return true;
     }
 
-    // Check if server allows soundboard
-    if (serverStore.serverDetails?.allowSoundboard === false) {
-      console.warn('[SoundboardService] Soundboard is disabled on this server');
+    // Check permissions on the server hosting the call (not necessarily the one in foreground)
+    const voiceSession = sessionManager.get(voiceKey);
+    const voiceServerStore = voiceSession?.serverStore ?? serverStore;
+
+    if (voiceServerStore.serverDetails?.allowSoundboard === false) {
+      console.warn('[SoundboardService] Soundboard is disabled on the voice server');
       return false;
     }
 
-    if (!serverStore.hasPermission(Permission.USE_SOUNDBOARD)) {
-      console.warn('[SoundboardService] Missing USE_SOUNDBOARD permission');
+    if (!voiceServerStore.hasPermission(Permission.USE_SOUNDBOARD)) {
+      console.warn('[SoundboardService] Missing USE_SOUNDBOARD permission on voice server');
       return false;
     }
 
@@ -243,8 +248,8 @@ export class SoundboardService {
         return false;
       }
 
-      // Send to server via WebSocket to broadcast to channel members
-      networkClient.send(MessageType.SOUNDBOARD_PLAY, {
+      // Send to server hosting the call via callClient to broadcast to channel members
+      callClient().send(MessageType.SOUNDBOARD_PLAY, {
         channelId: currentChannelId,
         soundName: soundData.soundName,
         audioBase64: soundData.base64,
@@ -272,23 +277,18 @@ export class SoundboardService {
     };
     this.activePlaybacks.set(userId, playback);
 
-    const cleanup = () => {
-      if (this.activePlaybacks.get(userId)?.audio === audio) {
-        this.activePlaybacks.delete(userId);
-        appEvents.emit('soundboard.playback_ended', { userId, soundName });
-      }
-    };
+    let isCleanedUp = false;
 
-    audio.addEventListener('play', () => {
+    const onPlay = () => {
       appEvents.emit('soundboard.playback_started', {
         userId,
         userName,
         soundName,
         duration: audio.duration || 0,
       });
-    });
+    };
 
-    audio.addEventListener('timeupdate', () => {
+    const onTimeUpdate = () => {
       if (audio.paused || audio.ended || !this.activePlaybacks.has(userId)) return;
       const duration = audio.duration || 0;
       const currentTime = audio.currentTime || 0;
@@ -301,14 +301,36 @@ export class SoundboardService {
         duration,
         percent: Math.min(100, Math.max(0, percent)),
       });
-    });
+    };
 
-    audio.addEventListener('ended', cleanup);
-    audio.addEventListener('pause', cleanup);
-    audio.addEventListener('error', (e) => {
+    const removeListeners = () => {
+      audio.removeEventListener('play', onPlay);
+      audio.removeEventListener('timeupdate', onTimeUpdate);
+      audio.removeEventListener('ended', onEnded);
+      audio.removeEventListener('error', onError);
+    };
+
+    const cleanup = () => {
+      if (isCleanedUp) return;
+      isCleanedUp = true;
+      removeListeners();
+
+      if (this.activePlaybacks.get(userId)?.audio === audio) {
+        this.activePlaybacks.delete(userId);
+        appEvents.emit('soundboard.playback_ended', { userId, soundName });
+      }
+    };
+
+    const onEnded = () => cleanup();
+    const onError = (e: Event) => {
       console.warn('[SoundboardService] Audio error:', e);
       cleanup();
-    });
+    };
+
+    audio.addEventListener('play', onPlay);
+    audio.addEventListener('timeupdate', onTimeUpdate);
+    audio.addEventListener('ended', onEnded);
+    audio.addEventListener('error', onError);
 
     audio.play().catch((err) => {
       console.warn('[SoundboardService] Audio play error:', err);

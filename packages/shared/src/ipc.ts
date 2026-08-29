@@ -193,7 +193,9 @@ export interface AppIdentityResult {
 export interface IpcInvokeChannels {
   // Janela
   'window:minimize': { args: []; returnType: void };
+  'window:maximize': { args: []; returnType: void };
   'window:toggle-maximize': { args: []; returnType: void };
+  'window:set-in-server': { args: [inServer: boolean]; returnType: void };
   'window:close': { args: []; returnType: void };
 
   // Sistema / App
@@ -227,6 +229,7 @@ export interface IpcInvokeChannels {
   'lan:stop': { args: []; returnType: void };
 
   // Captura de Tela
+  'screen-share:ensure-permission': { args: []; returnType: boolean };
   'screen-share:get-sources': { args: []; returnType: DesktopSource[] };
 
   // Diálogos Nativos
@@ -295,6 +298,7 @@ export interface IpcEvents {
   'updater:downloaded': [info: { manual: boolean }];
   'updater:error': [message: string];
   'server-host:log': [entry: LogEntry];
+  'server-host:status-changed': [status: { isRunning: boolean; port: number | null; serverId: string | null }];
 }
 
 export type IpcInvokeChannel = keyof IpcInvokeChannels;

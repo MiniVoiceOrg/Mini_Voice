@@ -93,7 +93,9 @@ async function downloadToFile(url: string, destPath: string): Promise<void> {
         });
         response.pipe(file);
       });
-      request.on('error', reject);
+      request.setTimeout(30000, () => {
+        request.destroy(new Error('Download timeout'));
+      });
       request.on('error', reject);
     };
 

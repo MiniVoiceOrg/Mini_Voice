@@ -647,7 +647,11 @@ export class SqliteRoleRepository implements IRoleRepository {
   }
 
   async delete(roleId: string): Promise<void> {
-    this.db.prepare('DELETE FROM roles WHERE id = ?').run(roleId);
+    this.db.transaction(() => {
+      this.db.prepare('DELETE FROM user_roles WHERE role_id = ?').run(roleId);
+      this.db.prepare('DELETE FROM channel_allowed_roles WHERE role_id = ?').run(roleId);
+      this.db.prepare('DELETE FROM roles WHERE id = ?').run(roleId);
+    })();
   }
 
   async assignRole(userId: string, roleId: string): Promise<void> {
