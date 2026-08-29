@@ -1473,6 +1473,18 @@ input:focus, textarea:focus, select:focus {
   background-color: var(--accent-hover);
 }
 
+.screenshare-notice-btn--danger {
+  background-color: var(--danger);
+}
+
+.screenshare-notice-btn--danger:hover {
+  background-color: var(--danger-hover, #c0392b);
+}
+
+.screenshare-notice--self .screenshare-notice-icon {
+  color: var(--danger);
+}
+
 .voice-conn-text {
   display: flex;
   flex-direction: column;

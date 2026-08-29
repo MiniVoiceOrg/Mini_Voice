@@ -489,6 +489,7 @@ export const en: TranslationMap = {
   'main.screenShareNoticeMany.one': '{first}, {second} and {count} other are sharing their screens',
   'main.screenShareNoticeMany.other': '{first}, {second} and {count} others are sharing their screens',
   'main.screenShareWatch': 'Watch',
+  'main.screenShareSelfNotice': 'You are sharing your screen',
   'main.screenShareGoToStage': 'Go to stage',
   'main.cameraOn': 'Camera on',
   'main.reconnecting': 'Reconnecting…',
