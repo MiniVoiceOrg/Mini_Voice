@@ -3,7 +3,7 @@ import fs from 'fs';
 import os from 'os';
 import path from 'path';
 import { ChildProcess, spawn, spawnSync } from 'child_process';
-import { IceServerConfig, TurnAvailability, TurnUnavailableReason } from '@monky/shared';
+import { IceServerConfig, TurnAvailability, TurnInstallProgressPayload, TurnInstallStage, TurnUnavailableReason } from '@monky/shared';
 import { Logger } from '../logger/Logger';
 
 /** Default STUN servers, used whether or not the relay is on (#425). */
@@ -36,6 +36,9 @@ export type TurnInstallFailure =
 export type TurnInstallOutcome =
   | { ok: true; alreadyInstalled: boolean }
   | { ok: false; reason: TurnInstallFailure; detail?: string };
+
+/** Notified after each step of an automatic installation (#438). */
+export type TurnInstallProgressListener = (progress: TurnInstallProgressPayload) => void;
 
 /**
  * Runs a coturn TURN server next to the Monky server (#425).
@@ -70,6 +73,14 @@ export class CoturnManager {
   private stopping = false;
   /** Shared so concurrent requests never run two package managers at once. */
   private static installInFlight: Promise<TurnInstallOutcome> | null = null;
+  /**
+   * Everyone waiting on the current installation (#438).
+   *
+   * A set rather than a single callback because the install promise is shared:
+   * a second operator who flips the switch mid-install joins the running job,
+   * and would otherwise stare at a modal with no progress at all.
+   */
+  private static installListeners = new Set<TurnInstallProgressListener>();
 
   constructor(private dataDir: string) {
     this.configPath = path.join(this.dataDir, 'turnserver.conf');
@@ -173,13 +184,32 @@ export class CoturnManager {
    * same time do not launch two package managers — the second would die on the
    * apt/dnf lock and report a confusing failure.
    */
-  public static ensureInstalled(): Promise<TurnInstallOutcome> {
+  public static ensureInstalled(onProgress?: TurnInstallProgressListener): Promise<TurnInstallOutcome> {
+    if (onProgress) CoturnManager.installListeners.add(onProgress);
     if (CoturnManager.installInFlight) return CoturnManager.installInFlight;
     const run = CoturnManager.runInstall().finally(() => {
       CoturnManager.installInFlight = null;
+      CoturnManager.installListeners.clear();
     });
     CoturnManager.installInFlight = run;
     return run;
+  }
+
+  /** A listener that throws must not take the installation down with it. */
+  private static emitProgress(completed: number, total: number, stage: TurnInstallStage): void {
+    const payload: TurnInstallProgressPayload = {
+      completed,
+      total,
+      percent: total > 0 ? Math.round((completed / total) * 100) : 100,
+      stage,
+    };
+    for (const listener of CoturnManager.installListeners) {
+      try {
+        listener(payload);
+      } catch (error) {
+        Logger.warn('NETWORK', `A TURN install progress listener failed: ${String(error)}`);
+      }
+    }
   }
 
   private static async runInstall(): Promise<TurnInstallOutcome> {
@@ -196,11 +226,16 @@ export class CoturnManager {
     const steps = CoturnManager.buildInstallSteps();
     if (!steps) return { ok: false, reason: 'unknown-package-manager' };
 
+    // The package steps plus the service stand-down, which is the last thing
+    // between the install and a usable relay.
+    const total = steps.length + 1;
+
     Logger.info('NETWORK', 'Installing coturn so the TURN relay can start...');
-    for (const step of steps) {
-      const result = await CoturnManager.runPrivileged(elevation, step, INSTALL_TIMEOUT_MS);
+    for (const [index, step] of steps.entries()) {
+      CoturnManager.emitProgress(index, total, step.stage);
+      const result = await CoturnManager.runPrivileged(elevation, step.command, INSTALL_TIMEOUT_MS);
       if (!result.ok) {
-        Logger.error('NETWORK', `coturn installation failed at "${step.join(' ')}": ${result.detail}`);
+        Logger.error('NETWORK', `coturn installation failed at "${step.command.join(' ')}": ${result.detail}`);
         return { ok: false, reason: 'install-failed', detail: result.detail };
       }
     }
@@ -209,24 +244,34 @@ export class CoturnManager {
       return { ok: false, reason: 'install-failed', detail: 'turnserver não apareceu no PATH após a instalação.' };
     }
 
+    CoturnManager.emitProgress(steps.length, total, 'configuring');
     await CoturnManager.standDownSystemService(elevation);
+    CoturnManager.emitProgress(total, total, 'configuring');
     Logger.info('NETWORK', 'coturn installed successfully.');
     return { ok: true, alreadyInstalled: false };
   }
 
-  /** Package manager commands for the distributions coturn ships on. */
-  private static buildInstallSteps(): string[][] | null {
+  /**
+   * Package manager commands for the distributions coturn ships on, each
+   * labelled with the stage it represents so the client can say what is
+   * happening instead of only how much is left (#438).
+   */
+  private static buildInstallSteps(): { stage: TurnInstallStage; command: string[] }[] | null {
     if (CoturnManager.hasCommand('apt-get')) {
       return [
-        ['apt-get', 'update'],
-        ['apt-get', 'install', '-y', 'coturn'],
+        { stage: 'refreshing', command: ['apt-get', 'update'] },
+        { stage: 'installing', command: ['apt-get', 'install', '-y', 'coturn'] },
       ];
     }
-    if (CoturnManager.hasCommand('dnf')) return [['dnf', 'install', '-y', 'coturn']];
-    if (CoturnManager.hasCommand('yum')) return [['yum', 'install', '-y', 'coturn']];
-    if (CoturnManager.hasCommand('pacman')) return [['pacman', '-Sy', '--noconfirm', 'coturn']];
-    if (CoturnManager.hasCommand('zypper')) return [['zypper', '--non-interactive', 'install', 'coturn']];
-    if (CoturnManager.hasCommand('apk')) return [['apk', 'add', '--no-cache', 'coturn']];
+    if (CoturnManager.hasCommand('dnf')) return [{ stage: 'installing', command: ['dnf', 'install', '-y', 'coturn'] }];
+    if (CoturnManager.hasCommand('yum')) return [{ stage: 'installing', command: ['yum', 'install', '-y', 'coturn'] }];
+    if (CoturnManager.hasCommand('pacman')) {
+      return [{ stage: 'installing', command: ['pacman', '-Sy', '--noconfirm', 'coturn'] }];
+    }
+    if (CoturnManager.hasCommand('zypper')) {
+      return [{ stage: 'installing', command: ['zypper', '--non-interactive', 'install', 'coturn'] }];
+    }
+    if (CoturnManager.hasCommand('apk')) return [{ stage: 'installing', command: ['apk', 'add', '--no-cache', 'coturn'] }];
     return null;
   }
 

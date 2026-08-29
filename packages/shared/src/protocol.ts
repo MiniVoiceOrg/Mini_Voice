@@ -1,4 +1,4 @@
-import { AttachmentStorageInfo, ChannelSummary, ChatMessage, Role, ServerDetails, UserRoleSummary, UserSummary, VoiceParticipantState, WebRtcSignalPayload } from './models.js';
+import { AttachmentStorageInfo, ChannelSummary, ChatMessage, Role, ServerDetails, TurnAvailability, TurnInstallStage, UserRoleSummary, UserSummary, VoiceParticipantState, WebRtcSignalPayload } from './models.js';
 
 export enum ProtocolErrorCode {
   AUTH_INVALID_PASSWORD = 'AUTH_INVALID_PASSWORD',
@@ -67,6 +67,11 @@ export enum MessageType {
   SERVER_STATE = 'SERVER_STATE',
   ROLES_LIST = 'ROLES_LIST',
   SERVER_SETTINGS_UPDATED = 'SERVER_SETTINGS_UPDATED',
+  /**
+   * Server -> client, while coturn is being installed (#438). Purely
+   * informational: a client that does not know it simply ignores it.
+   */
+  TURN_INSTALL_PROGRESS = 'TURN_INSTALL_PROGRESS',
   SERVER_INVITE_INFO = 'SERVER_INVITE_INFO',
   SERVER_SHUTDOWN = 'SERVER_SHUTDOWN',
   USER_JOINED = 'USER_JOINED',
@@ -364,6 +369,25 @@ export interface ServerSettingsUpdatedPayload {
   maxUsers?: number;
   /** Current state of the host's TURN relay (#425). */
   turnEnabled?: boolean;
+  /**
+   * Relay availability as it stands *after* this update (#438).
+   *
+   * Switching the relay on can install coturn, which changes the answer to
+   * "can this host relay?". Without sending it back, clients would keep the
+   * availability from login and go on offering to install what is already
+   * installed.
+   */
+  turnAvailability?: TurnAvailability;
+}
+
+/** Progress of an automatic coturn installation (#438). */
+export interface TurnInstallProgressPayload {
+  /** Steps already finished. */
+  completed: number;
+  total: number;
+  /** Whole percent, so the client does not have to compute it. */
+  percent: number;
+  stage: TurnInstallStage;
 }
 
 export interface SoundboardPlayedPayload {

@@ -572,13 +572,17 @@ export class WebSocketServer {
    *
    * Returns null when the relay can run, or the reason it cannot.
    */
-  private async ensureRelayCanRun(): Promise<string | null> {
+  private async ensureRelayCanRun(session: ClientSession): Promise<string | null> {
     if (!CoturnManager.isSupportedPlatform()) {
       return 'O relay TURN só é suportado em servidores Linux. Não existe pacote do coturn para Windows ou macOS.';
     }
     if (CoturnManager.isInstalled()) return null;
 
-    const outcome = await CoturnManager.ensureInstalled();
+    // The install takes minutes, so whoever asked for it gets told how far it
+    // has gone instead of watching a frozen modal (#438).
+    const outcome = await CoturnManager.ensureInstalled((progress) => {
+      this.send(session.ws, { type: MessageType.TURN_INSTALL_PROGRESS, payload: progress });
+    });
     if (outcome.ok) return null;
 
     switch (outcome.reason) {
@@ -878,7 +882,7 @@ export class WebSocketServer {
     // (#431). Only a relay that truly cannot run is rejected, so the toggle
     // never shows "on" while nothing is actually relaying (#425).
     if (payload.turnEnabled === true) {
-      const blocked = await this.ensureRelayCanRun();
+      const blocked = await this.ensureRelayCanRun(session);
       if (blocked) {
         this.sendError(session.ws, ProtocolErrorCode.TURN_UNAVAILABLE, blocked, requestId);
         return;
@@ -908,6 +912,11 @@ export class WebSocketServer {
       attachmentStorage: result.attachmentStorage,
       maxUsers: result.maxUsers,
       turnEnabled: result.turnEnabled,
+      // Installing coturn changes the answer to "can this host relay?", and the
+      // clients still hold the one from login. Sending it back is what keeps
+      // the settings screen from offering to install what is already there
+      // (#438).
+      turnAvailability: CoturnManager.describeAvailability(),
     };
 
     // Broadcast updated server settings to all clients
