@@ -20,6 +20,17 @@ import {
 import { registerServer } from '../registry';
 import { ask, askChoice, confirm, promptPassword } from '../prompts';
 import { disableAutoUpdate, enableAutoUpdate, isAutoUpdateEnabled, AutoUpdateSchedule } from './update';
+import { CoturnManager } from '../../infrastructure/turn/CoturnManager';
+
+/**
+ * Warns, right where the value is shown, when the relay cannot actually run on
+ * this host — an operator reading `turn: sim` deserves to know if nothing is
+ * relaying because coturn is missing (#425).
+ */
+function turnStatusSuffix(): string {
+  const reason = CoturnManager.getUnavailabilityReason();
+  return reason ? color(`  (indisponível: ${reason})`, ANSI.yellow) : '';
+}
 
 export async function showConfig(ctx: CliContext): Promise<void> {
   const server = await ctx.serverRepo.getServer();
@@ -39,6 +50,7 @@ export async function showConfig(ctx: CliContext): Promise<void> {
   console.log(`ownerUserId: ${server.ownerUserId ?? '-'}`);
   console.log(`ownerNickname: ${owner?.nickname ?? '-'}`);
   console.log(`allowSoundboard: ${formatBool(server.allowSoundboard !== false)}`);
+  console.log(`turn: ${formatBool(Boolean(server.turnEnabled))}${turnStatusSuffix()}`);
   console.log(`iconPath: ${server.iconPath ?? '-'}`);
   console.log(`maxAttachmentFileBytes: ${server.maxAttachmentFileBytes ?? '-'}`);
   console.log(`maxAttachmentStorageBytes: ${server.maxAttachmentStorageBytes ?? '-'}`);
@@ -73,6 +85,7 @@ export async function setConfig(ctx: CliContext, key: string, value?: string): P
     maxAttachmentFileBytes: String(server.maxAttachmentFileBytes ?? ''),
     maxAttachmentStorageBytes: String(server.maxAttachmentStorageBytes ?? ''),
     autoUpdate: String(isAutoUpdateEnabled(ctx.dataDir)),
+    turn: String(Boolean(server.turnEnabled)),
   };
 
   let nextValue = value;
@@ -92,6 +105,9 @@ export async function setConfig(ctx: CliContext, key: string, value?: string): P
         break;
       case 'allowSoundboard':
         nextValue = await askChoice('Permitir soundboard?', ['true', 'false']);
+        break;
+      case 'turn':
+        nextValue = await askChoice('Habilitar o relay de mídia (TURN)?', ['true', 'false']);
         break;
       case 'autoUpdate':
         nextValue = await askChoice('Habilitar atualização automática?', ['true', 'false']);
@@ -189,6 +205,39 @@ export async function setConfig(ctx: CliContext, key: string, value?: string): P
     case 'allowSoundboard':
       await ctx.serverRepo.updateServer({ allowSoundboard: parseBoolean(nextValue) });
       break;
+    case 'turn': {
+      const enabled = parseBoolean(nextValue);
+      if (enabled) {
+        const reason = CoturnManager.getUnavailabilityReason();
+        if (reason) {
+          throw new Error(reason);
+        }
+      }
+      const updates: { turnEnabled: boolean; turnSecret?: string } = { turnEnabled: enabled };
+      // Minted once and kept: rotating the secret would invalidate every
+      // credential already issued and drop the calls being relayed (#425).
+      if (enabled && !server.turnSecret) {
+        updates.turnSecret = CoturnManager.generateSecret();
+      }
+      await ctx.serverRepo.updateServer(updates);
+
+      // The running process holds its own copy of this setting, so the change
+      // only takes effect once it reloads.
+      if (isMonkyServerRunning(getPm2ProcessName(ctx.dataDir))) {
+        console.log(
+          color('O servidor está rodando. Rode "monky restart" para aplicar a mudança do relay.', ANSI.yellow)
+        );
+      }
+      if (enabled) {
+        console.log(
+          color(
+            'Lembre-se de liberar no firewall a porta 3478 (TCP/UDP) e a faixa UDP 49152-65535.',
+            ANSI.dim
+          )
+        );
+      }
+      break;
+    }
     case 'maxAttachmentFileBytes':
       await ctx.serverRepo.updateServer({ maxAttachmentFileBytes: parsePositiveInt(normalizedKey, nextValue) });
       break;

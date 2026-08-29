@@ -1,4 +1,5 @@
 import {
+  IceServerConfig,
   MessageType,
   QUALITY_PRESETS,
   QualityPresetType,
@@ -100,6 +101,14 @@ export class WebRtcManager {
   private currentSessionId: string = '';
   private isDeafened: boolean = false;
 
+  /**
+   * ICE servers used for every peer connection.
+   *
+   * These are defaults: a server that runs its own TURN relay overrides the
+   * whole list at login through `setIceServers()` (#425). They stay hardcoded
+   * as the fallback so a server released before TURN support — or one with the
+   * relay off — keeps working exactly as before.
+   */
   private rtcConfig: RTCConfiguration = {
     iceServers: [
       { urls: 'stun:stun.l.google.com:19302' },
@@ -111,6 +120,30 @@ export class WebRtcManager {
     ],
     iceCandidatePoolSize: 4,
   };
+
+  /**
+   * Adopts the ICE servers advertised by the server we just signed in to (#425).
+   *
+   * Only affects connections opened from here on: an `RTCPeerConnection` reads
+   * its configuration when it is created, so peers already talking keep the
+   * servers they started with. That is fine — the relay matters while a link is
+   * being established, and a live link by definition already found a path.
+   */
+  public setIceServers(iceServers: IceServerConfig[] | undefined): void {
+    if (!iceServers || iceServers.length === 0) return;
+
+    this.rtcConfig = {
+      ...this.rtcConfig,
+      iceServers: iceServers.map((entry) => ({
+        urls: entry.urls,
+        ...(entry.username ? { username: entry.username } : {}),
+        ...(entry.credential ? { credential: entry.credential } : {}),
+      })),
+    };
+
+    const hasRelay = iceServers.some((entry) => entry.urls.some((url) => url.startsWith('turn:')));
+    console.log(`[WebRTC] ICE servers updated by the server (relay ${hasRelay ? 'available' : 'unavailable'})`);
+  }
 
   constructor() {
     this.setupSignalListeners();
@@ -581,6 +614,36 @@ export class WebRtcManager {
   }
 
   /**
+   * Checks whether the established link is going through a TURN relay (#425).
+   *
+   * ICE picks the relay on its own, and only when no direct path exists, so
+   * this is read from the succeeded candidate pair rather than assumed from
+   * whether a TURN server was offered. Either endpoint being of type `relay`
+   * means the media is being forwarded by the server.
+   */
+  private async detectRelayUsage(peerSessionId: string, session: PeerSession): Promise<void> {
+    try {
+      const stats = await session.pc.getStats();
+
+      for (const report of stats.values()) {
+        if (report.type !== 'candidate-pair' || !report.nominated || report.state !== 'succeeded') continue;
+
+        const local = report.localCandidateId ? stats.get(report.localCandidateId) : undefined;
+        const remote = report.remoteCandidateId ? stats.get(report.remoteCandidateId) : undefined;
+        const relayed = local?.candidateType === 'relay' || remote?.candidateType === 'relay';
+
+        this.voiceParticipants.setPeerRelayed(peerSessionId, relayed);
+        if (relayed) {
+          console.log(`[WebRTC] Peer ${peerSessionId} is connected through the TURN relay.`);
+        }
+        return;
+      }
+    } catch (error) {
+      console.warn('[WebRTC] Failed to determine whether the peer is relayed:', error);
+    }
+  }
+
+  /**
    * Another device of our own in the same call. We still link up with it so
    * camera and screen share work, but its audio is dropped: playing it would
    * feed the speakers of one device into the microphone of the other (#309).
@@ -865,6 +928,7 @@ export class WebRtcManager {
         this.voiceParticipants.setRemoteStream(peerSessionId, remoteStream);
         this.everConnectedPeers.add(peerSessionId);
         this.markPeerReachable(peerSessionId);
+        void this.detectRelayUsage(peerSessionId, session);
       } else if (state === 'failed') {
         this.clearPeerTimers(session);
         appEvents.emit('remote.peer_degraded', { sessionId: peerSessionId });

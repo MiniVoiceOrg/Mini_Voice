@@ -372,8 +372,10 @@ monky config set <chave> [valor]    # altera direto
 | `maxAttachmentFileBytes` | Tamanho máximo por anexo, em bytes | sem limite |
 | `maxAttachmentStorageBytes` | Espaço total para anexos, em bytes | sem limite |
 | `autoUpdate` | Liga a atualização automática diária (`true`/`false`) | `false` |
+| `turn` | Liga o relay de mídia TURN (`true`/`false`). Só em Linux, exige o coturn instalado | `false` |
 
 Alterar `port` com o servidor no ar oferece reiniciar na hora para aplicar.
+Alterar `turn` exige um `monky restart` manual.
 
 ### Exemplos
 
@@ -384,6 +386,63 @@ monky config set password           # digitada de forma oculta
 monky config set password clear     # remove a senha
 monky config set maxUsers 50
 monky config set autoUpdate true
+monky config set turn true          # ver "Relay de mídia (TURN)" abaixo
+```
+
+---
+
+## Relay de mídia (TURN)
+
+Por padrão, a voz e o vídeo do Monky trafegam **direto entre os participantes**
+(P2P). O servidor só intermedeia a apresentação inicial. Isso é ótimo: menos
+latência e banda quase zero para quem hospeda.
+
+O problema aparece quando dois membros estão atrás de **CGNAT** — comum em
+internet móvel e em boa parte dos provedores residenciais no Brasil. Nesse
+cenário os dois lados podem simplesmente não conseguir se enxergar, e a chamada
+entre eles não conecta, mesmo que cada um conecte normalmente com os demais.
+
+O TURN resolve isso fazendo o servidor **repassar a mídia** desse par
+específico. É o último recurso: o WebRTC sempre tenta a rota direta primeiro e
+só cai no relay quando não há alternativa.
+
+### Requisitos
+
+- Host **Linux** com IP público (uma VPS típica). Não existe pacote do coturn
+  para Windows ou macOS, então o relay não está disponível nessas plataformas.
+- Portas liberadas: `3478/tcp`, `3478/udp` e a faixa `49152-65535/udp`.
+- Banda no host: cada par relayado consome upload **e** download do servidor.
+
+### Ativando
+
+```bash
+sudo bash scripts/install-turn.sh   # instala o coturn pela sua distro
+monky config set turn true
+monky restart
+```
+
+O script desabilita o serviço de sistema do coturn de propósito: quem sobe e
+configura o processo é o próprio Monky, e duas instâncias brigariam pela porta
+3478.
+
+::: warning Não esqueça do firewall do provedor
+Liberar as portas no `ufw`/`iptables` não basta se a sua VPS tiver firewall no
+painel do provedor (Oracle Cloud, AWS, Azure e GCP têm). O relay parece ligado
+e mesmo assim ninguém conecta.
+:::
+
+### Conferindo se está funcionando
+
+No app, um participante conectado via relay ganha um ícone âmbar `swap_horiz`
+ao lado do nome, tanto no palco quanto na lista do canal de voz. Se ninguém
+mostrar o ícone, ou todo mundo está conectando direto (o cenário ideal) ou o
+relay não subiu — confira com `monky logs`, que registra a saída do coturn.
+
+### Desligando
+
+```bash
+monky config set turn false
+monky restart
 ```
 
 ---

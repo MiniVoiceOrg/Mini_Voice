@@ -35,8 +35,13 @@ full command reference lives in [Monky CLI](/en/cli).
 | `3000` (or the chosen one) | TCP | Login, chat, channels and signalling | Yes, in the VPS firewall |
 | `41234` | UDP | Local network discovery | No, on a VPS |
 | High dynamic | UDP | P2P voice, video and screen | Usually works through STUN |
+| `3478` | TCP and UDP | TURN relay, if you enable it | Only with the relay on |
+| `49152-65535` | UDP | Media forwarded by the relay | Only with the relay on |
 
-There is no TURN server; on very restricted networks, use a VPN.
+When two members are behind CGNAT they may fail to connect directly. Monky ships
+an **optional TURN relay** (off by default) that forwards that pair's media
+through the server — see [Media relay (TURN)](/en/cli#media-relay-turn). Without
+it, the way out for very restricted networks is still a VPN.
 
 ## Maintenance
 

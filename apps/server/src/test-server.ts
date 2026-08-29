@@ -693,6 +693,51 @@ async function runTests() {
     }
     console.log('✔ Teste 17 passou: Limite conta membros cadastrados, poupa quem já entrou e pode ser desligado');
 
+    // Teste 18: o servidor passou a ditar os servidores ICE que o cliente usa
+    // (#425). Duas garantias importam aqui. A primeira é que o STUN sempre vai
+    // junto, com ou sem relay: se o AUTH_SUCCESS chegasse sem nada, o cliente
+    // cairia na lista embutida dele e a configuração do servidor viraria
+    // decoração. A segunda é que credencial de TURN não vaza para um servidor
+    // com o relay desligado.
+    const turnDir = path.join(testDataDir, 'turn');
+    const turnServer = await MonkyServer.create({
+      port: 3996,
+      dataDir: turnDir,
+      serverName: 'Servidor TURN',
+      password: 'senha-turn',
+    });
+    await turnServer.start();
+
+    try {
+      const wsTurn = new WebSocket('ws://127.0.0.1:3996');
+      const authTurn = await authenticateSocket(wsTurn, 'req-turn-1', 'TurnUser', 'senha-turn');
+
+      const iceServers = authTurn.payload?.iceServers;
+      if (!Array.isArray(iceServers) || iceServers.length === 0) {
+        throw new Error('Teste 18: o AUTH_SUCCESS precisa trazer a lista de servidores ICE');
+      }
+
+      const urls = iceServers.flatMap((entry: { urls: string[] }) => entry.urls);
+      if (!urls.some((url: string) => url.startsWith('stun:'))) {
+        throw new Error('Teste 18: a lista de servidores ICE precisa incluir STUN');
+      }
+      if (urls.some((url: string) => url.startsWith('turn:'))) {
+        throw new Error('Teste 18: um servidor com o relay desligado não pode anunciar TURN');
+      }
+      if (iceServers.some((entry: { credential?: string }) => entry.credential !== undefined)) {
+        throw new Error('Teste 18: não devem existir credenciais sem relay ativo');
+      }
+
+      if (authTurn.payload?.server?.turnEnabled !== false) {
+        throw new Error('Teste 18: o relay precisa nascer desligado');
+      }
+
+      wsTurn.close();
+    } finally {
+      await turnServer.stop();
+    }
+    console.log('✔ Teste 18 passou: ICE servers chegam ao cliente, com STUN e sem vazar TURN quando desligado');
+
     console.log('=== Todos os testes do servidor passaram com sucesso! ===');
   } finally {
     await server.stop();
