@@ -40,13 +40,22 @@ export class GlobalInputHook {
   private isCapturing = false;
   private isPttActive = false;
   private pttConfig: PttConfig = { enabled: false, key: null };
+  private listenersRegistered = false;
 
   public init(mainWindow: BrowserWindow): void {
     this.mainWindow = mainWindow;
-    this.setupListeners();
+    if (!this.listenersRegistered) {
+      this.setupListeners();
+      this.listenersRegistered = true;
+    }
   }
 
   private setupListeners(): void {
+    uIOhook.removeAllListeners('keydown');
+    uIOhook.removeAllListeners('keyup');
+    uIOhook.removeAllListeners('mousedown');
+    uIOhook.removeAllListeners('mouseup');
+
     uIOhook.on('keydown', (e) => {
       this.handleKeyDown(Number((e as any).keycode));
     });
@@ -213,6 +222,8 @@ export class GlobalInputHook {
       } catch {}
       this.isHookRunning = false;
     }
+    uIOhook.removeAllListeners();
+    this.listenersRegistered = false;
     this.mainWindow = null;
   }
 }

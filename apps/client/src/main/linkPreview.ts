@@ -1,5 +1,6 @@
 import http from 'http';
 import https from 'https';
+import net from 'net';
 import { LruCache } from '@monky/shared';
 
 export interface LinkPreviewMetadata {
@@ -22,6 +23,50 @@ const FETCH_TIMEOUT_MS = 5_000;
 const MAX_HTML_BYTES = 50 * 1024;
 const MAX_REDIRECTS = 5;
 const previewCache = new LruCache<string, LinkPreviewMetadata | null>(200, 1000 * 60 * 60);
+
+/**
+ * Checks if a hostname points to localhost, loopback, private RFC 1918 subnets,
+ * or cloud metadata/link-local addresses to prevent SSRF vulnerabilities.
+ */
+function isPrivateOrLocalHost(hostname: string): boolean {
+  const lower = (hostname || '').toLowerCase().trim();
+  if (
+    lower === 'localhost' ||
+    lower.endsWith('.local') ||
+    lower.endsWith('.internal') ||
+    lower.endsWith('.localhost')
+  ) {
+    return true;
+  }
+
+  if (net.isIP(lower)) {
+    // IPv4 Loopback (127.0.0.0/8)
+    if (lower.startsWith('127.')) return true;
+    // IPv4 RFC 1918 Private ranges
+    if (lower.startsWith('10.')) return true;
+    if (lower.startsWith('192.168.')) return true;
+    if (/^172\.(1[6-9]|2[0-9]|3[0-1])\./.test(lower)) return true;
+    // IPv4 Link-Local / Cloud Metadata (169.254.0.0/16)
+    if (lower.startsWith('169.254.')) return true;
+    // IPv4 Broadcast / Any
+    if (lower === '0.0.0.0' || lower === '255.255.255.255') return true;
+    // IPv6 Loopback / Link-Local / Unique Local (fc00::/7, fe80::/10)
+    if (
+      lower === '::1' ||
+      lower === '::' ||
+      lower.startsWith('fe80:') ||
+      lower.startsWith('fe9') ||
+      lower.startsWith('fea') ||
+      lower.startsWith('feb') ||
+      lower.startsWith('fc') ||
+      lower.startsWith('fd')
+    ) {
+      return true;
+    }
+  }
+
+  return false;
+}
 
 function detectEmbedProvider(url: string): 'youtube' | 'spotify' | null {
   try {
@@ -105,6 +150,15 @@ export async function fetchLinkPreview(rawUrl: string): Promise<LinkPreviewMetad
   const normalizedUrl = normalizeHttpUrl(rawUrl);
   if (!normalizedUrl) return null;
 
+  try {
+    const parsed = new URL(normalizedUrl);
+    if (isPrivateOrLocalHost(parsed.hostname)) {
+      return null;
+    }
+  } catch {
+    return null;
+  }
+
   if (previewCache.has(normalizedUrl)) {
     return previewCache.get(normalizedUrl) ?? null;
   }
@@ -142,6 +196,15 @@ export async function fetchLinkPreview(rawUrl: string): Promise<LinkPreviewMetad
 
 async function fetchHtml(url: string, redirects = 0): Promise<HtmlFetchResult | null> {
   if (redirects > MAX_REDIRECTS) return null;
+
+  try {
+    const parsed = new URL(url);
+    if (isPrivateOrLocalHost(parsed.hostname)) {
+      return null;
+    }
+  } catch {
+    return null;
+  }
 
   return await new Promise<HtmlFetchResult | null>((resolve) => {
     let settled = false;

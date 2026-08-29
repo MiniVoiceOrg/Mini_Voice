@@ -92,6 +92,7 @@ export interface ElectronApi {
   screenAudioStop: () => Promise<{ success: boolean }>;
   onScreenAudioFrame: (cb: (buffer: ArrayBuffer | Uint8Array) => void) => () => void;
   removeScreenAudioFrameListener: () => void;
+  onScreenAudioError: (cb: (errorMsg: string) => void) => () => void;
   updateTrayVoiceStatus: (status: TrayVoiceStatus) => Promise<void>;
   onTrayToggleMute: (cb: () => void) => () => void;
   onTrayToggleDeafen: (cb: () => void) => () => void;
@@ -236,6 +237,13 @@ const api: ElectronApi = {
     };
   },
   removeScreenAudioFrameListener: () => ipcRenderer.removeAllListeners('screen-audio:frame'),
+  onScreenAudioError: (cb) => {
+    const listener = (_e: Electron.IpcRendererEvent, errorMsg: string) => cb(errorMsg);
+    ipcRenderer.on('screen-audio:error', listener);
+    return () => {
+      ipcRenderer.removeListener('screen-audio:error', listener);
+    };
+  },
   updateTrayVoiceStatus: (status) => ipcRenderer.invoke('tray:update-voice-status', status),
   onTrayToggleMute: (cb) => {
     const listener = () => cb();

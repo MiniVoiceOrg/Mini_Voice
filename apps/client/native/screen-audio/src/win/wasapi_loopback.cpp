@@ -368,6 +368,34 @@ static void CaptureThreadFunc(uint32_t targetPid, uint32_t loopbackMode, uint32_
       captureClient->ReleaseBuffer(numFrames);
       hr = captureClient->GetNextPacketSize(&packetLength);
     }
+
+    if (FAILED(hr)) {
+      break;
+    }
+  }
+
+  // If the loop exited prematurely while capture was still running, notify JS of the error
+  bool hadError = FAILED(hr);
+  if (g_captureRunning.load() && hadError) {
+    std::string errMsg = (hr == AUDCLNT_E_DEVICE_INVALIDATED)
+        ? "Audio device disconnected or invalidated (AUDCLNT_E_DEVICE_INVALIDATED)"
+        : ("Audio capture failed with error: " + std::to_string(hr));
+    setError(errMsg);
+
+    // Notify JS callback by sending an empty buffer (0 bytes) indicating stream error/end
+    std::vector<uint8_t>* emptyBuf = new std::vector<uint8_t>();
+    napi_status callStatus = g_tsfn_win.NonBlockingCall(emptyBuf, [](Napi::Env env, Napi::Function jsCallback,
+                                                                      std::vector<uint8_t>* bufData) {
+      if (env != nullptr && jsCallback != nullptr && bufData != nullptr) {
+        auto nodeBuffer = Napi::Buffer<uint8_t>::New(env, 0);
+        jsCallback.Call({nodeBuffer});
+      }
+      delete bufData;
+    });
+
+    if (callStatus != napi_ok) {
+      delete emptyBuf;
+    }
   }
 
   audioClient->Stop();

@@ -86,6 +86,7 @@ class ScreenAudioService {
   private testToneInterval: ReturnType<typeof setInterval> | null = null;
   private frameWatchdog: ReturnType<typeof setTimeout> | null = null;
   private removeFrameListener: (() => void) | null = null;
+  private removeErrorListener: (() => void) | null = null;
 
   public async isSupported(): Promise<boolean> {
     return window.api.screenAudioSupported();
@@ -178,6 +179,15 @@ class ScreenAudioService {
       this.feedSamples(float32);
     });
 
+    // Listen for asynchronous native errors (e.g. device disconnect / invalidation)
+    if (window.api.onScreenAudioError) {
+      this.removeErrorListener = window.api.onScreenAudioError((errorMsg: string) => {
+        console.warn('[ScreenAudio] Asynchronous error from native capture:', errorMsg);
+        appEvents.emit('screen_audio.error', errorMsg);
+        void this.stop();
+      });
+    }
+
     const result = await window.api.screenAudioStart(sourceId);
     if (!result.success) {
       console.error('[ScreenAudio] Failed to start native capture:', result.error);
@@ -250,8 +260,6 @@ class ScreenAudioService {
   public async stop(): Promise<void> {
     if (!this.isCapturing) return;
 
-    this.clearFrameWatchdog();
-
     if (this.isTestTone) {
       if (this.testToneInterval) {
         clearInterval(this.testToneInterval);
@@ -259,12 +267,6 @@ class ScreenAudioService {
       }
     } else {
       await window.api.screenAudioStop();
-      if (this.removeFrameListener) {
-        this.removeFrameListener();
-        this.removeFrameListener = null;
-      } else {
-        window.api.removeScreenAudioFrameListener();
-      }
     }
 
     await webRtcManager.setLocalScreenAudioTrack(null);
@@ -303,19 +305,50 @@ class ScreenAudioService {
   }
 
   private cleanup(): void {
+    if (this.removeFrameListener) {
+      try {
+        this.removeFrameListener();
+      } catch {}
+      this.removeFrameListener = null;
+    } else if (window.api?.removeScreenAudioFrameListener) {
+      try {
+        window.api.removeScreenAudioFrameListener();
+      } catch {}
+    }
+
+    if (this.removeErrorListener) {
+      try {
+        this.removeErrorListener();
+      } catch {}
+      this.removeErrorListener = null;
+    }
+
+    if (this.testToneInterval) {
+      clearInterval(this.testToneInterval);
+      this.testToneInterval = null;
+    }
+
+    this.clearFrameWatchdog();
+
     if (this.outputTrack) {
-      this.outputTrack.stop();
+      try {
+        this.outputTrack.stop();
+      } catch {}
       this.outputTrack = null;
     }
     if (this.workletNode) {
-      this.workletNode.disconnect();
+      try {
+        this.workletNode.disconnect();
+      } catch {}
       this.workletNode = null;
     }
     if (this.destinationNode) {
-      this.destinationNode.disconnect();
+      try {
+        this.destinationNode.disconnect();
+      } catch {}
       this.destinationNode = null;
     }
-    if (this.audioContext) {
+    if (this.audioContext && this.audioContext.state !== 'closed') {
       this.audioContext.close().catch(() => {});
       this.audioContext = null;
     }
