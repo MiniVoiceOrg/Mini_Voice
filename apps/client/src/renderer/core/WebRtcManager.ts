@@ -41,9 +41,17 @@ export interface PeerSession {
  * MAX_PARTICIPANTS_PER_CHANNEL_DEFAULT = 10. Scaling significantly beyond that
  * would require an SFU (Selective Forwarding Unit) instead of a mesh.
  */
+interface PeerAudioPipeline {
+  audioContext: AudioContext;
+  source: MediaStreamAudioSourceNode;
+  gainNode: GainNode;
+  destination: MediaStreamAudioDestinationNode;
+}
+
 export class WebRtcManager {
   private peers: Map<string, PeerSession> = new Map();
   private audioElements: Map<string, HTMLAudioElement> = new Map();
+  private peerAudioPipelines: Map<string, PeerAudioPipeline> = new Map();
   private screenAudioElements: Map<string, HTMLAudioElement> = new Map();
   private screenAudioStreamIds: Set<string> = new Set();
   private screenVideoStreamIds: Set<string> = new Set();
@@ -534,8 +542,39 @@ export class WebRtcManager {
           this.audioElements.set(peerSessionId, audioEl);
         }
         audioEl.muted = isDeaf;
-        audioEl.volume = volume / 100;
-        audioEl.srcObject = remoteStream;
+
+        // Clean up previous pipeline if track is renewed
+        const oldPipeline = this.peerAudioPipelines.get(peerSessionId);
+        if (oldPipeline) {
+          try {
+            oldPipeline.source.disconnect();
+            oldPipeline.gainNode.disconnect();
+            if (oldPipeline.audioContext.state !== 'closed') {
+              oldPipeline.audioContext.close().catch(() => {});
+            }
+          } catch {}
+          this.peerAudioPipelines.delete(peerSessionId);
+        }
+
+        try {
+          const audioContext = new (window.AudioContext || (window as any).webkitAudioContext)();
+          const source = audioContext.createMediaStreamSource(remoteStream);
+          const gainNode = audioContext.createGain();
+          const destination = audioContext.createMediaStreamDestination();
+          gainNode.gain.value = Math.max(0, Math.min(200, volume)) / 100;
+          source.connect(gainNode);
+          gainNode.connect(destination);
+          this.peerAudioPipelines.set(peerSessionId, { audioContext, source, gainNode, destination });
+          audioEl.srcObject = destination.stream;
+          if (audioContext.state === 'suspended') {
+            audioContext.resume().catch(() => {});
+          }
+        } catch (e) {
+          console.warn('[WebRTC] Could not create GainNode pipeline, falling back to direct stream:', e);
+          audioEl.volume = Math.max(0, Math.min(100, volume)) / 100;
+          audioEl.srcObject = remoteStream;
+        }
+
         // Route voice to the user-selected speaker (not the OS default) BEFORE
         // playing, otherwise Chromium may start playback on the default device
         // and never switch (#46).
@@ -1256,23 +1295,40 @@ export class WebRtcManager {
     return session.pc.getReceivers().find((receiver) => receiver.track?.id === trackId) ?? null;
   }
 
-  public setPeerVolume(peerSessionId: string, volume0to100: number): void {
-    const audioEl = this.audioElements.get(peerSessionId);
-    if (audioEl) {
-      audioEl.volume = Math.max(0, Math.min(100, volume0to100)) / 100;
+  public setPeerVolume(peerSessionId: string, volume0to200: number): void {
+    const clamped = Math.max(0, Math.min(200, volume0to200));
+    const pipeline = this.peerAudioPipelines.get(peerSessionId);
+    if (pipeline) {
+      pipeline.gainNode.gain.value = clamped / 100;
+    } else {
+      const audioEl = this.audioElements.get(peerSessionId);
+      if (audioEl) {
+        audioEl.volume = Math.min(100, clamped) / 100;
+      }
     }
   }
 
   public applyUserVolumes(): void {
-    for (const [peerSessionId, audioEl] of this.audioElements.entries()) {
+    for (const peerSessionId of this.audioElements.keys()) {
       const participant = participantManager.get(peerSessionId);
       const vol = settingsStore.getUserVolume(peerSessionId, participant?.user.clientId);
-      audioEl.volume = vol / 100;
+      this.setPeerVolume(peerSessionId, vol);
     }
   }
 
   public removePeer(peerSessionId: string): void {
     this.cleanupRemoteVad(peerSessionId);
+    const pipeline = this.peerAudioPipelines.get(peerSessionId);
+    if (pipeline) {
+      try {
+        pipeline.source.disconnect();
+        pipeline.gainNode.disconnect();
+        if (pipeline.audioContext.state !== 'closed') {
+          pipeline.audioContext.close().catch(() => {});
+        }
+      } catch {}
+      this.peerAudioPipelines.delete(peerSessionId);
+    }
     const audioEl = this.audioElements.get(peerSessionId);
     if (audioEl) {
       audioEl.srcObject = null;
@@ -1299,6 +1355,16 @@ export class WebRtcManager {
       this.removePeer(peerSessionId);
     }
     this.peers.clear();
+    for (const [peerSessionId, pipeline] of this.peerAudioPipelines) {
+      try {
+        pipeline.source.disconnect();
+        pipeline.gainNode.disconnect();
+        if (pipeline.audioContext.state !== 'closed') {
+          pipeline.audioContext.close().catch(() => {});
+        }
+      } catch {}
+    }
+    this.peerAudioPipelines.clear();
     for (const peerSessionId of Array.from(this.remoteAudioVads.keys())) {
       this.cleanupRemoteVad(peerSessionId);
     }

@@ -9,12 +9,16 @@ import { normalizeSearchString } from '../utils/search';
 type PickerTab = 'emojis' | 'stickers';
 
 export interface EmojiPickerOptions {
-  /** Positioned ancestor the popover is anchored inside (`.chat-input-container`). */
+  /** Positioned ancestor the popover is anchored inside (`.chat-input-container` or input wrapper). */
   container: HTMLElement;
   /** Button that toggles the picker; clicks on it must not count as "outside". */
   anchor: HTMLElement;
   onSelectEmoji: (emoji: string) => void;
-  onSelectSticker: (sticker: StickerEntry) => void;
+  onSelectSticker?: (sticker: StickerEntry) => void;
+  /** If true, only emojis are available (no stickers tab) */
+  emojiOnly?: boolean;
+  /** Alignment / position styling */
+  position?: 'bottom-right' | 'bottom-left' | 'top-right' | 'top-left';
 }
 
 /** One representative emoji per category, used as the quick-nav icon. */
@@ -80,8 +84,11 @@ export class EmojiPicker {
     if (this.isOpen()) return;
 
     this.query = '';
+    this.tab = 'emojis';
     const root = document.createElement('div');
-    root.className = 'emoji-picker';
+    const posClass = this.options.position ? ` emoji-picker--${this.options.position}` : '';
+    const emojiOnlyClass = this.options.emojiOnly ? ' emoji-picker--emoji-only' : '';
+    root.className = `emoji-picker${posClass}${emojiOnlyClass}`;
     root.innerHTML = this.renderShell();
     this.options.container.appendChild(root);
     this.root = root;
@@ -110,7 +117,7 @@ export class EmojiPicker {
   // --- shell -------------------------------------------------------------
 
   private renderShell(): string {
-    return `
+    const tabsHtml = this.options.emojiOnly ? '' : `
       <div class="emoji-picker-tabs">
         <button type="button" class="emoji-picker-tab" data-picker-tab="emojis">
           <span class="material-symbols-outlined md-16">mood</span>
@@ -121,6 +128,10 @@ export class EmojiPicker {
           ${t('emojiPicker.tabStickers')}
         </button>
       </div>
+    `;
+
+    return `
+      ${tabsHtml}
       <div class="emoji-picker-search">
         <span class="material-symbols-outlined md-16">search</span>
         <input type="text" class="emoji-picker-search-input" spellcheck="false">
@@ -173,7 +184,7 @@ export class EmojiPicker {
       }
 
       const filePath = target.closest<HTMLElement>('[data-sticker-path]')?.getAttribute('data-sticker-path');
-      if (filePath) {
+      if (filePath && !this.options.emojiOnly && this.options.onSelectSticker) {
         const sticker = stickerService.getStickers().find((s) => s.filePath === filePath);
         if (sticker) this.options.onSelectSticker(sticker);
       }

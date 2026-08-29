@@ -90,6 +90,7 @@ export default withMermaid(defineConfig({
         nav: [
           { text: 'Guia', link: '/' },
           { text: 'Download', link: '/download' },
+          { text: 'Apoiar ☕', link: 'https://buymeacoffee.com/monkyorg' },
         ],
         outline: { label: 'Nesta página' },
         docFooter: { prev: 'Anterior', next: 'Próxima' },
@@ -112,6 +113,7 @@ export default withMermaid(defineConfig({
         nav: [
           { text: 'Guide', link: '/en/' },
           { text: 'Download', link: '/en/download' },
+          { text: 'Donate ☕', link: 'https://buymeacoffee.com/monkyorg' },
         ],
         editLink: {
           pattern: 'https://github.com/MonkyOrg/Monky/edit/main/docs-site/:path',

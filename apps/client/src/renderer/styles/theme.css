@@ -2409,7 +2409,7 @@ input:focus, textarea:focus, select:focus {
   position: absolute;
   bottom: calc(100% - 8px);
   left: 20px;
-  z-index: 60;
+  z-index: 1000;
   display: flex;
   flex-direction: column;
   width: 360px;
@@ -2421,6 +2421,68 @@ input:focus, textarea:focus, select:focus {
   border-radius: var(--radius-md);
   box-shadow: 0 12px 32px rgba(0, 0, 0, 0.45);
   overflow: hidden;
+}
+
+.emoji-picker--bottom-right {
+  top: calc(100% + 6px);
+  bottom: auto;
+  left: auto;
+  right: 0;
+}
+
+.emoji-picker--bottom-left {
+  top: calc(100% + 6px);
+  bottom: auto;
+  left: 0;
+  right: auto;
+}
+
+.emoji-picker--top-right {
+  bottom: calc(100% + 6px);
+  top: auto;
+  left: auto;
+  right: 0;
+}
+
+.emoji-picker--top-left {
+  bottom: calc(100% + 6px);
+  top: auto;
+  left: 0;
+  right: auto;
+}
+
+.emoji-picker--emoji-only {
+  height: 380px;
+}
+
+.input-with-emoji-container {
+  position: relative;
+  display: flex;
+  align-items: center;
+  width: 100%;
+}
+
+.btn-input-emoji {
+  position: absolute;
+  right: 8px;
+  top: 50%;
+  transform: translateY(-50%);
+  background: transparent;
+  border: none;
+  color: var(--text-muted);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 4px;
+  border-radius: var(--radius-sm);
+  transition: all 0.15s ease;
+  z-index: 2;
+}
+
+.btn-input-emoji:hover {
+  color: var(--accent-primary);
+  background: rgba(255, 255, 255, 0.08);
 }
 
 .emoji-picker-tabs {
@@ -5723,24 +5785,26 @@ button:hover .role-option-check:not(.checked) {
 .sb-players-container {
   display: flex;
   flex-direction: column;
-  max-height: 150px;
+  gap: 6px;
+  max-height: 180px;
   overflow-y: auto;
-  background: rgba(88, 101, 242, 0.08);
-  border-bottom: 1px solid rgba(88, 101, 242, 0.25);
+  background: var(--bg-card);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-md);
+  margin: 10px 20px 0;
+  padding: 8px 12px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.25);
 }
 
 .sb-player-bar {
   display: flex;
   align-items: center;
   gap: 12px;
-  padding: 8px 20px;
-  background: transparent;
-  border-bottom: 1px solid rgba(88, 101, 242, 0.15);
+  padding: 8px 12px;
+  background: rgba(88, 101, 242, 0.08);
+  border: 1px solid rgba(88, 101, 242, 0.25);
+  border-radius: var(--radius-sm);
   animation: sbSlideDown 0.15s ease-out;
-}
-
-.sb-player-bar:last-child {
-  border-bottom: none;
 }
 
 @keyframes sbSlideDown {
@@ -5914,7 +5978,12 @@ button:hover .role-option-check:not(.checked) {
 
 .sb-sound-row.is-playing {
   border-color: var(--accent-primary) !important;
+  background: rgba(88, 101, 242, 0.12) !important;
   box-shadow: 0 0 0 2px rgba(88, 101, 242, 0.35);
+}
+
+.sb-sound-row.is-playing .sb-sound-icon {
+  animation: sbPulseIcon 1s infinite ease-in-out;
 }
 
 .sb-sound-list-btn:hover .sb-sound-icon {

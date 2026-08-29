@@ -24,7 +24,12 @@ export class ServerGeneralTab {
         <div style="flex: 1; min-width: 0;">
           <div class="form-group" style="margin-bottom: 0;">
             <label style="margin-bottom: 4px;">${t('serverSettings.nameLabel')}</label>
-            <input id="input-server-name" type="text" value="${escapeHtml(s.name)}" required minlength="2" maxlength="50">
+            <div class="input-with-emoji-container">
+              <input id="input-server-name" type="text" value="${escapeHtml(s.name)}" required minlength="2" maxlength="50" style="padding-right: 36px;">
+              <button type="button" id="btn-emoji-server-name" class="btn-input-emoji" title="${t('chat.emojiPickerTitle')}">
+                <span class="material-symbols-outlined md-18">mood</span>
+              </button>
+            </div>
           </div>
         </div>
       </div>

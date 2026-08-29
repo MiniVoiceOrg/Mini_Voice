@@ -353,6 +353,7 @@ class App {
 
     appEvents.on('network.disconnected', () => {
       this.hideReconnectOverlay();
+      this.mainView.destroy();
       void window.api?.setWindowInServer?.(false);
       serverStore.clear();
       chatStore.clear();
