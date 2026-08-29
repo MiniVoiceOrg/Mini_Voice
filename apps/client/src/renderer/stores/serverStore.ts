@@ -278,6 +278,35 @@ export class ServerStore {
     });
   }
 
+  /**
+   * Returns all known members (online + offline), sorted with online/voice
+   * users first, then offline, each sub-group sorted by role then name (#401).
+   */
+  public getAllMembersInDisplayOrder(): UserSummary[] {
+    const onlineIds = new Set((this.serverDetails?.members ?? []).map((m) => m.id));
+    const all = new Map<string, UserSummary>();
+
+    // Online members first (authoritative state)
+    for (const m of (this.serverDetails?.members ?? [])) {
+      all.set(m.id, m);
+    }
+    // Offline members from knownMembers
+    for (const [id, m] of this.knownMembers) {
+      if (!all.has(id)) {
+        all.set(id, { ...m, status: 'DISCONNECTED' as const });
+      }
+    }
+
+    return Array.from(all.values()).sort((a, b) => {
+      const aOnline = onlineIds.has(a.id) ? 0 : 1;
+      const bOnline = onlineIds.has(b.id) ? 0 : 1;
+      if (aOnline !== bOnline) return aOnline - bOnline;
+      const diff = this.getUserHighestRolePosition(b.id) - this.getUserHighestRolePosition(a.id);
+      if (diff !== 0) return diff;
+      return a.nickname.localeCompare(b.nickname);
+    });
+  }
+
   public recalculateMyPermissions(): number {
     if (!this.currentUser) {
       this.myPermissions = 0;

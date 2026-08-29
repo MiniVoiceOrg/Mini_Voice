@@ -454,6 +454,8 @@ export const en: TranslationMap = {
   'main.disconnect': 'Disconnect',
   'main.disconnectMessage': 'Do you really want to disconnect from the server?',
   'main.membersCount': 'MEMBERS — {count}',
+  'main.membersOnline': 'ONLINE',
+  'main.membersOffline': 'OFFLINE',
   'main.voiceConnected': 'Voice connected',
   'main.averagePing': 'Average latency',
   'main.leaveCall': 'Leave call',
