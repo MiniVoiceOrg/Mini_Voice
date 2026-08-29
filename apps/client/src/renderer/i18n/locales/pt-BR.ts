@@ -492,6 +492,7 @@ export const ptBR = {
   'main.micMuted': 'Microfone mutado',
   'main.audioMuted': 'Áudio mutado',
   'main.sharingScreen': 'Compartilhando tela',
+  'main.peerConnectionFailed': 'Sem conexão direta com este participante',
   'main.screenShareNoticeOne': '{name} está transmitindo tela',
   'main.screenShareNoticeTwo': '{first} e {second} estão transmitindo tela',
   'main.screenShareNoticeMany.one': '{first}, {second} e +{count} pessoa estão transmitindo tela',

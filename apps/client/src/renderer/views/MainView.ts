@@ -623,11 +623,13 @@ export class MainView {
                   const isMicMuted = isSelfMuted || isServerMuted || isSelfDeafened || isServerDeafened;
                   const avatar = getAvatarUrl(p.user.avatarUrl);
                   const displayName = participantManager.displayName(p);
+                  const isPeerFailed = !isLocal && (p.peerConnectionFailed ?? false);
 
                   return `
                     <div id="voice-mini-user-${sessionId}" class="voice-participant-mini ${isSpeaking ? 'speaking' : ''}" data-session-id="${sessionId}" title="${escapeHtml(displayName)} (${t('main.rightClickVolumeShort')})">
                       <img class="voice-mini-avatar" src="${avatar}">
                       <span class="voice-mini-name">${escapeHtml(displayName)}</span>
+                      ${isPeerFailed ? `<span class="material-symbols-outlined md-14 voice-mini-icon peer-failed" title="${t('main.peerConnectionFailed')}">link_off</span>` : ''}
                       ${isServerDeafened ? `<span class="material-symbols-outlined md-14 voice-mini-icon muted" title="${t('permissions.serverDeafened')}">hearing_disabled</span>` : ''}
                       ${isServerMuted ? `<span class="material-symbols-outlined md-14 voice-mini-icon muted" title="${t('permissions.serverMuted')}">admin_panel_settings</span>` : ''}
                       ${isMicMuted ? `<span class="material-symbols-outlined md-14 voice-mini-icon muted" title="${t('main.micMuted')}">mic_off</span>` : ''}

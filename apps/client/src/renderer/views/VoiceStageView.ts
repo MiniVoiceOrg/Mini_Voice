@@ -1591,14 +1591,14 @@ export class VoiceStageView {
     const u8 = appEvents.on('local.screen_audio_started', () => this.updateControlsUI());
     const u9 = appEvents.on('local.screen_audio_stopped', () => this.updateControlsUI());
 
-    const u10 = appEvents.on('remote.peer_failed', (data: { sessionId: string }) => {
-      participantManager.setPeerConnectionFailed(data.sessionId, true);
-    });
-    const u11 = appEvents.on('remote.peer_recovered', (data: { sessionId: string }) => {
-      participantManager.setPeerConnectionFailed(data.sessionId, false);
-    });
+    // `remote.peer_failed` / `remote.peer_recovered` are not handled here on
+    // purpose: WebRtcManager writes the flag straight into the participant
+    // manager of the server hosting the call. Doing it from a view would both
+    // lose the warning whenever the stage happens to be unmounted and, while
+    // browsing another server during a call (#400), write it onto the wrong
+    // server's participants (#426).
 
-    this.unbindEvents.push(u1, u2, u3, u4, u5, u6, u7, u8, u9, u10, u11);
+    this.unbindEvents.push(u1, u2, u3, u4, u5, u6, u7, u8, u9);
   }
 
   private unbindListeners(): void {
