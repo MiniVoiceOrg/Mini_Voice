@@ -13,6 +13,7 @@ import { videoService } from '../core/VideoService';
 import { webRtcManager } from '../core/WebRtcManager';
 import { soundEffects } from '../core/SoundEffects';
 import { getAvatarUrl } from '../utils/avatar';
+import { peerFailureTooltip } from '../utils/peerFailureHint';
 import { showAlert, showConfirm } from './Dialog';
 import { userContextMenu } from './UserContextMenu';
 import { setButtonLoading, isButtonLoading } from '../utils/buttonLoading';
@@ -971,7 +972,7 @@ export class VoiceStageView {
 
       <div class="stage-badges-overlay">
         <span>${label}</span>
-        ${isPeerFailed ? `<span class="material-symbols-outlined md-14 stage-peer-failed-icon" title="${t('stage.peerConnectionFailed')}">link_off</span>` : ''}
+        ${isPeerFailed ? `<span class="material-symbols-outlined md-14 stage-peer-failed-icon" title="${peerFailureTooltip('stage.peerConnectionFailed')}">link_off</span>` : ''}
         ${isRelayed ? `<span class="material-symbols-outlined md-14" style="color: var(--warning, #f0b232);" title="${t('stage.peerRelayed')}">swap_horiz</span>` : ''}
         ${isServerDeafened ? `<span class="material-symbols-outlined md-14" style="color: #f0b232;" title="${t('permissions.serverDeafened')}">hearing_disabled</span>` : ''}
         ${isServerMuted ? `<span class="material-symbols-outlined md-14" style="color: #f0b232;" title="${t('permissions.serverMuted')}">admin_panel_settings</span>` : ''}
