@@ -778,6 +778,7 @@ export class WebSocketServer {
       allowSoundboard: result.allowSoundboard,
       iconUrl: result.iconUrl,
       attachmentStorage: result.attachmentStorage,
+      maxUsers: result.maxUsers,
     };
 
     // Broadcast updated server settings to all clients

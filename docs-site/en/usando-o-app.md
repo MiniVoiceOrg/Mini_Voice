@@ -6,6 +6,8 @@ Click a **voice channel** to join the call. Whoever speaks gets a green ring aro
 
 Right-click a participant to adjust their individual volume. The setting applies only on this computer and to that device: if the same person is connected from two machines, each one gets its own volume.
 
+The call follows you: switching servers in the left column keeps it running, and the icon of the server hosting it stays marked. Joining a voice channel on another server moves the call there. See [Several servers at once](/en/entrar-em-um-servidor#several-servers-at-once).
+
 ## Camera and screen
 
 On the media bar: **Camera**, **Share Screen** and **Soundboard**. Screen sharing lets you choose a whole screen or a specific window, with screen audio sent to participants.

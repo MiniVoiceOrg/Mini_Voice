@@ -205,30 +205,38 @@ export class AuthService {
     }
 
     const onlineMap = this.getActiveOnlineUsers();
-    // Capacity counts people, not connections: a second device of someone who is
-    // already here must not eat another slot (#309).
-    const distinctUserIds = new Set<string>();
-    let sameIdentityOnline = false;
     let otherDevicesOfIdentity = 0;
     for (const session of onlineMap.values()) {
-      distinctUserIds.add(session.user.id);
       if (session.user.clientId !== pending.clientId) continue;
-      sameIdentityOnline = true;
       // A reconnect from the same device replaces its own session instead of
       // adding one, so it must not count towards the device cap.
       if (session.user.sessionId !== `${session.user.id}:${pending.deviceId}`) {
         otherDevicesOfIdentity++;
       }
     }
-    if (!sameIdentityOnline && distinctUserIds.size >= server.maxUsers) {
-      return {
-        success: false,
-        errorCode: ProtocolErrorCode.SERVER_FULL,
-        errorMessage: `O servidor atingiu a capacidade máxima (${server.maxUsers} usuários).`,
-      };
+
+    // Resolved before the capacity check because capacity counts registered
+    // members (#403): we must know whether this person already has a record.
+    let userRecord = await this.userRepo.findByPublicKey(pending.publicKey);
+    if (!userRecord) {
+      userRecord = await this.userRepo.findByClientId(pending.clientId);
     }
-    // Waiving the capacity check for an already-online identity would otherwise
-    // let one person open unlimited connections, so cap their devices (#309).
+
+    // Only a brand-new member consumes a slot — an existing member must never be
+    // locked out of their own server once it fills up. A cap of
+    // MAX_USERS_UNLIMITED means the owner opted out of any limit (#403).
+    if (!userRecord && server.maxUsers > LIMITS.MAX_USERS_UNLIMITED) {
+      const memberCount = await this.userRepo.count();
+      if (memberCount >= server.maxUsers) {
+        return {
+          success: false,
+          errorCode: ProtocolErrorCode.SERVER_FULL,
+          errorMessage: `O servidor atingiu o limite de ${server.maxUsers} membros. Peça a um administrador para remover um membro ou aumentar o limite.`,
+        };
+      }
+    }
+    // Capacity no longer bounds concurrent connections, so without this an
+    // identity could still open unlimited sessions from new devices (#309).
     if (otherDevicesOfIdentity >= LIMITS.MAX_SESSIONS_PER_USER) {
       return {
         success: false,
@@ -249,11 +257,6 @@ export class AuthService {
           errorMessage: 'Este nickname já está sendo utilizado por outro usuário no momento.',
         };
       }
-    }
-
-    let userRecord = await this.userRepo.findByPublicKey(pending.publicKey);
-    if (!userRecord) {
-      userRecord = await this.userRepo.findByClientId(pending.clientId);
     }
 
     const now = Date.now();
@@ -393,6 +396,7 @@ export class AuthService {
     iconBase64?: string | null;
     maxAttachmentFileBytes?: number;
     maxAttachmentStorageBytes?: number;
+    maxUsers?: number;
   }): Promise<{
     success: boolean;
     name?: string;
@@ -400,6 +404,7 @@ export class AuthService {
     allowSoundboard?: boolean;
     iconUrl?: string | null;
     attachmentStorage?: AttachmentStorageInfo;
+    maxUsers?: number;
     errorMessage?: string;
   }> {
     const server = await this.serverRepo.getServer();
@@ -426,6 +431,26 @@ export class AuthService {
       }
       if (payload.maxAttachmentFileBytes !== undefined) updates.maxAttachmentFileBytes = Math.floor(nextFile);
       if (payload.maxAttachmentStorageBytes !== undefined) updates.maxAttachmentStorageBytes = Math.floor(nextTotal);
+    }
+
+    if (payload.maxUsers !== undefined) {
+      const nextMax = Math.floor(payload.maxUsers);
+      if (!Number.isFinite(nextMax) || nextMax < LIMITS.MAX_USERS_UNLIMITED) {
+        return { success: false, errorMessage: 'O limite de membros deve ser um número positivo.' };
+      }
+      // Refusing to drop below the current membership keeps the server out of an
+      // "over the limit" state we would have no safe way to resolve — kicking
+      // members automatically is never acceptable (#403).
+      if (nextMax > LIMITS.MAX_USERS_UNLIMITED) {
+        const memberCount = await this.userRepo.count();
+        if (nextMax < memberCount) {
+          return {
+            success: false,
+            errorMessage: `O servidor já tem ${memberCount} membros. Remova membros antes de definir um limite menor.`,
+          };
+        }
+      }
+      updates.maxUsers = nextMax;
     }
 
     if (payload.password !== undefined) {
@@ -477,6 +502,7 @@ export class AuthService {
       allowSoundboard: updatedServer?.allowSoundboard !== false,
       iconUrl: this.avatarStorage.getPublicUrl(updatedServer?.iconPath),
       attachmentStorage: await this.attachmentService.getStorageInfo(),
+      maxUsers: updatedServer?.maxUsers ?? server.maxUsers,
     };
   }
 }

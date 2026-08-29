@@ -1,4 +1,4 @@
-import { Permission } from '@monky/shared';
+import { LIMITS, Permission } from '@monky/shared';
 import { ANSI, color, PERMISSION_OPTIONS } from './constants';
 
 /**
@@ -32,6 +32,24 @@ export function parsePositiveInt(key: string, value: string): number {
   const parsed = Number.parseInt(value, 10);
   if (!Number.isFinite(parsed) || parsed < 1) {
     throw new Error(`Valor inválido para ${key}: ${value}`);
+  }
+  return parsed;
+}
+
+/**
+ * Parses the membership cap, where 0 means "no limit" (#403).
+ *
+ * Kept apart from `parsePositiveInt` because 0 is a legitimate value here and
+ * an error everywhere else.
+ */
+export function parseMemberLimit(key: string, value: string): number {
+  const normalized = value.trim().toLowerCase();
+  if (normalized === '' || normalized === '0' || normalized === 'ilimitado' || normalized === 'unlimited') {
+    return LIMITS.MAX_USERS_UNLIMITED;
+  }
+  const parsed = Number.parseInt(normalized, 10);
+  if (!Number.isFinite(parsed) || parsed < 1) {
+    throw new Error(`Valor inválido para ${key}: ${value} (use 0 para sem limite).`);
   }
   return parsed;
 }

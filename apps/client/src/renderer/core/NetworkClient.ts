@@ -11,6 +11,8 @@ import {
   ServerErrorPayload,
 } from '@monky/shared';
 import { appEvents } from './EventBus';
+import { createActiveProxy } from './activeProxy';
+import { routeSessionEvent } from './sessionRouting';
 import { t } from '../i18n';
 import { translateProtocolError } from '../i18n/protocolErrors';
 
@@ -59,6 +61,11 @@ export function getDeviceId(): string {
 }
 
 export class NetworkClient {
+  /**
+   * Identifies which server this client talks to, so events can be routed to
+   * the matching state bundle when several servers are connected (#400).
+   */
+  public sessionKey: string = '';
   private ws: WebSocket | null = null;
   private connectionTimeout: ReturnType<typeof setTimeout> | null = null;
   private status: ConnectionStatus = 'DISCONNECTED';
@@ -77,7 +84,24 @@ export class NetworkClient {
 
   constructor() {
     if (typeof window !== 'undefined') {
-      window.addEventListener('online', () => this.reconnectNow());
+      window.addEventListener('online', this.onBrowserOnline);
+    }
+  }
+
+  /**
+   * Kept as a field so it can be removed again: there is one client per server
+   * now (#400), and a listener left on `window` would pin every client the user
+   * ever connected to in memory.
+   */
+  private onBrowserOnline = (): void => {
+    this.reconnectNow();
+  };
+
+  /** Releases everything the client holds outside itself, for good. */
+  public dispose(): void {
+    this.disconnect();
+    if (typeof window !== 'undefined') {
+      window.removeEventListener('online', this.onBrowserOnline);
     }
   }
 
@@ -116,6 +140,15 @@ export class NetworkClient {
     return this.status;
   }
 
+  /**
+   * Emits on the app bus with this client's server as the origin, so the
+   * session manager can point the stores at the right bundle before handlers
+   * run (#400).
+   */
+  private emitScoped(event: string, data?: unknown): void {
+    routeSessionEvent(this.sessionKey, event, () => appEvents.emit(event, data));
+  }
+
   public getHttpBaseUrl(): string {
     if (!this.currentServerUrl) return '';
     return this.currentServerUrl.replace(/^ws:\/\//, 'http://').replace(/^wss:\/\//, 'https://');
@@ -143,6 +176,7 @@ export class NetworkClient {
 
     const cleanHost = host.trim().replace(/^ws:\/\//, '').replace(/^wss:\/\//, '');
     this.currentServerUrl = `ws://${cleanHost}:${port}`;
+    if (!this.sessionKey) this.sessionKey = this.currentServerUrl;
     this.lastConnectPayload = {
       protocolVersion: PROTOCOL_VERSION,
       publicKey: identity.publicKey,
@@ -196,7 +230,7 @@ export class NetworkClient {
             this.reconnectAttempt = 0;
             this.hasEverConnected = true;
             this.startHeartbeat();
-            appEvents.emit('network.connected', res);
+            this.emitScoped('network.connected', res);
             resolve(res);
           },
           reject: (error) => {
@@ -257,6 +291,10 @@ export class NetworkClient {
   }
 
   public disconnect(): void {
+    // Emitting again after the socket already died would run the whole teardown
+    // twice — and, with one client per server (#400), would ask the session
+    // manager to drop a session while it is already being dropped.
+    const wasLive = this.status !== 'DISCONNECTED';
     this.manualDisconnect = true;
     this.clearReconnect();
     this.clearConnectionTimeout();
@@ -278,7 +316,7 @@ export class NetworkClient {
     // here instead of lingering until their own 8s timeout.
     this.rejectPendingRequests();
     this.setStatus('DISCONNECTED');
-    appEvents.emit('network.disconnected');
+    if (wasLive) this.emitScoped('network.disconnected');
   }
 
   private rejectPendingRequests(): void {
@@ -350,7 +388,7 @@ export class NetworkClient {
 
     if (type === MessageType.SERVER_SHUTDOWN) {
       const reason = (payload as { reason?: string })?.reason;
-      appEvents.emit('network.server_shutdown', { reason });
+      this.emitScoped('network.server_shutdown', { reason });
       this.disconnect();
       return;
     }
@@ -397,7 +435,7 @@ export class NetworkClient {
       pending.resolve(payload);
     }
 
-    appEvents.emit(`message.${type}`, payload);
+    this.emitScoped(`message.${type}`, payload);
   }
 
   private async respondToAuthChallenge(payload: AuthChallengePayload, requestId?: string): Promise<void> {
@@ -435,7 +473,7 @@ export class NetworkClient {
     const delay = RECONNECT_DELAYS_MS[Math.min(this.reconnectAttempt, RECONNECT_DELAYS_MS.length - 1)];
     this.reconnectAttempt++;
 
-    appEvents.emit('network.reconnecting', { attempt: this.reconnectAttempt, delay });
+    this.emitScoped('network.reconnecting', { attempt: this.reconnectAttempt, delay });
 
     this.reconnectTimeout = setTimeout(() => {
       void this.doReconnect();
@@ -515,8 +553,18 @@ export class NetworkClient {
 
   private setStatus(status: ConnectionStatus): void {
     this.status = status;
-    appEvents.emit('network.status', status);
+    this.emitScoped('network.status', status);
   }
 }
 
-export const networkClient = new NetworkClient();
+export function createNetworkClient(): NetworkClient {
+  return new NetworkClient();
+}
+
+let activeNetworkClient = createNetworkClient();
+
+export function setActiveNetworkClient(client: NetworkClient): void {
+  activeNetworkClient = client;
+}
+
+export const networkClient = createActiveProxy<NetworkClient>(() => activeNetworkClient);

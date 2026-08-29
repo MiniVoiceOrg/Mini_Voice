@@ -631,6 +631,32 @@ input:focus, textarea:focus, select:focus {
   background-color: var(--success);
 }
 
+/* Marker for a server kept connected while the user looks elsewhere (#400). */
+.server-rail-badge {
+  position: absolute;
+  top: -3px;
+  right: -3px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  border: 2px solid var(--bg-app);
+  pointer-events: none;
+}
+
+.server-rail-badge[data-kind='call'] {
+  width: 18px;
+  height: 18px;
+  background-color: var(--success);
+  color: #fff;
+}
+
+.server-rail-badge[data-kind='unread'] {
+  width: 12px;
+  height: 12px;
+  background-color: var(--accent-primary);
+}
+
 .server-rail-status-dot[data-status='offline'] {
   background-color: var(--danger);
 }

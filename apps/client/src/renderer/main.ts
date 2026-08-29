@@ -23,7 +23,10 @@ import {
 import { audioProcessor } from './core/AudioProcessor';
 import { appEvents } from './core/EventBus';
 import { networkClient } from './core/NetworkClient';
+import { callClient, rejoinCallOnSession } from './core/serverConnection';
 import { participantManager } from './core/ParticipantManager';
+import { sessionManager } from './core/SessionManager';
+import { currentEventOrigin, isForegroundEvent } from './core/sessionRouting';
 import { soundEffects } from './core/SoundEffects';
 import { soundboardService } from './core/SoundboardService';
 import { keybindService } from './core/KeybindService';
@@ -51,6 +54,10 @@ class App {
 
   constructor() {
     this.appContainer = document.getElementById('app')!;
+    // Routes incoming server events to the right state bundle. It must be in
+    // place before any connection exists, otherwise the first events would be
+    // applied to whatever store happens to be active (#400).
+    sessionManager.install();
     this.connectionView = new ConnectionView(this.appContainer);
     this.mainView = new MainView(this.appContainer);
 
@@ -188,7 +195,7 @@ class App {
       undeafened = true;
     }
 
-    networkClient.send(MessageType.VOICE_STATE_UPDATE, {
+    callClient().send(MessageType.VOICE_STATE_UPDATE, {
       isMuted: newMuted,
       ...(undeafened ? { isDeafened: false } : {}),
     });
@@ -203,7 +210,7 @@ class App {
     audioProcessor.setMuted(voiceStore.getEffectiveMuted());
     webRtcManager.setDeafened(voiceStore.getEffectiveDeafened());
     soundEffects.play(newDeafened ? 'deafen' : 'undeafen');
-    networkClient.send(MessageType.VOICE_STATE_UPDATE, {
+    callClient().send(MessageType.VOICE_STATE_UPDATE, {
       isDeafened: newDeafened,
       isMuted: voiceStore.isMuted,
     });
@@ -258,8 +265,21 @@ class App {
     document.getElementById('reconnect-overlay')?.remove();
   }
 
-  private setupGlobalEventListeners(): void {
-    // Global Keybind Actions (#252)
+  /**
+   * Whether the event being handled came from the server hosting the call.
+   *
+   * Voice, microphone and peer connections are global — there is only one of
+   * each machine-wide — so handlers that touch them must ignore events from the
+   * other connected servers (#400).
+   */
+  private eventOwnsCall(): boolean {
+    const voiceKey = voiceStore.voiceSessionKey;
+    if (!voiceKey) return true;
+    const origin = currentEventOrigin();
+    return !origin || origin === voiceKey;
+  }
+
+  private setupGlobalEventListeners(): void {    // Global Keybind Actions (#252)
     appEvents.on('keybind.toggle_mute', () => {
       this.toggleMuteFromTray();
     });
@@ -292,13 +312,18 @@ class App {
 
     // Network Connect / Disconnect
     appEvents.on('network.connected', (payload: AuthSuccessPayload) => {
+      const origin = currentEventOrigin();
+      // Voice is a single physical resource shared by every session (#400), so
+      // only the connection actually hosting the call may touch it. Without
+      // this, connecting to a second server would tear down an ongoing call.
+      const ownsCall = !voiceStore.voiceSessionKey || voiceStore.voiceSessionKey === origin;
       // Preserve the voice channel we were in so we can auto-rejoin after an
       // automatic reconnection (null on a fresh connect, so this no-ops then).
-      const previousVoiceChannelId = voiceStore.currentVoiceChannelId;
+      const previousVoiceChannelId = ownsCall ? voiceStore.currentVoiceChannelId : null;
 
       serverStore.setServerDetails(payload.server, payload.currentUser);
       // The in-server layout needs more room than the connection card (#342).
-      void window.api?.setWindowInServer?.(true);
+      if (isForegroundEvent()) void window.api?.setWindowInServer?.(true);
       // Seed unread @-mention badges, including mentions received while this
       // user was offline (#14).
       chatStore.setMentions(payload.server.mentionedChannelIds ?? []);
@@ -310,19 +335,23 @@ class App {
         participantManager.updateVoiceState(state);
       }
 
-      const myVoiceState = payload.currentUser.sessionId
-        ? payload.server.voiceStates[payload.currentUser.sessionId]
-        : undefined;
-      voiceStore.setServerMuted(myVoiceState?.serverMuted ?? false);
-      voiceStore.setServerDeafened(myVoiceState?.serverDeafened ?? false);
-      this.syncLocalVoiceMediaState();
+      if (ownsCall) {
+        const myVoiceState = payload.currentUser.sessionId
+          ? payload.server.voiceStates[payload.currentUser.sessionId]
+          : undefined;
+        voiceStore.setServerMuted(myVoiceState?.serverMuted ?? false);
+        voiceStore.setServerDeafened(myVoiceState?.serverDeafened ?? false);
+        this.syncLocalVoiceMediaState();
 
-      webRtcManager.setCurrentSessionId(payload.currentUser.sessionId || payload.currentUser.id);
-      // Drop any stale peer connections left over from a dropped session.
-      webRtcManager.closeAllPeers();
+        webRtcManager.setCurrentSessionId(payload.currentUser.sessionId || payload.currentUser.id);
+        // Drop any stale peer connections left over from a dropped session.
+        webRtcManager.closeAllPeers();
+      }
 
-      this.mainView.render();
-      this.hideReconnectOverlay();
+      if (isForegroundEvent()) {
+        this.mainView.render();
+        this.hideReconnectOverlay();
+      }
 
       // Persist the server icon on the saved server entry so the rail shows it
       // even when not connected (#301).
@@ -347,29 +376,71 @@ class App {
           (c) => c.id === previousVoiceChannelId && c.type === 'VOICE'
         );
       if (stillHasVoiceChannel) {
-        this.mainView.rejoinVoiceChannel(previousVoiceChannelId!);
+        // A background server that reconnected has to rejoin through its own
+        // session: the view-driven path would migrate the call here (#400).
+        if (isForegroundEvent()) {
+          this.mainView.rejoinVoiceChannel(previousVoiceChannelId!);
+        } else if (origin) {
+          void rejoinCallOnSession(origin, previousVoiceChannelId!);
+        }
       }
     });
 
     appEvents.on('network.disconnected', () => {
-      this.hideReconnectOverlay();
-      this.mainView.destroy();
-      void window.api?.setWindowInServer?.(false);
+      const origin = currentEventOrigin();
+      const ownsCall = !voiceStore.voiceSessionKey || voiceStore.voiceSessionKey === origin;
+
+      // The stores resolve to the session that dropped, so this clears the
+      // right bundle even when a background server is the one going away.
       serverStore.clear();
       chatStore.clear();
-      voiceStore.reset();
       participantManager.clear();
-      audioProcessor.stopMicrophone();
-      videoService.stopCamera();
-      videoService.stopScreenShare();
-      webRtcManager.clearLocalScreenTracks();
-      webRtcManager.closeAllPeers();
 
+      if (ownsCall) {
+        voiceStore.reset();
+        audioProcessor.stopMicrophone();
+        videoService.stopCamera();
+        videoService.stopScreenShare();
+        webRtcManager.clearLocalScreenTracks();
+        webRtcManager.closeAllPeers();
+      }
+
+      // This event only fires once a socket is gone for good — a client that
+      // still intends to retry emits `network.reconnecting` instead. Leaving the
+      // dead session in the map would show it as connected on the rail and let a
+      // click "switch" to a server that is no longer there (#400).
+      if (origin) sessionManager.remove(origin);
+
+      // A background server dropping must not disturb what is on screen (#400).
+      if (!isForegroundEvent()) return;
+
+      this.hideReconnectOverlay();
+
+      // Another server may still be connected — typically the one hosting the
+      // call. Showing it beats dumping the user on the connection screen while
+      // they are still talking to someone.
+      const next = sessionManager
+        .getBackground()
+        .find((session) => session.client.getStatus() === 'CONNECTED');
+      if (next) {
+        sessionManager.activate(next.key);
+        this.mainView.render();
+        return;
+      }
+
+      // Nothing left to show: the view has to be torn down, or its listeners
+      // and ping timer would outlive the server view behind the home screen.
+      this.mainView.destroy();
+      void window.api?.setWindowInServer?.(false);
       this.connectionView.render();
     });
 
     // Reconnection feedback overlay
     appEvents.on('network.reconnecting', () => {
+      // The overlay covers the whole server view, so a background server
+      // retrying must not raise it: only the visible session can hide it again,
+      // and it would stay stuck over a server that is working fine (#400).
+      if (!isForegroundEvent()) return;
       this.showReconnectOverlay();
     });
 
@@ -386,7 +457,8 @@ class App {
     appEvents.on(`message.${MessageType.USER_LEFT}`, (payload: UserLeftPayload) => {
       if (payload.sessionId) {
         participantManager.removeUser(payload.sessionId);
-        webRtcManager.removePeer(payload.sessionId);
+        // Peers belong to the call, which may live on another server (#400).
+        if (this.eventOwnsCall()) webRtcManager.removePeer(payload.sessionId);
       }
       // Only drop the member row once the person has no device left online (#309).
       if (participantManager.getSessionsOfUser(payload.userId).length === 0) {
@@ -396,8 +468,11 @@ class App {
 
     appEvents.on(`message.${MessageType.MEMBER_KICKED}`, (payload: MemberKickedPayload) => {
       if (payload.userId === serverStore.currentUser?.id) {
-        // We were removed from the server: return home with a notice.
-        appEvents.emit('network.server_shutdown', { reason: t('app.kickedFromServerMessage') });
+        // We were removed from the server: return home with a notice. Being
+        // kicked from a server we are not looking at only closes that session.
+        if (isForegroundEvent()) {
+          appEvents.emit('network.server_shutdown', { reason: t('app.kickedFromServerMessage') });
+        }
         networkClient.disconnect();
         return;
       }
@@ -406,7 +481,7 @@ class App {
       for (const session of participantManager.getSessionsOfUser(payload.userId)) {
         const key = session.user.sessionId || session.user.id;
         participantManager.removeUser(key);
-        webRtcManager.removePeer(key);
+        if (this.eventOwnsCall()) webRtcManager.removePeer(key);
       }
     });
 
@@ -455,19 +530,23 @@ class App {
             message.channelId
           );
           const shouldPlay = soundMode === 'all' || (soundMode === 'mentions' && isMention);
-          if (shouldPlay) soundEffects.play('chat_message');
+          // A message from a server the user is not looking at gets a badge on
+          // the rail instead of a sound, which would have no visible cause (#400).
+          const isForeground = isForegroundEvent();
+          if (shouldPlay && isForeground) soundEffects.play('chat_message');
+          const isViewingChannel = isForeground && this.mainView.isViewingTextChannel(message.channelId);
 
           // Unread dot in the sidebar, following the same notification settings
           // as the sound: 'none' never marks, 'mentions' only marks mentions
           // (which render as the @-badge instead) and 'all' marks everything
           // (#263).
-          if (shouldPlay && !this.mainView.isViewingTextChannel(message.channelId)) {
+          if (shouldPlay && !isViewingChannel) {
             chatStore.markUnread(message.channelId);
           }
 
           // Mark the text channel in the sidebar until the user opens it (#14).
           if (isMention) {
-            if (this.mainView.isViewingTextChannel(message.channelId)) {
+            if (isViewingChannel) {
               // Seen live: clear the server-side unread row so it isn't
               // re-delivered as unread on the next reconnect (#14).
               networkClient.send(MessageType.CHAT_MENTIONS_READ, { channelId: message.channelId });
@@ -488,6 +567,7 @@ class App {
 
       // If we are also in this voice channel and not the joining session, connect P2P Mesh
       if (
+        this.eventOwnsCall() &&
         voiceStore.currentVoiceChannelId === payload.channelId &&
         !serverStore.isMySession(payload.sessionId)
       ) {
@@ -502,6 +582,7 @@ class App {
     appEvents.on(`message.${MessageType.VOICE_USER_LEFT}`, (payload: VoiceUserLeftPayload) => {
       // Play a leave sound for everyone still in the same voice channel (#54), unless deafened (#251).
       if (
+        this.eventOwnsCall() &&
         voiceStore.currentVoiceChannelId === payload.channelId &&
         !serverStore.isMySession(payload.sessionId)
       ) {
@@ -510,14 +591,14 @@ class App {
         }
       }
       participantManager.removeVoiceState(payload.sessionId);
-      webRtcManager.removePeer(payload.sessionId);
+      if (this.eventOwnsCall()) webRtcManager.removePeer(payload.sessionId);
     });
 
     appEvents.on(`message.${MessageType.VOICE_STATE_CHANGED}`, (payload: VoiceStateChangedPayload) => {
       const previousVoiceState = participantManager.get(payload.voiceState.sessionId)?.voiceState;
       const isRemoteUser = !serverStore.isMySession(payload.voiceState.sessionId);
       const isSameVoiceChannel =
-        voiceStore.currentVoiceChannelId === payload.voiceState.channelId;
+        this.eventOwnsCall() && voiceStore.currentVoiceChannelId === payload.voiceState.channelId;
 
       if (isRemoteUser && isSameVoiceChannel && !voiceStore.isDeafened) {
         if (
@@ -534,7 +615,7 @@ class App {
       }
 
       participantManager.updateVoiceState(payload.voiceState);
-      if (serverStore.isMySession(payload.voiceState.sessionId)) {
+      if (serverStore.isMySession(payload.voiceState.sessionId) && this.eventOwnsCall()) {
         voiceStore.setServerMuted(payload.voiceState.serverMuted);
         voiceStore.setServerDeafened(payload.voiceState.serverDeafened);
         this.syncLocalVoiceMediaState();
@@ -546,7 +627,7 @@ class App {
       if (current) {
         participantManager.updateVoiceState({ ...current, serverMuted: payload.muted, isSpeaking: false });
       }
-      if (serverStore.isMySession(payload.targetSessionId)) {
+      if (serverStore.isMySession(payload.targetSessionId) && this.eventOwnsCall()) {
         voiceStore.setServerMuted(payload.muted);
         this.syncLocalVoiceMediaState();
       }
@@ -557,26 +638,33 @@ class App {
       if (current) {
         participantManager.updateVoiceState({ ...current, serverDeafened: payload.deafened });
       }
-      if (serverStore.isMySession(payload.targetSessionId)) {
+      if (serverStore.isMySession(payload.targetSessionId) && this.eventOwnsCall()) {
         voiceStore.setServerDeafened(payload.deafened);
         this.syncLocalVoiceMediaState();
       }
     });
 
     appEvents.on(`message.${MessageType.ADMIN_KICK_VOICE}`, (payload: AdminKickVoicePayload) => {
-      if (!serverStore.isMySession(payload.targetSessionId)) return;
+      if (!serverStore.isMySession(payload.targetSessionId) || !this.eventOwnsCall()) return;
       audioProcessor.stopMicrophone();
       videoService.stopCamera();
       videoService.stopScreenShare();
       webRtcManager.clearLocalScreenTracks();
       webRtcManager.closeAllPeers();
       voiceStore.reset();
-      this.mainView.render();
+      if (isForegroundEvent()) this.mainView.render();
     });
 
     appEvents.on(`message.${MessageType.ADMIN_MOVE_USER}`, (payload: AdminMoveUserPayload) => {
-      if (!serverStore.isMySession(payload.targetSessionId)) return;
-      void this.mainView.rejoinVoiceChannel(payload.channelId);
+      // Being moved only makes sense on the server hosting the call; obeying it
+      // elsewhere would silently drag the call to another server (#400).
+      if (!serverStore.isMySession(payload.targetSessionId) || !this.eventOwnsCall()) return;
+      if (isForegroundEvent()) {
+        void this.mainView.rejoinVoiceChannel(payload.channelId);
+      } else {
+        const origin = currentEventOrigin();
+        if (origin) void rejoinCallOnSession(origin, payload.channelId);
+      }
     });
 
     // Local VAD speaking state
@@ -615,7 +703,7 @@ class App {
       if (!voiceStore.screenShareIds.includes(shareId)) return;
       await webRtcManager.removeLocalScreenTrack(shareId);
       voiceStore.removeScreenShare(shareId);
-      networkClient.send(MessageType.VOICE_STATE_UPDATE, {
+      callClient().send(MessageType.VOICE_STATE_UPDATE, {
         screenShareIds: voiceStore.screenShareIds,
         isScreenSharing: voiceStore.isScreenSharing,
       });

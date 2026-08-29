@@ -156,6 +156,11 @@ export interface HostServerOptions {
   initialTextChannel?: string;
   /** Id of the entry in "Meus Servidores" that owns this instance (#333). */
   serverId?: string;
+  /**
+   * Member cap chosen when the server was created (#403). Only applies on the
+   * very first boot, when the database is seeded; restarts ignore it.
+   */
+  maxUsers?: number;
 }
 
 /**

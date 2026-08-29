@@ -10,6 +10,9 @@ export interface ServerPreview {
   hasPassword?: boolean;
   iconUrl?: string | null;
   userCount?: number;
+  /** Registered members, which is what `maxUsers` caps (#403). */
+  memberCount?: number;
+  /** 0 means the owner set no membership limit (#403). */
   maxUsers?: number;
 }
 

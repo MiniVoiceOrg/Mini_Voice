@@ -122,6 +122,8 @@ O comando é interativo e pergunta, nesta ordem:
 5. **Nome do servidor**
 6. **Porta do servidor** (padrão: `3000`)
 7. **Senha do servidor** — deixe vazio para um servidor aberto.
+8. **Limite de membros** — pergunta se você quer um teto de cadastros. O padrão
+   é não ter limite.
 
 Ao final, exibe um resumo, pede confirmação e oferece iniciar o servidor.
 
@@ -133,6 +135,7 @@ Ao final, exibe um resumo, pede confirmação e oferece iniciar o servidor.
 | `--name <nome>` | Nome do servidor | `Servidor dos Amigos` |
 | `--port <n>` | Porta do servidor | `3000` |
 | `--password <senha>` | Senha do servidor (vazio = sem senha) | perguntado |
+| `--max-users <n>` | Limite de membros cadastrados (`0` = sem limite) | perguntado |
 
 A senha da identidade nunca é aceita por opção: ela é sempre digitada de forma
 oculta no terminal.
@@ -364,7 +367,7 @@ monky config set <chave> [valor]    # altera direto
 | `password` | Senha de entrada. Vazio, `none` ou `clear` remove a senha | sem senha |
 | `port` | Porta TCP | `3000` |
 | `icon` | Caminho de uma imagem, copiada para a pasta de dados. Vazio ou `clear` remove | sem ícone |
-| `maxUsers` | Máximo de usuários simultâneos | `20` |
+| `maxUsers` | Máximo de membros cadastrados. `0` remove o limite | `20` |
 | `allowSoundboard` | Permite o soundboard (`true`/`false`) | `true` |
 | `maxAttachmentFileBytes` | Tamanho máximo por anexo, em bytes | sem limite |
 | `maxAttachmentStorageBytes` | Espaço total para anexos, em bytes | sem limite |

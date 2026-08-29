@@ -58,14 +58,19 @@ async function authenticateSocket(
     const onMessage = (data: RawData) => {
       const res = JSON.parse(data.toString());
 
-      if (options?.expectErrorCode) {
-        if (res.type === MessageType.SERVER_ERROR && res.payload.code === options.expectErrorCode) {
-          ws.off('message', onMessage);
-          resolve(res);
-        }
+      if (
+        options?.expectErrorCode &&
+        res.type === MessageType.SERVER_ERROR &&
+        res.payload.code === options.expectErrorCode
+      ) {
+        ws.off('message', onMessage);
+        resolve(res);
         return;
       }
 
+      // Signed even when an error is expected: rejections like SERVER_FULL only
+      // happen after the challenge is answered, so skipping this step here would
+      // hang forever waiting for an error the server never gets to send (#403).
       if (res.type === MessageType.AUTH_CHALLENGE && res.requestId === requestId) {
         const signature = sign(null, Buffer.from(res.payload.nonce, 'hex'), identity.privateKey).toString('hex');
         const response: ProtocolMessage = {
@@ -76,6 +81,8 @@ async function authenticateSocket(
         ws.send(JSON.stringify(response));
         return;
       }
+
+      if (options?.expectErrorCode) return;
 
       if (res.type === MessageType.AUTH_SUCCESS && res.requestId === requestId) {
         ws.off('message', onMessage);
@@ -450,8 +457,8 @@ async function runTests() {
     if (stats.messages < 1) {
       throw new Error(`Teste 12: o Teste 4 enviou uma mensagem, então esperava ao menos 1, recebi ${stats.messages}`);
     }
-    if (stats.onlineUsers > stats.maxUsers) {
-      throw new Error('Teste 12: conectados não pode passar do limite do servidor');
+    if (stats.maxUsers > 0 && stats.members > stats.maxUsers) {
+      throw new Error('Teste 12: membros registrados não podem passar do limite do servidor');
     }
     console.log('✔ Teste 12 passou: Métricas do servidor expostas por API pública (uptime, membros, canais, mensagens)');
 
@@ -592,6 +599,99 @@ async function runTests() {
       throw new Error('Teste 16: um cargo sem a permissão não deveria poder usar a soundboard');
     }
     console.log('✔ Teste 16 passou: USE_SOUNDBOARD é exigida sem tirar a soundboard de quem já tinha');
+
+    // Teste 17: o limite de membros passou a contar quem está cadastrado, e não
+    // quem está online (#403). Três coisas precisam valer ao mesmo tempo: o
+    // limite barra gente nova, quem já é membro nunca é barrado (senão o
+    // servidor tranca os próprios membros do lado de fora ao encher), e o
+    // limite pode simplesmente não existir.
+    const limiteDir = path.join(testDataDir, 'limite');
+    const limiteServer = await MonkyServer.create({
+      port: 3998,
+      dataDir: limiteDir,
+      serverName: 'Servidor com Limite',
+      password: 'senha-limite',
+      maxUsers: 2,
+    });
+    await limiteServer.start();
+
+    try {
+      const identidadeA = createIdentity();
+      const wsLimiteA = new WebSocket('ws://127.0.0.1:3998');
+      await authenticateSocket(wsLimiteA, 'req-limite-a', 'LimiteA', 'senha-limite', {
+        identity: identidadeA,
+        deviceId: 'device-a1',
+      });
+
+      const wsLimiteB = new WebSocket('ws://127.0.0.1:3998');
+      await authenticateSocket(wsLimiteB, 'req-limite-b', 'LimiteB', 'senha-limite');
+
+      // Os dois saem: é aqui que a regra nova se separa da antiga. Antes o
+      // limite contava quem estava online, então desconectar liberaria a vaga;
+      // agora conta quem está cadastrado, e sair não devolve nada.
+      wsLimiteA.close();
+      wsLimiteB.close();
+      await new Promise((resolve) => setTimeout(resolve, 200));
+
+      const wsLimiteC = new WebSocket('ws://127.0.0.1:3998');
+      await authenticateSocket(wsLimiteC, 'req-limite-c', 'LimiteC', 'senha-limite', {
+        expectErrorCode: ProtocolErrorCode.SERVER_FULL,
+      });
+      wsLimiteC.close();
+
+      // O primeiro membro volta com o servidor lotado: precisa entrar, porque
+      // já tem cadastro e não ocupa uma vaga nova.
+      const wsLimiteA2 = new WebSocket('ws://127.0.0.1:3998');
+      const authLimiteA2 = await authenticateSocket(wsLimiteA2, 'req-limite-a2', 'LimiteA', 'senha-limite', {
+        identity: identidadeA,
+        deviceId: 'device-a2',
+      });
+      if (!authLimiteA2.payload?.currentUser) {
+        throw new Error('Teste 17: um membro já cadastrado deveria entrar mesmo com o servidor cheio');
+      }
+      if (authLimiteA2.payload.server?.maxUsers !== 2) {
+        throw new Error('Teste 17: o cliente precisa receber o limite configurado para exibi-lo');
+      }
+
+      const statsLimite = await limiteServer.getStats();
+      if (statsLimite.members !== 2) {
+        throw new Error(`Teste 17: esperava 2 membros cadastrados, recebi ${statsLimite.members}`);
+      }
+
+      wsLimiteA2.close();
+    } finally {
+      await limiteServer.stop();
+    }
+
+    const semLimiteDir = path.join(testDataDir, 'sem-limite');
+    const semLimiteServer = await MonkyServer.create({
+      port: 3997,
+      dataDir: semLimiteDir,
+      serverName: 'Servidor sem Limite',
+      password: 'senha-sem-limite',
+      maxUsers: LIMITS.MAX_USERS_UNLIMITED,
+    });
+    await semLimiteServer.start();
+
+    try {
+      const sockets: WebSocket[] = [];
+      for (let i = 1; i <= 3; i++) {
+        const ws = new WebSocket('ws://127.0.0.1:3997');
+        await authenticateSocket(ws, `req-sem-limite-${i}`, `SemLimite${i}`, 'senha-sem-limite');
+        sockets.push(ws);
+      }
+      const statsSemLimite = await semLimiteServer.getStats();
+      if (statsSemLimite.maxUsers !== LIMITS.MAX_USERS_UNLIMITED) {
+        throw new Error('Teste 17: um servidor sem limite não pode ganhar um limite padrão pelo caminho');
+      }
+      if (statsSemLimite.members !== 3) {
+        throw new Error(`Teste 17: esperava 3 membros sem limite, recebi ${statsSemLimite.members}`);
+      }
+      sockets.forEach((ws) => ws.close());
+    } finally {
+      await semLimiteServer.stop();
+    }
+    console.log('✔ Teste 17 passou: Limite conta membros cadastrados, poupa quem já entrou e pode ser desligado');
 
     console.log('=== Todos os testes do servidor passaram com sucesso! ===');
   } finally {

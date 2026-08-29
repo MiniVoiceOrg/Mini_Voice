@@ -1,5 +1,6 @@
 import { UserSummary, VoiceParticipantState } from '@monky/shared';
-import { appEvents } from './EventBus';
+import { appEvents, EventBus } from './EventBus';
+import { createActiveProxy } from './activeProxy';
 
 export interface ParticipantViewModel {
   user: UserSummary;
@@ -12,6 +13,9 @@ export interface ParticipantViewModel {
 }
 
 export class ParticipantManager {
+  /** See ServerStore.bus: background servers get a silent bus (#400). */
+  public bus: EventBus = appEvents;
+
   /**
    * Keyed by sessionId: the same person may be connected from several devices
    * at once, and each connection is its own voice participant (#309).
@@ -34,7 +38,7 @@ export class ParticipantManager {
     this.updateScheduled = true;
     const flush = () => {
       this.updateScheduled = false;
-      appEvents.emit('participants.updated');
+      this.bus.emit('participants.updated');
     };
     if (typeof requestAnimationFrame === 'function') {
       requestAnimationFrame(flush);
@@ -141,7 +145,7 @@ export class ParticipantManager {
     const participant = this.participants.get(sessionId);
     if (participant && participant.isSpeaking !== speaking) {
       participant.isSpeaking = speaking;
-      appEvents.emit('participants.speaking_changed', { sessionId, speaking });
+      this.bus.emit('participants.speaking_changed', { sessionId, speaking });
     }
   }
 
@@ -197,4 +201,14 @@ export class ParticipantManager {
   }
 }
 
-export const participantManager = new ParticipantManager();
+export function createParticipantManager(): ParticipantManager {
+  return new ParticipantManager();
+}
+
+let activeParticipantManager = createParticipantManager();
+
+export function setActiveParticipantManager(manager: ParticipantManager): void {
+  activeParticipantManager = manager;
+}
+
+export const participantManager = createActiveProxy<ParticipantManager>(() => activeParticipantManager);

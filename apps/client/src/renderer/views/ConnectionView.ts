@@ -1,8 +1,9 @@
 import { escapeHtml } from '../utils/html';
-import { MessageType } from '@monky/shared';
+import { LIMITS, MessageType } from '@monky/shared';
 import { connectionStore, type CreatedServer } from '../stores/connectionStore';
 import { serverStore } from '../stores/serverStore';
 import { networkClient } from '../core/NetworkClient';
+import { openServerSession } from '../core/serverConnection';
 import { getAvatarUrl } from '../utils/avatar';
 import { settingsModal } from './SettingsModal';
 import { withButtonLoading } from '../utils/buttonLoading';
@@ -411,6 +412,21 @@ export class ConnectionView {
                 </div>
               </div>
 
+              <div class="form-group" style="display: flex; align-items: center; justify-content: space-between; gap: 12px;">
+                <div>
+                  <label style="margin-bottom: 2px;">${t('connection.memberLimitLabel')}</label>
+                  <div style="font-size: 11px; color: var(--text-muted);">${t('connection.memberLimitDesc')}</div>
+                </div>
+                <label class="toggle-switch" aria-label="${t('connection.memberLimitLabel')}">
+                  <input id="host-limit-members" type="checkbox">
+                  <span class="toggle-slider"></span>
+                </label>
+              </div>
+              <div class="form-group" id="host-max-users-group" hidden>
+                <label>${t('connection.memberLimitValueLabel')}</label>
+                <input id="host-max-users" type="number" min="1" step="1" value="20">
+              </div>
+
               <button type="submit" id="btn-submit-host" class="btn btn-primary" style="width: 100%; margin-top: 8px;">
                 <span class="material-symbols-outlined md-18" style="margin-right: 6px;">add_circle</span>
                 ${t('connection.createAndStart')}
@@ -464,6 +480,7 @@ export class ConnectionView {
         initialTextChannel: server.textChannel,
         initialVoiceChannel: server.voiceChannel,
         serverId: server.id,
+        maxUsers: server.maxUsers,
       });
 
       if (!hostRes.success) {
@@ -486,7 +503,7 @@ export class ConnectionView {
       : await window.api.getIdentity();
     connectionStore.setIdentity(identity);
 
-    await networkClient.connect('127.0.0.1', updatedServer.port, identity, nickname, updatedServer.password);
+    await openServerSession('127.0.0.1', updatedServer.port, identity, nickname, updatedServer.password);
 
     if (this.selectedAvatarBase64) {
       try {
@@ -627,13 +644,21 @@ export class ConnectionView {
     port: string,
     info: {
       userCount?: number;
+      memberCount?: number;
       maxUsers?: number;
       users?: Array<{ nickname?: string; avatarUrl?: string }>;
     }
   ): void {
     const users = Array.isArray(info.users) ? info.users.slice(0, 5) : [];
     const count = typeof info.userCount === 'number' ? info.userCount : users.length;
-    const max = typeof info.maxUsers === 'number' ? info.maxUsers : null;
+    // The cap counts registered members, not who happens to be online, so the
+    // two numbers are shown separately instead of as one misleading "3/20" (#403).
+    const max = typeof info.maxUsers === 'number' && info.maxUsers > 0 ? info.maxUsers : null;
+    const members = typeof info.memberCount === 'number' ? info.memberCount : null;
+    const membersLabel =
+      max !== null && members !== null
+        ? ` • ${t('connection.membersOfLimit', { count: members, max })}`
+        : '';
 
     const avatars = users
       .map((u) => {
@@ -648,7 +673,7 @@ export class ConnectionView {
     node.innerHTML = `
       <div class="server-preview-row">
         <div class="preview-avatars">${avatars}</div>
-        <span class="preview-count">${count}${max ? `/${max}` : ''} ${t('connection.online')}</span>
+        <span class="preview-count">${count} ${t('connection.online')}${membersLabel}</span>
       </div>
     `;
   }
@@ -793,7 +818,7 @@ export class ConnectionView {
         : await window.api.getIdentity();
       connectionStore.setIdentity(identity);
 
-      const res = await networkClient.connect(host, port, identity, nickname, password);
+      const res = await openServerSession(host, port, identity, nickname, password);
 
       if (this.selectedAvatarBase64) {
         try {
@@ -1059,6 +1084,12 @@ export class ConnectionView {
       await this.submitJoinForm();
     });
 
+    const limitToggle = document.getElementById('host-limit-members') as HTMLInputElement | null;
+    const limitGroup = document.getElementById('host-max-users-group') as HTMLElement | null;
+    limitToggle?.addEventListener('change', () => {
+      if (limitGroup) limitGroup.hidden = !limitToggle.checked;
+    });
+
     formHost?.addEventListener('submit', async (e) => {
       e.preventDefault();
       this.hideError();
@@ -1069,6 +1100,13 @@ export class ConnectionView {
       const password = (document.getElementById('host-password') as HTMLInputElement).value;
       const initialText = (document.getElementById('host-text-channel') as HTMLInputElement).value.trim();
       const initialVoice = (document.getElementById('host-voice-channel') as HTMLInputElement).value.trim();
+      const wantsLimit = (document.getElementById('host-limit-members') as HTMLInputElement | null)?.checked ?? false;
+      const rawLimit = parseInt((document.getElementById('host-max-users') as HTMLInputElement | null)?.value ?? '', 10);
+      if (wantsLimit && (!Number.isFinite(rawLimit) || rawLimit < 1)) {
+        this.showError(t('connection.memberLimitInvalid'));
+        return;
+      }
+      const maxUsers = wantsLimit ? rawLimit : LIMITS.MAX_USERS_UNLIMITED;
 
       connectionStore.saveUserProfile(nickname, this.selectedAvatarBase64);
 
@@ -1094,6 +1132,7 @@ export class ConnectionView {
           voiceChannel: initialVoice,
           createdAt: existingServer?.createdAt || now,
           lastStarted: now,
+          maxUsers,
         };
 
         await this.startHostedServer(createdServer, nickname);
