@@ -99,8 +99,8 @@ export class EditChannelModal {
     enableBackdropClose(this.modalEl, () => this.close());
     this.detachPrivacyFields = attachChannelPrivacyFields(this.modalEl);
 
-    if (btnEmoji && inputName && modalCard) {
-      this.detachEmojiPicker = attachInputEmojiPicker(modalCard, inputName, btnEmoji, 'bottom-right');
+    if (btnEmoji && inputName) {
+      this.detachEmojiPicker = attachInputEmojiPicker(inputName, btnEmoji);
     }
 
     form?.addEventListener('submit', async (e) => {

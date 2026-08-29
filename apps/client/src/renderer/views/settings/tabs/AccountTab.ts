@@ -108,9 +108,8 @@ export class AccountTab {
     const btnImportIdentity = container.querySelector<HTMLButtonElement>('#btn-import-identity-settings');
 
     const btnEmojiNickname = container.querySelector<HTMLElement>('#btn-emoji-nickname');
-    const accountPanel = container.querySelector<HTMLElement>('#tab-panel-account') || container;
     if (btnEmojiNickname && inputNickname) {
-      this.detachEmojiPicker = attachInputEmojiPicker(accountPanel, inputNickname, btnEmojiNickname, 'bottom-right');
+      this.detachEmojiPicker = attachInputEmojiPicker(inputNickname, btnEmojiNickname);
     }
 
     btnSaveNickname?.addEventListener('click', async () => {

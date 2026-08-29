@@ -39,10 +39,11 @@ export class SoundboardService {
       this.handleIncomingSound(payload);
     });
 
-    // Stop active soundboard playbacks when local user deafens (#251)
+    // Update active soundboard playbacks when local user deafens
     appEvents.on('local.deafened', (deafened: boolean) => {
-      if (deafened) {
-        this.stopSound();
+      const vol = deafened ? 0 : this.getEffectiveVolume();
+      for (const playback of this.activePlaybacks.values()) {
+        playback.audio.volume = vol;
       }
     });
 
@@ -51,7 +52,7 @@ export class SoundboardService {
       if (settingsStore.selectedSpeakerId && settingsStore.selectedSpeakerId !== this.sinkId) {
         this.setSinkId(settingsStore.selectedSpeakerId);
       }
-      const vol = settingsStore.soundboardMuted ? 0 : Math.max(0, Math.min(1, settingsStore.soundboardVolume / 100));
+      const vol = this.getEffectiveVolume();
       for (const playback of this.activePlaybacks.values()) {
         playback.audio.volume = vol;
       }
@@ -315,19 +316,22 @@ export class SoundboardService {
     });
   }
 
+  private getEffectiveVolume(): number {
+    if (voiceStore.getEffectiveDeafened() || settingsStore.soundboardMuted || settingsStore.soundboardVolume <= 0) {
+      return 0;
+    }
+    return Math.max(0, Math.min(1, settingsStore.soundboardVolume / 100));
+  }
+
   private async playLocalPreview(filePath: string): Promise<void> {
     try {
       const soundData = await window.api.readSoundboardSound(filePath);
       if (!soundData) return;
 
-      if (settingsStore.soundboardMuted || settingsStore.soundboardVolume <= 0) {
-        return;
-      }
-
       this.stopSoundForUser('local');
 
       const audio = new Audio(soundData.dataUrl);
-      audio.volume = Math.max(0, Math.min(1, settingsStore.soundboardVolume / 100));
+      audio.volume = this.getEffectiveVolume();
 
       if (this.sinkId && typeof (audio as any).setSinkId === 'function') {
         (audio as any).setSinkId(this.sinkId).catch(() => {});
@@ -342,11 +346,6 @@ export class SoundboardService {
   public async handleIncomingSound(payload: SoundboardPlayedPayload): Promise<void> {
     appEvents.emit('soundboard.played', payload);
 
-    // If local user is deafened, has muted soundboards or set volume to 0, do not play (#251)
-    if (voiceStore.getEffectiveDeafened() || settingsStore.soundboardMuted || settingsStore.soundboardVolume <= 0) {
-      return;
-    }
-
     const userId = payload.userId || 'unknown';
 
     // Per #156: If the SAME user triggers another sound, interrupt and replace their own previous sound.
@@ -359,7 +358,7 @@ export class SoundboardService {
         : `data:${payload.mimeType || 'audio/mp3'};base64,${payload.audioBase64}`;
 
       const audio = new Audio(dataUrl);
-      audio.volume = Math.max(0, Math.min(1, settingsStore.soundboardVolume / 100));
+      audio.volume = this.getEffectiveVolume();
 
       const targetSink = this.sinkId || settingsStore.selectedSpeakerId;
       if (targetSink && typeof (audio as any).setSinkId === 'function') {

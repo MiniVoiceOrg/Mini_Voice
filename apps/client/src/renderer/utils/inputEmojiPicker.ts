@@ -8,11 +8,25 @@ import { EmojiPicker } from '../views/EmojiPicker';
  * so form validation and reactive listeners stay in sync.
  */
 export function attachInputEmojiPicker(
-  container: HTMLElement,
-  input: HTMLInputElement,
-  button: HTMLElement,
-  position: 'bottom-right' | 'bottom-left' | 'top-right' | 'top-left' = 'bottom-right'
+  arg1: HTMLElement,
+  arg2: HTMLElement,
+  arg3?: HTMLElement
 ): () => void {
+  let input: HTMLInputElement;
+  let button: HTMLElement;
+  let container: HTMLElement = document.body;
+
+  if (arg3) {
+    // Legacy signature: (container, input, button)
+    container = document.body;
+    input = arg2 as HTMLInputElement;
+    button = arg3;
+  } else {
+    // New signature: (input, button)
+    input = arg1 as HTMLInputElement;
+    button = arg2;
+  }
+
   let picker: EmojiPicker | null = null;
 
   const onClick = (e: MouseEvent) => {
@@ -29,7 +43,7 @@ export function attachInputEmojiPicker(
       container,
       anchor: button,
       emojiOnly: true,
-      position,
+      floating: true,
       onSelectEmoji: (emoji: string) => {
         const start = input.selectionStart ?? input.value.length;
         const end = input.selectionEnd ?? input.value.length;
