@@ -1369,6 +1369,7 @@ export class MainView {
 
     const u7 = appEvents.on(`message.${MessageType.SERVER_SETTINGS_UPDATED}`, (payload: any) => {
       serverStore.updateServerMeta(payload.name, payload.hasPassword, payload.allowSoundboard, payload.iconUrl, payload.attachmentStorage, payload.maxUsers, payload.turnEnabled);
+      serverStore.setTurnAvailability(payload.turnAvailability);
       // The store above is the one of whichever server sent this. Everything
       // below writes to the screen and to the saved-server list, so it may only
       // run for the server actually being looked at (#400).

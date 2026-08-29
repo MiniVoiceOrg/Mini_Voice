@@ -1,4 +1,4 @@
-import { AttachmentStorageInfo, ChannelSummary, DEFAULT_PERMISSIONS, Permission, Role, ServerDetails, UserRoleSummary, UserSummary, hasPermission } from '@monky/shared';
+import { AttachmentStorageInfo, ChannelSummary, DEFAULT_PERMISSIONS, Permission, Role, ServerDetails, TurnAvailability, UserRoleSummary, UserSummary, hasPermission } from '@monky/shared';
 import { appEvents, EventBus } from '../core/EventBus';
 import { createActiveProxy } from '../core/activeProxy';
 
@@ -198,6 +198,21 @@ export class ServerStore {
       this.bus.emit('server.updated');
       this.bus.emit('server.meta_updated', this.serverDetails);
     }
+  }
+
+  /**
+   * Refreshes what the host can do about the relay (#438).
+   *
+   * Separate from `updateServerMeta` because this is not a setting somebody
+   * chose: it is the host reporting a capability that may have changed on its
+   * own — switching the relay on installs coturn, and from then on the answer
+   * from login is stale.
+   */
+  public setTurnAvailability(availability: TurnAvailability | undefined): void {
+    if (!this.serverDetails || availability === undefined) return;
+    this.serverDetails.turnAvailability = availability;
+    this.bus.emit('server.updated');
+    this.bus.emit('server.meta_updated', this.serverDetails);
   }
 
   public updateRoles(roles: Role[], userRoles: UserRoleSummary[]): void {

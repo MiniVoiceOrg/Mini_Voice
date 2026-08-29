@@ -753,6 +753,32 @@ async function runTests() {
         throw new Error('Teste 18: um coturn ausente precisa dizer se dá para instalar automaticamente');
       }
 
+      // A instalação do coturn muda a resposta para "este host consegue
+      // relayar?", e o cliente só tinha a resposta do login. Sem devolvê-la no
+      // broadcast, a tela de configurações continuaria oferecendo instalar o
+      // que já está instalado (#438).
+      await withTimeout(new Promise<void>((resolve, reject) => {
+        const handler = (data: RawData) => {
+          const res = JSON.parse(data.toString());
+          if (res.type !== MessageType.SERVER_SETTINGS_UPDATED) return;
+          wsTurn.off('message', handler);
+          const updated = res.payload?.turnAvailability;
+          if (!updated || typeof updated.supported !== 'boolean') {
+            reject(new Error('Teste 18: o SERVER_SETTINGS_UPDATED precisa devolver a disponibilidade do relay'));
+            return;
+          }
+          resolve();
+        };
+        wsTurn.on('message', handler);
+        // Sem `turnEnabled`: ligar o relay tentaria instalar o coturn, o que
+        // depende do host e não cabe num teste automatizado.
+        wsTurn.send(JSON.stringify({
+          type: MessageType.SERVER_UPDATE_SETTINGS,
+          requestId: 'req-turn-2',
+          payload: { name: 'Servidor TURN' },
+        } satisfies ProtocolMessage));
+      }), 5000, 'Teste 18: disponibilidade do relay no broadcast de configurações');
+
       wsTurn.close();
     } finally {
       await turnServer.stop();

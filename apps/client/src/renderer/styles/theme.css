@@ -4582,6 +4582,50 @@ input:focus, textarea:focus, select:focus {
   animation: reconnect-spin 1s linear infinite;
 }
 
+/* Progress of the coturn installation inside the server settings modal (#438).
+   Sits right above the footer so it is visible without scrolling, since the
+   save button it explains is down there. */
+.turn-install-progress {
+  padding: 10px 24px 12px;
+  border-top: 1px solid var(--border-color);
+  background: var(--bg-panel);
+}
+
+.turn-install-progress-head {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.turn-install-percent {
+  margin-left: auto;
+  font-variant-numeric: tabular-nums;
+  color: var(--accent-primary);
+}
+
+.turn-install-bar {
+  margin-top: 6px;
+  height: 6px;
+  border-radius: 3px;
+  background: var(--bg-card);
+  overflow: hidden;
+}
+
+.turn-install-bar-fill {
+  height: 100%;
+  background: var(--accent-primary);
+  transition: width 0.3s ease;
+}
+
+.turn-install-hint {
+  margin-top: 6px;
+  font-size: 11px;
+  color: var(--text-muted);
+}
+
 /* Generic button loading spinner (#48), driven by [data-loading] so it is not
    wiped by handlers that rewrite the button's innerHTML/className. */
 /* The label has to vanish under the spinner, and it comes in two shapes: child

@@ -187,6 +187,14 @@ export interface TurnAvailability {
   autoInstallable?: boolean;
 }
 
+/**
+ * Which part of the coturn installation is running (#438).
+ *
+ * A code rather than a sentence: the server does not know the language of
+ * whoever is watching the progress bar.
+ */
+export type TurnInstallStage = 'refreshing' | 'installing' | 'configuring';
+
 export interface WebRtcSignalPayload {
   /** Peers are addressed per connection, not per person (#309). */
   targetSessionId: string;
