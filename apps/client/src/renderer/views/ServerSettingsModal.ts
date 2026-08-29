@@ -28,6 +28,8 @@ export class ServerSettingsModal {
   private shouldRemovePassword = false;
   private pendingIconBase64: string | null | undefined = undefined;
   private activeTab = 'general';
+  /** Set while the host installs coturn, which must not be interrupted (#438). */
+  private installingRelay = false;
   private detachGeneralTab: (() => void) | null = null;
   private detachEmojiPicker: (() => void) | null = null;
 
@@ -208,9 +210,11 @@ export class ServerSettingsModal {
 
     this.detachGeneralTab = this.generalTab.attach(this.modalEl);
 
-    // Close on ESC key (#243)
+    // Close on ESC key (#243). Not while the host is installing coturn: the
+    // modal is the only place showing how far it got, and closing it would
+    // leave the operator guessing (#438).
     const handleEsc = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') { this.close(); }
+      if (e.key === 'Escape' && !this.installingRelay) { this.close(); }
     };
     window.addEventListener('keydown', handleEsc);
     (this.modalEl as any)._escHandler = handleEsc;
@@ -366,6 +370,7 @@ export class ServerSettingsModal {
 
       const btnSave = this.modalEl?.querySelector('#btn-save') as HTMLButtonElement;
       const btnCancel = this.modalEl?.querySelector('#btn-cancel') as HTMLButtonElement | null;
+      const btnClose = this.modalEl?.querySelector('#modal-close') as HTMLButtonElement | null;
       // Switching the relay on may install coturn on the host first, which
       // takes far longer than the 8s default. Giving up early would report a
       // failure over an installation that is going fine (#431).
@@ -374,8 +379,12 @@ export class ServerSettingsModal {
       // can run for minutes, so it also takes the shared loading state (#438).
       setButtonLoading(btnSave, true);
       if (btnCancel) btnCancel.disabled = true;
+      // Walking out mid-install would leave the operator with no idea whether
+      // the host is still working on it.
+      if (btnClose) btnClose.disabled = true;
 
       const stopProgress = installsRelay ? this.trackInstallProgress() : null;
+      this.installingRelay = installsRelay;
 
       try {
         await networkClient.sendRequest(
@@ -393,7 +402,9 @@ export class ServerSettingsModal {
         }
         setButtonLoading(btnSave, false);
         if (btnCancel) btnCancel.disabled = false;
+        if (btnClose) btnClose.disabled = false;
       } finally {
+        this.installingRelay = false;
         stopProgress?.();
       }
     });
