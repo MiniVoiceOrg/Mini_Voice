@@ -416,12 +416,23 @@ só cai no relay quando não há alternativa.
 ### Ativando
 
 ```bash
-sudo bash scripts/install-turn.sh   # instala o coturn pela sua distro
 monky config set turn true
 monky restart
 ```
 
-O script desabilita o serviço de sistema do coturn de propósito: quem sobe e
+O coturn é instalado **automaticamente** pela sua distro, na primeira vez que
+você liga o relay. Isso vale tanto para o comando acima quanto para o botão em
+Configurações do Servidor → Voz e Vídeo no app.
+
+Instalar pacote exige root. Se o servidor não rodar como root nem tiver `sudo`
+sem senha, o Monky não consegue fazer isso sozinho e avisa — nesse caso, rode
+uma vez:
+
+```bash
+sudo bash scripts/install-turn.sh
+```
+
+A instalação desabilita o serviço de sistema do coturn de propósito: quem sobe e
 configura o processo é o próprio Monky, e duas instâncias brigariam pela porta
 3478.
 

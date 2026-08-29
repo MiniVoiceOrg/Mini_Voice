@@ -12,7 +12,7 @@
 | One participant is silent only for me | Right-click them and set individual volume back to 100% |
 | I can only fail to talk to **one** specific person (everyone else works) | A red `link_off` icon shows next to them. You are both likely behind CGNAT with no direct route. The host can enable the [TURN relay](/en/cli#media-relay-turn); otherwise both of you need a VPN |
 | Avast (or another antivirus) flags the installer/updater | False positive — see [Antivirus: Avast and similar](#antivirus-avast-and-similar) |
-| The **TURN relay** switch is greyed out and will not budge | The host cannot run the relay. The notice under the switch says why: the server is not on Linux, `coturn` is not installed, or the server predates the feature (update the server) |
+| The **TURN relay** switch is greyed out and will not budge | The host cannot run the relay. The notice under the switch says why: the server is not on Linux, the server predates the feature (update the server), or the server lacks the privileges to install coturn (run `sudo bash scripts/install-turn.sh` once) |
 | On macOS, screen sharing keeps asking for permission even though it is already allowed | The permission is stuck on the previous version — see [macOS: screen permission stops working after an update](#macos-screen-permission-stops-working-after-an-update) |
 
 ## Antivirus: Avast and similar

@@ -179,6 +179,12 @@ export type TurnUnavailableReason = 'unsupported-platform' | 'not-installed';
 export interface TurnAvailability {
   supported: boolean;
   reason?: TurnUnavailableReason;
+  /**
+   * The host is missing coturn but the server can install it on its own when
+   * the relay is switched on (#431). Only meaningful with `not-installed`:
+   * without it the operator has to run the script by hand.
+   */
+  autoInstallable?: boolean;
 }
 
 export interface WebRtcSignalPayload {

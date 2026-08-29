@@ -207,10 +207,32 @@ export async function setConfig(ctx: CliContext, key: string, value?: string): P
       break;
     case 'turn': {
       const enabled = parseBoolean(nextValue);
-      if (enabled) {
-        const reason = CoturnManager.getUnavailabilityReason();
-        if (reason) {
-          throw new Error(reason);
+      if (enabled && !CoturnManager.isInstalled()) {
+        // Same intent as the desktop toggle: asking is enough, the server does
+        // the installing (#431).
+        if (!CoturnManager.isSupportedPlatform()) {
+          throw new Error(
+            'O relay TURN só é suportado em servidores Linux. Não existe pacote do coturn para Windows ou macOS.'
+          );
+        }
+        console.log('Instalando o coturn (pode levar alguns minutos)...');
+        const outcome = await CoturnManager.ensureInstalled();
+        if (!outcome.ok) {
+          switch (outcome.reason) {
+            case 'no-privileges':
+              throw new Error(
+                'O coturn não está instalado e este comando não tem privilégio para instalá-lo. Rode "sudo monky config set turn true" ou "sudo bash scripts/install-turn.sh".'
+              );
+            case 'unknown-package-manager':
+              throw new Error(
+                'Nenhum gerenciador de pacotes conhecido foi encontrado. Instale o coturn manualmente no host.'
+              );
+            default:
+              throw new Error(`Não foi possível instalar o coturn: ${outcome.detail ?? 'erro desconhecido'}`);
+          }
+        }
+        if (!outcome.alreadyInstalled) {
+          console.log(color('coturn instalado com sucesso.', ANSI.green));
         }
       }
       const updates: { turnEnabled: boolean; turnSecret?: string } = { turnEnabled: enabled };

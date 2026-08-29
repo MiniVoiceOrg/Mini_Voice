@@ -12,7 +12,7 @@
 | Um participante ficou mudo só para mim | Clique com o botão direito nele e volte o volume individual para 100% |
 | Só não consigo falar com **uma** pessoa específica (com o resto funciona) | Aparece um ícone vermelho `link_off` ao lado dela. Os dois provavelmente estão atrás de CGNAT e não há rota direta. Quem hospeda pode ligar o [relay TURN](/cli#relay-de-midia-turn); a alternativa é os dois entrarem numa VPN |
 | O Avast (ou outro antivírus) apita ao instalar/atualizar | Falso positivo — veja [Antivírus: Avast e similares](#antivirus-avast-e-similares) |
-| O botão do **relay TURN** está esmaecido e não deixa clicar | O host não pode rodar o relay. O próprio aviso embaixo do botão diz o motivo: servidor fora do Linux, `coturn` não instalado, ou servidor numa versão anterior ao recurso (atualize o servidor) |
+| O botão do **relay TURN** está esmaecido e não deixa clicar | O host não pode rodar o relay. O próprio aviso embaixo do botão diz o motivo: servidor fora do Linux, servidor numa versão anterior ao recurso (atualize o servidor), ou servidor sem privilégio para instalar o coturn (rode `sudo bash scripts/install-turn.sh` uma vez) |
 | No macOS, o compartilhamento de tela pede autorização mesmo já estando liberado | A permissão ficou presa na versão anterior — veja [macOS: a permissão de tela para de valer após atualizar](#macos-a-permissao-de-tela-para-de-valer-apos-atualizar) |
 
 ## Antivírus: Avast e similares

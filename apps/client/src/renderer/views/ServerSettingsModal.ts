@@ -352,13 +352,22 @@ export class ServerSettingsModal {
       }
 
       const btnSave = this.modalEl?.querySelector('#btn-save') as HTMLButtonElement;
+      // Switching the relay on may install coturn on the host first, which
+      // takes far longer than the 8s default. Giving up early would report a
+      // failure over an installation that is going fine (#431).
+      const installsRelay = payload.turnEnabled === true && !serverStore.serverDetails?.turnAvailability?.supported;
       if (btnSave) {
         btnSave.disabled = true;
-        btnSave.innerText = t('serverSettings.saving');
+        btnSave.innerText = installsRelay ? t('serverSettings.installingRelay') : t('serverSettings.saving');
       }
 
       try {
-        await networkClient.sendRequest(MessageType.SERVER_UPDATE_SETTINGS, payload);
+        await networkClient.sendRequest(
+          MessageType.SERVER_UPDATE_SETTINGS,
+          payload,
+          undefined,
+          installsRelay ? 11 * 60 * 1000 : undefined
+        );
         this.close();
       } catch (err: any) {
         const banner = document.getElementById('server-settings-banner');
