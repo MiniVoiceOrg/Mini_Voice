@@ -1,4 +1,4 @@
-import { MessageType, Permission } from '@monky/shared';
+import { MessageType, Permission, UserSummary, canAccessChannel } from '@monky/shared';
 import { escapeHtml } from '../utils/html';
 import { appEvents } from '../core/EventBus';
 import { networkClient } from '../core/NetworkClient';
@@ -995,54 +995,93 @@ export class MainView {
     const listEl = document.getElementById('members-list-items');
     const countEl = document.getElementById('members-count-label');
 
-    const members = serverStore.getMembersInDisplayOrder();
+    const allMembers = serverStore.getAllMembersInDisplayOrder();
+    const onlineMembers = allMembers.filter((m) => m.status !== 'DISCONNECTED');
+    const offlineMembers = allMembers.filter((m) => m.status === 'DISCONNECTED');
+
+    // For private channel visibility: determine which voice channels the local
+    // user can see, so members in invisible private channels appear as offline.
+    const myRoleIds = serverStore.getUserRoleIds(serverStore.currentUser?.id ?? '');
+    const myPerms = serverStore.myPermissions;
+    const visibleChannelIds = new Set(
+      (serverStore.serverDetails.channels ?? [])
+        .filter((ch) => canAccessChannel(ch, myPerms, myRoleIds))
+        .map((ch) => ch.id)
+    );
 
     if (countEl) {
-      countEl.innerText = t('main.membersCount', { count: members.length });
+      countEl.innerText = t('main.membersCount', { count: allMembers.length });
     }
 
-    if (listEl) {
-      listEl.innerHTML = members.map((m) => {
-        const isLocal = m.id === serverStore.currentUser?.id;
-        const vm = participantManager.getByUserId(m.id);
-        const voiceState = vm?.voiceState;
-        const inVoice = !!voiceState;
-        const isReconnecting = participantManager.isUserReconnecting(m.id);
-        const avatar = getAvatarUrl(m.avatarUrl);
-        const isServerDeafened = isLocal ? voiceStore.serverDeafened : (voiceState?.serverDeafened ?? false);
-        const isServerMuted = isLocal ? voiceStore.serverMuted : (voiceState?.serverMuted ?? false);
-        const isSelfDeafened = isLocal ? voiceStore.isDeafened : (voiceState?.isDeafened ?? false);
-        const isSelfMuted = isLocal ? voiceStore.isMuted : (voiceState?.isMuted ?? false);
-        const isMicMuted = inVoice && (isSelfMuted || isServerMuted || isSelfDeafened || isServerDeafened);
+    const renderMemberItem = (m: UserSummary, isOffline: boolean): string => {
+      const isLocal = m.id === serverStore.currentUser?.id;
+      const vm = participantManager.getByUserId(m.id);
+      const voiceState = vm?.voiceState;
+      // If the member is in a private channel the local user cannot access,
+      // mask them as offline so their presence is not leaked (#401).
+      const inPrivateHiddenChannel = voiceState && !visibleChannelIds.has(voiceState.channelId);
+      const effectiveOffline = isOffline || inPrivateHiddenChannel;
+      const inVoice = !!voiceState && !inPrivateHiddenChannel;
+      const isReconnecting = !effectiveOffline && participantManager.isUserReconnecting(m.id);
+      const avatar = getAvatarUrl(m.avatarUrl);
+      const isServerDeafened = !effectiveOffline && (isLocal ? voiceStore.serverDeafened : (voiceState?.serverDeafened ?? false));
+      const isServerMuted = !effectiveOffline && (isLocal ? voiceStore.serverMuted : (voiceState?.serverMuted ?? false));
+      const isSelfDeafened = !effectiveOffline && (isLocal ? voiceStore.isDeafened : (voiceState?.isDeafened ?? false));
+      const isSelfMuted = !effectiveOffline && (isLocal ? voiceStore.isMuted : (voiceState?.isMuted ?? false));
+      const isMicMuted = inVoice && (isSelfMuted || isServerMuted || isSelfDeafened || isServerDeafened);
 
-        return `
-          <div class="member-item ${isReconnecting ? 'reconnecting' : ''}" data-user-id="${m.id}" title="${escapeHtml(m.nickname)} ${isLocal ? `(${t('common.you')})` : `(${t('main.rightClickVolume')})`}">
-            <div class="member-avatar-wrapper">
-              <img class="member-avatar-img" src="${avatar}">
-              <span class="status-indicator ${isReconnecting ? 'reconnecting' : (inVoice ? 'voice' : 'online')}"></span>
-            </div>
-            <div class="member-info">
-              <div class="member-name-row">
-                <span class="member-name">${escapeHtml(m.nickname)}</span>
-                ${isLocal ? `<span class="member-badge-you">${t('common.you')}</span>` : ''}
-                ${m.id === serverStore.ownerId ? `<span class="member-badge-you">${t('roles.ownerBadge')}</span>` : ''}
-                ${isReconnecting ? `<span class="member-reconnecting-badge" title="${t('main.reconnectingTitle')}"><span class="material-symbols-outlined md-14 spin">sync</span></span>` : ''}
-                ${voiceState?.isScreenSharing ? `<span class="member-live-badge" title="${t('main.sharingScreen')}">LIVE</span>` : ''}
-                ${voiceState?.isCameraOn ? `<span class="material-symbols-outlined md-14 member-cam-icon" title="${t('main.cameraOn')}">videocam</span>` : ''}
-                ${isServerDeafened ? `<span class="material-symbols-outlined md-14 member-cam-icon" title="${t('permissions.serverDeafened')}">hearing_disabled</span>` : ''}
-                ${isServerMuted ? `<span class="material-symbols-outlined md-14 member-cam-icon" title="${t('permissions.serverMuted')}">admin_panel_settings</span>` : ''}
-                ${isMicMuted ? `<span class="material-symbols-outlined md-14 member-cam-icon" title="${t('main.micMuted')}">mic_off</span>` : ''}
-                ${isSelfDeafened ? `<span class="material-symbols-outlined md-14 member-cam-icon" title="${t('main.audioMuted')}">headset_off</span>` : ''}
-              </div>
-              ${(() => {
-                const userRoles = serverStore.getUserRoles(m.id).filter((r) => !r.isDefault);
-                return userRoles.length ? `<div class="member-role-tags">${userRoles.map((role) => `<span class="member-role-tag" style="${role.color ? `--role-color: ${role.color}` : ''}">${escapeHtml(role.name)}</span>`).join('')}</div>` : '';
-              })()}
-              <span class="member-subtext">${isReconnecting ? t('main.reconnecting') : (inVoice ? t('main.inVoiceChannel') : t('main.statusOnline'))}</span>
-            </div>
+      const statusClass = isReconnecting ? 'reconnecting' : (inVoice ? 'voice' : (effectiveOffline ? 'offline' : 'online'));
+      const statusText = isReconnecting
+        ? t('main.reconnecting')
+        : (inVoice ? t('main.inVoiceChannel') : (effectiveOffline ? t('main.statusOffline') : t('main.statusOnline')));
+
+      return `
+        <div class="member-item ${effectiveOffline ? 'member-offline' : ''} ${isReconnecting ? 'reconnecting' : ''}" data-user-id="${m.id}" title="${escapeHtml(m.nickname)} ${isLocal ? `(${t('common.you')})` : `(${t('main.rightClickVolume')})`}">
+          <div class="member-avatar-wrapper">
+            <img class="member-avatar-img" src="${avatar}">
+            <span class="status-indicator ${statusClass}"></span>
           </div>
-        `;
-      }).join('');
+          <div class="member-info">
+            <div class="member-name-row">
+              <span class="member-name">${escapeHtml(m.nickname)}</span>
+              ${isLocal ? `<span class="member-badge-you">${t('common.you')}</span>` : ''}
+              ${m.id === serverStore.ownerId ? `<span class="member-badge-you">${t('roles.ownerBadge')}</span>` : ''}
+              ${isReconnecting ? `<span class="member-reconnecting-badge" title="${t('main.reconnectingTitle')}"><span class="material-symbols-outlined md-14 spin">sync</span></span>` : ''}
+              ${(!effectiveOffline && voiceState?.isScreenSharing) ? `<span class="member-live-badge" title="${t('main.sharingScreen')}">LIVE</span>` : ''}
+              ${(!effectiveOffline && voiceState?.isCameraOn) ? `<span class="material-symbols-outlined md-14 member-cam-icon" title="${t('main.cameraOn')}">videocam</span>` : ''}
+              ${isServerDeafened ? `<span class="material-symbols-outlined md-14 member-cam-icon" title="${t('permissions.serverDeafened')}">hearing_disabled</span>` : ''}
+              ${isServerMuted ? `<span class="material-symbols-outlined md-14 member-cam-icon" title="${t('permissions.serverMuted')}">admin_panel_settings</span>` : ''}
+              ${isMicMuted ? `<span class="material-symbols-outlined md-14 member-cam-icon" title="${t('main.micMuted')}">mic_off</span>` : ''}
+              ${isSelfDeafened ? `<span class="material-symbols-outlined md-14 member-cam-icon" title="${t('main.audioMuted')}">headset_off</span>` : ''}
+            </div>
+            ${(() => {
+              const userRoles = serverStore.getUserRoles(m.id).filter((r) => !r.isDefault);
+              return userRoles.length ? `<div class="member-role-tags">${userRoles.map((role) => `<span class="member-role-tag" style="${role.color ? `--role-color: ${role.color}` : ''}">${escapeHtml(role.name)}</span>`).join('')}</div>` : '';
+            })()}
+            <span class="member-subtext">${statusText}</span>
+          </div>
+        </div>
+      `;
+    };
+
+    if (listEl) {
+      const sections: string[] = [];
+
+      if (onlineMembers.length > 0) {
+        sections.push(`
+          <div class="member-section-header">${t('main.membersOnline')} — ${onlineMembers.length}</div>
+          ${onlineMembers.map((m) => renderMemberItem(m, false)).join('')}
+        `);
+      }
+
+      if (offlineMembers.length > 0) {
+        sections.push(`
+          <div class="member-section-header">${t('main.membersOffline')} — ${offlineMembers.length}</div>
+          ${offlineMembers.map((m) => renderMemberItem(m, true)).join('')}
+        `);
+      }
+
+      listEl.innerHTML = sections.join('');
 
       // Attach contextmenu listeners to member items
       listEl.querySelectorAll('.member-item').forEach((item) => {
@@ -1051,7 +1090,7 @@ export class MainView {
           mouseEvent.preventDefault();
           const userId = item.getAttribute('data-user-id');
           if (!userId) return;
-          const member = serverStore.serverDetails?.members.find((u) => u.id === userId);
+          const member = serverStore.knownMembers.get(userId) ?? serverStore.serverDetails?.members.find((u) => u.id === userId);
           if (member) {
             userContextMenu.open(mouseEvent.clientX, mouseEvent.clientY, member);
           }
