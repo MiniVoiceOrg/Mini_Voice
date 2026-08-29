@@ -746,6 +746,12 @@ async function runTests() {
       if (availability.supported && availability.reason !== undefined) {
         throw new Error('Teste 18: um relay disponível não deve carregar motivo de indisponibilidade');
       }
+      // Quando falta só o coturn, o cliente precisa saber se o servidor
+      // consegue instalá-lo sozinho: é isso que decide entre habilitar o
+      // toggle e mandar o operador rodar o script na mão (#431).
+      if (availability.reason === 'not-installed' && typeof availability.autoInstallable !== 'boolean') {
+        throw new Error('Teste 18: um coturn ausente precisa dizer se dá para instalar automaticamente');
+      }
 
       wsTurn.close();
     } finally {

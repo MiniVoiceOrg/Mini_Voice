@@ -415,13 +415,24 @@ back to the relay when there is no alternative.
 ### Enabling it
 
 ```bash
-sudo bash scripts/install-turn.sh   # installs coturn from your distro
 monky config set turn true
 monky restart
 ```
 
-The script disables coturn's system service on purpose: Monky itself starts and
-configures the process, and two instances would fight over port 3478.
+coturn is installed **automatically** from your distro the first time you turn
+the relay on. That applies both to the command above and to the switch under
+Server Settings → Voice and Video in the app.
+
+Installing a package requires root. If the server runs neither as root nor with
+passwordless `sudo`, Monky cannot do it on its own and says so — in that case,
+run this once:
+
+```bash
+sudo bash scripts/install-turn.sh
+```
+
+The installation disables coturn's system service on purpose: Monky itself
+starts and configures the process, and two instances would fight over port 3478.
 
 ::: warning Do not forget your provider's firewall
 Opening the ports in `ufw`/`iptables` is not enough if your VPS has a firewall

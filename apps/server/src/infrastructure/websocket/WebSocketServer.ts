@@ -567,6 +567,32 @@ export class WebSocketServer {
     }
   }
 
+  /**
+   * Makes sure coturn is actually usable, installing it when needed.
+   *
+   * Returns null when the relay can run, or the reason it cannot.
+   */
+  private async ensureRelayCanRun(): Promise<string | null> {
+    if (!CoturnManager.isSupportedPlatform()) {
+      return 'O relay TURN só é suportado em servidores Linux. Não existe pacote do coturn para Windows ou macOS.';
+    }
+    if (CoturnManager.isInstalled()) return null;
+
+    const outcome = await CoturnManager.ensureInstalled();
+    if (outcome.ok) return null;
+
+    switch (outcome.reason) {
+      case 'no-privileges':
+        return 'O coturn não está instalado e o servidor não tem privilégio para instalá-lo. Rode "sudo bash scripts/install-turn.sh" no host.';
+      case 'unknown-package-manager':
+        return 'O coturn não está instalado e nenhum gerenciador de pacotes conhecido foi encontrado. Instale o coturn manualmente no host.';
+      case 'unsupported-platform':
+        return 'O relay TURN só é suportado em servidores Linux. Não existe pacote do coturn para Windows ou macOS.';
+      default:
+        return `Não foi possível instalar o coturn automaticamente: ${outcome.detail ?? 'erro desconhecido'}`;
+    }
+  }
+
   private async buildIceServersFor(userId: string, session: ClientSession) {
     try {
       const server = await this.serverRepo.getServer();
@@ -847,12 +873,14 @@ export class WebSocketServer {
   ): Promise<void> {
     if (!session.user) return;
 
-    // Reject an impossible relay before persisting it, so the toggle never
-    // shows "on" while nothing is actually relaying (#425).
+    // Switching the relay on is the whole intent, so the server installs coturn
+    // itself when it is missing rather than sending the operator to a terminal
+    // (#431). Only a relay that truly cannot run is rejected, so the toggle
+    // never shows "on" while nothing is actually relaying (#425).
     if (payload.turnEnabled === true) {
-      const reason = CoturnManager.getUnavailabilityReason();
-      if (reason) {
-        this.sendError(session.ws, ProtocolErrorCode.TURN_UNAVAILABLE, reason, requestId);
+      const blocked = await this.ensureRelayCanRun();
+      if (blocked) {
+        this.sendError(session.ws, ProtocolErrorCode.TURN_UNAVAILABLE, blocked, requestId);
         return;
       }
     }
