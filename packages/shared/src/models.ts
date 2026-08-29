@@ -157,6 +157,28 @@ export interface ServerDetails {
    * per-user and short-lived.
    */
   turnEnabled?: boolean;
+
+  /**
+   * Whether this host can actually run the relay, so the UI can disable the
+   * toggle instead of letting the operator switch on something impossible
+   * (#429).
+   *
+   * Absent means the server predates the relay feature: an older build simply
+   * ignores `turnEnabled`, so the toggle would appear to do nothing at all.
+   * That is why availability is reported as a present-or-absent object rather
+   * than a boolean — `undefined` is meaningful here.
+   *
+   * The reason travels as a code, not as prose, because the server has no idea
+   * which language the person reading the screen uses.
+   */
+  turnAvailability?: TurnAvailability;
+}
+
+export type TurnUnavailableReason = 'unsupported-platform' | 'not-installed';
+
+export interface TurnAvailability {
+  supported: boolean;
+  reason?: TurnUnavailableReason;
 }
 
 export interface WebRtcSignalPayload {

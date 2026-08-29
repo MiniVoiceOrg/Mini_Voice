@@ -19,6 +19,11 @@ export enum ProtocolErrorCode {
   UNAUTHORIZED = 'UNAUTHORIZED',
   PERMISSION_DENIED = 'PERMISSION_DENIED',
   BAD_REQUEST = 'BAD_REQUEST',
+  /**
+   * The relay cannot run on the host. Kept apart from BAD_REQUEST so the
+   * client can explain what to do instead of showing a generic message (#429).
+   */
+  TURN_UNAVAILABLE = 'TURN_UNAVAILABLE',
 }
 
 export enum MessageType {

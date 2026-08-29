@@ -1,10 +1,29 @@
 import { serverStore } from '../../../stores/serverStore';
 import { t } from '../../../i18n';
 
+/**
+ * Why the relay toggle is unusable on this server, or null when it works.
+ *
+ * An absent `turnAvailability` means the server is older than the relay
+ * feature: it silently ignores the field, so saving would appear to do nothing
+ * at all. That case gets its own message instead of being lumped in with an
+ * unsupported host (#429).
+ */
+function turnBlockedReason(): string | null {
+  const availability = serverStore.serverDetails?.turnAvailability;
+  if (!availability) return t('serverSettings.turnUnknownSupport');
+  if (availability.supported) return null;
+  return availability.reason === 'not-installed'
+    ? t('serverSettings.turnNotInstalled')
+    : t('serverSettings.turnUnsupportedPlatform');
+}
+
 export class ServerVoiceVideoTab {
   public renderHtml(): string {
     const s = serverStore.serverDetails;
     if (!s) return '';
+
+    const turnBlocked = turnBlockedReason();
 
     return `
       <div style="display: flex; align-items: center; justify-content: space-between; background: var(--bg-card); padding: 12px 14px; border-radius: var(--radius-md); border: 1px solid var(--border-color);">
@@ -23,18 +42,22 @@ export class ServerVoiceVideoTab {
         </label>
       </div>
 
-      <div style="display: flex; align-items: center; justify-content: space-between; background: var(--bg-card); padding: 12px 14px; border-radius: var(--radius-md); border: 1px solid var(--border-color); margin-top: 10px;">
+      <div style="display: flex; align-items: center; justify-content: space-between; background: var(--bg-card); padding: 12px 14px; border-radius: var(--radius-md); border: 1px solid var(--border-color); margin-top: 10px; ${turnBlocked ? 'opacity: 0.6;' : ''}">
         <div>
-          <label for="checkbox-turn-enabled" style="font-size: 13px; font-weight: 600; color: var(--text-primary); display: flex; align-items: center; gap: 6px; cursor: pointer; margin-bottom: 2px;">
+          <label for="checkbox-turn-enabled" style="font-size: 13px; font-weight: 600; color: var(--text-primary); display: flex; align-items: center; gap: 6px; cursor: ${turnBlocked ? 'not-allowed' : 'pointer'}; margin-bottom: 2px;">
             <span class="material-symbols-outlined md-18" style="color: var(--accent-primary);">swap_horiz</span>
             <span>${t('serverSettings.turnEnabled')}</span>
           </label>
           <div style="font-size: 11px; color: var(--text-muted);">
             ${t('serverSettings.turnEnabledDesc')}
           </div>
+          ${turnBlocked ? `<div style="font-size: 11px; color: var(--warning); margin-top: 4px; display: flex; align-items: center; gap: 4px;">
+            <span class="material-symbols-outlined md-14">info</span>
+            <span>${turnBlocked}</span>
+          </div>` : ''}
         </div>
-        <label class="toggle-switch" aria-label="${t('serverSettings.turnEnabled')}">
-          <input id="checkbox-turn-enabled" type="checkbox" ${s.turnEnabled ? 'checked' : ''}>
+        <label class="toggle-switch" aria-label="${t('serverSettings.turnEnabled')}"${turnBlocked ? ` title="${turnBlocked}"` : ''}>
+          <input id="checkbox-turn-enabled" type="checkbox" ${s.turnEnabled ? 'checked' : ''}${turnBlocked ? ' disabled' : ''}>
           <span class="toggle-slider"></span>
         </label>
       </div>

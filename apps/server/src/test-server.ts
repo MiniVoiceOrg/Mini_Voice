@@ -732,11 +732,26 @@ async function runTests() {
         throw new Error('Teste 18: o relay precisa nascer desligado');
       }
 
+      // O cliente desabilita o toggle a partir daqui (#429). Se este campo
+      // faltar, o cliente conclui que o servidor é antigo demais e esconde o
+      // recurso — por isso ele tem que vir sempre, inclusive quando o host
+      // suporta o relay.
+      const availability = authTurn.payload?.server?.turnAvailability;
+      if (!availability || typeof availability.supported !== 'boolean') {
+        throw new Error('Teste 18: o AUTH_SUCCESS precisa informar a disponibilidade do relay');
+      }
+      if (!availability.supported && !availability.reason) {
+        throw new Error('Teste 18: um relay indisponível precisa dizer o motivo');
+      }
+      if (availability.supported && availability.reason !== undefined) {
+        throw new Error('Teste 18: um relay disponível não deve carregar motivo de indisponibilidade');
+      }
+
       wsTurn.close();
     } finally {
       await turnServer.stop();
     }
-    console.log('✔ Teste 18 passou: ICE servers chegam ao cliente, com STUN e sem vazar TURN quando desligado');
+    console.log('✔ Teste 18 passou: ICE servers chegam ao cliente, com STUN, sem vazar TURN quando desligado, e com a disponibilidade do relay');
 
     console.log('=== Todos os testes do servidor passaram com sucesso! ===');
   } finally {
