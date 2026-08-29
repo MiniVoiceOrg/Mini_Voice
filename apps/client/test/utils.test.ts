@@ -546,6 +546,34 @@ function runTests() {
 
   fs.rmSync(baseDir, { recursive: true, force: true });
 
+  // Renomear servidor reflete na Home e na barra lateral (#85)
+  console.log('\n--- Testando rename do servidor salvo (#85) ---');
+  const { ConnectionStore } = require('../src/renderer/stores/connectionStore');
+  const conexao = new ConnectionStore();
+  conexao.savedServers = [
+    { host: '127.0.0.1', port: 3000, name: 'Nome Antigo', lastConnected: 1, iconUrl: 'antigo.png' },
+    { host: '10.0.0.9', port: 3000, name: 'Outro Servidor', lastConnected: 2 },
+  ];
+  conexao.createdServers = [
+    { id: 'created-1', name: 'Nome Antigo', port: 3000, voiceChannel: 'Geral', textChannel: 'geral', createdAt: 1, lastStarted: 1 },
+  ];
+
+  conexao.updateSavedServerMeta('127.0.0.1', 3000, { name: 'Nome Novo', iconUrl: 'novo.png' });
+  assert(conexao.savedServers[0].name === 'Nome Novo', 'O rename chega ao servidor salvo, que é de onde a Home e a barra lateral leem');
+  assert(conexao.savedServers[0].iconUrl === 'novo.png', 'O ícone continua sendo atualizado junto');
+  assert(conexao.savedServers[1].name === 'Outro Servidor', 'Os outros servidores salvos não são tocados');
+
+  conexao.updateSavedServerIcon('127.0.0.1', 3000, null);
+  assert(conexao.savedServers[0].iconUrl === undefined, 'Remover o ícone continua funcionando pelo método antigo');
+  assert(conexao.savedServers[0].name === 'Nome Novo', 'Atualizar só o ícone não apaga o nome');
+
+  conexao.renameCreatedServerByPort(3000, 'Nome Novo');
+  assert(conexao.createdServers[0].name === 'Nome Novo', 'Meus Servidores acompanha o rename do servidor hospedado aqui');
+  conexao.renameCreatedServerByPort(3000, '');
+  assert(conexao.createdServers[0].name === 'Nome Novo', 'Nome vazio não apaga o que já estava lá');
+  conexao.updateSavedServerMeta('192.168.0.1', 3000, { name: 'Inexistente' });
+  assert(conexao.savedServers.length === 2, 'Servidor que não está na lista não cria entrada nova');
+
   console.log(`\n=== Relatório dos Testes ===`);
   console.log(`Total: ${passed + failed} | Passaram: ${passed} | Falharam: ${failed}`);
 

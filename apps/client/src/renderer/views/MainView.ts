@@ -1291,17 +1291,24 @@ export class MainView {
       if (titleEl) titleEl.innerText = payload.name;
       const iconEl = document.getElementById('server-header-icon') as HTMLImageElement;
       if (iconEl) iconEl.src = payload.iconUrl ? getAvatarUrl(payload.iconUrl) : logoUrl;
-      // Persist updated icon on the saved server entry
+      // Persist the rename and the icon on the saved server entry. Only the icon
+      // was written back, so Home and the sidebar kept the old name until the
+      // next connection (#85).
       const url = networkClient.getCurrentServerUrl();
       if (url) {
         const match = url.match(/\/\/([^:]+):(\d+)/);
         if (match) {
+          const host = match[1];
           const port = parseInt(match[2], 10);
-          connectionStore.updateSavedServerIcon(
-            match[1],
-            port,
-            toAbsoluteServerIconUrl(match[1], port, payload.iconUrl)
-          );
+          connectionStore.updateSavedServerMeta(host, port, {
+            name: payload.name,
+            iconUrl: toAbsoluteServerIconUrl(host, port, payload.iconUrl),
+          });
+          // A server hosted from this machine also has an entry in "Meus
+          // Servidores", with its own copy of the name.
+          if (host === '127.0.0.1' || host === 'localhost') {
+            connectionStore.renameCreatedServerByPort(port, payload.name);
+          }
         }
       }
       serverRailView.render();
