@@ -235,6 +235,7 @@ export class AudioProcessor {
 
   public handlePttState(active: boolean): void {
     if (settingsStore.inputMode !== 'push_to_talk') return;
+    if (this.isMuted || this.isDeafened || voiceStore.getEffectiveMuted()) return;
 
     if (active) {
       if (this.pttReleaseTimeout) {
@@ -420,6 +421,11 @@ export class AudioProcessor {
 
   public setMuted(muted: boolean): void {
     this.isMuted = muted;
+    if (muted && this.pttReleaseTimeout) {
+      clearTimeout(this.pttReleaseTimeout);
+      this.pttReleaseTimeout = null;
+      this.isPttActive = false;
+    }
     this.applyTrackEnabled();
     if (muted && this.isSpeaking) {
       this.setSpeaking(false);
@@ -463,6 +469,11 @@ export class AudioProcessor {
   }
 
   public stopMicrophone(): void {
+    if (this.pttReleaseTimeout) {
+      clearTimeout(this.pttReleaseTimeout);
+      this.pttReleaseTimeout = null;
+      this.isPttActive = false;
+    }
     if (this.vadInterval) {
       clearInterval(this.vadInterval);
       this.vadInterval = null;
@@ -507,6 +518,16 @@ export class AudioProcessor {
     if (this.isSpeaking) {
       this.setSpeaking(false);
     }
+  }
+
+  public destroy(): void {
+    this.stopMicrophone();
+    if (this.pttReleaseTimeout) {
+      clearTimeout(this.pttReleaseTimeout);
+      this.pttReleaseTimeout = null;
+    }
+    this.unbindPttEvents.forEach((unbind) => unbind());
+    this.unbindPttEvents = [];
   }
 }
 

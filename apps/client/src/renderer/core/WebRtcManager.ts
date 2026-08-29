@@ -242,8 +242,14 @@ export class WebRtcManager {
       screenAudioEl!.play().catch((e) => console.warn('[WebRTC] Screen audio play error:', e));
     });
     track.onended = () => {
-      if (screenAudioEl) {
-        screenAudioEl.srcObject = null;
+      const el = this.screenAudioElements.get(peerSessionId);
+      if (el) {
+        try {
+          el.pause();
+        } catch {}
+        el.srcObject = null;
+        el.remove();
+        this.screenAudioElements.delete(peerSessionId);
       }
     };
   }
@@ -329,19 +335,19 @@ export class WebRtcManager {
    * Wait for a peer connection's signaling state to become 'stable'.
    * Returns immediately if already stable, otherwise waits up to timeoutMs.
    */
-  private waitForStable(pc: RTCPeerConnection, timeoutMs = 5000): Promise<void> {
-    if (pc.signalingState === 'stable') return Promise.resolve();
-    return new Promise<void>((resolve) => {
+  private waitForStable(pc: RTCPeerConnection, timeoutMs = 5000): Promise<boolean> {
+    if (pc.signalingState === 'stable') return Promise.resolve(true);
+    return new Promise<boolean>((resolve) => {
       const onStateChange = () => {
         if (pc.signalingState === 'stable') {
           pc.removeEventListener('signalingstatechange', onStateChange);
           clearTimeout(timer);
-          resolve();
+          resolve(true);
         }
       };
       const timer = setTimeout(() => {
         pc.removeEventListener('signalingstatechange', onStateChange);
-        resolve(); // resolve anyway to avoid blocking forever
+        resolve(pc.signalingState === 'stable');
       }, timeoutMs);
       pc.addEventListener('signalingstatechange', onStateChange);
     });
@@ -411,7 +417,10 @@ export class WebRtcManager {
     );
 
     try {
-      await this.waitForStable(session.pc, 3000);
+      const isStable = await this.waitForStable(session.pc, 3000);
+      if (!isStable && session.pc.signalingState !== 'stable') {
+        throw new Error(`PeerConnection not stable (current: ${session.pc.signalingState})`);
+      }
       if (typeof session.pc.restartIce === 'function') {
         session.pc.restartIce();
       }
@@ -439,6 +448,7 @@ export class WebRtcManager {
 
     if (existing) {
       this.clearPeerTimers(existing);
+      this.cleanupRemoteVad(peerSessionId);
       try {
         existing.pc.close();
       } catch (e) {}
@@ -966,6 +976,7 @@ export class WebRtcManager {
   }
 
   private async sendOffer(session: PeerSession, iceRestart = false): Promise<void> {
+    if (session.pc.connectionState === 'closed') return;
     try {
       session.makingOffer = true;
       const offer = await session.pc.createOffer({
