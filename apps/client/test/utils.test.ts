@@ -574,6 +574,16 @@ function runTests() {
   conexao.updateSavedServerMeta('192.168.0.1', 3000, { name: 'Inexistente' });
   assert(conexao.savedServers.length === 2, 'Servidor que não está na lista não cria entrada nova');
 
+  // Extensão do avatar ao salvar a foto ampliada (#406)
+  console.log('\n--- Testando extensão do avatar (#406) ---');
+  const extensaoDoAvatar = (avatarUrl: string | null | undefined): string =>
+    (avatarUrl || '').split('?')[0].match(/\.([a-z0-9]{1,5})$/i)?.[1] ?? 'png';
+  assert(extensaoDoAvatar('/avatars/abc.png') === 'png', 'PNG é reconhecido');
+  assert(extensaoDoAvatar('/avatars/abc.jpeg') === 'jpeg', 'JPEG não vira png no download');
+  assert(extensaoDoAvatar('/avatars/abc.webp?v=2') === 'webp', 'Query string não engole a extensão');
+  assert(extensaoDoAvatar('/avatars/sem-extensao') === 'png', 'Sem extensão cai no padrão');
+  assert(extensaoDoAvatar(null) === 'png', 'Avatar ausente cai no padrão sem quebrar');
+
   console.log(`\n=== Relatório dos Testes ===`);
   console.log(`Total: ${passed + failed} | Passaram: ${passed} | Falharam: ${failed}`);
 
