@@ -44,6 +44,7 @@ export interface ElectronApi {
   hostServerLogs: () => Promise<LogEntry[]>;
   hostServerClearLogs: () => Promise<void>;
   hostServerStats: () => Promise<ServerStats | null>;
+  hostServerDeleteData: (serverId: string) => Promise<{ success: boolean; error?: string }>;
   onHostServerLog: (callback: (entry: LogEntry) => void) => () => void;
   onHostServerStatusChanged: (
     callback: (status: { isRunning: boolean; port: number | null; serverId: string | null }) => void
@@ -130,6 +131,7 @@ const api: ElectronApi = {
   hostServerLogs: () => ipcRenderer.invoke('server-host:logs'),
   hostServerClearLogs: () => ipcRenderer.invoke('server-host:clear-logs'),
   hostServerStats: () => ipcRenderer.invoke('server-host:stats'),
+  hostServerDeleteData: (serverId) => ipcRenderer.invoke('server-host:delete-data', serverId),
   onHostServerLog: (callback) => {
     const listener = (_event: unknown, entry: LogEntry) => callback(entry);
     ipcRenderer.on('server-host:log', listener);

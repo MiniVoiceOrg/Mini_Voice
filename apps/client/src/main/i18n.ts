@@ -20,6 +20,8 @@ const CATALOGS = {
     'error.updaterUnavailable': 'Updater indisponível',
     'error.updaterDevMode': 'Atualização automática indisponível em modo de desenvolvimento',
     'error.startServerFailed': 'Falha ao iniciar servidor',
+    'error.deleteServerDataFailed': 'Não foi possível apagar os dados do servidor',
+    'error.deleteServerDataRunning': 'Pare o servidor antes de apagar os dados dele',
     'screenPermission.title': 'Permissão de gravação de tela',
     'screenPermission.message': 'O macOS está negando a captura de tela para o Monky.',
     'screenPermission.detail':
@@ -53,6 +55,8 @@ const CATALOGS = {
     'error.updaterUnavailable': 'Updater unavailable',
     'error.updaterDevMode': 'Automatic updates are unavailable in development mode',
     'error.startServerFailed': 'Failed to start the server',
+    'error.deleteServerDataFailed': 'Could not delete the server data',
+    'error.deleteServerDataRunning': 'Stop the server before deleting its data',
     'screenPermission.title': 'Screen recording permission',
     'screenPermission.message': 'macOS is denying screen capture for Monky.',
     'screenPermission.detail':

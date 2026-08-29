@@ -2,9 +2,9 @@ import { settingsStore } from '../../../stores/settingsStore';
 import { updateService } from '../../../core/UpdateService';
 import { t } from '../../../i18n';
 
-const IDEAS_URL = 'https://github.com/MonkyOrg/Monky/discussions/categories/ideias';
-const NEW_IDEA_URL = 'https://github.com/MonkyOrg/Monky/discussions/new?category=ideias';
-const NEW_ISSUE_URL = 'https://github.com/MonkyOrg/Monky/issues/new/choose';
+const IDEAS_URL = 'https://github.com/MonkyOrg/Monky/discussions/categories/ideas';
+const NEW_IDEA_URL = 'https://github.com/MonkyOrg/Monky/discussions/new?category=ideas';
+const NEW_BUG_URL = 'https://github.com/MonkyOrg/Monky/discussions/new?category=bug-reports';
 const DONATE_URL = 'https://buymeacoffee.com/monkyorg';
 
 export class AboutTab {
@@ -190,17 +190,26 @@ export class AboutTab {
       settingsStore.save();
     });
 
+    const openInBrowser = (url: string) => {
+      window.open(url, '_blank', 'noopener');
+    };
+
     const openLink = (url: string) => {
-      if (window.api?.openExternal) {
-        window.api.openExternal(url);
-      } else {
-        window.open(url, '_blank');
+      if (!window.api?.openExternal) {
+        openInBrowser(url);
+        return;
       }
+
+      window.api.openExternal(url)
+        .then((res) => {
+          if (!res?.success) openInBrowser(url);
+        })
+        .catch(() => openInBrowser(url));
     };
 
     btnSupport?.addEventListener('click', () => openLink(DONATE_URL));
     btnSuggest?.addEventListener('click', () => openLink(NEW_IDEA_URL));
     btnVote?.addEventListener('click', () => openLink(IDEAS_URL));
-    btnReport?.addEventListener('click', () => openLink(NEW_ISSUE_URL));
+    btnReport?.addEventListener('click', () => openLink(NEW_BUG_URL));
   }
 }
