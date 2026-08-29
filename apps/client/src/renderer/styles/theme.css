@@ -4194,6 +4194,19 @@ input:focus, textarea:focus, select:focus {
   50% { opacity: 0.4; }
 }
 
+/* Handshake in progress (#433): a spin reads as "working on it", which is
+   exactly what distinguishes it from the static failure icon. */
+.stage-peer-connecting-icon,
+.voice-mini-icon.peer-connecting {
+  color: var(--text-muted, #949ba4);
+  animation: peer-connecting-spin 1.4s linear infinite;
+}
+
+@keyframes peer-connecting-spin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+
 .telemetry-overlay {
   position: absolute;
   z-index: 4;

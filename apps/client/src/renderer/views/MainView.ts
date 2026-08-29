@@ -625,13 +625,15 @@ export class MainView {
                   const avatar = getAvatarUrl(p.user.avatarUrl);
                   const displayName = participantManager.displayName(p);
                   const isPeerFailed = !isLocal && (p.peerConnectionFailed ?? false);
-                  const isRelayed = !isLocal && !isPeerFailed && (p.isRelayed ?? false);
+                  const isConnecting = !isLocal && !isPeerFailed && (p.isConnecting ?? false);
+                  const isRelayed = !isLocal && !isPeerFailed && !isConnecting && (p.isRelayed ?? false);
 
                   return `
                     <div id="voice-mini-user-${sessionId}" class="voice-participant-mini ${isSpeaking ? 'speaking' : ''}" data-session-id="${sessionId}" title="${escapeHtml(displayName)} (${t('main.rightClickVolumeShort')})">
                       <img class="voice-mini-avatar" src="${avatar}">
                       <span class="voice-mini-name">${escapeHtml(displayName)}</span>
                       ${isPeerFailed ? `<span class="material-symbols-outlined md-14 voice-mini-icon peer-failed" title="${peerFailureTooltip('main.peerConnectionFailed')}">link_off</span>` : ''}
+                      ${isConnecting ? `<span class="material-symbols-outlined md-14 voice-mini-icon peer-connecting" title="${t('main.peerConnecting')}">sync</span>` : ''}
                       ${isRelayed ? `<span class="material-symbols-outlined md-14 voice-mini-icon relayed" title="${t('main.peerRelayed')}">swap_horiz</span>` : ''}
                       ${isServerDeafened ? `<span class="material-symbols-outlined md-14 voice-mini-icon muted" title="${t('permissions.serverDeafened')}">hearing_disabled</span>` : ''}
                       ${isServerMuted ? `<span class="material-symbols-outlined md-14 voice-mini-icon muted" title="${t('permissions.serverMuted')}">admin_panel_settings</span>` : ''}

@@ -13,6 +13,14 @@ export interface ParticipantViewModel {
   /** True when all WebRTC recovery attempts with this peer have been exhausted. */
   peerConnectionFailed?: boolean;
   /**
+   * True while the WebRTC link with this peer is still being negotiated (#433).
+   *
+   * Silence during the handshake is indistinguishable from a broken call, so
+   * this fills the gap between joining and the first connected state — and it
+   * comes back during a recovery, when media really has stopped flowing.
+   */
+  isConnecting?: boolean;
+  /**
    * True when media with this peer is going through the server's TURN relay
    * instead of a direct link (#425).
    *
@@ -92,6 +100,14 @@ export class ParticipantManager {
     const participant = this.participants.get(sessionId);
     if (participant && participant.peerConnectionFailed !== failed) {
       participant.peerConnectionFailed = failed;
+      this.scheduleUpdate();
+    }
+  }
+
+  public setPeerConnecting(sessionId: string, connecting: boolean): void {
+    const participant = this.participants.get(sessionId);
+    if (participant && participant.isConnecting !== connecting) {
+      participant.isConnecting = connecting;
       this.scheduleUpdate();
     }
   }
