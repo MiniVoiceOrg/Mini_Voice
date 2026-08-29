@@ -56,6 +56,7 @@ import {
   VoiceUserJoinedPayload,
   VoiceUserLeftPayload,
   WebRtcSignalPayload,
+  RtcDiagnosticsReportPayload,
   canAccessChannel,
 } from '@monky/shared';
 import { AuthService } from '../../application/services/AuthService';
@@ -313,6 +314,10 @@ export class WebSocketServer {
 
       case MessageType.RTC_SIGNAL:
         this.handleRtcSignal(session, payload as WebRtcSignalPayload, requestId);
+        break;
+
+      case MessageType.RTC_DIAGNOSTICS_REPORT:
+        this.handleRtcDiagnosticsReport(session, payload as RtcDiagnosticsReportPayload);
         break;
 
       case MessageType.SOUNDBOARD_PLAY:
@@ -975,6 +980,53 @@ export class WebSocketServer {
         payload,
       });
     }
+  }
+
+  private handleRtcDiagnosticsReport(
+    session: ClientSession,
+    payload: RtcDiagnosticsReportPayload
+  ): void {
+    if (!session.user || !session.sessionId) return;
+
+    const targetSession = this.findSessionById(payload.targetSessionId);
+    const fromName = session.user.nickname;
+    const toName = targetSession?.user?.nickname ?? payload.targetSessionId;
+
+    const fmtCandidate = (c: RtcDiagnosticsReportPayload['localCandidate']): string => {
+      if (!c) return 'none';
+      const addr = c.address ? `${c.address}:${c.port ?? '?'}` : 'unknown';
+      return `${c.type} ${addr} (${c.protocol ?? '?'})`;
+    };
+
+    // Infer probable cause from candidate types
+    let probableCause = 'unknown';
+    if (!payload.remoteCandidate && !payload.localCandidate) {
+      probableCause = 'signaling_failure_or_firewall';
+    } else if (!payload.remoteCandidate) {
+      probableCause = 'remote_unreachable (firewall or peer disconnected)';
+    } else if (payload.localCandidate?.type === 'srflx' && payload.remoteCandidate?.type === 'srflx') {
+      probableCause = 'symmetric_nat_or_cgnat (no TURN relay configured)';
+    } else if (payload.localCandidate?.type === 'host' && payload.remoteCandidate?.type === 'host') {
+      probableCause = 'different_networks_no_stun_success';
+    } else {
+      probableCause = 'nat_traversal_failed';
+    }
+
+    Logger.warn(
+      'WEBRTC',
+      `P2P connection failed: ${fromName} → ${toName} | ` +
+      `local=${fmtCandidate(payload.localCandidate)} | ` +
+      `remote=${fmtCandidate(payload.remoteCandidate)} | ` +
+      `ICE gathering=${payload.iceGatheringState}, signaling=${payload.signalingState} | ` +
+      `attempts: ICE restart=${payload.iceRestartAttempts}, hard reconnect=${payload.hardReconnectAttempts} | ` +
+      `probable cause: ${probableCause}`
+    );
+  }
+
+  private findSessionById(sessionId: string): ClientSession | undefined {
+    const ws = this.sessionSockets.get(sessionId);
+    if (ws) return this.sessions.get(ws);
+    return undefined;
   }
 
   private async requirePermission(

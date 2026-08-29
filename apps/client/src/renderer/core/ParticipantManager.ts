@@ -10,6 +10,8 @@ export interface ParticipantViewModel {
   remoteScreenStreams: Map<string, MediaStream>;
   isSpeaking: boolean;
   isReconnecting?: boolean;
+  /** True when all WebRTC recovery attempts with this peer have been exhausted. */
+  peerConnectionFailed?: boolean;
 }
 
 export class ParticipantManager {
@@ -74,6 +76,14 @@ export class ParticipantManager {
     const participant = this.participants.get(sessionId);
     if (participant && participant.isReconnecting !== reconnecting) {
       participant.isReconnecting = reconnecting;
+      this.scheduleUpdate();
+    }
+  }
+
+  public setPeerConnectionFailed(sessionId: string, failed: boolean): void {
+    const participant = this.participants.get(sessionId);
+    if (participant && participant.peerConnectionFailed !== failed) {
+      participant.peerConnectionFailed = failed;
       this.scheduleUpdate();
     }
   }
