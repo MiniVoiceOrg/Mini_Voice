@@ -543,8 +543,17 @@ export class ConnectionView {
       if (this.isCreatedServerRunning(server)) return;
     }
 
+    // The entry alone was never the whole server: its database, avatars and
+    // attachments stayed on disk and were inherited by the next server created
+    // (#364).
+    const deleted = await window.api?.hostServerDeleteData?.(server.id);
     connectionStore.removeCreatedServer(server.id);
+    connectionStore.removeSavedServer('127.0.0.1', server.port);
     this.render();
+
+    if (deleted && !deleted.success) {
+      this.showError(deleted.error || t('connection.deleteServerError'));
+    }
   }
 
   private unbindLanListeners: Array<() => void> = [];

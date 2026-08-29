@@ -12,6 +12,10 @@ import { normalizeSearchString, matchesSearch } from '../src/renderer/utils/sear
 import { compareVersions, feedUrlForTag, isNewer, pickBestRelease } from '../src/main/updateVersions';
 import { extractStickerIds, stickerToken, stripStickerTokens } from '../src/renderer/utils/stickers';
 import { buildCodeMessage, indentEdit } from '../src/renderer/views/CodeBlockModal';
+import { isSafeServerId, migrateLegacyServerData, serverDataDirFor } from '../src/main/serverDataDir';
+import fs from 'fs';
+import os from 'os';
+import path from 'path';
 
 let passed = 0;
 let failed = 0;
@@ -435,6 +439,41 @@ function runTests() {
   const roundTripIndent = indentEdit('a\nb', 0, 3, false);
   const backAgain = indentEdit(roundTripIndent.text, 0, roundTripIndent.text.length, true);
   assert(backAgain.text === 'a\nb', 'Indentar e desindentar devolve o texto original');
+
+  // Dados dos servidores criados (#364)
+  console.log('--- Testando pasta de dados por servidor ---');
+  assert(isSafeServerId('created-1756400000000-a1b2c3'), 'Id gerado pelo app é aceito');
+  assert(!isSafeServerId('..'), 'Id ".." é rejeitado');
+  assert(!isSafeServerId('../../etc'), 'Id com travessia de caminho é rejeitado');
+  assert(!isSafeServerId('pasta/servidor'), 'Id com barra é rejeitado');
+  assert(!isSafeServerId(''), 'Id vazio é rejeitado');
+  assert(
+    serverDataDirFor('/base', 'created-1') === path.join('/base', 'created-1'),
+    'Cada servidor recebe uma pasta própria dentro de server-data'
+  );
+
+  const baseDir = fs.mkdtempSync(path.join(os.tmpdir(), 'monky-server-data-'));
+  fs.writeFileSync(path.join(baseDir, 'server.db'), 'db-antigo');
+  fs.mkdirSync(path.join(baseDir, 'avatars'));
+  fs.writeFileSync(path.join(baseDir, 'avatars', 'a.png'), 'x');
+
+  const firstDir = path.join(baseDir, 'created-1');
+  assert(migrateLegacyServerData(baseDir, firstDir), 'Layout antigo é adotado pelo primeiro servidor que inicia');
+  assert(
+    fs.readFileSync(path.join(firstDir, 'server.db'), 'utf-8') === 'db-antigo',
+    'O banco antigo é preservado, não descartado'
+  );
+  assert(fs.existsSync(path.join(firstDir, 'avatars', 'a.png')), 'Avatares acompanham o banco na migração');
+  assert(!fs.existsSync(path.join(baseDir, 'server.db')), 'O banco solto some da raiz de server-data');
+
+  const secondDir = path.join(baseDir, 'created-2');
+  assert(
+    !migrateLegacyServerData(baseDir, secondDir),
+    'Um segundo servidor não herda nada: é essa herança que trazia o nome antigo de volta (#364)'
+  );
+  assert(!fs.existsSync(path.join(secondDir, 'server.db')), 'O segundo servidor nasce com a pasta vazia');
+
+  fs.rmSync(baseDir, { recursive: true, force: true });
 
   console.log(`\n=== Relatório dos Testes ===`);
   console.log(`Total: ${passed + failed} | Passaram: ${passed} | Falharam: ${failed}`);

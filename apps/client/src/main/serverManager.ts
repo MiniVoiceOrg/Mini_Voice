@@ -4,6 +4,7 @@ import { app, BrowserWindow } from 'electron';
 import { MonkyServer, ServerConfig, Logger } from '@monky/server';
 import type { HostServerOptions, LogEntry, ServerStats } from '@monky/shared';
 import { mt } from './i18n';
+import { isSafeServerId, migrateLegacyServerData, serverDataDirFor } from './serverDataDir';
 
 export type { HostServerOptions };
 
@@ -32,10 +33,12 @@ export class ServerManager {
       await this.stopServer();
     }
 
-    const dataDir = path.join(app.getPath('userData'), 'server-data');
-    if (!fs.existsSync(dataDir)) {
-      fs.mkdirSync(dataDir, { recursive: true });
+    if (options.serverId && !isSafeServerId(options.serverId)) {
+      return { success: false, error: mt('error.startServerFailed') };
     }
+
+    const dataDir = this.resolveDataDir(options.serverId);
+    fs.mkdirSync(dataDir, { recursive: true });
 
     const config: ServerConfig = {
       port: options.port,
@@ -65,6 +68,47 @@ export class ServerManager {
       this.currentServerId = null;
       this.notifyStatus();
       return { success: false, error: err.message || mt('error.startServerFailed') };
+    }
+  }
+
+  private static baseDataDir(): string {
+    return path.join(app.getPath('userData'), 'server-data');
+  }
+
+  /**
+   * One folder per entry of "Meus Servidores" (#364). Servers started without
+   * an id keep the flat folder: they have no entry to be told apart by.
+   */
+  private resolveDataDir(serverId?: string): string {
+    const baseDir = ServerManager.baseDataDir();
+    if (!serverId) return baseDir;
+
+    const dataDir = serverDataDirFor(baseDir, serverId);
+    migrateLegacyServerData(baseDir, dataDir);
+    return dataDir;
+  }
+
+  /**
+   * Drops the data of a server removed from "Meus Servidores". Without this the
+   * database outlived the entry and was inherited by the next server created
+   * (#364).
+   */
+  public deleteServerData(serverId: string): { success: boolean; error?: string } {
+    if (!serverId || !isSafeServerId(serverId)) {
+      return { success: false, error: mt('error.deleteServerDataFailed') };
+    }
+    // Erasing the database under a live server would leave it writing into
+    // files nobody can find again.
+    if (this.isRunning && this.currentServerId === serverId) {
+      return { success: false, error: mt('error.deleteServerDataRunning') };
+    }
+
+    try {
+      fs.rmSync(serverDataDirFor(ServerManager.baseDataDir(), serverId), { recursive: true, force: true });
+      return { success: true };
+    } catch (err: any) {
+      console.error('[ServerManager] Error deleting server data:', err);
+      return { success: false, error: err.message || mt('error.deleteServerDataFailed') };
     }
   }
 
