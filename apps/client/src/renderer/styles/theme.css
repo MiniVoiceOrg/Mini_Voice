@@ -4571,10 +4571,17 @@ input:focus, textarea:focus, select:focus {
 
 /* Generic button loading spinner (#48), driven by [data-loading] so it is not
    wiped by handlers that rewrite the button's innerHTML/className. */
+/* The label has to vanish under the spinner, and it comes in two shapes: child
+   elements (icons, spans) and bare text nodes written straight into the button.
+   Only `> *` reached the first kind, so a button labelled with loose text kept
+   showing the word under the spinner (#374). Making the text transparent covers
+   the second kind without touching the spinner, which paints itself with
+   explicit border colors. */
 button[data-loading="1"] {
   position: relative;
   pointer-events: none;
   cursor: default;
+  color: transparent;
 }
 
 button[data-loading="1"] > * {
