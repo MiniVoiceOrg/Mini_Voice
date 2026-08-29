@@ -22,6 +22,10 @@ import { parseOption } from './cli/formatters';
 import { listServers, registerServer, serverIdFor, unregisterServer } from './cli/registry';
 import { PasswordService } from './infrastructure/security/PasswordService';
 import { RateLimiter } from './infrastructure/security/RateLimiter';
+import { DatabaseConnection } from './infrastructure/database/DatabaseConnection';
+import { SqliteRoleRepository, SqliteServerRepository, SqliteUserRepository } from './infrastructure/database/SqliteRepositories';
+import { PermissionService } from './application/services/PermissionService';
+import { RoleService } from './application/services/RoleService';
 
 function withTimeout<T>(promise: Promise<T>, ms: number, label: string): Promise<T> {
   return Promise.race([
@@ -52,6 +56,8 @@ async function authenticateSocket(
     deviceId?: string;
     /** Pretend to be a client speaking another protocol version (#355). */
     protocolVersion?: number;
+    /** Resolve on any SERVER_ERROR, para inspecionar qual código veio (#372). */
+    acceptAnyError?: boolean;
   }
 ): Promise<any> {
   const identity = options?.identity ?? createIdentity();
@@ -59,6 +65,12 @@ async function authenticateSocket(
   return await withTimeout(new Promise((resolve, reject) => {
     const onMessage = (data: RawData) => {
       const res = JSON.parse(data.toString());
+
+      if (options?.acceptAnyError && res.type === MessageType.SERVER_ERROR) {
+        ws.off('message', onMessage);
+        resolve(res);
+        return;
+      }
 
       if (
         options?.expectErrorCode &&
@@ -834,6 +846,116 @@ async function runTests() {
       throw new Error('Teste 21: o teto do frame precisa ser menor que o padrão de 100 MiB da lib ws');
     }
     console.log('✔ Teste 21 passou: Frame de WebSocket tem teto acima do avatar legítimo e abaixo do padrão da lib');
+
+    // Teste 22: MANAGE_ROLES podia atribuir o cargo Admin embutido, inclusive a
+    // si mesmo — o mesmo ADMINISTRATOR que criar e editar cargo já barram (#277),
+    // alcançado em um passo pela porta dos fundos (#372).
+    const escaladaDir = path.join(__dirname, '../../test-data-escalada');
+    if (fs.existsSync(escaladaDir)) fs.rmSync(escaladaDir, { recursive: true, force: true });
+    fs.mkdirSync(escaladaDir, { recursive: true });
+
+    const escaladaConn = await DatabaseConnection.create(path.join(escaladaDir, 'server.db'));
+    const escaladaDb = escaladaConn.getDb();
+    const serverRepoEsc = new SqliteServerRepository(escaladaDb);
+    const userRepoEsc = new SqliteUserRepository(escaladaDb);
+    const roleRepoEsc = new SqliteRoleRepository(escaladaDb);
+    const roleServiceEsc = new RoleService(roleRepoEsc, userRepoEsc, new PermissionService(serverRepoEsc, roleRepoEsc));
+
+    const criarUsuario = async (id: string, nickname: string) => {
+      await userRepoEsc.create({
+        id,
+        clientId: `client-${id}`,
+        publicKey: `chave-${id}`,
+        nickname,
+        avatarPath: null,
+        createdAt: Date.now(),
+        lastSeenAt: Date.now(),
+      });
+    };
+
+    await criarUsuario('dono', 'Dono');
+    await criarUsuario('moderador', 'Moderador');
+    await criarUsuario('alvo', 'Alvo');
+    await serverRepoEsc.createServer({
+      id: 'servidor-escalada',
+      name: 'Escalada',
+      passwordHash: '',
+      createdAt: Date.now(),
+      maxUsers: 10,
+      ownerUserId: 'dono',
+      allowSoundboard: true,
+    });
+
+    const cargoAdmin = { id: 'cargo-admin', name: 'Admin', color: null, permissions: ADMIN_PERMISSIONS, position: 100, isDefault: false, createdAt: Date.now() };
+    const cargoModerador = { id: 'cargo-mod', name: 'Moderador', color: null, permissions: Permission.MANAGE_ROLES, position: 50, isDefault: false, createdAt: Date.now() };
+    const cargoComum = { id: 'cargo-comum', name: 'Comum', color: null, permissions: DEFAULT_PERMISSIONS, position: 10, isDefault: false, createdAt: Date.now() };
+    await roleRepoEsc.create(cargoAdmin);
+    await roleRepoEsc.create(cargoModerador);
+    await roleRepoEsc.create(cargoComum);
+    await roleRepoEsc.assignRole('moderador', cargoModerador.id);
+    await roleRepoEsc.assignRole('dono', cargoAdmin.id);
+
+    const escalar = await roleServiceEsc.assignRole('moderador', { userId: 'moderador', roleId: cargoAdmin.id });
+    if (escalar.success || escalar.errorCode !== ProtocolErrorCode.PERMISSION_DENIED) {
+      throw new Error('Teste 22: MANAGE_ROLES não deveria conseguir se promover a administrador');
+    }
+    const escalarOutro = await roleServiceEsc.assignRole('moderador', { userId: 'alvo', roleId: cargoAdmin.id });
+    if (escalarOutro.success) {
+      throw new Error('Teste 22: MANAGE_ROLES não deveria conseguir promover outra pessoa a administrador');
+    }
+    const derrubarAdmin = await roleServiceEsc.unassignRole('moderador', { userId: 'dono', roleId: cargoAdmin.id });
+    if (derrubarAdmin.success) {
+      throw new Error('Teste 22: MANAGE_ROLES não deveria conseguir remover um administrador');
+    }
+    const cargoNormal = await roleServiceEsc.assignRole('moderador', { userId: 'alvo', roleId: cargoComum.id });
+    if (!cargoNormal.success) {
+      throw new Error('Teste 22: MANAGE_ROLES deveria continuar atribuindo cargos comuns');
+    }
+    const donoPromove = await roleServiceEsc.assignRole('dono', { userId: 'alvo', roleId: cargoAdmin.id });
+    if (!donoPromove.success) {
+      throw new Error('Teste 22: o dono deveria continuar podendo promover alguém a administrador');
+    }
+    escaladaConn.close();
+    fs.rmSync(escaladaDir, { recursive: true, force: true });
+    console.log('✔ Teste 22 passou: Só o dono atribui ou remove o cargo Admin embutido');
+
+    // Teste 23: só o fracasso gasta cota. Contar toda tentativa penalizava quem
+    // entra normalmente e travava sozinha uma casa inteira atrás de um NAT ao
+    // reconectar depois de uma queda (#372).
+    const limitadorPeek = new RateLimiter();
+    for (let i = 0; i < 50; i++) {
+      if (!limitadorPeek.peek('auth:203.0.113.5', LIMITS.RATE_LIMIT_MAX_AUTH_ATTEMPTS, LIMITS.RATE_LIMIT_AUTH_WINDOW_MS)) {
+        throw new Error('Teste 23: consultar o limite não deveria gastar cota');
+      }
+    }
+    for (let i = 0; i < LIMITS.RATE_LIMIT_MAX_AUTH_ATTEMPTS; i++) {
+      limitadorPeek.checkLimit('auth:203.0.113.5', LIMITS.RATE_LIMIT_MAX_AUTH_ATTEMPTS, LIMITS.RATE_LIMIT_AUTH_WINDOW_MS);
+    }
+    if (limitadorPeek.peek('auth:203.0.113.5', LIMITS.RATE_LIMIT_MAX_AUTH_ATTEMPTS, LIMITS.RATE_LIMIT_AUTH_WINDOW_MS)) {
+      throw new Error('Teste 23: depois das falhas registradas o IP deveria estar barrado');
+    }
+    limitadorPeek.dispose();
+    console.log('✔ Teste 23 passou: Consultar o limite não gasta cota; só a falha registrada gasta');
+
+    // Teste 24 (por último, de propósito: deixa 127.0.0.1 barrado): a senha
+    // errada repetida acaba recusada antes do scrypt, com código próprio — o
+    // cliente traduz por código, e RATE_LIMITED já quer dizer "flood de
+    // mensagens" para ele (#372).
+    let codigoDeBloqueio: string | undefined;
+    for (let i = 0; i < LIMITS.RATE_LIMIT_MAX_AUTH_ATTEMPTS + 2 && !codigoDeBloqueio; i++) {
+      const wsForca = new WebSocket('ws://127.0.0.1:3999');
+      const erro = await authenticateSocket(wsForca, `req-forca-${i}`, `UserForca${i}`, 'senha-errada', {
+        acceptAnyError: true,
+      });
+      if (erro?.payload?.code === ProtocolErrorCode.AUTH_RATE_LIMITED) {
+        codigoDeBloqueio = erro.payload.code;
+      }
+      wsForca.close();
+    }
+    if (codigoDeBloqueio !== ProtocolErrorCode.AUTH_RATE_LIMITED) {
+      throw new Error('Teste 24: tentativas repetidas de senha errada deveriam ser barradas com AUTH_RATE_LIMITED');
+    }
+    console.log('✔ Teste 24 passou: Senha errada repetida é barrada por IP com AUTH_RATE_LIMITED');
 
     console.log('=== Todos os testes do servidor passaram com sucesso! ===');
   } finally {
