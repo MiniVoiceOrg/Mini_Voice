@@ -113,15 +113,40 @@ export class ConnectionStore {
     appEvents.emit('connection.saved_servers_changed');
   }
 
-  /** Updates the icon for the currently connected server in the saved list. */
-  public updateSavedServerIcon(host: string, port: number, iconUrl: string | null): void {
+  /**
+   * Applies a rename or an icon change to the saved entry. The Home list and the
+   * sidebar rail read the name from here, not from the live connection, so a
+   * rename that was not written back kept showing the old name until the next
+   * time you connected (#85).
+   */
+  public updateSavedServerMeta(host: string, port: number, meta: { name?: string; iconUrl?: string | null }): void {
     const srv = this.savedServers.find((s) => s.host === host && s.port === port);
     if (!srv) return;
-    srv.iconUrl = iconUrl || undefined;
+    if (meta.name) srv.name = meta.name;
+    if (meta.iconUrl !== undefined) srv.iconUrl = meta.iconUrl || undefined;
     try {
       localStorage.setItem('monky_saved_servers', JSON.stringify(this.savedServers));
     } catch (e) {}
     appEvents.emit('connection.saved_servers_changed');
+  }
+
+  /** Updates the icon for the currently connected server in the saved list. */
+  public updateSavedServerIcon(host: string, port: number, iconUrl: string | null): void {
+    this.updateSavedServerMeta(host, port, { iconUrl });
+  }
+
+  /**
+   * Keeps "Meus Servidores" in step when the owner renames a server they host
+   * from the app: that list has its own copy of the name (#85).
+   */
+  public renameCreatedServerByPort(port: number, name: string): void {
+    if (!name) return;
+    const server = this.createdServers.find((s) => s.port === port);
+    if (!server || server.name === name) return;
+    server.name = name;
+    try {
+      localStorage.setItem('monky_created_servers', JSON.stringify(this.createdServers));
+    } catch (e) {}
   }
 
   public updateSavedServer(oldHost: string, oldPort: number, updated: SavedServer): void {
