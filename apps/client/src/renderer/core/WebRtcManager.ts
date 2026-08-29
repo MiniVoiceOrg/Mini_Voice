@@ -1270,7 +1270,13 @@ export class WebRtcManager {
         return;
       }
       try {
-        const stats = await session.pc.getStats();
+        // Use the audio receiver's getStats() instead of pc.getStats() to avoid
+        // fetching the full stats report (video, ICE, codec, etc.), which creates
+        // thousands of short-lived objects per second and pressures the GC (#411).
+        const audioReceiver = session.pc.getReceivers().find((r) => r.track?.kind === 'audio');
+        if (!audioReceiver) return;
+
+        const stats = await audioReceiver.getStats();
         let audioLevel: number | undefined;
         for (const report of stats.values()) {
           if (report.type === 'inbound-rtp' && (report.kind === 'audio' || report.mediaType === 'audio')) {
@@ -1294,14 +1300,16 @@ export class WebRtcManager {
             }
           } else {
             silenceCounter++;
-            if (silenceCounter > 4 && isSpeaking) {
+            // At 150ms interval, 3 consecutive silent reads ≈ 450ms — still
+            // responsive enough for a natural speaking-indicator transition.
+            if (silenceCounter > 3 && isSpeaking) {
               isSpeaking = false;
               this.voiceParticipants.setSpeaking(peerSessionId, false);
             }
           }
         }
       } catch (e) {}
-    }, 50);
+    }, 150);
 
     this.remoteAudioVads.set(peerSessionId, { interval });
   }
