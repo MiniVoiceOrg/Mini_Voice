@@ -504,6 +504,7 @@ export const en: TranslationMap = {
   'stage.noChannelSubtitle': 'Click a voice channel in the sidebar to join the call!',
   'stage.pingCalculating': 'P2P voice latency: calculating...',
   'stage.connectedMesh': 'Connected (P2P mesh)',
+  'stage.peerConnectionFailed': 'Could not establish a direct connection with this participant',
   'stage.muteMic': 'Mute microphone',
   'stage.unmuteMic': 'Unmute microphone',
   'stage.deafen': 'Mute everything',
