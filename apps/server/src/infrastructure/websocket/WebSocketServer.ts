@@ -561,7 +561,18 @@ export class WebSocketServer {
         Logger.warn('NETWORK', 'TURN relay enabled without a shared secret; leaving it off.');
         return;
       }
-      await this.coturnManager.start(server.turnSecret);
+      const started = await this.coturnManager.start(server.turnSecret);
+      if (!started) return;
+
+      // Verify the relay is actually reachable. A VPS whose firewall blocks
+      // port 3478 will silently swallow TURN allocations, and the only sign is
+      // that members behind CGNAT never connect — exactly the bug #425
+      // reported. Checking right after start catches the most common
+      // misconfiguration before anyone tries to call.
+      const portProblem = await CoturnManager.checkPortReachability();
+      if (portProblem) {
+        Logger.warn('NETWORK', `TURN relay started but may not work: ${portProblem}`);
+      }
     } catch (error) {
       Logger.error('NETWORK', 'Failed to apply the TURN relay state', error);
     }

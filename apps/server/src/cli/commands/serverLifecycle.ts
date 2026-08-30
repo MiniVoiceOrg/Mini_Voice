@@ -408,6 +408,14 @@ async function printTurnStatusAsync(dataDir: string): Promise<void> {
         } else {
           console.log(`coturn: ${color('instalado', ANSI.green)}`);
           console.log(`porta: ${TURN_LISTENING_PORT}`);
+          // Check port reachability
+          const portProblem = await CoturnManager.checkPortReachability();
+          if (portProblem) {
+            console.log(`status: ${color('⚠ porta bloqueada', ANSI.yellow)}`);
+            console.log(`  ${color(portProblem, ANSI.dim)}`);
+          } else {
+            console.log(`status: ${color('✔ acessível', ANSI.green)}`);
+          }
         }
       }
     }, false);

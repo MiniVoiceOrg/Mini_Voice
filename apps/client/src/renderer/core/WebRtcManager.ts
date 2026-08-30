@@ -148,11 +148,16 @@ export class WebRtcManager {
     const hasRelay = iceServers.some((entry) => entry.urls.some((url) => url.startsWith('turn:')));
     const stunCount = iceServers.filter((e) => e.urls.some((u) => u.startsWith('stun:'))).length;
     const turnCount = iceServers.filter((e) => e.urls.some((u) => u.startsWith('turn:'))).length;
+    const hasCredentials = iceServers.some((e) => !!e.username && !!e.credential);
     clientLog.info('WEBRTC', `ICE servers updated (STUN: ${stunCount}, TURN: ${turnCount}, relay ${hasRelay ? 'available' : 'unavailable'})`, {
       serverCount: iceServers.length,
       hasRelay,
+      hasCredentials,
       urls: iceServers.flatMap((e) => e.urls),
     });
+    if (hasRelay && !hasCredentials) {
+      clientLog.warn('WEBRTC', 'TURN server configured but no credentials provided — relay will not work');
+    }
     console.log(`[WebRTC] ICE servers updated by the server (relay ${hasRelay ? 'available' : 'unavailable'})`);
   }
 
