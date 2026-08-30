@@ -13,6 +13,7 @@ import {
 import { appEvents } from './EventBus';
 import { createActiveProxy } from './activeProxy';
 import { routeSessionEvent } from './sessionRouting';
+import { clientLog } from './ClientLogService';
 import { t } from '../i18n';
 import { translateProtocolError } from '../i18n/protocolErrors';
 
@@ -114,6 +115,7 @@ export class NetworkClient {
   }
 
   private async diagnoseConnectionFailure(host: string, port: number): Promise<Error> {
+    clientLog.warn('NETWORK', `Diagnosing connection failure to ${host}:${port}`);
     const probe = (window as any).api?.probeServer;
     if (typeof probe !== 'function') {
       return new Error(t('network.genericConnectError'));
@@ -166,6 +168,7 @@ export class NetworkClient {
     password?: string,
     isReconnect = false
   ): Promise<AuthSuccessPayload> {
+    clientLog.info('NETWORK', `Connecting to ${host}:${port}${isReconnect ? ' (reconnect)' : ''}`);
     this.manualDisconnect = false;
     if (!isReconnect) {
       this.reconnectAttempt = 0;
@@ -291,6 +294,7 @@ export class NetworkClient {
   }
 
   public disconnect(): void {
+    clientLog.info('NETWORK', 'Disconnecting from server');
     // Emitting again after the socket already died would run the whole teardown
     // twice — and, with one client per server (#400), would ask the session
     // manager to drop a session while it is already being dropped.
@@ -400,12 +404,14 @@ export class NetworkClient {
       }
 
       if (type === MessageType.AUTH_SUCCESS) {
+        clientLog.info('NETWORK', 'Authentication successful');
         this.pendingAuth.resolve(payload as AuthSuccessPayload);
         return;
       }
 
       if (type === MessageType.AUTH_FAILED) {
         const authFailed = payload as AuthFailedPayload;
+        clientLog.error('NETWORK', 'Authentication failed', { message: authFailed.message });
         this.pendingAuth.reject(new Error(authFailed.message || t('network.genericConnectError')));
         return;
       }
@@ -450,6 +456,7 @@ export class NetworkClient {
   }
 
   private handleSocketClosed(): void {
+    clientLog.warn('NETWORK', 'WebSocket connection closed');
     this.ws = null;
     this.stopHeartbeat();
     this.clearPendingAuth();
@@ -485,6 +492,7 @@ export class NetworkClient {
 
     try {
       console.log(`[NetworkClient] Trying to reconnect (attempt ${this.reconnectAttempt})...`);
+      clientLog.info('NETWORK', `Reconnection attempt ${this.reconnectAttempt}`);
       const { clientId, publicKey, nickname, password } = this.lastConnectPayload;
       const urlObj = new URL(this.currentServerUrl);
       const host = urlObj.hostname;
@@ -525,6 +533,7 @@ export class NetworkClient {
       if (!this.ws || this.ws.readyState !== WebSocket.OPEN) return;
 
       if (Date.now() - this.lastPongAt > NetworkClient.HEARTBEAT_TIMEOUT_MS) {
+        clientLog.error('NETWORK', 'Heartbeat timeout — connection considered dead, forcing reconnect');
         console.warn('[NetworkClient] Heartbeat timeout, connection considered dead. Forcing reconnect.');
         this.stopHeartbeat();
         try {

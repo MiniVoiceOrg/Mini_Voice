@@ -1,6 +1,7 @@
 import { QUALITY_PRESETS, QualityProfile, QualityPresetType } from '@monky/shared';
 import { appEvents } from './EventBus';
 import { settingsStore } from '../stores/settingsStore';
+import { clientLog } from './ClientLogService';
 
 export class VideoService {
   private cameraStream: MediaStream | null = null;
@@ -29,6 +30,10 @@ export class VideoService {
 
     const profile = this.getProfile();
     const targetDeviceId = deviceId || settingsStore.selectedCameraId || undefined;
+    clientLog.info('VIDEO', 'Starting camera', {
+      deviceId: targetDeviceId || 'default',
+      resolution: `${profile.cameraWidth}x${profile.cameraHeight}@${profile.cameraFps}fps`,
+    });
     const constraints: MediaStreamConstraints = {
       audio: false,
       video: {
@@ -43,6 +48,7 @@ export class VideoService {
       this.cameraStream = await navigator.mediaDevices.getUserMedia(constraints);
     } catch (err: any) {
       if (targetDeviceId) {
+        clientLog.warn('VIDEO', 'Could not open specific camera, falling back to default', { error: err.message });
         console.warn('[VideoService] Could not open specific camera, falling back to default camera:', err);
         this.cameraStream = await navigator.mediaDevices.getUserMedia({
           audio: false,
@@ -62,6 +68,7 @@ export class VideoService {
 
   public stopCamera(): void {
     if (this.cameraStream) {
+      clientLog.info('VIDEO', 'Stopping camera');
       this.cameraStream.getTracks().forEach((t) => t.stop());
       this.cameraStream = null;
       appEvents.emit('local.camera_stopped');
@@ -70,6 +77,10 @@ export class VideoService {
 
   public async startScreenShare(sourceId?: string): Promise<MediaStream> {
     const profile = this.getProfile();
+    clientLog.info('SCREEN_SHARE', 'Starting screen share', {
+      hasSourceId: !!sourceId,
+      resolution: `${profile.screenWidth}x${profile.screenHeight}@${profile.screenFps}fps`,
+    });
     let stream: MediaStream;
 
     if (sourceId) {
@@ -131,6 +142,7 @@ export class VideoService {
    */
   public stopScreenShare(shareId?: string): void {
     const ids = shareId ? [shareId] : [...this.screenStreams.keys()];
+    clientLog.info('SCREEN_SHARE', `Stopping screen share(s)`, { shareIds: ids });
     for (const id of ids) {
       const stream = this.screenStreams.get(id);
       if (!stream) continue;

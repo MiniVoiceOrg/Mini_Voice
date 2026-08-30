@@ -4,6 +4,7 @@ import { networkClient, type NetworkClient } from './NetworkClient';
 import { sessionManager } from './SessionManager';
 import { webRtcManager } from './WebRtcManager';
 import { voiceStore } from '../stores/voiceStore';
+import { clientLog } from './ClientLogService';
 
 interface ClientIdentity {
   publicKey: string;
@@ -26,6 +27,7 @@ export async function openServerSession(
   nickname: string,
   password?: string
 ): Promise<AuthSuccessPayload> {
+  clientLog.info('CONNECTION', `Opening server session: ${host}:${port}`, { nickname });
   const previous = sessionManager.getActive();
   const session = sessionManager.create(host, port, nickname, password);
   sessionManager.activate(session.key);
@@ -33,6 +35,9 @@ export async function openServerSession(
   try {
     return await session.client.connect(host, port, identity, nickname, password);
   } catch (err) {
+    clientLog.error('CONNECTION', `Failed to open session ${host}:${port}`, {
+      error: err instanceof Error ? err.message : String(err),
+    });
     // The session never really came up; dropping it keeps the rail honest.
     sessionManager.remove(session.key);
     if (previous && sessionManager.has(previous.key)) {
@@ -64,6 +69,7 @@ export function callClient(): NetworkClient {
  * path touches no shared global: it talks to the session it was given.
  */
 export async function rejoinCallOnSession(sessionKey: string, channelId: string): Promise<void> {
+  clientLog.info('CONNECTION', `Rejoining call on session ${sessionKey}`, { channelId });
   const session = sessionManager.get(sessionKey);
   if (!session) return;
 
@@ -91,7 +97,11 @@ export async function rejoinCallOnSession(sessionKey: string, channelId: string)
  */
 export function showServerSession(key: string): boolean {
   const session = sessionManager.get(key);
-  if (!session || session.client.getStatus() !== 'CONNECTED') return false;
+  if (!session || session.client.getStatus() !== 'CONNECTED') {
+    clientLog.warn('CONNECTION', `Cannot show session ${key} — not connected`);
+    return false;
+  }
+  clientLog.info('CONNECTION', `Showing server session: ${key}`);
   sessionManager.activate(key);
   return true;
 }

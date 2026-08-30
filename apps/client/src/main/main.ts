@@ -4,6 +4,7 @@ import { setupIpcHandlers } from './ipcHandlers';
 import { setupUpdater } from './updater';
 import { ServerManager } from './serverManager';
 import { TrayManager } from './trayManager';
+import { ClientLogger } from './clientLogger';
 import { HOME_MIN_HEIGHT, HOME_MIN_WIDTH } from './windowSizing';
 
 import fs from 'fs';
@@ -11,6 +12,7 @@ import fs from 'fs';
 let mainWindow: BrowserWindow | null = null;
 let trayManager: TrayManager | null = null;
 const serverManager = new ServerManager();
+let clientLogger: ClientLogger | null = null;
 let isShuttingDown = false;
 let isQuitting = false;
 
@@ -87,10 +89,19 @@ function createWindow(): void {
 
   let minimizeToTray = true;
 
+  clientLogger = new ClientLogger();
+  clientLogger.write({
+    timestamp: new Date().toISOString(),
+    level: 'INFO',
+    category: 'APP',
+    message: `Application started — version ${app.getVersion()}, platform ${process.platform} ${process.arch}`,
+  });
+
   setupIpcHandlers(mainWindow, serverManager, trayManager, {
     setMinimizeToTray: (enabled: boolean) => {
       minimizeToTray = enabled;
     },
+    clientLogger,
   });
   setupUpdater(mainWindow);
 
@@ -188,6 +199,7 @@ app.on('window-all-closed', () => {
 
 app.on('before-quit', () => {
   isQuitting = true;
+  clientLogger?.shutdown();
   shutdownServer();
   trayManager?.destroy();
 });

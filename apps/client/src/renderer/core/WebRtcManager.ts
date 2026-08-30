@@ -10,6 +10,7 @@ import { networkClient, type NetworkClient } from './NetworkClient';
 import { participantManager, type ParticipantManager } from './ParticipantManager';
 import { sessionManager } from './SessionManager';
 import { currentEventOrigin } from './sessionRouting';
+import { clientLog } from './ClientLogService';
 import { settingsStore } from '../stores/settingsStore';
 import { serverStore, type ServerStore } from '../stores/serverStore';
 import { voiceStore } from '../stores/voiceStore';
@@ -145,6 +146,13 @@ export class WebRtcManager {
     };
 
     const hasRelay = iceServers.some((entry) => entry.urls.some((url) => url.startsWith('turn:')));
+    const stunCount = iceServers.filter((e) => e.urls.some((u) => u.startsWith('stun:'))).length;
+    const turnCount = iceServers.filter((e) => e.urls.some((u) => u.startsWith('turn:'))).length;
+    clientLog.info('WEBRTC', `ICE servers updated (STUN: ${stunCount}, TURN: ${turnCount}, relay ${hasRelay ? 'available' : 'unavailable'})`, {
+      serverCount: iceServers.length,
+      hasRelay,
+      urls: iceServers.flatMap((e) => e.urls),
+    });
     console.log(`[WebRTC] ICE servers updated by the server (relay ${hasRelay ? 'available' : 'unavailable'})`);
   }
 
@@ -318,6 +326,7 @@ export class WebRtcManager {
       const state = session.pc.connectionState;
       const iceState = session.pc.iceConnectionState;
       if (state !== 'connected' && state !== 'closed') {
+        clientLog.warn('WEBRTC', `Watchdog timeout (${timeoutMs}ms) for peer ${session.peerSessionId}`, { state, iceState });
         console.warn(
           `[WebRTC] Watchdog timeout (${timeoutMs}ms) for peer ${session.peerSessionId} (state=${state}, iceState=${iceState}). Triggering recovery.`
         );
@@ -333,6 +342,7 @@ export class WebRtcManager {
 
     session.isRecovering = true;
     session.iceRestartAttempts++;
+    clientLog.warn('WEBRTC', `ICE restart #${session.iceRestartAttempts} for peer ${session.peerSessionId}`, { reason });
     console.log(
       `[WebRTC] Attempting ICE restart #${session.iceRestartAttempts} for peer ${session.peerSessionId} (reason: ${reason})`
     );
@@ -348,6 +358,9 @@ export class WebRtcManager {
       await this.sendOffer(session, true);
       this.startConnectionWatchdog(session, 10000);
     } catch (err) {
+      clientLog.error('WEBRTC', `ICE restart failed for ${session.peerSessionId}`, {
+        error: err instanceof Error ? err.message : String(err),
+      });
       console.warn(`[WebRTC] ICE restart failed for ${session.peerSessionId}:`, err);
       await this.hardReconnectPeer(session.peerSessionId);
     } finally {
@@ -360,11 +373,13 @@ export class WebRtcManager {
     const attempts = (existing?.reconnectAttempts || 0) + 1;
 
     if (attempts > 3) {
+      clientLog.error('WEBRTC', `Max hard reconnect attempts (3) reached for peer ${peerSessionId} — giving up`);
       console.warn(`[WebRTC] Max hard reconnect attempts reached for peer ${peerSessionId}. Aborting recovery.`);
       this.markPeerFailed(peerSessionId, existing);
       return;
     }
 
+    clientLog.warn('WEBRTC', `Hard reconnect #${attempts} for peer ${peerSessionId}`);
     console.log(`[WebRTC] Performing Hard Reconnect #${attempts} for peer ${peerSessionId}...`);
 
     if (existing) {
@@ -404,6 +419,12 @@ export class WebRtcManager {
   }
 
   private recoverPeerConnection(session: PeerSession, reason: string): void {
+    clientLog.warn('WEBRTC', `Recovery triggered for peer ${session.peerSessionId}`, {
+      reason,
+      iceRestartAttempts: session.iceRestartAttempts,
+      connectionState: session.pc.connectionState,
+      iceState: session.pc.iceConnectionState,
+    });
     // Any degradation reopens the window that decides whether to warn the user,
     // so a peer that drops long after connecting is reported too (#426).
     this.beginPeerFailureCountdown(session.peerSessionId);
@@ -456,6 +477,12 @@ export class WebRtcManager {
    */
   private markPeerFailed(peerSessionId: string, session: PeerSession | undefined): void {
     if (this.failedPeers.has(peerSessionId)) return;
+    clientLog.error('WEBRTC', `Peer ${peerSessionId} marked as unreachable`, {
+      connectionState: session?.pc.connectionState,
+      iceState: session?.pc.iceConnectionState,
+      iceRestartAttempts: session?.iceRestartAttempts,
+      reconnectAttempts: session?.reconnectAttempts,
+    });
     this.failedPeers.add(peerSessionId);
     this.clearPeerFailureCountdown(peerSessionId);
     this.voiceParticipants.setPeerConnecting(peerSessionId, false);
@@ -513,11 +540,23 @@ export class WebRtcManager {
 
         this.voiceParticipants.setPeerRelayed(peerSessionId, relayed);
         if (relayed) {
+          clientLog.info('WEBRTC', `Peer ${peerSessionId} connected via TURN relay`, {
+            localType: local?.candidateType,
+            remoteType: remote?.candidateType,
+          });
           console.log(`[WebRTC] Peer ${peerSessionId} is connected through the TURN relay.`);
+        } else {
+          clientLog.info('WEBRTC', `Peer ${peerSessionId} connected directly (P2P)`, {
+            localType: local?.candidateType,
+            remoteType: remote?.candidateType,
+          });
         }
         return;
       }
     } catch (error) {
+      clientLog.warn('WEBRTC', `Failed to detect relay usage for peer ${peerSessionId}`, {
+        error: error instanceof Error ? error.message : String(error),
+      });
       console.warn('[WebRTC] Failed to determine whether the peer is relayed:', error);
     }
   }
@@ -534,6 +573,9 @@ export class WebRtcManager {
   }
 
   public async connectToPeer(peerSessionId: string, isInitiator: boolean): Promise<void> {
+    clientLog.info('WEBRTC', `Connecting to peer ${peerSessionId} (initiator: ${isInitiator})`, {
+      iceServersCount: this.rtcConfig.iceServers?.length ?? 0,
+    });
     const existingSession = this.peers.get(peerSessionId);
     if (existingSession) {
       if (existingSession.pc.connectionState !== 'closed' && existingSession.pc.connectionState !== 'failed') {
@@ -616,6 +658,11 @@ export class WebRtcManager {
     // ICE Candidate handler
     pc.onicecandidate = (event) => {
       if (event.candidate) {
+        clientLog.info('WEBRTC', `ICE candidate generated for ${peerSessionId}`, {
+          type: event.candidate.type,
+          protocol: event.candidate.protocol,
+          address: event.candidate.address ? '***' : null,
+        });
         this.signalClient.send(MessageType.RTC_SIGNAL, {
           targetSessionId: peerSessionId,
           fromSessionId: this.currentSessionId,
@@ -750,6 +797,7 @@ export class WebRtcManager {
 
     pc.oniceconnectionstatechange = () => {
       const iceState = pc.iceConnectionState;
+      clientLog.info('WEBRTC', `Peer ${peerSessionId} ICE state: ${iceState}`);
       console.log(`[WebRTC] Peer ${peerSessionId} ICE state: ${iceState}`);
 
       if (iceState === 'connected' || iceState === 'completed') {
@@ -769,6 +817,7 @@ export class WebRtcManager {
       } else if (iceState === 'failed') {
         this.clearPeerTimers(session);
         console.warn(`[WebRTC] Peer ${peerSessionId} ICE state failed. Recovering immediately.`);
+        clientLog.error('WEBRTC', `ICE state failed for peer ${peerSessionId}`);
         this.reportIfNeverConnected(peerSessionId, session);
         this.recoverPeerConnection(session, 'ice_failed');
       }
@@ -776,6 +825,7 @@ export class WebRtcManager {
 
     pc.onconnectionstatechange = () => {
       const state = pc.connectionState;
+      clientLog.info('WEBRTC', `Peer ${peerSessionId} connection state: ${state}`);
       console.log(`[WebRTC] Peer ${peerSessionId} state: ${state}`);
 
       if (state === 'connected') {
@@ -834,6 +884,9 @@ export class WebRtcManager {
         sdp: session.pc.localDescription?.toJSON ? session.pc.localDescription.toJSON() : session.pc.localDescription,
       });
     } catch (err) {
+      clientLog.error('WEBRTC', `Error sending offer to ${session.peerSessionId}`, {
+        error: err instanceof Error ? err.message : String(err),
+      });
       console.error(`[WebRTC] Error sending offer to ${session.peerSessionId}:`, err);
     } finally {
       session.makingOffer = false;
@@ -987,6 +1040,10 @@ export class WebRtcManager {
         }
       }
     } catch (err) {
+      clientLog.error('WEBRTC', `Signal handling error from ${fromSessionId}`, {
+        signalType,
+        error: err instanceof Error ? err.message : String(err),
+      });
       console.error(`[WebRTC] Signal handling error from ${fromSessionId}:`, err);
     }
   }
@@ -1331,6 +1388,8 @@ export class WebRtcManager {
   }
 
   public closeAllPeers(): void {
+    const peerCount = this.peers.size;
+    clientLog.info('WEBRTC', `Closing all peers (${peerCount} active)`);
     for (const [peerSessionId] of Array.from(this.peers.entries())) {
       this.removePeer(peerSessionId);
     }

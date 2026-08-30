@@ -120,6 +120,7 @@ try {
 
 export interface SetupIpcOptions {
   setMinimizeToTray?: (enabled: boolean) => void;
+  clientLogger?: import('./clientLogger').ClientLogger;
 }
 
 /**
@@ -907,6 +908,23 @@ export function setupIpcHandlers(
     if (!screenAudio) return { success: false };
     return screenAudio.stop();
   });
+
+  // Client Logging (#444)
+  const logger = options?.clientLogger;
+  if (logger) {
+    ipcMain.handle('client-log:write', (_, entry) => {
+      logger.write(entry);
+    });
+    ipcMain.handle('client-log:get-config', () => logger.getConfig());
+    ipcMain.handle('client-log:set-config', (_, config) => {
+      logger.setConfig(config);
+    });
+    ipcMain.handle('client-log:export', () => logger.exportLogs());
+    ipcMain.handle('client-log:get-size', () => logger.getTotalSize());
+    ipcMain.handle('client-log:clear', () => {
+      logger.clearLogs();
+    });
+  }
 
   mainWindow.on('closed', () => {
     clearAudioBufferAccumulator();

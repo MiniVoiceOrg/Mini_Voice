@@ -1,6 +1,7 @@
 import { appEvents } from '../core/EventBus';
 import { emitOutsideRouting } from '../core/sessionRouting';
 import { settingsStore } from './settingsStore';
+import { clientLog } from '../core/ClientLogService';
 
 export class VoiceStore {
   public currentVoiceChannelId: string | null = null;
@@ -31,6 +32,7 @@ export class VoiceStore {
   public static readonly MAX_SCREEN_SHARES = 2;
 
   public setChannel(channelId: string | null, sessionKey: string | null = null): void {
+    clientLog.info('CONNECTION', `Voice channel ${channelId ? 'joined' : 'left'}`, { channelId, sessionKey });
     this.currentVoiceChannelId = channelId;
     if (channelId) {
       this.voiceSessionKey = sessionKey;
@@ -46,6 +48,7 @@ export class VoiceStore {
   }
 
   public setMuted(muted: boolean): void {
+    clientLog.info('AUDIO', `Muted: ${muted}`);
     this.isMuted = muted;
     settingsStore.isMuted = muted;
     settingsStore.save();
@@ -53,6 +56,7 @@ export class VoiceStore {
   }
 
   public setDeafened(deafened: boolean): void {
+    clientLog.info('AUDIO', `Deafened: ${deafened}`);
     if (deafened && !this.isDeafened) {
       // Entering deafen: remember whether the mic was already muted, then mute it.
       this.micMutedBeforeDeafen = this.isMuted;
@@ -71,11 +75,13 @@ export class VoiceStore {
   }
 
   public setServerMuted(muted: boolean): void {
+    clientLog.warn('AUDIO', `Server muted: ${muted}`);
     this.serverMuted = muted;
     appEvents.emit('voice.state_updated');
   }
 
   public setServerDeafened(deafened: boolean): void {
+    clientLog.warn('AUDIO', `Server deafened: ${deafened}`);
     this.serverDeafened = deafened;
     appEvents.emit('voice.state_updated');
   }

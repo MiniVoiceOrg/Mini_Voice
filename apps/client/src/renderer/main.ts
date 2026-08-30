@@ -46,6 +46,7 @@ import { showAlert } from './views/Dialog';
 import { showIdentityImportDialog } from './views/IdentityDialogs';
 import { initI18n, t } from './i18n';
 import { toAbsoluteServerIconUrl } from './utils/avatar';
+import { clientLog } from './core/ClientLogService';
 
 class App {
   private appContainer: HTMLElement;
@@ -69,6 +70,10 @@ class App {
   }
 
   private async init(): Promise<void> {
+    // Initialise client logging (#444)
+    await clientLog.init();
+    clientLog.info('APP', 'Renderer process initialising');
+
     initI18n();
 
     // Check if identity exists BEFORE rendering anything
@@ -727,4 +732,18 @@ class App {
 // Bootstrap when DOM ready
 document.addEventListener('DOMContentLoaded', () => {
   new App();
+});
+
+// Global error handlers for uncaught exceptions (#444)
+window.addEventListener('error', (event) => {
+  clientLog.error('APP', `Uncaught error: ${event.message}`, {
+    filename: event.filename,
+    lineno: event.lineno,
+    colno: event.colno,
+  });
+});
+
+window.addEventListener('unhandledrejection', (event) => {
+  const reason = event.reason instanceof Error ? event.reason.message : String(event.reason);
+  clientLog.error('APP', `Unhandled promise rejection: ${reason}`);
 });
