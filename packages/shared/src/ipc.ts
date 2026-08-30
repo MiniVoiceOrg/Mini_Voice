@@ -3,7 +3,7 @@
  * Define as mensagens e eventos trafegados entre o Main Process e o Renderer Process.
  */
 
-import type { LogEntry } from './logging.js';
+import type { ClientLogConfig, ClientLogEntry, LogEntry } from './logging.js';
 
 export interface DesktopSource {
   id: string;
@@ -279,6 +279,14 @@ export interface IpcInvokeChannels {
   'updater:check': { args: []; returnType: UpdateCheckResult };
   'updater:download': { args: [allowBeta: boolean]; returnType: UpdateSimpleResult };
   'updater:install': { args: []; returnType: UpdateSimpleResult };
+
+  // Client Logging (#444)
+  'client-log:write': { args: [entry: ClientLogEntry]; returnType: void };
+  'client-log:get-config': { args: []; returnType: ClientLogConfig };
+  'client-log:set-config': { args: [config: Partial<ClientLogConfig>]; returnType: void };
+  'client-log:export': { args: []; returnType: { success: boolean; filePath?: string; error?: string } };
+  'client-log:get-size': { args: []; returnType: number };
+  'client-log:clear': { args: []; returnType: void };
 }
 
 /**

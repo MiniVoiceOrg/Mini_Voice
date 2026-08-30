@@ -2,6 +2,8 @@ import { contextBridge, ipcRenderer } from 'electron';
 import type {
   ActionShortcutBinding,
   AppIdentityResult,
+  ClientLogConfig,
+  ClientLogEntry,
   DesktopSource,
   DiscoveredLanServer,
   HostServerOptions,
@@ -99,6 +101,13 @@ export interface ElectronApi {
   getAutoStart: () => Promise<boolean>;
   setAutoStart: (enabled: boolean) => Promise<void>;
   setMinimizeToTray: (enabled: boolean) => Promise<void>;
+  // Client Logging (#444)
+  writeClientLog: (entry: ClientLogEntry) => Promise<void>;
+  getClientLogConfig: () => Promise<ClientLogConfig>;
+  setClientLogConfig: (config: Partial<ClientLogConfig>) => Promise<void>;
+  exportClientLogs: () => Promise<{ success: boolean; filePath?: string; error?: string }>;
+  getClientLogSize: () => Promise<number>;
+  clearClientLogs: () => Promise<void>;
   platform: string;
 }
 
@@ -262,6 +271,13 @@ const api: ElectronApi = {
   getAutoStart: () => ipcRenderer.invoke('app:get-auto-start'),
   setAutoStart: (enabled: boolean) => ipcRenderer.invoke('app:set-auto-start', enabled),
   setMinimizeToTray: (enabled: boolean) => ipcRenderer.invoke('app:set-minimize-to-tray', enabled),
+  // Client Logging (#444)
+  writeClientLog: (entry) => ipcRenderer.invoke('client-log:write', entry),
+  getClientLogConfig: () => ipcRenderer.invoke('client-log:get-config'),
+  setClientLogConfig: (config) => ipcRenderer.invoke('client-log:set-config', config),
+  exportClientLogs: () => ipcRenderer.invoke('client-log:export'),
+  getClientLogSize: () => ipcRenderer.invoke('client-log:get-size'),
+  clearClientLogs: () => ipcRenderer.invoke('client-log:clear'),
   platform: process.platform,
 };
 

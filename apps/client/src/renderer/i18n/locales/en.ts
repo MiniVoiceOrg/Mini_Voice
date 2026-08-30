@@ -735,6 +735,25 @@ export const en: TranslationMap = {
   'settings.voteIdeas': 'Vote on ideas',
   'settings.reportBug': 'Report a bug',
 
+  // ── Client Logs (#444) ──────────────────────────────────────────────────
+  'settings.tabLogs': 'Logs',
+  'settings.logsSection': 'Activity Logging',
+  'settings.logsDesc': 'Records everything the app does to help investigate bugs. Logs are stored locally on your computer.',
+  'settings.logsEnabled': 'Record logs',
+  'settings.logsEnabledDesc': 'Enables recording of app activity logs to disk.',
+  'settings.logsEnabledStatus': 'Log recording enabled.',
+  'settings.logsDisabledStatus': 'Log recording disabled.',
+  'settings.logsSizeLimit': 'Storage limit',
+  'settings.logsCurrentSize': 'Space used',
+  'settings.logsActions': 'Actions',
+  'settings.logsExport': 'Export logs',
+  'settings.logsExporting': 'Exporting...',
+  'settings.logsExportSuccess': 'Logs exported successfully!',
+  'settings.logsExportError': 'Could not export logs.',
+  'settings.logsEmpty': 'No logs to export.',
+  'settings.logsClear': 'Clear old logs',
+  'settings.logsClearSuccess': 'Old logs removed.',
+
   // ── Sound effects (SoundEffects.ts) ──────────────────────────────────────
   'sounds.micMute': 'Mute microphone',
   'sounds.micUnmute': 'Unmute microphone',

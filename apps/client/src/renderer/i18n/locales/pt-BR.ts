@@ -736,6 +736,25 @@ export const ptBR = {
   'settings.voteIdeas': 'Votar nas ideias',
   'settings.reportBug': 'Reportar um bug',
 
+  // ── Logs do Client (#444) ────────────────────────────────────────────────
+  'settings.tabLogs': 'Logs',
+  'settings.logsSection': 'Registro de Logs',
+  'settings.logsDesc': 'Registra tudo que o app faz para facilitar a investigação de bugs. Os logs são salvos localmente no seu computador.',
+  'settings.logsEnabled': 'Gravar logs',
+  'settings.logsEnabledDesc': 'Habilita a gravação de logs de atividade do app em disco.',
+  'settings.logsEnabledStatus': 'Gravação de logs ativada.',
+  'settings.logsDisabledStatus': 'Gravação de logs desativada.',
+  'settings.logsSizeLimit': 'Limite de armazenamento',
+  'settings.logsCurrentSize': 'Espaço usado',
+  'settings.logsActions': 'Ações',
+  'settings.logsExport': 'Exportar logs',
+  'settings.logsExporting': 'Exportando...',
+  'settings.logsExportSuccess': 'Logs exportados com sucesso!',
+  'settings.logsExportError': 'Não foi possível exportar os logs.',
+  'settings.logsEmpty': 'Não há logs para exportar.',
+  'settings.logsClear': 'Limpar logs antigos',
+  'settings.logsClearSuccess': 'Logs antigos removidos.',
+
   // ── Efeitos sonoros (SoundEffects.ts) ────────────────────────────────────
   'sounds.micMute': 'Mutar microfone',
   'sounds.micUnmute': 'Desmutar microfone',

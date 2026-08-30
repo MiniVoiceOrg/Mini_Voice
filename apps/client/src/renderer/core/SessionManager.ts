@@ -1,5 +1,6 @@
 import { MessageType } from '@monky/shared';
 import { appEvents } from './EventBus';
+import { clientLog } from './ClientLogService';
 import {
   createNetworkClient,
   setActiveNetworkClient,
@@ -96,11 +97,13 @@ export class SessionManager {
     const key = sessionKeyFor(host, port);
     const existing = this.sessions.get(key);
     if (existing) {
+      clientLog.info('CONNECTION', `Reusing existing session for ${host}:${port}`);
       existing.nickname = nickname;
       existing.password = password;
       return existing;
     }
 
+    clientLog.info('CONNECTION', `Creating new session for ${host}:${port}`);
     const client = createNetworkClient();
     client.sessionKey = key;
     const session: ServerSession = {
@@ -126,6 +129,7 @@ export class SessionManager {
   public activate(key: string): void {
     const session = this.sessions.get(key);
     if (!session || this.activeKey === key) return;
+    clientLog.info('CONNECTION', `Activating session: ${key}`);
 
     const previous = this.getActive();
     if (previous) this.mute(previous);
@@ -144,6 +148,7 @@ export class SessionManager {
   public remove(key: string): void {
     const session = this.sessions.get(key);
     if (!session) return;
+    clientLog.info('CONNECTION', `Removing session: ${key}`);
     const wasActive = this.activeKey === key;
     session.client.dispose();
     this.sessions.delete(key);
@@ -156,6 +161,7 @@ export class SessionManager {
   }
 
   public removeAll(): void {
+    clientLog.info('CONNECTION', `Removing all sessions (${this.sessions.size} active)`);
     // Background first: closing the visible one is what sends the user back to
     // the connection screen, so it has to be the last thing to happen.
     for (const session of this.getBackground()) this.remove(session.key);

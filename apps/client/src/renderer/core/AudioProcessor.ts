@@ -2,6 +2,7 @@ import { appEvents } from './EventBus';
 import { settingsStore } from '../stores/settingsStore';
 import { voiceStore } from '../stores/voiceStore';
 import { soundEffects } from './SoundEffects';
+import { clientLog } from './ClientLogService';
 import { RnnoiseWorkletNode, loadRnnoise } from '@sapphi-red/web-noise-suppressor';
 import rnnoiseWorkletUrl from '@sapphi-red/web-noise-suppressor/rnnoiseWorklet.js?url';
 import rnnoiseWasmUrl from '@sapphi-red/web-noise-suppressor/rnnoise.wasm?url';
@@ -37,6 +38,7 @@ export class AudioProcessor {
     this.stopMicrophone();
 
     const targetDeviceId = deviceId || settingsStore.selectedMicrophoneId || undefined;
+    clientLog.info('AUDIO', 'Starting microphone', { deviceId: targetDeviceId || 'default' });
     const constraints: MediaStreamConstraints = {
       audio: {
         deviceId: targetDeviceId ? { exact: targetDeviceId } : undefined,
@@ -52,6 +54,7 @@ export class AudioProcessor {
       this.rawMicStream = await navigator.mediaDevices.getUserMedia(constraints);
     } catch (err: any) {
       if (targetDeviceId) {
+        clientLog.warn('AUDIO', 'Could not open specific mic, falling back to default', { error: err.message });
         console.warn('[AudioProcessor] Could not open specific mic, falling back to default mic:', err);
         this.rawMicStream = await navigator.mediaDevices.getUserMedia({
           audio: {
@@ -123,9 +126,13 @@ export class AudioProcessor {
             this.rnnoiseNode.connect(this.destinationNode);
             this.rnnoiseNode.connect(this.analyser);
             rnnoiseApplied = true;
+            clientLog.info('AUDIO', 'RNNoise Neural Noise Suppression initialized');
             console.log('[AudioProcessor] RNNoise Neural Noise Suppression successfully initialized.');
           }
         } catch (rnnoiseErr) {
+          clientLog.warn('AUDIO', 'RNNoise initialization failed, using standard routing', {
+            error: rnnoiseErr instanceof Error ? rnnoiseErr.message : String(rnnoiseErr),
+          });
           console.warn('[AudioProcessor] RNNoise initialization failed, using standard routing:', rnnoiseErr);
           rnnoiseApplied = false;
           if (this.rnnoiseNode) {
@@ -147,6 +154,9 @@ export class AudioProcessor {
       this.applyTrackEnabled();
       this.startVadLoop();
     } catch (err) {
+      clientLog.error('AUDIO', 'AudioContext graph setup failed, falling back to raw stream', {
+        error: err instanceof Error ? err.message : String(err),
+      });
       console.warn('[AudioProcessor] AudioContext graph setup failed, falling back to raw stream:', err);
       this.localStream = rawStream;
       this.applyTrackEnabled();
@@ -295,6 +305,7 @@ export class AudioProcessor {
   }
 
   public async setNoiseSuppression(enabled: boolean): Promise<void> {
+    clientLog.info('AUDIO', `Noise suppression ${enabled ? 'enabled' : 'disabled'}`);
     if (!this.audioContext || !this.microphoneSource || !this.destinationNode || !this.analyser) {
       return;
     }
@@ -469,6 +480,7 @@ export class AudioProcessor {
   }
 
   public stopMicrophone(): void {
+    clientLog.info('AUDIO', 'Stopping microphone');
     if (this.pttReleaseTimeout) {
       clearTimeout(this.pttReleaseTimeout);
       this.pttReleaseTimeout = null;

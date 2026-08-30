@@ -1,6 +1,7 @@
 import { AttachmentStorageInfo, ChannelSummary, DEFAULT_PERMISSIONS, Permission, Role, ServerDetails, TurnAvailability, UserRoleSummary, UserSummary, hasPermission } from '@monky/shared';
 import { appEvents, EventBus } from '../core/EventBus';
 import { createActiveProxy } from '../core/activeProxy';
+import { clientLog } from '../core/ClientLogService';
 
 export class ServerStore {
   /**
@@ -21,6 +22,11 @@ export class ServerStore {
   public knownMembers: Map<string, UserSummary> = new Map();
 
   public setServerDetails(details: ServerDetails, currentUser: UserSummary): void {
+    clientLog.info('SERVER_HOST', `Server details received: "${details.name}"`, {
+      channels: details.channels.length,
+      members: details.members.length,
+      turnEnabled: details.turnEnabled,
+    });
     // The server sends one entry per live connection (#309). The member list is
     // per person, so it holds a collapsed copy — the untouched original still
     // feeds the per-session voice lists.
@@ -210,6 +216,7 @@ export class ServerStore {
    */
   public setTurnAvailability(availability: TurnAvailability | undefined): void {
     if (!this.serverDetails || availability === undefined) return;
+    clientLog.info('SERVER_HOST', 'TURN availability updated', { availability });
     this.serverDetails.turnAvailability = availability;
     this.bus.emit('server.updated');
     this.bus.emit('server.meta_updated', this.serverDetails);
@@ -343,6 +350,7 @@ export class ServerStore {
   }
 
   public clear(): void {
+    clientLog.info('SERVER_HOST', 'Server store cleared');
     this.serverDetails = null;
     this.currentUser = null;
     this.activeTextChannelId = null;

@@ -18,6 +18,7 @@ import { networkClient } from './NetworkClient';
 import { callClient } from './serverConnection';
 import { MessageType } from '@monky/shared';
 import { t } from '../i18n';
+import { clientLog } from './ClientLogService';
 
 // Ring-buffer based AudioWorklet processor (inlined as a string so it can be
 // loaded via Blob URL without a separate file).
@@ -151,6 +152,7 @@ class ScreenAudioService {
 
     const supported = await this.isSupported();
     if (!supported) {
+      clientLog.warn('MEDIA', 'Screen audio not supported on this platform');
       console.warn('[ScreenAudio] Not supported on this platform');
       appEvents.emit('screen_audio.error', t('screenAudio.unsupportedWindows'));
       return null;
@@ -190,6 +192,7 @@ class ScreenAudioService {
 
     const result = await window.api.screenAudioStart(sourceId);
     if (!result.success) {
+      clientLog.error('MEDIA', 'Failed to start native screen audio capture', { error: result.error });
       console.error('[ScreenAudio] Failed to start native capture:', result.error);
       appEvents.emit('screen_audio.error', `Falha ao iniciar captura: ${result.error}`);
       this.cleanup();
@@ -198,6 +201,7 @@ class ScreenAudioService {
 
     this.isCapturing = true;
     this.isTestTone = false;
+    clientLog.info('MEDIA', 'Native screen audio capture started');
     console.log('[ScreenAudio] Native capture started');
 
     // Watchdog: warn if no frames arrive within timeout
@@ -273,6 +277,7 @@ class ScreenAudioService {
     callClient().send(MessageType.VOICE_STATE_UPDATE, { isSharingScreenAudio: false });
 
     const mode = this.isTestTone ? 'test-tone' : 'native';
+    clientLog.info('MEDIA', `Screen audio stopped (${mode})`, { framesReceived: this.frameCount });
     console.log(`[ScreenAudio] Stopped (${mode}). Frames: ${this.frameCount}`);
 
     this.cleanup();
