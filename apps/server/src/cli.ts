@@ -29,7 +29,7 @@ import {
   listRoles,
 } from './cli/commands/roles';
 import { setConfig, showConfig } from './cli/commands/config';
-import { updateCommand } from './cli/commands/update';
+import { updateCommand, getLocalVersion } from './cli/commands/update';
 import { destroyCommand } from './cli/commands/destroy';
 
 function printUsage(): void {
@@ -66,11 +66,13 @@ ${color('CONFIGURAÇÃO', ANSI.bold)}
   config set <chave> [valor]  Altera uma configuração
 
 ${color('OPÇÕES GLOBAIS', ANSI.bold)}
+  --version, -v            Exibe a versão instalada do Monky CLI
   --data <pasta>           Servidor a usar (obrigatório se houver vários)
   --help, -h               Exibe esta ajuda
 
 ${color('OPÇÕES POR COMANDO', ANSI.bold)}
   start   --port <n>
+  status  --watch          Modo dashboard em tempo real (Ctrl+C para sair)
   logs    --lines <n>  --level INFO|WARN|ERROR  --no-follow
   update  --beta  --check  --yes
 
@@ -97,6 +99,11 @@ export async function runCommand(globalArgs: GlobalArgs): Promise<void> {
 
   if (!section || isHelpArg(section)) {
     printUsage();
+    return;
+  }
+
+  if (section === '--version' || section === '-v' || section === 'version') {
+    console.log(`monky ${getLocalVersion()}`);
     return;
   }
 
@@ -133,7 +140,7 @@ export async function runCommand(globalArgs: GlobalArgs): Promise<void> {
   }
 
   if (section === 'status') {
-    await statusServerCommand(globalArgs);
+    await statusServerCommand(globalArgs, [action, ...rest].filter(Boolean));
     return;
   }
 

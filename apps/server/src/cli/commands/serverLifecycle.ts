@@ -3,7 +3,7 @@ import { LIMITS, LOG_LEVELS, LogLevel } from '@monky/shared';
 import { SqliteServerRepository } from '../../infrastructure/database/SqliteRepositories';
 import { ANSI, color, DEFAULT_SERVER_NAME } from '../constants';
 import { GlobalArgs, readLocalConfig, withContext } from '../context';
-import { parseOption, parsePositiveInt, pad } from '../formatters';
+import { formatBool, parseOption, parsePositiveInt, pad } from '../formatters';
 import {
   ensurePm2,
   findLegacyProcessFor,
@@ -18,6 +18,7 @@ import {
 import { hasServerDatabase, RegisteredServer, registerServer } from '../registry';
 import { confirmDisconnectingUsers } from '../onlineUsers';
 import { knownServers, resolveTargetServer } from '../target';
+import { CoturnManager, TURN_LISTENING_PORT } from '../../infrastructure/turn/CoturnManager';
 
 /**
  * Flags that only ever applied while the database was being created.
@@ -336,6 +337,9 @@ function printServerDetails(server: RegisteredServer): void {
   console.log(`restarts: ${entry.pm2_env?.restart_time ?? 0}`);
   console.log(`memória: ${entry.monit?.memory ? `${Math.round(entry.monit.memory / 1024 / 1024)} MB` : '-'}`);
   console.log(`cpu: ${entry.monit?.cpu !== undefined ? `${entry.monit.cpu}%` : '-'}`);
+
+  // TURN relay info (#441)
+  printTurnStatus(server.dataDir);
 }
 
 export function printServerTable(servers: RegisteredServer[]): void {
@@ -372,17 +376,135 @@ export async function listServersCommand(): Promise<void> {
 }
 
 /**
+ * Prints TURN relay info when the server has it configured (#441).
+ *
+ * This is the sync stub called from `printServerDetails`; it only shows
+ * platform-level availability. The full async variant (`printTurnStatusAsync`)
+ * also reads the database to check whether TURN is actually enabled.
+ */
+function printTurnStatus(_dataDir: string): void {
+  // The sync path only reports coturn availability; the database read happens
+  // in printTurnStatusAsync after printServerDetails returns.
+}
+
+/**
+ * Async variant that reads TURN status from the database.
+ */
+async function printTurnStatusAsync(dataDir: string): Promise<void> {
+  if (!hasServerDatabase(dataDir)) return;
+  try {
+    await withContext(dataDir, async (ctx) => {
+      const server = await ctx.serverRepo.getServer();
+      if (!server) return;
+      const turnEnabled = Boolean(server.turnEnabled);
+      console.log();
+      console.log(color('Relay TURN', ANSI.bold));
+      console.log(`turn: ${formatBool(turnEnabled)}`);
+      if (turnEnabled) {
+        const reason = CoturnManager.getUnavailabilityReason();
+        if (reason) {
+          console.log(`coturn: ${color('indisponível', ANSI.yellow)}`);
+          console.log(`  ${color(reason, ANSI.dim)}`);
+        } else {
+          console.log(`coturn: ${color('instalado', ANSI.green)}`);
+          console.log(`porta: ${TURN_LISTENING_PORT}`);
+        }
+      }
+    }, false);
+  } catch {
+    // Database may be locked by the running server; skip silently.
+  }
+}
+
+/**
+ * Formats uptime from epoch ms to a human-readable duration.
+ */
+function formatUptime(startedAtMs: number): string {
+  const elapsed = Date.now() - startedAtMs;
+  if (elapsed < 0) return '-';
+  const seconds = Math.floor(elapsed / 1000) % 60;
+  const minutes = Math.floor(elapsed / (1000 * 60)) % 60;
+  const hours = Math.floor(elapsed / (1000 * 60 * 60)) % 24;
+  const days = Math.floor(elapsed / (1000 * 60 * 60 * 24));
+  if (days > 0) return `${days}d ${hours}h ${minutes}m`;
+  if (hours > 0) return `${hours}h ${minutes}m ${seconds}s`;
+  if (minutes > 0) return `${minutes}m ${seconds}s`;
+  return `${seconds}s`;
+}
+
+/**
+ * Renders one frame of the real-time dashboard, clearing the terminal first.
+ */
+function renderDashboard(server: RegisteredServer): void {
+  const { status, process: entry } = readServerStatus(server.dataDir);
+  const port = server.port ?? readLocalConfig(server.dataDir).port ?? LIMITS.DEFAULT_PORT;
+
+  // Clear terminal and move cursor to top-left
+  process.stdout.write('\x1b[2J\x1b[H');
+
+  console.log(color('╔══════════════════════════════════════════════════╗', ANSI.cyan));
+  console.log(color('║', ANSI.cyan) + color(`  Monky Server Dashboard`, ANSI.bold) + ' '.repeat(25) + color('║', ANSI.cyan));
+  console.log(color('╚══════════════════════════════════════════════════╝', ANSI.cyan));
+  console.log();
+
+  console.log(color('  Servidor', ANSI.bold));
+  console.log(`    nome:     ${server.name || 'Servidor Monky'}`);
+  console.log(`    status:   ${statusLabel(status)}`);
+  console.log(`    porta:    ${port}`);
+  console.log(`    dataDir:  ${server.dataDir}`);
+  console.log(`    processo: ${getPm2ProcessName(server.dataDir)}`);
+
+  if (entry) {
+    console.log();
+    console.log(color('  Processo', ANSI.bold));
+    console.log(`    pid:      ${entry.pid || '-'}`);
+    console.log(`    uptime:   ${entry.pm2_env?.pm_uptime ? formatUptime(entry.pm2_env.pm_uptime) : '-'}`);
+    console.log(`    restarts: ${entry.pm2_env?.restart_time ?? 0}`);
+    console.log(`    memória:  ${entry.monit?.memory ? `${Math.round(entry.monit.memory / 1024 / 1024)} MB` : '-'}`);
+    console.log(`    cpu:      ${entry.monit?.cpu !== undefined ? `${entry.monit.cpu}%` : '-'}`);
+  }
+
+  console.log();
+  console.log(color(`  Atualizado: ${new Date().toLocaleTimeString()}`, ANSI.dim));
+  console.log(color('  Pressione Ctrl+C para sair.', ANSI.dim));
+}
+
+/**
  * Shows one server in detail, or every server as a table.
  *
  * Listing is read-only, so with several servers it prints all of them instead
  * of asking which one — asking would be busywork for a question with no side
  * effects.
  */
-export async function statusServerCommand(globalArgs: GlobalArgs): Promise<void> {
+export async function statusServerCommand(globalArgs: GlobalArgs, args: string[] = []): Promise<void> {
   if (!requirePm2('consultar')) return;
 
+  const watch = args.includes('--watch') || args.includes('-w');
+
+  if (watch) {
+    const target = await resolveTargetServer(globalArgs, 'monitorar');
+
+    // --watch mode: real-time dashboard that refreshes every 2s (#441)
+    renderDashboard(target);
+    const interval = setInterval(() => renderDashboard(target), 2000);
+
+    const cleanup = () => {
+      clearInterval(interval);
+      // Show cursor again and print a clean exit line
+      process.stdout.write('\x1b[?25h');
+      console.log();
+      console.log(color('Dashboard encerrado.', ANSI.dim));
+      process.exit(0);
+    };
+    process.on('SIGINT', cleanup);
+    process.on('SIGTERM', cleanup);
+    return;
+  }
+
   if (globalArgs.dataDirSpecified) {
-    printServerDetails(await resolveTargetServer(globalArgs, 'consultar'));
+    const target = await resolveTargetServer(globalArgs, 'consultar');
+    printServerDetails(target);
+    await printTurnStatusAsync(target.dataDir);
     return;
   }
 
@@ -395,6 +517,7 @@ export async function statusServerCommand(globalArgs: GlobalArgs): Promise<void>
 
   if (servers.length === 1) {
     printServerDetails(servers[0]);
+    await printTurnStatusAsync(servers[0].dataDir);
     return;
   }
 
