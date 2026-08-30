@@ -79,7 +79,25 @@ export default withMermaid(defineConfig({
   title: 'Monky',
   description: 'Voz, vídeo, tela e chat entre amigos — no seu próprio servidor.',
   base: '/Monky/',
-  head: [['link', { rel: 'icon', href: '/Monky/logo.png' }]],
+  head: [
+    ['link', { rel: 'icon', href: '/Monky/logo.png' }],
+    ['script', {}, `
+(function() {
+  var b = '/Monky/', p = location.pathname;
+  if (!localStorage.getItem('monky-lang-manual')) {
+    var isEn = p.startsWith(b + 'en/') || p === b + 'en';
+    var wantsPt = (navigator.language || '').startsWith('pt');
+    if (wantsPt && isEn) { location.replace(b + p.slice(b.length + 3)); return; }
+    if (!wantsPt && !isEn && p.startsWith(b)) { location.replace(b + 'en/' + p.slice(b.length)); return; }
+  }
+  document.addEventListener('click', function(e) {
+    if (e.target.closest && e.target.closest('.translations')) {
+      localStorage.setItem('monky-lang-manual', '1');
+    }
+  });
+})();
+`],
+  ],
 
   locales: {
     root: {
