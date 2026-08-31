@@ -251,12 +251,13 @@ export async function setConfig(ctx: CliContext, key: string, value?: string): P
         );
       }
       if (enabled) {
-        console.log(
-          color(
-            'Lembre-se de liberar no firewall a porta 3478 (TCP/UDP) e a faixa UDP 49152-65535.',
-            ANSI.dim
-          )
-        );
+        // Run a real port check instead of a static reminder.
+        const portProblem = await CoturnManager.checkPortReachability();
+        if (portProblem) {
+          console.log(color('⚠ ' + portProblem, ANSI.yellow));
+        } else {
+          console.log(color('✔ Porta TURN acessível.', ANSI.green));
+        }
       }
       break;
     }
