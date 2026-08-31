@@ -318,6 +318,10 @@ export const en: TranslationMap = {
   'screenShare.limitMessage': 'You are already sharing {max} screens. Stop one of them before sharing another.',
   'screenShare.errorMessage': 'Could not start screen sharing: {error}',
   'screenShare.shareAppAudio': 'Share app audio',
+  'screenShare.shareAudioMacWindow': 'Share audio (entire system)',
+  'screenShare.macSystemAudioWarnTitle': 'The entire system audio will be shared',
+  'screenShare.macSystemAudioWarnMessage': 'On macOS, Monky cannot isolate a single window\'s audio. If you continue with audio enabled, ALL of your computer\'s sound will be broadcast — notifications, music, other calls and every other app — not just the chosen application. Do you want to continue?',
+  'screenShare.macSystemAudioWarnConfirm': 'Share anyway',
   'screenShare.audioAlreadySharing': 'Audio is already being shared on another screen',
 
   // ── Cryptographic identity ───────────────────────────────────────────────

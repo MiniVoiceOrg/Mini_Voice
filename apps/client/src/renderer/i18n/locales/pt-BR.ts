@@ -319,6 +319,10 @@ export const ptBR = {
   'screenShare.limitMessage': 'Você já está compartilhando {max} telas. Pare uma delas antes de compartilhar outra.',
   'screenShare.errorMessage': 'Não foi possível iniciar o compartilhamento de tela: {error}',
   'screenShare.shareAppAudio': 'Compartilhar áudio do aplicativo',
+  'screenShare.shareAudioMacWindow': 'Compartilhar áudio (sistema inteiro)',
+  'screenShare.macSystemAudioWarnTitle': 'Será compartilhado o áudio do sistema inteiro',
+  'screenShare.macSystemAudioWarnMessage': 'No macOS, o Monky não consegue isolar o áudio de uma única janela. Ao continuar com o áudio ligado, TODO o som do seu computador será transmitido — notificações, música, outras chamadas e qualquer outro app —, não apenas o do aplicativo escolhido. Deseja continuar?',
+  'screenShare.macSystemAudioWarnConfirm': 'Compartilhar mesmo assim',
   'screenShare.audioAlreadySharing': 'Áudio já está sendo compartilhado em outra tela',
 
   // ── Identidade criptográfica ─────────────────────────────────────────────

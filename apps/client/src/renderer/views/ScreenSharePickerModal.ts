@@ -9,7 +9,7 @@ import { videoService } from '../core/VideoService';
 import { voiceStore, VoiceStore } from '../stores/voiceStore';
 import { webRtcManager } from '../core/WebRtcManager';
 import { setButtonLoading } from '../utils/buttonLoading';
-import { showAlert } from './Dialog';
+import { showAlert, showConfirm } from './Dialog';
 import { t } from '../i18n';
 
 type DesktopSource = {
@@ -25,6 +25,27 @@ export class ScreenSharePickerModal {
   private selectedSourceId: string | null = null;
   private activeTab: 'screen' | 'window' = 'screen';
   private isStarting = false;
+
+  /** ScreenCaptureKit can only capture the whole system audio (#298). */
+  private get isMac(): boolean {
+    return window.api?.platform === 'darwin';
+  }
+
+  /**
+   * Label for the "share audio" toggle. On Windows a shared window captures
+   * only that app's audio, so the label can promise "app audio". On macOS the
+   * OS captures the whole system mix even for a single window (#298), so the
+   * label must be honest instead of promising something we cannot deliver.
+   */
+  private audioToggleLabel(tab: 'screen' | 'window'): string {
+    if (screenAudioService.getIsCapturing()) return t('screenShare.audioAlreadySharing');
+    if (tab === 'window') {
+      return this.isMac
+        ? t('screenShare.shareAudioMacWindow')
+        : t('screenShare.shareAppAudio');
+    }
+    return t('screenShare.shareAudio');
+  }
 
   public async open(): Promise<void> {
     this.close();
@@ -84,7 +105,7 @@ export class ScreenSharePickerModal {
         <div class="modal-footer">
           <label id="share-audio-label" style="display: flex; align-items: center; gap: 8px; margin-right: auto; cursor: ${audioAlreadyCaptured ? 'not-allowed' : 'pointer'}; font-size: 0.85rem; color: var(--text-secondary); ${audioAlreadyCaptured ? 'opacity: 0.5;' : ''}">
             <span class="material-symbols-outlined md-16">volume_up</span>
-            <span id="share-audio-text">${audioAlreadyCaptured ? t('screenShare.audioAlreadySharing') : (this.activeTab === 'window' ? t('screenShare.shareAppAudio') : t('screenShare.shareAudio'))}</span>
+            <span id="share-audio-text">${audioAlreadyCaptured ? t('screenShare.audioAlreadySharing') : this.audioToggleLabel(this.activeTab)}</span>
             <label class="toggle-switch" style="margin-left: 4px;">
               <input type="checkbox" id="chk-share-audio" ${audioAlreadyCaptured ? 'disabled' : (!screenAudioService.getIsTestTone() ? 'checked' : '')} />
               <span class="toggle-slider"></span>
@@ -200,9 +221,7 @@ export class ScreenSharePickerModal {
       const audioText = this.modalEl?.querySelector('#share-audio-text');
       if (audioText) {
         // Keep the "audio already being shared" warning across tab switches (#315)
-        audioText.textContent = screenAudioService.getIsCapturing()
-          ? t('screenShare.audioAlreadySharing')
-          : tab === 'window' ? t('screenShare.shareAppAudio') : t('screenShare.shareAudio');
+        audioText.textContent = this.audioToggleLabel(tab);
       }
       this.renderSources(sources);
     };
@@ -225,6 +244,23 @@ export class ScreenSharePickerModal {
         variant: 'warning',
       });
       return;
+    }
+
+    // On macOS ScreenCaptureKit cannot isolate a single window's audio: enabling
+    // audio for a window share broadcasts the entire system mix — other apps,
+    // notifications, other calls (#298). Warn explicitly before starting so the
+    // user is not surprised. Shown before anything is torn down so cancelling is
+    // a clean no-op.
+    const audioChk = this.modalEl?.querySelector('#chk-share-audio') as HTMLInputElement | null;
+    const sharingWindow = (this.selectedSourceId ?? '').startsWith('window:');
+    if (this.isMac && sharingWindow && audioChk?.checked && !screenAudioService.getIsCapturing()) {
+      const proceed = await showConfirm({
+        title: t('screenShare.macSystemAudioWarnTitle'),
+        message: t('screenShare.macSystemAudioWarnMessage'),
+        confirmLabel: t('screenShare.macSystemAudioWarnConfirm'),
+        variant: 'warning',
+      });
+      if (!proceed) return;
     }
 
     this.isStarting = true;
