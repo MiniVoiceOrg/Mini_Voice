@@ -583,6 +583,10 @@ input:focus, textarea:focus, select:focus {
   flex-direction: column;
   align-items: center;
   padding: 10px 0;
+  /* The floating user card overlaps the bottom of the rail (#473), so the list
+     reserves its measured height; otherwise the last servers of a long list
+     would sit behind it, unreachable. */
+  padding-bottom: calc(var(--user-card-height, 64px) + 16px);
   gap: 8px;
   overflow-y: auto;
 }
@@ -1502,15 +1506,34 @@ input:focus, textarea:focus, select:focus {
   border-radius: var(--radius-md);
 }
 
-/* Bottom User Bar */
+/* Bottom User Bar
+   A floating card: it starts at the very left edge of the window, crossing over
+   the server rail, and ends at the sidebar's right edge (#473).
+
+   The negative left margin is what makes it cross the rail. Keeping the card in
+   the normal flow (rather than absolutely positioned) matters because its height
+   changes with the screen-share notice and the voice connection row — in the
+   flow, the channel list simply gives way instead of ending up hidden behind it.
+
+   The z-index sits above the reconnect overlay (4000) on purpose: the overlay
+   covers everything to the right of the rail, so without this the card would be
+   dimmed on one half and bright on the other. Staying above also keeps mute,
+   deafen, settings and disconnect usable while the app retries, which is the
+   same reasoning that already leaves the rail and the title bar clickable
+   (#321). */
 .user-control-bar {
   background-color: var(--bg-panel);
-  border-top: 1px solid var(--border-color);
-  padding: 6px 8px;
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-lg, 12px);
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.35);
+  padding: 8px;
+  margin: 0 8px 8px calc(8px - var(--server-rail-width));
   display: flex;
   flex-direction: column;
   gap: 6px;
   flex-shrink: 0;
+  position: relative;
+  z-index: 4100;
 }
 
 .user-media-bar {

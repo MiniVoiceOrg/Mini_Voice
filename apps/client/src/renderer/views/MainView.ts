@@ -51,6 +51,9 @@ export class MainView {
   private screenShareNoticeSignature: string | null = null;
   private textChannelDragHoverTimer: number | null = null;
   private textChannelDragHoverId: string | null = null;
+  // Measures the floating user card so the server rail can reserve room for it
+  // (#473).
+  private userCardObserver: ResizeObserver | null = null;
 
   constructor(container: HTMLElement) {
     this.container = container;
@@ -187,6 +190,7 @@ export class MainView {
     this.renderMembers();
     serverRailView.render();
     this.setupChannelsResizer();
+    this.observeUserCardHeight();
 
     const centerStageEl = document.getElementById('main-center-stage')!;
     // Re-rendering happens on every server switch now (#400), so the previous
@@ -1483,6 +1487,32 @@ export class MainView {
     );
   }
 
+  /**
+   * Keeps the server rail clear of the floating user card (#473).
+   *
+   * The card overlaps the bottom of the rail, so without reserving room the
+   * last servers in a long list would sit behind it, unreachable. The height is
+   * measured instead of hardcoded because it changes with the screen-share
+   * notice and the voice connection row.
+   */
+  private observeUserCardHeight(): void {
+    this.userCardObserver?.disconnect();
+    this.userCardObserver = null;
+
+    const layout = this.container.querySelector('.main-layout') as HTMLElement | null;
+    const card = this.container.querySelector('.user-control-bar') as HTMLElement | null;
+    if (!layout || !card) return;
+
+    const apply = () => {
+      layout.style.setProperty('--user-card-height', `${Math.ceil(card.getBoundingClientRect().height)}px`);
+    };
+    apply();
+
+    if (typeof ResizeObserver === 'undefined') return;
+    this.userCardObserver = new ResizeObserver(apply);
+    this.userCardObserver.observe(card);
+  }
+
   private unbindListeners(): void {
     this.unbindEvents.forEach((u) => u());
     this.unbindEvents = [];
@@ -1492,6 +1522,8 @@ export class MainView {
     this.stopSidebarPing();
     this.clearTextChannelDragHover();
     this.unbindListeners();
+    this.userCardObserver?.disconnect();
+    this.userCardObserver = null;
     this.chatView?.destroy();
     this.voiceStageView?.destroy();
   }
