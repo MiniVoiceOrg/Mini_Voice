@@ -34,32 +34,41 @@ export class VideoService {
       deviceId: targetDeviceId || 'default',
       resolution: `${profile.cameraWidth}x${profile.cameraHeight}@${profile.cameraFps}fps`,
     });
-    const constraints: MediaStreamConstraints = {
-      audio: false,
-      video: {
-        deviceId: targetDeviceId ? { exact: targetDeviceId } : undefined,
-        width: { ideal: profile.cameraWidth },
-        height: { ideal: profile.cameraHeight },
-        frameRate: { ideal: profile.cameraFps, max: profile.cameraFps },
-      },
+
+    // Try exact constraints first so the preset delivers what it promises.
+    // If the hardware can't match, fall back to ideal (best-effort).
+    const exactVideo: MediaTrackConstraints = {
+      deviceId: targetDeviceId ? { exact: targetDeviceId } : undefined,
+      width: { exact: profile.cameraWidth },
+      height: { exact: profile.cameraHeight },
+      frameRate: { exact: profile.cameraFps },
+    };
+    const idealVideo: MediaTrackConstraints = {
+      deviceId: targetDeviceId ? { exact: targetDeviceId } : undefined,
+      width: { ideal: profile.cameraWidth },
+      height: { ideal: profile.cameraHeight },
+      frameRate: { ideal: profile.cameraFps, max: profile.cameraFps },
+    };
+    const idealVideoNoDevice: MediaTrackConstraints = {
+      width: { ideal: profile.cameraWidth },
+      height: { ideal: profile.cameraHeight },
+      frameRate: { ideal: profile.cameraFps, max: profile.cameraFps },
     };
 
+    // Attempt chain: exact → ideal (same device) → ideal (any device)
     try {
-      this.cameraStream = await navigator.mediaDevices.getUserMedia(constraints);
-    } catch (err: any) {
-      if (targetDeviceId) {
-        clientLog.warn('VIDEO', 'Could not open specific camera, falling back to default', { error: err.message });
-        console.warn('[VideoService] Could not open specific camera, falling back to default camera:', err);
-        this.cameraStream = await navigator.mediaDevices.getUserMedia({
-          audio: false,
-          video: {
-            width: { ideal: profile.cameraWidth },
-            height: { ideal: profile.cameraHeight },
-            frameRate: { ideal: profile.cameraFps, max: profile.cameraFps },
-          },
-        });
-      } else {
-        throw err;
+      this.cameraStream = await navigator.mediaDevices.getUserMedia({ audio: false, video: exactVideo });
+    } catch {
+      clientLog.info('VIDEO', 'Exact camera constraints not met, falling back to ideal');
+      try {
+        this.cameraStream = await navigator.mediaDevices.getUserMedia({ audio: false, video: idealVideo });
+      } catch (err: any) {
+        if (targetDeviceId) {
+          clientLog.warn('VIDEO', 'Could not open specific camera, falling back to default', { error: err.message });
+          this.cameraStream = await navigator.mediaDevices.getUserMedia({ audio: false, video: idealVideoNoDevice });
+        } else {
+          throw err;
+        }
       }
     }
     appEvents.emit('local.camera_started', this.cameraStream);
@@ -84,31 +93,62 @@ export class VideoService {
     let stream: MediaStream;
 
     if (sourceId) {
-      // Electron desktopCapturer source
-      const constraints: any = {
+      // Electron desktopCapturer — try exact (min=max) first, fallback to max-only
+      const exactConstraints: any = {
         audio: false,
         video: {
           mandatory: {
             chromeMediaSource: 'desktop',
             chromeMediaSourceId: sourceId,
+            minWidth: profile.screenWidth,
             maxWidth: profile.screenWidth,
+            minHeight: profile.screenHeight,
             maxHeight: profile.screenHeight,
+            minFrameRate: profile.screenFps,
             maxFrameRate: profile.screenFps,
           },
         },
       };
-
-      stream = await (navigator.mediaDevices as any).getUserMedia(constraints);
+      try {
+        stream = await (navigator.mediaDevices as any).getUserMedia(exactConstraints);
+      } catch {
+        clientLog.info('SCREEN_SHARE', 'Exact screen constraints not met, falling back to max-only');
+        const fallbackConstraints: any = {
+          audio: false,
+          video: {
+            mandatory: {
+              chromeMediaSource: 'desktop',
+              chromeMediaSourceId: sourceId,
+              maxWidth: profile.screenWidth,
+              maxHeight: profile.screenHeight,
+              maxFrameRate: profile.screenFps,
+            },
+          },
+        };
+        stream = await (navigator.mediaDevices as any).getUserMedia(fallbackConstraints);
+      }
     } else {
       // Standard DisplayMedia fallback
-      stream = await navigator.mediaDevices.getDisplayMedia({
-        video: {
-          width: { ideal: profile.screenWidth },
-          height: { ideal: profile.screenHeight },
-          frameRate: { ideal: profile.screenFps, max: profile.screenFps },
-        },
-        audio: false,
-      });
+      try {
+        stream = await navigator.mediaDevices.getDisplayMedia({
+          video: {
+            width: { exact: profile.screenWidth },
+            height: { exact: profile.screenHeight },
+            frameRate: { exact: profile.screenFps },
+          },
+          audio: false,
+        });
+      } catch {
+        clientLog.info('SCREEN_SHARE', 'Exact display constraints not met, falling back to ideal');
+        stream = await navigator.mediaDevices.getDisplayMedia({
+          video: {
+            width: { ideal: profile.screenWidth },
+            height: { ideal: profile.screenHeight },
+            frameRate: { ideal: profile.screenFps, max: profile.screenFps },
+          },
+          audio: false,
+        });
+      }
     }
 
     const shareId = stream.id;
@@ -122,7 +162,7 @@ export class VideoService {
 
     // Hint the encoder about the content type so it optimizes correctly:
     // gaming favors fluid motion, desktop sharing favors sharp detail.
-    screenTrack.contentHint = this.currentPreset === 'GAMING' ? 'motion' : 'detail';
+    screenTrack.contentHint = (this.currentPreset === 'GAMING' || this.currentPreset === 'ULTRA') ? 'motion' : 'detail';
 
     screenTrack.onended = () => {
       // Fires only when the track ends on its own — e.g. the shared window/app

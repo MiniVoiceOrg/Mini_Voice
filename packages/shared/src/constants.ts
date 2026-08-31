@@ -49,7 +49,7 @@ export const LIMITS = {
 
 export const RECONNECT_DELAYS_MS = [1000, 2000, 3000, 5000] as const;
 
-export type QualityPresetType = 'ECONOMIC' | 'NORMAL' | 'HIGH' | 'GAMING' | 'CUSTOM';
+export type QualityPresetType = 'ECONOMIC' | 'NORMAL' | 'HIGH' | 'GAMING' | 'ULTRA' | 'CUSTOM';
 
 export interface QualityProfile {
   name: string;
@@ -112,6 +112,18 @@ export const QUALITY_PRESETS: Record<Exclude<QualityPresetType, 'CUSTOM'>, Quali
     screenHeight: 1080,
     screenFps: 60,
     screenBitrateKbps: 6000,
+  },
+  ULTRA: {
+    name: 'Ultra',
+    audioBitrateKbps: 64,
+    cameraWidth: 1920,
+    cameraHeight: 1080,
+    cameraFps: 60,
+    cameraBitrateKbps: 4000,
+    screenWidth: 1920,
+    screenHeight: 1080,
+    screenFps: 60,
+    screenBitrateKbps: 8000,
   },
 };
 
