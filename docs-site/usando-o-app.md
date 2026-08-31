@@ -18,6 +18,8 @@ Quem transmite aparece com selo **LIVE**. Clique no card para destacar ou use te
 
 Cada canal de texto tem histórico salvo no servidor, avatares, horários, formatação básica e limite anti-flood de 10 mensagens a cada 5 segundos.
 
+Uma mensagem começada e não enviada fica guardada no canal onde você estava digitando. Ir para o palco de voz, abrir outro canal e voltar não apaga o texto — cada canal guarda o seu rascunho, que só some quando você envia a mensagem ou sai do servidor.
+
 ## Menções
 
 Digitar `@` no campo de mensagem abre a lista de membros: escolha alguém para inserir `@apelido`. Quem é mencionado recebe o destaque na mensagem, o badge no canal e o som de menção.
