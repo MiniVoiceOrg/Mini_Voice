@@ -8,6 +8,7 @@ import path from 'path';
 import { LanDiscovery } from './lanDiscovery';
 import { globalInputHook } from './globalInputHook';
 import { exportIdentity, getClientId, getIdentity, hasIdentity, importIdentity, signChallenge } from './identityService';
+import { BACKUP_ENVELOPE_PREFIX, openEnvelope, sealEnvelope } from './secretEnvelope';
 import { HostServerOptions, ServerManager } from './serverManager';
 import { mt, setMainLanguage } from './i18n';
 import { fetchLinkPreview } from './linkPreview';
@@ -300,7 +301,39 @@ export function setupIpcHandlers(
 
   // Backup of saved servers and app settings (#472). The renderer owns the
   // content (it all lives in localStorage); the main process only picks the
-  // path and touches the disk.
+  // path, seals the file with the user's password and touches the disk.
+  //
+  // The backup carries the passwords of saved servers, so it gets the very same
+  // protection as the identity export instead of landing on disk as plain JSON.
+  ipcMain.handle('backup:encrypt', async (_event, contents: string, password: string) => {
+    if (typeof contents !== 'string' || !contents) {
+      return { success: false, error: 'Conteúdo de backup inválido.' };
+    }
+    try {
+      return { success: true, payload: sealEnvelope(contents, password, BACKUP_ENVELOPE_PREFIX) };
+    } catch (error) {
+      return { success: false, error: error instanceof Error ? error.message : 'Unknown error' };
+    }
+  });
+
+  ipcMain.handle('backup:decrypt', async (_event, payload: string, password: string) => {
+    if (typeof payload !== 'string' || !payload) {
+      return { success: false, error: 'Arquivo de backup inválido.' };
+    }
+    try {
+      const contents = openEnvelope(
+        payload,
+        password,
+        BACKUP_ENVELOPE_PREFIX,
+        'Arquivo de backup inválido.',
+        'Senha incorreta ou backup corrompido.'
+      );
+      return { success: true, contents };
+    } catch (error) {
+      return { success: false, error: error instanceof Error ? error.message : 'Unknown error' };
+    }
+  });
+
   ipcMain.handle('backup:save-file', async (_event, contents: string, suggestedName: string) => {
     if (typeof contents !== 'string' || !contents) {
       return { success: false, error: 'Conteúdo de backup inválido.' };

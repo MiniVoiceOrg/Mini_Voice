@@ -208,6 +208,14 @@ export interface BackupOpenResult {
   error?: string;
 }
 
+/** Result of sealing a backup with the user's password (#472). */
+export interface BackupCryptoResult {
+  success: boolean;
+  payload?: string;
+  contents?: string;
+  error?: string;
+}
+
 /**
  * Mapeamento de Canais Bidirecionais (Invoke / Handle)
  */
@@ -241,6 +249,8 @@ export interface IpcInvokeChannels {
   // Backup de servidores salvos e configuracoes (#472)
   'backup:save-file': { args: [contents: string, suggestedName: string]; returnType: BackupSaveResult };
   'backup:open-file': { args: []; returnType: BackupOpenResult };
+  'backup:encrypt': { args: [contents: string, password: string]; returnType: BackupCryptoResult };
+  'backup:decrypt': { args: [payload: string, password: string]; returnType: BackupCryptoResult };
 
   // Servidor Local
   'server-host:start': { args: [options: HostServerOptions]; returnType: { success: boolean; error?: string } };

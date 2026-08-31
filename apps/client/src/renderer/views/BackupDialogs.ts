@@ -1,20 +1,33 @@
 import { t } from '../i18n';
-import { applyBackup, BACKUP_FILE_EXTENSION, BackupScope, collectBackup, parseBackup, scopesInBackup } from '../utils/backup';
+import { applyBackup, BACKUP_FILE_EXTENSION, BackupScope, collectBackup, parseBackup } from '../utils/backup';
 import { showAlert, showConfirm } from './Dialog';
 
 /**
  * Standalone backup of saved servers and app settings (#472), separate from the
  * identity export so it can be done at any time and with a different selection.
+ *
+ * The file is sealed with a password just like the identity export: the list of
+ * saved servers carries the passwords of those servers, so writing it to disk as
+ * plain JSON would hand them to anyone who opens the file.
  */
+
+interface ScopeDialogResult {
+  scopes: BackupScope[];
+  password: string;
+}
 
 function buildScopeDialog(params: {
   title: string;
   icon: string;
   intro: string;
   actionLabel: string;
-  availableScopes: BackupScope[];
-}): Promise<BackupScope[] | null> {
+  passwordHint: string;
+}): Promise<ScopeDialogResult | null> {
   return new Promise((resolve) => {
+    const scopes: BackupScope[] = ['servers', 'settings'];
+    const scopeLabel = (scope: BackupScope) =>
+      scope === 'servers' ? t('backup.scopeServers') : t('backup.scopeSettings');
+
     const backdrop = document.createElement('div');
     backdrop.className = 'modal-backdrop';
     backdrop.style.zIndex = '10003';
@@ -27,19 +40,27 @@ function buildScopeDialog(params: {
           </div>
           <button class="modal-close-btn" data-action="cancel">&times;</button>
         </div>
+        <div id="backup-dialog-error" class="error-banner"></div>
         <div style="font-size: 12px; color: var(--text-secondary); line-height: 1.45; margin-bottom: 12px;">
           ${params.intro}
         </div>
-        <div style="display: grid; gap: 8px; margin-bottom: 16px; font-size: 13px; color: var(--text-primary);">
-          ${params.availableScopes
+        <div style="display: grid; gap: 10px; margin-bottom: 16px;">
+          ${scopes
             .map(
               (scope) => `
-            <label style="display: flex; align-items: center; gap: 8px; cursor: pointer;">
-              <input type="checkbox" data-scope="${scope}" checked>
-              ${scope === 'servers' ? t('backup.scopeServers') : t('backup.scopeSettings')}
-            </label>`
+            <div style="display: flex; align-items: center; justify-content: space-between; gap: 12px;">
+              <label style="font-size: 13px; cursor: pointer;" for="backup-scope-${scope}">${scopeLabel(scope)}</label>
+              <label class="toggle-switch" aria-label="${scopeLabel(scope)}">
+                <input id="backup-scope-${scope}" type="checkbox" data-scope="${scope}" checked>
+                <span class="toggle-slider"></span>
+              </label>
+            </div>`
             )
             .join('')}
+        </div>
+        <div class="form-group">
+          <label for="backup-dialog-password">${t('backup.passwordLabel')}</label>
+          <input id="backup-dialog-password" type="password" placeholder="${params.passwordHint}">
         </div>
         <div style="display: flex; gap: 8px; justify-content: flex-end;">
           <button type="button" class="btn btn-secondary" data-action="cancel">${t('common.cancel')}</button>
@@ -53,9 +74,32 @@ function buildScopeDialog(params: {
       backdrop.remove();
     };
 
-    const settle = (scopes: BackupScope[] | null) => {
+    const settle = (result: ScopeDialogResult | null) => {
       cleanup();
-      resolve(scopes);
+      resolve(result);
+    };
+
+    const errorBanner = backdrop.querySelector('#backup-dialog-error') as HTMLElement;
+    const passwordInput = backdrop.querySelector('#backup-dialog-password') as HTMLInputElement;
+
+    const showError = (message: string) => {
+      errorBanner.textContent = message;
+      errorBanner.classList.add('show');
+    };
+
+    const confirm = () => {
+      const selected = Array.from(backdrop.querySelectorAll<HTMLInputElement>('input[data-scope]'))
+        .filter((input) => input.checked)
+        .map((input) => input.getAttribute('data-scope') as BackupScope);
+      if (selected.length === 0) {
+        showError(t('backup.pickAtLeastOne'));
+        return;
+      }
+      if (!passwordInput.value.trim()) {
+        showError(t('backup.passwordRequired'));
+        return;
+      }
+      settle({ scopes: selected, password: passwordInput.value });
     };
 
     const onKeyDown = (event: KeyboardEvent) => {
@@ -68,13 +112,12 @@ function buildScopeDialog(params: {
     backdrop.querySelectorAll('[data-action="cancel"]').forEach((element) => {
       element.addEventListener('click', () => settle(null));
     });
-
-    backdrop.querySelector('[data-action="confirm"]')?.addEventListener('click', () => {
-      const selected = Array.from(backdrop.querySelectorAll<HTMLInputElement>('input[data-scope]'))
-        .filter((input) => input.checked)
-        .map((input) => input.getAttribute('data-scope') as BackupScope);
-      if (selected.length === 0) return;
-      settle(selected);
+    backdrop.querySelector('[data-action="confirm"]')?.addEventListener('click', confirm);
+    passwordInput.addEventListener('keydown', (event) => {
+      if (event.key === 'Enter') {
+        event.preventDefault();
+        confirm();
+      }
     });
 
     backdrop.addEventListener('mousedown', (event) => {
@@ -82,21 +125,31 @@ function buildScopeDialog(params: {
     });
     document.addEventListener('keydown', onKeyDown, true);
     document.body.appendChild(backdrop);
+    passwordInput.focus();
   });
 }
 
 export async function showBackupExportDialog(): Promise<void> {
-  const scopes = await buildScopeDialog({
+  const choice = await buildScopeDialog({
     title: t('backup.exportTitle'),
     icon: 'download',
     intro: t('backup.exportIntro'),
     actionLabel: t('backup.exportAction'),
-    availableScopes: ['servers', 'settings'],
+    passwordHint: t('backup.passwordPlaceholder'),
   });
-  if (!scopes) return;
+  if (!choice) return;
 
-  const contents = JSON.stringify(collectBackup(scopes), null, 2);
-  const result = await window.api.saveBackupFile(contents, `monky-backup.${BACKUP_FILE_EXTENSION}`);
+  const sealed = await window.api.encryptBackup(JSON.stringify(collectBackup(choice.scopes)), choice.password);
+  if (!sealed.success || !sealed.payload) {
+    await showAlert({
+      title: t('common.error'),
+      message: sealed.error || t('backup.invalidFile'),
+      variant: 'danger',
+    });
+    return;
+  }
+
+  const result = await window.api.saveBackupFile(sealed.payload, `monky-backup.${BACKUP_FILE_EXTENSION}`);
   if (result.success) {
     await showAlert({ title: t('backup.exportTitle'), message: t('backup.exportSuccess'), variant: 'success' });
   } else if (result.error) {
@@ -111,23 +164,32 @@ export async function showBackupImportDialog(): Promise<BackupScope[] | null> {
     return null;
   }
 
-  let backup;
-  try {
-    backup = parseBackup(file.contents || '');
-  } catch {
-    await showAlert({ title: t('common.error'), message: t('backup.invalidFile'), variant: 'danger' });
-    return null;
-  }
-
-  const available = scopesInBackup(backup);
-  const scopes = await buildScopeDialog({
+  const choice = await buildScopeDialog({
     title: t('backup.importTitle'),
     icon: 'upload',
     intro: t('backup.importIntro'),
     actionLabel: t('backup.importAction'),
-    availableScopes: available,
+    passwordHint: t('backup.passwordUnlockPlaceholder'),
   });
-  if (!scopes) return null;
+  if (!choice) return null;
+
+  const opened = await window.api.decryptBackup(file.contents || '', choice.password);
+  if (!opened.success || !opened.contents) {
+    await showAlert({
+      title: t('common.error'),
+      message: opened.error || t('backup.invalidFile'),
+      variant: 'danger',
+    });
+    return null;
+  }
+
+  let backup;
+  try {
+    backup = parseBackup(opened.contents);
+  } catch {
+    await showAlert({ title: t('common.error'), message: t('backup.invalidFile'), variant: 'danger' });
+    return null;
+  }
 
   // Importing replaces what is already stored, so it is worth one confirmation.
   const confirmed = await showConfirm({
@@ -138,7 +200,14 @@ export async function showBackupImportDialog(): Promise<BackupScope[] | null> {
   });
   if (!confirmed) return null;
 
-  const applied = applyBackup(backup, scopes);
+  // Only what the file actually carries is applied, so a switch left on for a
+  // scope the backup does not have is simply a no-op.
+  const applied = applyBackup(backup, choice.scopes);
+  if (applied.length === 0) {
+    await showAlert({ title: t('backup.importTitle'), message: t('backup.nothingToImport'), variant: 'warning' });
+    return null;
+  }
+
   await showAlert({ title: t('backup.importTitle'), message: t('backup.importSuccess'), variant: 'success' });
   return applied;
 }

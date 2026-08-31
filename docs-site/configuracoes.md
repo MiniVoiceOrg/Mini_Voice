@@ -6,7 +6,10 @@ Abra pelo ícone de engrenagem na tela de conexão ou na barra inferior.
 - **Servidores e configurações** — exporte seus servidores salvos e as
   configurações do app para um arquivo `.monkybackup` e restaure em outro
   computador. Você escolhe o que entra e o que sai a cada vez, e os dados também
-  podem viajar junto do backup da identidade.
+  podem viajar junto do backup da identidade. O arquivo é protegido pela senha
+  que você define na exportação: a lista de servidores salvos pode conter senhas
+  de servidor, então ela nunca vai para o disco em texto aberto. Sem essa senha
+  não há como recuperar o backup.
 - **Dispositivos** — microfone, alto-falante/fone e câmera, com pré-visualização e atualização da lista.
 - **Sensibilidade de Voz (VAD)** — ajuste olhando o medidor; deixe o marcador acima do nível em silêncio.
 - **Supressão de Ruído (RNNoise)** — reduz teclado, cliques e ruído ambiente.

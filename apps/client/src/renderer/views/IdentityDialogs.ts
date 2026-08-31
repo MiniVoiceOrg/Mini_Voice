@@ -37,14 +37,22 @@ export async function showIdentityExportDialog(currentClientId: string): Promise
         <label for="identity-export-password">${t('identity.passwordLabel')}</label>
         <input id="identity-export-password" type="password" placeholder="${t('identity.passwordPlaceholder')}">
       </div>
-      <div style="display: grid; gap: 6px; margin-bottom: 14px; font-size: 12px; color: var(--text-secondary);">
+      <div style="display: grid; gap: 10px; margin-bottom: 14px;">
         <div style="font-size: 11px; color: var(--text-muted);">${t('backup.includeLabel')}</div>
-        <label style="display: flex; align-items: center; gap: 8px; cursor: pointer;">
-          <input type="checkbox" id="identity-export-include-servers"> ${t('backup.scopeServers')}
-        </label>
-        <label style="display: flex; align-items: center; gap: 8px; cursor: pointer;">
-          <input type="checkbox" id="identity-export-include-settings"> ${t('backup.scopeSettings')}
-        </label>
+        <div style="display: flex; align-items: center; justify-content: space-between; gap: 12px;">
+          <label style="font-size: 13px; cursor: pointer;" for="identity-export-include-servers">${t('backup.scopeServers')}</label>
+          <label class="toggle-switch" aria-label="${t('backup.scopeServers')}">
+            <input type="checkbox" id="identity-export-include-servers">
+            <span class="toggle-slider"></span>
+          </label>
+        </div>
+        <div style="display: flex; align-items: center; justify-content: space-between; gap: 12px;">
+          <label style="font-size: 13px; cursor: pointer;" for="identity-export-include-settings">${t('backup.scopeSettings')}</label>
+          <label class="toggle-switch" aria-label="${t('backup.scopeSettings')}">
+            <input type="checkbox" id="identity-export-include-settings">
+            <span class="toggle-slider"></span>
+          </label>
+        </div>
       </div>
       <div style="display: flex; gap: 8px; margin-bottom: 14px;">
         <button type="button" id="btn-run-export-identity" class="btn btn-primary" style="flex: 1;">${t('identity.exportAction')}</button>
