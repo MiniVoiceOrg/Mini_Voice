@@ -293,8 +293,47 @@ export function setupIpcHandlers(
   ipcMain.handle('identity:get', async () => getIdentity(true));
   ipcMain.handle('identity:get-client-id', async () => getClientId());
   ipcMain.handle('identity:sign-challenge', async (_event, nonceHex: string) => signChallenge(nonceHex));
-  ipcMain.handle('identity:export', async (_event, password: string) => exportIdentity(password));
+  ipcMain.handle('identity:export', async (_event, password: string, extras?: string) =>
+    exportIdentity(password, typeof extras === 'string' ? extras : undefined)
+  );
   ipcMain.handle('identity:import', async (_event, exportedIdentity: string, password: string) => importIdentity(exportedIdentity, password));
+
+  // Backup of saved servers and app settings (#472). The renderer owns the
+  // content (it all lives in localStorage); the main process only picks the
+  // path and touches the disk.
+  ipcMain.handle('backup:save-file', async (_event, contents: string, suggestedName: string) => {
+    if (typeof contents !== 'string' || !contents) {
+      return { success: false, error: 'Conteúdo de backup inválido.' };
+    }
+    try {
+      const safeName = sanitizeDownloadFileName(suggestedName || 'monky-backup.monkybackup');
+      const result = await dialog.showSaveDialog(mainWindow, {
+        title: mt('dialog.saveBackup'),
+        defaultPath: path.join(app.getPath('documents'), safeName),
+        filters: [{ name: 'Monky', extensions: ['monkybackup', 'json'] }],
+      });
+      if (result.canceled || !result.filePath) return { success: false };
+      await fs.promises.writeFile(result.filePath, contents, 'utf8');
+      return { success: true, filePath: result.filePath };
+    } catch (error) {
+      return { success: false, error: error instanceof Error ? error.message : 'Unknown error' };
+    }
+  });
+
+  ipcMain.handle('backup:open-file', async () => {
+    try {
+      const result = await dialog.showOpenDialog(mainWindow, {
+        title: mt('dialog.openBackup'),
+        filters: [{ name: 'Monky', extensions: ['monkybackup', 'json'] }],
+        properties: ['openFile'],
+      });
+      if (result.canceled || result.filePaths.length === 0) return { success: false };
+      const contents = await fs.promises.readFile(result.filePaths[0], 'utf8');
+      return { success: true, contents };
+    } catch (error) {
+      return { success: false, error: error instanceof Error ? error.message : 'Unknown error' };
+    }
+  });
 
   // Local Server Management
   ipcMain.handle('server-host:start', async (_, options: HostServerOptions) => {

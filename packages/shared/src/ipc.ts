@@ -188,6 +188,27 @@ export interface AppIdentityResult {
 }
 
 /**
+ * Import result. `extras` carries the opaque servers/settings backup that may
+ * have been exported alongside the identity (#472); only the renderer knows how
+ * to read it.
+ */
+export interface AppIdentityImportResult extends AppIdentityResult {
+  extras?: string;
+}
+
+export interface BackupSaveResult {
+  success: boolean;
+  filePath?: string;
+  error?: string;
+}
+
+export interface BackupOpenResult {
+  success: boolean;
+  contents?: string;
+  error?: string;
+}
+
+/**
  * Mapeamento de Canais Bidirecionais (Invoke / Handle)
  */
 export interface IpcInvokeChannels {
@@ -214,8 +235,12 @@ export interface IpcInvokeChannels {
   'identity:get': { args: []; returnType: AppIdentityResult };
   'identity:get-client-id': { args: []; returnType: string };
   'identity:sign-challenge': { args: [nonceHex: string]; returnType: string };
-  'identity:export': { args: [password: string]; returnType: string };
-  'identity:import': { args: [exportedIdentity: string, password: string]; returnType: AppIdentityResult };
+  'identity:export': { args: [password: string, extras?: string]; returnType: string };
+  'identity:import': { args: [exportedIdentity: string, password: string]; returnType: AppIdentityImportResult };
+
+  // Backup de servidores salvos e configuracoes (#472)
+  'backup:save-file': { args: [contents: string, suggestedName: string]; returnType: BackupSaveResult };
+  'backup:open-file': { args: []; returnType: BackupOpenResult };
 
   // Servidor Local
   'server-host:start': { args: [options: HostServerOptions]; returnType: { success: boolean; error?: string } };

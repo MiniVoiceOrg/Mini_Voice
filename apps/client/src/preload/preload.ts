@@ -1,6 +1,7 @@
 import { contextBridge, ipcRenderer } from 'electron';
 import type {
   ActionShortcutBinding,
+  AppIdentityImportResult,
   AppIdentityResult,
   ClientLogConfig,
   ClientLogEntry,
@@ -38,8 +39,10 @@ export interface ElectronApi {
   getIdentity: () => Promise<AppIdentityResult>;
   getClientId: () => Promise<string>;
   signChallenge: (nonceHex: string) => Promise<string>;
-  exportIdentity: (password: string) => Promise<string>;
-  importIdentity: (exportedIdentity: string, password: string) => Promise<AppIdentityResult>;
+  exportIdentity: (password: string, extras?: string) => Promise<string>;
+  importIdentity: (exportedIdentity: string, password: string) => Promise<AppIdentityImportResult>;
+  saveBackupFile: (contents: string, suggestedName: string) => Promise<{ success: boolean; filePath?: string; error?: string }>;
+  openBackupFile: () => Promise<{ success: boolean; contents?: string; error?: string }>;
   hostServerStart: (options: HostServerOptions) => Promise<{ success: boolean; error?: string }>;
   hostServerStop: () => Promise<{ success: boolean }>;
   hostServerStatus: () => Promise<{ isRunning: boolean; port: number | null; serverId: string | null }>;
@@ -136,8 +139,10 @@ const api: ElectronApi = {
   getIdentity: () => ipcRenderer.invoke('identity:get'),
   getClientId: () => ipcRenderer.invoke('identity:get-client-id'),
   signChallenge: (nonceHex) => ipcRenderer.invoke('identity:sign-challenge', nonceHex),
-  exportIdentity: (password) => ipcRenderer.invoke('identity:export', password),
+  exportIdentity: (password, extras) => ipcRenderer.invoke('identity:export', password, extras),
   importIdentity: (exportedIdentity, password) => ipcRenderer.invoke('identity:import', exportedIdentity, password),
+  saveBackupFile: (contents, suggestedName) => ipcRenderer.invoke('backup:save-file', contents, suggestedName),
+  openBackupFile: () => ipcRenderer.invoke('backup:open-file'),
   hostServerStart: (options) => ipcRenderer.invoke('server-host:start', options),
   hostServerStop: () => ipcRenderer.invoke('server-host:stop'),
   hostServerStatus: () => ipcRenderer.invoke('server-host:status'),

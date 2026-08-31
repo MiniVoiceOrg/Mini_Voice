@@ -28,6 +28,11 @@ export interface AppIdentity {
   clientId: string;
 }
 
+/** An import may carry the servers/settings backup exported alongside it (#472). */
+export interface AppIdentityImport extends AppIdentity {
+  extras?: string;
+}
+
 interface LoadedIdentity extends AppIdentity {
   privateKeyDerBase64: string;
 }
@@ -159,7 +164,7 @@ export function signChallenge(nonceHex: string): string {
   return sign(null, Buffer.from(nonceHex, 'hex'), privateKey).toString('hex');
 }
 
-export function exportIdentity(password: string): string {
+export function exportIdentity(password: string, extras?: string): string {
   const identity = ensureIdentity();
   const salt = randomBytes(16);
   const iv = randomBytes(12);
@@ -169,6 +174,10 @@ export function exportIdentity(password: string): string {
     version: 1,
     publicKey: identity.publicKey,
     privateKeyDerBase64: identity.privateKeyDerBase64,
+    // Saved servers and app settings ride along inside the same encrypted
+    // envelope (#472). The main process never inspects them: the renderer owns
+    // the format and hands over an opaque string.
+    extras: extras && extras.length > 0 ? extras : undefined,
   }), 'utf8');
   const ciphertext = Buffer.concat([cipher.update(plaintext), cipher.final()]);
   const envelope: ExportEnvelope = {
@@ -182,7 +191,7 @@ export function exportIdentity(password: string): string {
   return `${EXPORT_PREFIX}${Buffer.from(JSON.stringify(envelope), 'utf8').toString('base64')}`;
 }
 
-export function importIdentity(exportedIdentity: string, password: string): AppIdentity {
+export function importIdentity(exportedIdentity: string, password: string): AppIdentityImport {
   const normalized = exportedIdentity.trim();
   if (!normalized.startsWith(EXPORT_PREFIX)) {
     throw new Error('Código de identidade inválido.');
@@ -198,7 +207,7 @@ export function importIdentity(exportedIdentity: string, password: string): AppI
   const decipher = createDecipheriv('aes-256-gcm', key, Buffer.from(envelope.iv, 'hex'));
   decipher.setAuthTag(Buffer.from(envelope.tag, 'hex'));
 
-  let payload: { privateKeyDerBase64: string };
+  let payload: { privateKeyDerBase64: string; extras?: string };
   try {
     const decrypted = Buffer.concat([
       decipher.update(Buffer.from(envelope.ciphertext, 'hex')),
@@ -218,5 +227,6 @@ export function importIdentity(exportedIdentity: string, password: string): AppI
   return {
     publicKey: identity.publicKey,
     clientId: identity.clientId,
+    extras: typeof payload.extras === 'string' ? payload.extras : undefined,
   };
 }
