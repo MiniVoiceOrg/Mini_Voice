@@ -412,7 +412,7 @@ desligado: quem hospeda decide se quer pagar essa banda.
 Quando ligado, o servidor sobe um **coturn** ao seu lado e entrega as
 credenciais no login. O ICE continua preferindo a rota direta e só usa o relay
 para os pares que realmente não conseguem se conectar. Detalhes em
-[Monky CLI › Relay de mídia (TURN)](/cli#relay-de-midia-turn).
+[Relay de mídia (TURN)](/turn).
 :::
 
 Quando uma conexão cai ou trava, o `WebRtcManager` primeiro tenta um **ICE

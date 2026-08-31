@@ -40,7 +40,7 @@ full command reference lives in [Monky CLI](/en/cli).
 
 When two members are behind CGNAT they may fail to connect directly. Monky ships
 an **optional TURN relay** (off by default) that forwards that pair's media
-through the server — see [Media relay (TURN)](/en/cli#media-relay-turn). Without
+through the server — see [Media relay (TURN)](/en/turn). Without
 it, the way out for very restricted networks is still a VPN.
 
 ## Maintenance

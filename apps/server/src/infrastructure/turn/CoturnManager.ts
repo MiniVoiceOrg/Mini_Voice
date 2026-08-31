@@ -1,4 +1,5 @@
 import crypto from 'crypto';
+import dgram from 'dgram';
 import fs from 'fs';
 import net from 'net';
 import os from 'os';
@@ -645,8 +646,6 @@ export class CoturnManager {
     }
 
     // If we can detect a public IP, try to verify external reachability.
-    // We attempt a TCP connection from the server's own public-facing address.
-    // This catches the common case where the VPS firewall blocks the port.
     const publicIp = await getPublicIp();
     if (publicIp) {
       const externalOk = await CoturnManager.probePort3478External(publicIp);
@@ -659,7 +658,71 @@ export class CoturnManager {
       }
     }
 
+    // Verify the UDP relay range is usable. coturn needs to bind ephemeral
+    // ports in this range for actual media relay. We probe a few ports spread
+    // across the range to catch firewall rules or exhaustion.
+    const relayProbe = await CoturnManager.probeRelayRange();
+    if (relayProbe) {
+      return relayProbe;
+    }
+
     return null;
+  }
+
+  /**
+   * Checks that the UDP relay port range is usable by attempting to bind a
+   * UDP socket on several sample ports across the range. If any bind fails,
+   * it likely means a firewall rule or another process is blocking the range.
+   */
+  private static async probeRelayRange(): Promise<string | null> {
+    // Test a few ports spread across the range
+    const samplePorts = [
+      TURN_RELAY_MIN_PORT,
+      TURN_RELAY_MIN_PORT + 1000,
+      TURN_RELAY_MIN_PORT + 5000,
+      TURN_RELAY_MAX_PORT - 1000,
+    ];
+
+    for (const port of samplePorts) {
+      const bindOk = await CoturnManager.probeUdpBind(port, 2000);
+      if (!bindOk) {
+        return (
+          `O range de portas UDP ${TURN_RELAY_MIN_PORT}-${TURN_RELAY_MAX_PORT} não está acessível ` +
+          `(falha ao testar porta ${port}/UDP). ` +
+          `Abra o range ${TURN_RELAY_MIN_PORT}-${TURN_RELAY_MAX_PORT} (UDP) no firewall da VPS. ` +
+          'Sem essas portas, o relay TURN não consegue transmitir mídia.'
+        );
+      }
+    }
+
+    return null;
+  }
+
+  /**
+   * Tries to bind a UDP socket on the given port. Returns true if the bind
+   * succeeds (port is available), false otherwise. The socket is immediately
+   * closed after the test.
+   */
+  private static probeUdpBind(port: number, timeoutMs: number): Promise<boolean> {
+    return new Promise((resolve) => {
+      const socket = dgram.createSocket('udp4');
+      const timer = setTimeout(() => {
+        try { socket.close(); } catch { /* already closed */ }
+        resolve(false);
+      }, timeoutMs);
+
+      socket.once('error', () => {
+        clearTimeout(timer);
+        try { socket.close(); } catch { /* already closed */ }
+        resolve(false);
+      });
+
+      socket.bind(port, '0.0.0.0', () => {
+        clearTimeout(timer);
+        try { socket.close(); } catch { /* already closed */ }
+        resolve(true);
+      });
+    });
   }
 
   /**

@@ -411,7 +411,7 @@ off: whoever hosts decides whether to pay that bandwidth.
 When enabled, the server runs a **coturn** alongside it and hands out the
 credentials at login. ICE still prefers the direct route and only uses the relay
 for the pairs that genuinely cannot connect. Details in
-[Monky CLI › Media relay (TURN)](/en/cli#media-relay-turn).
+[Media relay (TURN)](/en/turn).
 :::
 
 When a connection drops or stalls, `WebRtcManager` first tries an **ICE restart**

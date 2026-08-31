@@ -24,6 +24,7 @@ const ptSidebar = [
     text: 'Avançado',
     items: [
       { text: 'Hospedar em VPS', link: '/hospedar-em-vps' },
+      { text: 'Relay TURN', link: '/turn' },
       { text: 'Monky CLI', link: '/cli' },
       { text: 'Verificar Releases', link: '/verificar-releases' },
     ],
@@ -61,6 +62,7 @@ const enSidebar = [
     text: 'Advanced',
     items: [
       { text: 'Host on a VPS', link: '/en/hospedar-em-vps' },
+      { text: 'TURN Relay', link: '/en/turn' },
       { text: 'Monky CLI', link: '/en/cli' },
       { text: 'Verify Releases', link: '/en/verificar-releases' },
     ],
