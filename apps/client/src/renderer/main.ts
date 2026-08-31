@@ -70,6 +70,9 @@ class App {
     // Must run before any await in init(): otherwise the Windows-style window
     // controls stay visible on macOS during onboarding/identity loading (#307)
     this.setupTitleBar();
+    // Registered before any await: quitting during onboarding must still take
+    // the user out of whatever server is connected (#458).
+    this.setupGracefulQuit();
 
     this.init();
   }
@@ -186,6 +189,31 @@ class App {
 
     window.api?.onTrayToggleDeafen(() => {
       this.toggleDeafenFromTray();
+    });
+  }
+
+  /**
+   * Leaves every server before the process dies (#458).
+   *
+   * Closing the app used to just drop the WebSockets. The server cannot tell
+   * that apart from a network blip, so it held the person in the voice channel
+   * for the whole reconnection grace period: everyone else kept seeing a
+   * participant who could no longer speak, and no leave sound played. Sending
+   * the logout explicitly makes the departure immediate and deliberate.
+   *
+   * The main process waits for the ack (with a short timeout) before quitting.
+   */
+  private setupGracefulQuit(): void {
+    window.api?.onAppBeforeQuit(() => {
+      try {
+        sessionManager.removeAll();
+      } catch (err) {
+        clientLog.error('CONNECTION', 'Failed to leave servers before quitting', {
+          error: (err as Error)?.message,
+        });
+      } finally {
+        void window.api?.notifyLeaveComplete();
+      }
     });
   }
 

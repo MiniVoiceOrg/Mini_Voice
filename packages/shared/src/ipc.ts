@@ -206,6 +206,8 @@ export interface IpcInvokeChannels {
   'app:set-auto-start': { args: [enabled: boolean]; returnType: void };
   'app:set-minimize-to-tray': { args: [enabled: boolean]; returnType: void };
   'app:download-file': { args: [url: string, fileName: string]; returnType: { success: boolean; error?: string } };
+  // Ack do renderer ao 'app:before-quit': confirma que ja saiu das chamadas (#458)
+  'app:leave-complete': { args: []; returnType: void };
 
   // Identidade
   'identity:has': { args: []; returnType: boolean };
@@ -293,6 +295,9 @@ export interface IpcInvokeChannels {
  * Mapeamento de Eventos Unidirecionais (Main -> Renderer via webContents.send)
  */
 export interface IpcEvents {
+  // Pedido de despedida antes do processo morrer: o renderer sai das chamadas e
+  // avisa os servidores enquanto ainda esta vivo (#458)
+  'app:before-quit': [];
   'lan:found': [server: DiscoveredLanServer];
   'lan:lost': [server: DiscoveredLanServer];
   'soundboard:shortcut-triggered': [soundName: string];

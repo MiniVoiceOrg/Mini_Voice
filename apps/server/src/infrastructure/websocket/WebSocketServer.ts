@@ -1450,6 +1450,19 @@ export class WebSocketServer {
       this.sessionSockets.delete(sessionId);
     }
 
+    // A call cannot outlive the socket that carries its signalling: once this
+    // connection is gone the person can no longer be heard, WebRTC has nowhere
+    // to renegotiate and nobody can move them out of the channel. So leaving
+    // voice is immediate for every kind of disconnect — closing the app,
+    // crashing or dropping the network — and everyone still in the channel gets
+    // the departure (and its sound) right away instead of after the 20 s
+    // reconnection grace period (#458).
+    //
+    // Presence in the member list keeps that grace period (#44): the person is
+    // still shown as "reconnecting", and the client rejoins the voice channel by
+    // itself as soon as it reconnects.
+    this.announceVoiceLeave(user, sessionId);
+
     // Graceful logout (user clicked disconnect / switched servers): remove them
     // immediately. Otherwise treat it as a possible temporary connection loss
     // and give them a grace period to reconnect before announcing USER_LEFT.
@@ -1484,26 +1497,37 @@ export class WebSocketServer {
   }
 
   /**
+   * Takes one connection out of its voice channel and tells everyone about it.
+   *
+   * Idempotent: `leaveVoiceChannel` returns null when the session is not in a
+   * channel, so calling it twice (a socket that reports both `error` and
+   * `close`, for instance) announces the departure only once.
+   */
+  private announceVoiceLeave(user: UserSummary, sessionId: string): void {
+    const previousVoice = this.signalingService.leaveVoiceChannel(sessionId);
+    if (!previousVoice) return;
+
+    const leavePayload: VoiceUserLeftPayload = {
+      channelId: previousVoice.channelId,
+      userId: user.id,
+      sessionId,
+    };
+    this.broadcast({
+      type: MessageType.VOICE_USER_LEFT,
+      payload: leavePayload,
+    });
+  }
+
+  /**
    * Removes one connection from voice, announces USER_LEFT for it and logs the
    * departure. Used both for graceful logouts and when the reconnection grace
    * period expires. The person may still be online from another device, which
    * the client resolves from the `sessionId` carried in the payload (#309).
    */
   private finalizeSessionLeave(user: UserSummary, sessionId: string): void {
-    // Leave voice channel if in one
-    const previousVoice = this.signalingService.leaveVoiceChannel(sessionId);
-    if (previousVoice) {
-      const leavePayload: VoiceUserLeftPayload = {
-        channelId: previousVoice.channelId,
-        userId: user.id,
-        sessionId,
-      };
-      this.broadcast({
-        type: MessageType.VOICE_USER_LEFT,
-        payload: leavePayload,
-      });
-    }
-
+    // Normally already done by handleDisconnect; kept for the paths that
+    // finalize a session without going through it.
+    this.announceVoiceLeave(user, sessionId);
     const userLeftPayload: UserLeftPayload = {
       userId: user.id,
       sessionId,
