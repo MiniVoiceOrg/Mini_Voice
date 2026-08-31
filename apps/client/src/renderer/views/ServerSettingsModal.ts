@@ -201,6 +201,7 @@ export class ServerSettingsModal {
     const inputName = this.modalEl.querySelector('#input-server-name') as HTMLInputElement;
     const inputPass = this.modalEl.querySelector('#input-server-pass') as HTMLInputElement;
     const checkboxAllowSoundboard = this.modalEl.querySelector('#checkbox-allow-soundboard') as HTMLInputElement | null;
+    const checkboxAllowEveryoneMention = this.modalEl.querySelector('#checkbox-allow-everyone-mention') as HTMLInputElement | null;
     const checkboxTurnEnabled = this.modalEl.querySelector('#checkbox-turn-enabled') as HTMLInputElement | null;
     const passHelpText = this.modalEl.querySelector('#pass-help-text') as HTMLElement | null;
     const statusDesc = this.modalEl.querySelector('#password-status-desc') as HTMLElement | null;
@@ -315,6 +316,10 @@ export class ServerSettingsModal {
         name,
         allowSoundboard,
       };
+
+      if (checkboxAllowEveryoneMention) {
+        payload.allowEveryoneMention = checkboxAllowEveryoneMention.checked;
+      }
 
       // Only sent when the host can actually run the relay: the checkbox is
       // disabled otherwise, and submitting `false` would be indistinguishable

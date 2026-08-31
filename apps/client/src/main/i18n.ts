@@ -12,6 +12,8 @@ const CATALOGS = {
   'pt-BR': {
     'dialog.selectProfilePhoto': 'Selecionar Foto de Perfil',
     'dialog.selectSoundFile': 'Selecionar Arquivo de Som',
+    'dialog.saveBackup': 'Salvar backup do Monky',
+    'dialog.openBackup': 'Abrir backup do Monky',
     'dialog.audioFilter': 'Áudio (WAV, MP3, OGG)',
     'dialog.selectSoundboardFolder': 'Selecionar Pasta de Sons (Soundboard)',
     'dialog.selectStickersFolder': 'Selecionar Pasta de Figurinhas',
@@ -47,6 +49,8 @@ const CATALOGS = {
   en: {
     'dialog.selectProfilePhoto': 'Select Profile Picture',
     'dialog.selectSoundFile': 'Select Sound File',
+    'dialog.saveBackup': 'Save Monky backup',
+    'dialog.openBackup': 'Open Monky backup',
     'dialog.audioFilter': 'Audio (WAV, MP3, OGG)',
     'dialog.selectSoundboardFolder': 'Select Sound Folder (Soundboard)',
     'dialog.selectStickersFolder': 'Select Stickers Folder',

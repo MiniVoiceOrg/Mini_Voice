@@ -17,6 +17,7 @@ export const CONFIG_KEYS = [
   'icon',
   'maxUsers',
   'allowSoundboard',
+  'allowEveryoneMention',
   'maxAttachmentFileBytes',
   'maxAttachmentStorageBytes',
   'autoUpdate',

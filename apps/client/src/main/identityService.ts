@@ -1,12 +1,12 @@
-import { createCipheriv, createDecipheriv, createPrivateKey, createPublicKey, generateKeyPairSync, pbkdf2Sync, randomBytes, sign } from 'crypto';
+import { createPrivateKey, createPublicKey, generateKeyPairSync, sign } from 'crypto';
 import { app, safeStorage } from 'electron';
 import fs from 'fs';
 import path from 'path';
 import { deriveClientIdFromPublicKey, normalizePublicKeyHex } from '@monky/shared';
+import { openEnvelope, sealEnvelope } from './secretEnvelope';
 
 const IDENTITY_FILE_NAME = 'identity.json';
 const EXPORT_PREFIX = 'MONKY-ID:';
-const PBKDF2_ITERATIONS = 210_000;
 
 interface StoredIdentityRecord {
   version: 1;
@@ -15,17 +15,14 @@ interface StoredIdentityRecord {
   storage: 'safeStorage' | 'plain';
 }
 
-interface ExportEnvelope {
-  version: 1;
-  salt: string;
-  iv: string;
-  tag: string;
-  ciphertext: string;
-}
-
 export interface AppIdentity {
   publicKey: string;
   clientId: string;
+}
+
+/** An import may carry the servers/settings backup exported alongside it (#472). */
+export interface AppIdentityImport extends AppIdentity {
+  extras?: string;
 }
 
 interface LoadedIdentity extends AppIdentity {
@@ -116,13 +113,6 @@ function ensureIdentity(): LoadedIdentity {
   }
 }
 
-function buildExportKey(password: string, salt: Buffer): Buffer {
-  if (!password.trim()) {
-    throw new Error('Informe uma senha para proteger a identidade.');
-  }
-  return pbkdf2Sync(password, salt, PBKDF2_ITERATIONS, 32, 'sha256');
-}
-
 export function hasIdentity(): boolean {
   try {
     return loadStoredIdentity() !== null;
@@ -159,54 +149,35 @@ export function signChallenge(nonceHex: string): string {
   return sign(null, Buffer.from(nonceHex, 'hex'), privateKey).toString('hex');
 }
 
-export function exportIdentity(password: string): string {
+export function exportIdentity(password: string, extras?: string): string {
   const identity = ensureIdentity();
-  const salt = randomBytes(16);
-  const iv = randomBytes(12);
-  const key = buildExportKey(password, salt);
-  const cipher = createCipheriv('aes-256-gcm', key, iv);
-  const plaintext = Buffer.from(JSON.stringify({
+  const plaintext = JSON.stringify({
     version: 1,
     publicKey: identity.publicKey,
     privateKeyDerBase64: identity.privateKeyDerBase64,
-  }), 'utf8');
-  const ciphertext = Buffer.concat([cipher.update(plaintext), cipher.final()]);
-  const envelope: ExportEnvelope = {
-    version: 1,
-    salt: salt.toString('hex'),
-    iv: iv.toString('hex'),
-    tag: cipher.getAuthTag().toString('hex'),
-    ciphertext: ciphertext.toString('hex'),
-  };
+    // Saved servers and app settings ride along inside the same encrypted
+    // envelope (#472). The main process never inspects them: the renderer owns
+    // the format and hands over an opaque string.
+    extras: extras && extras.length > 0 ? extras : undefined,
+  });
 
-  return `${EXPORT_PREFIX}${Buffer.from(JSON.stringify(envelope), 'utf8').toString('base64')}`;
+  return sealEnvelope(plaintext, password, EXPORT_PREFIX);
 }
 
-export function importIdentity(exportedIdentity: string, password: string): AppIdentity {
-  const normalized = exportedIdentity.trim();
-  if (!normalized.startsWith(EXPORT_PREFIX)) {
-    throw new Error('Código de identidade inválido.');
-  }
+export function importIdentity(exportedIdentity: string, password: string): AppIdentityImport {
+  const decrypted = openEnvelope(
+    exportedIdentity,
+    password,
+    EXPORT_PREFIX,
+    'Código de identidade inválido.',
+    'Senha incorreta ou identidade corrompida.'
+  );
 
-  const encodedPayload = normalized.slice(EXPORT_PREFIX.length);
-  const envelope = JSON.parse(Buffer.from(encodedPayload, 'base64').toString('utf8')) as ExportEnvelope;
-  if (!envelope?.salt || !envelope?.iv || !envelope?.tag || !envelope?.ciphertext) {
-    throw new Error('Conteúdo da identidade inválido.');
-  }
-
-  const key = buildExportKey(password, Buffer.from(envelope.salt, 'hex'));
-  const decipher = createDecipheriv('aes-256-gcm', key, Buffer.from(envelope.iv, 'hex'));
-  decipher.setAuthTag(Buffer.from(envelope.tag, 'hex'));
-
-  let payload: { privateKeyDerBase64: string };
+  let payload: { privateKeyDerBase64: string; extras?: string };
   try {
-    const decrypted = Buffer.concat([
-      decipher.update(Buffer.from(envelope.ciphertext, 'hex')),
-      decipher.final(),
-    ]).toString('utf8');
     payload = JSON.parse(decrypted);
   } catch {
-    throw new Error('Senha incorreta ou identidade corrompida.');
+    throw new Error('Identidade descriptografada inválida.');
   }
 
   if (!payload?.privateKeyDerBase64) {
@@ -218,5 +189,6 @@ export function importIdentity(exportedIdentity: string, password: string): AppI
   return {
     publicKey: identity.publicKey,
     clientId: identity.clientId,
+    extras: typeof payload.extras === 'string' ? payload.extras : undefined,
   };
 }

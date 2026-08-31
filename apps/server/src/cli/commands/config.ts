@@ -51,6 +51,7 @@ export async function showConfig(ctx: CliContext): Promise<void> {
   console.log(`ownerUserId: ${server.ownerUserId ?? '-'}`);
   console.log(`ownerNickname: ${owner?.nickname ?? '-'}`);
   console.log(`allowSoundboard: ${formatBool(server.allowSoundboard !== false)}`);
+  console.log(`allowEveryoneMention: ${formatBool(server.allowEveryoneMention !== false)}`);
   console.log(`turn: ${formatBool(Boolean(server.turnEnabled))}${turnStatusSuffix()}`);
   console.log(`iconPath: ${server.iconPath ?? '-'}`);
   console.log(`maxAttachmentFileBytes: ${server.maxAttachmentFileBytes ?? '-'}`);
@@ -83,6 +84,7 @@ export async function setConfig(ctx: CliContext, key: string, value?: string): P
     icon: server.iconPath ?? '',
     maxUsers: String(server.maxUsers),
     allowSoundboard: String(server.allowSoundboard !== false),
+    allowEveryoneMention: String(server.allowEveryoneMention !== false),
     maxAttachmentFileBytes: String(server.maxAttachmentFileBytes ?? ''),
     maxAttachmentStorageBytes: String(server.maxAttachmentStorageBytes ?? ''),
     autoUpdate: String(isAutoUpdateEnabled(ctx.dataDir)),
@@ -106,6 +108,9 @@ export async function setConfig(ctx: CliContext, key: string, value?: string): P
         break;
       case 'allowSoundboard':
         nextValue = await askChoice(t('config.askSoundboard'), ['true', 'false']);
+        break;
+      case 'allowEveryoneMention':
+        nextValue = await askChoice(t('config.askEveryoneMention'), ['true', 'false']);
         break;
       case 'turn':
         nextValue = await askChoice(t('config.askTurn'), ['true', 'false']);
@@ -203,6 +208,9 @@ export async function setConfig(ctx: CliContext, key: string, value?: string): P
     }
     case 'allowSoundboard':
       await ctx.serverRepo.updateServer({ allowSoundboard: parseBoolean(nextValue) });
+      break;
+    case 'allowEveryoneMention':
+      await ctx.serverRepo.updateServer({ allowEveryoneMention: parseBoolean(nextValue) });
       break;
     case 'turn': {
       const enabled = parseBoolean(nextValue);

@@ -81,6 +81,7 @@ export const en: CliTranslationMap = {
   'config.askPort': 'Server port',
   'config.askIcon': 'Server icon path (leave empty to remove)',
   'config.askSoundboard': 'Allow soundboard?',
+  'config.askEveryoneMention': 'Allow the @everyone mention?',
   'config.askTurn': 'Enable media relay (TURN)?',
   'config.askAutoUpdate': 'Enable automatic updates?',
   'config.askMaxUsers': 'Member limit (0 for unlimited)',
