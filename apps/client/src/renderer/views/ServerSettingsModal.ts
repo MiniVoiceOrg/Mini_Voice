@@ -12,6 +12,7 @@ import { setButtonLoading } from '../utils/buttonLoading';
 import { serverStore } from '../stores/serverStore';
 import { settingsStore, ChatSoundMode } from '../stores/settingsStore';
 import { t } from '../i18n';
+import { enableBackdropClose } from '../utils/modal';
 import logoUrl from '../assets/logo.png';
 import { pickAndCropImage } from './ImageCropModal';
 import { attachInputEmojiPicker } from '../utils/inputEmojiPicker';
@@ -207,6 +208,7 @@ export class ServerSettingsModal {
 
     btnClose?.addEventListener('click', () => this.close());
     btnCancel?.addEventListener('click', () => this.close());
+    enableBackdropClose(this.modalEl, () => { if (!this.installingRelay) this.close(); });
 
     this.detachGeneralTab = this.generalTab.attach(this.modalEl);
 

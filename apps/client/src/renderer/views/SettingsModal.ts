@@ -3,6 +3,7 @@ import { networkClient } from '../core/NetworkClient';
 import { serverStore } from '../stores/serverStore';
 import { connectionStore } from '../stores/connectionStore';
 import { t } from '../i18n';
+import { enableBackdropClose } from '../utils/modal';
 import { AccountTab } from './settings/tabs/AccountTab';
 import { VoiceVideoTab } from './settings/tabs/VoiceVideoTab';
 import { SoundboardTab } from './settings/tabs/SoundboardTab';
@@ -186,6 +187,7 @@ export class SettingsModal {
     const closeModal = () => this.close();
     this.modalEl.querySelector('#modal-close')?.addEventListener('click', closeModal);
     this.modalEl.querySelector('#btn-settings-close')?.addEventListener('click', closeModal);
+    enableBackdropClose(this.modalEl, closeModal);
 
     const onEsc = (e: KeyboardEvent) => {
       if (e.key === 'Escape') {
