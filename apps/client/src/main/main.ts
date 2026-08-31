@@ -1,4 +1,4 @@
-import { app, BrowserWindow, Menu, screen, session, shell } from 'electron';
+import { app, BrowserWindow, ipcMain, Menu, screen, session, shell } from 'electron';
 import path from 'path';
 import { setupIpcHandlers } from './ipcHandlers';
 import { setupUpdater } from './updater';
@@ -15,6 +15,61 @@ const serverManager = new ServerManager();
 let clientLogger: ClientLogger | null = null;
 let isShuttingDown = false;
 let isQuitting = false;
+/** Whether the renderer has already been asked to leave the call (#458). */
+let leaveAnnounced = false;
+
+/**
+ * How long the quit waits for the renderer to say goodbye to the servers.
+ *
+ * It only has to cover sending a frame on an already open socket, so the ack
+ * normally arrives in a few milliseconds; this bound just guarantees that a
+ * renderer which is wedged cannot hold the app open.
+ */
+const LEAVE_ANNOUNCE_TIMEOUT_MS = 1000;
+
+/**
+ * Asks the renderer to leave every call and disconnect before the process dies,
+ * then quits (#458).
+ *
+ * Without this, closing the app just dropped the WebSocket: the server could not
+ * tell that apart from a network blip, so the person stayed listed in the voice
+ * channel and nobody heard them leave. Telling the server explicitly makes the
+ * departure immediate and deliberate. A crash obviously cannot run this — that
+ * case is covered on the server, which now takes a session out of voice as soon
+ * as its socket dies.
+ */
+function announceLeaveThenQuit(): void {
+  if (leaveAnnounced) {
+    app.quit();
+    return;
+  }
+  leaveAnnounced = true;
+
+  if (!mainWindow || mainWindow.isDestroyed()) {
+    app.quit();
+    return;
+  }
+
+  let settled = false;
+  const finish = (): void => {
+    if (settled) return;
+    settled = true;
+    clearTimeout(timer);
+    onLeaveComplete = null;
+    app.quit();
+  };
+
+  const timer = setTimeout(finish, LEAVE_ANNOUNCE_TIMEOUT_MS);
+  onLeaveComplete = finish;
+  mainWindow.webContents.send('app:before-quit');
+}
+
+/** Set only while a quit is waiting for the renderer's goodbye. */
+let onLeaveComplete: (() => void) | null = null;
+
+ipcMain.handle('app:leave-complete', () => {
+  onLeaveComplete?.();
+});
 
 function bindMainWindowNavigationGuards(): void {
   if (!mainWindow) return;
@@ -118,9 +173,20 @@ function createWindow(): void {
       if (minimizeToTray) {
         event.preventDefault();
         mainWindow?.hide();
-      } else {
-        quitApplication();
+        return;
       }
+      // The renderer has to stay alive long enough to leave the call (#458), so
+      // the window is kept open and the quit drives the teardown instead.
+      event.preventDefault();
+      quitApplication();
+      return;
+    }
+
+    // Quitting from the tray or the menu: same rule, the goodbye needs a live
+    // renderer. Once it has been sent, the window is free to go.
+    if (!leaveAnnounced) {
+      event.preventDefault();
+      announceLeaveThenQuit();
     }
   });
 
@@ -197,8 +263,17 @@ app.on('window-all-closed', () => {
   }
 });
 
-app.on('before-quit', () => {
+app.on('before-quit', (event) => {
   isQuitting = true;
+
+  // Say goodbye to the servers while the renderer is still alive, then quit for
+  // real on the second pass (#458).
+  if (!leaveAnnounced && mainWindow && !mainWindow.isDestroyed()) {
+    event.preventDefault();
+    announceLeaveThenQuit();
+    return;
+  }
+
   clientLogger?.shutdown();
   shutdownServer();
   trayManager?.destroy();

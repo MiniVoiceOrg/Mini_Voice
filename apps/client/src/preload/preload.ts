@@ -96,6 +96,9 @@ export interface ElectronApi {
   removeScreenAudioFrameListener: () => void;
   onScreenAudioError: (cb: (errorMsg: string) => void) => () => void;
   updateTrayVoiceStatus: (status: TrayVoiceStatus) => Promise<void>;
+  // Encerramento gracioso: sair das chamadas antes do processo morrer (#458)
+  onAppBeforeQuit: (cb: () => void) => () => void;
+  notifyLeaveComplete: () => Promise<void>;
   onTrayToggleMute: (cb: () => void) => () => void;
   onTrayToggleDeafen: (cb: () => void) => () => void;
   getAutoStart: () => Promise<boolean>;
@@ -254,6 +257,14 @@ const api: ElectronApi = {
     };
   },
   updateTrayVoiceStatus: (status) => ipcRenderer.invoke('tray:update-voice-status', status),
+  onAppBeforeQuit: (cb) => {
+    const listener = () => cb();
+    ipcRenderer.on('app:before-quit', listener);
+    return () => {
+      ipcRenderer.removeListener('app:before-quit', listener);
+    };
+  },
+  notifyLeaveComplete: () => ipcRenderer.invoke('app:leave-complete'),
   onTrayToggleMute: (cb) => {
     const listener = () => cb();
     ipcRenderer.on('tray:toggle-mute', listener);
