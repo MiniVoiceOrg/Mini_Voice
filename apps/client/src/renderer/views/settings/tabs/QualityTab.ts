@@ -134,12 +134,14 @@ export class QualityTab {
   }
 
   private attachCustomProfileListeners(container: HTMLElement): void {
-    const bind = (id: string, key: keyof QualityProfile) => {
+    const bind = <K extends keyof QualityProfile>(id: string, key: K) => {
       const input = container.querySelector<HTMLInputElement>(`#custom-${id}`);
       input?.addEventListener('change', () => {
         const val = parseInt(input.value, 10);
         if (!isNaN(val) && val > 0) {
-          (settingsStore.customProfile[key] as any) = val;
+          if (typeof settingsStore.customProfile[key] === 'number') {
+            (settingsStore.customProfile[key] as number) = val;
+          }
           settingsStore.save();
           webRtcManager.setQualityPreset('CUSTOM');
         }

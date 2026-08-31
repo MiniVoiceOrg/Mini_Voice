@@ -48,7 +48,9 @@ class ClientLogService {
     if (data) entry.data = data;
 
     // Fire-and-forget — we never want logging to block the UI
-    window.api.writeClientLog(entry).catch(() => {});
+    if (typeof window !== 'undefined' && window.api?.writeClientLog) {
+      window.api.writeClientLog(entry).catch(() => {});
+    }
   }
 
   // ── Convenience methods ────────────────────────────────────────────

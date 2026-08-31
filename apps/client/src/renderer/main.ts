@@ -103,6 +103,9 @@ class App {
     this.setupGlobalEventListeners();
     this.setupTraySync();
 
+    // Initialize and sync quality preset to WebRtcManager and VideoService (#474)
+    webRtcManager.setQualityPreset(settingsStore.qualityPreset);
+
     // Render connection view initially
     this.connectionView.render();
 
