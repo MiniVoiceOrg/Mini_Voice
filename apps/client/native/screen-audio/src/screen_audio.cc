@@ -15,7 +15,7 @@ bool platform_start(uint32_t targetPid, uint32_t loopbackMode, int64_t includeWi
                     uint32_t sampleRate, uint32_t channels, Napi::ThreadSafeFunction tsfn);
 void platform_stop();
 const char* platform_get_last_error();
-int platform_get_status() { return 0; }
+int platform_get_status();
 #else
 bool platform_is_supported() { return false; }
 bool platform_start(uint32_t, uint32_t, int64_t, uint32_t, uint32_t, Napi::ThreadSafeFunction) { return false; }
