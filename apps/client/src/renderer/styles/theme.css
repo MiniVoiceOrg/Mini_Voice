@@ -4785,24 +4785,32 @@ button[data-loading="1"]::after {
   margin-bottom: 8px;
 }
 
+/* Fixed columns: every label, control and unit lines up down the panel, no
+   matter how long the label text is in each language. */
 .quality-custom-row {
-  display: flex;
+  display: grid;
+  grid-template-columns: 84px minmax(0, 1fr) 34px;
   align-items: center;
-  gap: 8px;
+  column-gap: 8px;
   margin-bottom: 6px;
+}
+
+.quality-custom-row[hidden] {
+  display: none;
 }
 
 .quality-custom-label {
   color: var(--text-secondary);
   font-size: 11px;
-  min-width: 68px;
-  flex-shrink: 0;
+  line-height: 1.2;
 }
 
-.quality-custom-select {
-  flex: 1 1 auto;
+.quality-custom-control {
+  width: 100%;
   min-width: 0;
-  padding: 4px 6px;
+  box-sizing: border-box;
+  height: 28px;
+  padding: 0 6px;
   background: var(--bg-secondary);
   border: 1px solid var(--border-color);
   border-radius: 4px;
@@ -4810,21 +4818,47 @@ button[data-loading="1"]::after {
   font-size: 12px;
 }
 
-.quality-custom-input {
-  width: 88px;
-  flex-shrink: 0;
-  padding: 4px 6px;
+.quality-custom-control:focus {
+  outline: none;
+  border-color: var(--accent-primary);
+}
+
+/* Width × height share the control column. */
+.quality-custom-pair {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+
+.quality-custom-pair input {
+  flex: 1 1 0;
+  min-width: 0;
+  box-sizing: border-box;
+  height: 28px;
+  padding: 0 6px;
   background: var(--bg-secondary);
   border: 1px solid var(--border-color);
   border-radius: 4px;
   color: var(--text-primary);
   font-size: 12px;
+}
+
+.quality-custom-pair input:focus {
+  outline: none;
+  border-color: var(--accent-primary);
+}
+
+.quality-custom-times {
+  font-size: 11px;
+  color: var(--text-muted);
+  flex-shrink: 0;
 }
 
 .quality-custom-unit {
   font-size: 11px;
   color: var(--text-muted);
-  flex-shrink: 0;
+  white-space: nowrap;
 }
 
 /* Offline marker in the role member editor (#477). */
