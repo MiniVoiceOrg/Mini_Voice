@@ -43,6 +43,17 @@ export interface PeerSession {
    * only writes (and logs) when the route actually changes (#466).
    */
   isRelayed?: boolean;
+  /**
+   * True once an audio track from this peer has been classified as the
+   * microphone (#467).
+   *
+   * The "second audio track is the screen" heuristic below normally reads this
+   * off `remoteStream`, but the microphone of our own other device never lands
+   * there — it is dropped on arrival. Without remembering that it came, the
+   * screen audio that follows would look like the first audio track and be
+   * mistaken for a microphone.
+   */
+  micTrackSeen?: boolean;
 }
 
 /**
@@ -674,7 +685,8 @@ export class WebRtcManager {
 
   /**
    * Another device of our own in the same call. We still link up with it so
-   * camera and screen share work, but its audio is dropped: playing it would
+   * camera and screen share work, and its screen audio is played like anyone
+   * else's (#467) — only the microphone is dropped, since playing it would
    * feed the speakers of one device into the microphone of the other (#309).
    */
   private isOwnOtherDevice(peerSessionId: string): boolean {
@@ -788,18 +800,11 @@ export class WebRtcManager {
     pc.ontrack = (event) => {
       console.log(`[WebRTC] Received remote track (${event.track.kind}) from ${peerSessionId}`);
 
-      // Our own other device: keep the video, drop every audio track before it
-      // can reach a speaker and loop back through the other mic (#309).
-      if (event.track.kind === 'audio' && this.isOwnOtherDevice(peerSessionId)) {
-        console.log(`[WebRTC] Dropping audio from our own other device (${peerSessionId})`);
-        return;
-      }
-
       // Check if this is a screen audio track — either by known stream ID
       // or by detecting it as a 2nd audio track (the first is the mic).
       const incomingStreamId = event.streams?.[0]?.id;
       const isKnownScreenAudio = event.track.kind === 'audio' && incomingStreamId && this.screenAudioStreamIds.has(incomingStreamId);
-      const existingMicAudio = remoteStream.getAudioTracks().length > 0;
+      const existingMicAudio = remoteStream.getAudioTracks().length > 0 || session.micTrackSeen === true;
       const isExtraAudioTrack = event.track.kind === 'audio' && existingMicAudio && incomingStreamId && !remoteStream.getTrackById(event.track.id);
 
       if (isKnownScreenAudio || isExtraAudioTrack) {
@@ -810,6 +815,19 @@ export class WebRtcManager {
         }
         this.routeScreenAudioTrack(peerSessionId, event.track);
         return;
+      }
+
+      // What is left of the audio is the microphone. Coming from our own other
+      // device it has to be dropped, or the speakers of one device feed the
+      // microphone of the other (#309) — but only the microphone: the screen
+      // audio classified above is a broadcast like anyone else's and is worth
+      // hearing from the machine sharing it (#467).
+      if (event.track.kind === 'audio') {
+        session.micTrackSeen = true;
+        if (this.isOwnOtherDevice(peerSessionId)) {
+          console.log(`[WebRTC] Dropping microphone from our own other device (${peerSessionId})`);
+          return;
+        }
       }
 
       // Check if this is a screen VIDEO track — either by known stream ID or by
