@@ -2,6 +2,18 @@ import { QUALITY_PRESETS, QualityPresetType, QualityProfile } from '@monky/share
 import { settingsStore } from '../../../stores/settingsStore';
 import { webRtcManager } from '../../../core/WebRtcManager';
 import { t } from '../../../i18n';
+import {
+  ASPECT_RATIO_GROUPS,
+  AUDIO_BITRATE_OPTIONS,
+  AspectRatioGroup,
+  CUSTOM_OPTION,
+  FPS_OPTIONS,
+  VIDEO_BITRATE_OPTIONS,
+  aspectRatioGroup,
+  aspectRatioIdFor,
+  closestResolution,
+  formatResolution,
+} from '../qualityOptions';
 
 export class QualityTab {
   public renderHtml(): string {
@@ -40,45 +52,28 @@ export class QualityTab {
     const totalMbps = Math.round((p.audioBitrateKbps + p.cameraBitrateKbps + p.screenBitrateKbps) / 100) / 10;
 
     if (preset === 'CUSTOM') {
-      const inp = (id: string, label: string, val: number, unit: string) =>
-        `<div style="display: flex; align-items: center; gap: 6px;">
-          <label style="color: var(--text-secondary); min-width: 55px; font-size: 11px;">${label}</label>
-          <input id="custom-${id}" type="number" value="${val}" style="width: 70px; padding: 3px 6px; background: var(--bg-secondary); border: 1px solid var(--border-color); border-radius: 4px; color: var(--text-primary); font-size: 12px;" />
-          <span style="font-size: 11px; color: var(--text-muted);">${unit}</span>
-        </div>`;
-
       return `
         <div style="font-size: 12px;">
-          <div style="margin-bottom: 8px; padding-bottom: 6px; border-bottom: 1px solid rgba(255,255,255,0.06);">
-            <div style="display: flex; align-items: center; gap: 6px; margin-bottom: 6px;">
+          <div class="quality-custom-block">
+            <div class="quality-custom-title">
               <span class="material-symbols-outlined" style="font-size: 16px; color: var(--accent-primary);">mic</span>
               <strong style="color: var(--text-secondary);">${t('settings.audio')}</strong>
             </div>
-            ${inp('audioBitrate', t('settings.bitrate'), p.audioBitrateKbps, 'kbps')}
+            ${this.renderNumberChoice('audioBitrate', t('settings.bitrate'), AUDIO_BITRATE_OPTIONS, p.audioBitrateKbps, 'kbps')}
           </div>
-          <div style="margin-bottom: 8px; padding-bottom: 6px; border-bottom: 1px solid rgba(255,255,255,0.06);">
-            <div style="display: flex; align-items: center; gap: 6px; margin-bottom: 6px;">
+          <div class="quality-custom-block">
+            <div class="quality-custom-title">
               <span class="material-symbols-outlined" style="font-size: 16px; color: var(--accent-primary);">videocam</span>
               <strong style="color: var(--text-secondary);">${t('settings.cameraShort')}</strong>
             </div>
-            <div style="display: flex; flex-wrap: wrap; gap: 8px;">
-              ${inp('cameraWidth', t('settings.width'), p.cameraWidth, 'px')}
-              ${inp('cameraHeight', t('settings.height'), p.cameraHeight, 'px')}
-              ${inp('cameraFps', 'FPS', p.cameraFps, '')}
-              ${inp('cameraBitrate', t('settings.bitrate'), p.cameraBitrateKbps, 'kbps')}
-            </div>
+            ${this.renderMediaFields('camera', p.cameraWidth, p.cameraHeight, p.cameraFps, p.cameraBitrateKbps)}
           </div>
-          <div style="margin-bottom: 8px; padding-bottom: 6px; border-bottom: 1px solid rgba(255,255,255,0.06);">
-            <div style="display: flex; align-items: center; gap: 6px; margin-bottom: 6px;">
+          <div class="quality-custom-block">
+            <div class="quality-custom-title">
               <span class="material-symbols-outlined" style="font-size: 16px; color: var(--accent-primary);">screen_share</span>
               <strong style="color: var(--text-secondary);">${t('settings.screen')}</strong>
             </div>
-            <div style="display: flex; flex-wrap: wrap; gap: 8px;">
-              ${inp('screenWidth', t('settings.width'), p.screenWidth, 'px')}
-              ${inp('screenHeight', t('settings.height'), p.screenHeight, 'px')}
-              ${inp('screenFps', 'FPS', p.screenFps, '')}
-              ${inp('screenBitrate', t('settings.bitrate'), p.screenBitrateKbps, 'kbps')}
-            </div>
+            ${this.renderMediaFields('screen', p.screenWidth, p.screenHeight, p.screenFps, p.screenBitrateKbps)}
           </div>
           <div style="display: flex; align-items: center; gap: 6px; color: var(--text-muted); font-size: 11px;">
             <span class="material-symbols-outlined" style="font-size: 16px;">speed</span>
@@ -111,6 +106,64 @@ export class QualityTab {
     `;
   }
 
+  /**
+   * A dropdown of common values plus a "custom" entry that reveals the plain
+   * number box the tab used to show for everything (#476).
+   */
+  private renderNumberChoice(id: string, label: string, options: number[], value: number, unit: string): string {
+    const isKnown = options.includes(value);
+    return `
+      <div class="quality-custom-row">
+        <label class="quality-custom-label">${label}</label>
+        <select id="q-select-${id}" class="quality-custom-select">
+          ${options.map((option) => `<option value="${option}" ${option === value ? 'selected' : ''}>${option}${unit ? ` ${unit}` : ''}</option>`).join('')}
+          <option value="${CUSTOM_OPTION}" ${isKnown ? '' : 'selected'}>${t('settings.optionCustom')}</option>
+        </select>
+        <input id="custom-${id}" type="number" min="1" value="${value}" class="quality-custom-input" style="${isKnown ? 'display: none;' : ''}">
+        ${unit ? `<span class="quality-custom-unit">${unit}</span>` : ''}
+      </div>
+    `;
+  }
+
+  /** Resolution (with aspect-ratio picker), FPS and bitrate of one media kind (#476). */
+  private renderMediaFields(kind: 'camera' | 'screen', width: number, height: number, fps: number, bitrate: number): string {
+    const aspectId = aspectRatioIdFor(width, height);
+    const group = aspectRatioGroup(aspectId);
+    const isKnownResolution = group.resolutions.some((r) => r.width === width && r.height === height);
+
+    return `
+      <div class="quality-custom-row">
+        <label class="quality-custom-label">${t('settings.aspectRatio')}</label>
+        <select id="q-aspect-${kind}" class="quality-custom-select">
+          ${ASPECT_RATIO_GROUPS.map((item) => `<option value="${item.id}" ${item.id === aspectId ? 'selected' : ''}>${item.label}</option>`).join('')}
+        </select>
+      </div>
+      <div class="quality-custom-row">
+        <label class="quality-custom-label">${t('settings.resolution')}</label>
+        <select id="q-res-${kind}" class="quality-custom-select">
+          ${this.renderResolutionOptions(group, width, height)}
+        </select>
+      </div>
+      <div class="quality-custom-row" id="q-res-${kind}-custom" style="${isKnownResolution ? 'display: none;' : ''}">
+        <label class="quality-custom-label"></label>
+        <input id="custom-${kind}Width" type="number" min="1" value="${width}" class="quality-custom-input" title="${t('settings.width')}">
+        <span class="quality-custom-unit">×</span>
+        <input id="custom-${kind}Height" type="number" min="1" value="${height}" class="quality-custom-input" title="${t('settings.height')}">
+        <span class="quality-custom-unit">px</span>
+      </div>
+      ${this.renderNumberChoice(`${kind}Fps`, 'FPS', FPS_OPTIONS, fps, '')}
+      ${this.renderNumberChoice(`${kind}Bitrate`, t('settings.bitrate'), VIDEO_BITRATE_OPTIONS, bitrate, 'kbps')}
+    `;
+  }
+
+  private renderResolutionOptions(group: AspectRatioGroup, width: number, height: number): string {
+    const isKnown = group.resolutions.some((r) => r.width === width && r.height === height);
+    return `
+      ${group.resolutions.map((option) => `<option value="${option.width}x${option.height}" ${option.width === width && option.height === height ? 'selected' : ''}>${formatResolution(option)}</option>`).join('')}
+      <option value="${CUSTOM_OPTION}" ${isKnown ? '' : 'selected'}>${t('settings.optionCustom')}</option>
+    `;
+  }
+
   public attachEvents(container: HTMLElement): void {
     const selectPreset = container.querySelector<HTMLSelectElement>('#select-preset');
     const presetDetails = container.querySelector<HTMLElement>('#preset-details');
@@ -134,28 +187,100 @@ export class QualityTab {
   }
 
   private attachCustomProfileListeners(container: HTMLElement): void {
-    const bind = <K extends keyof QualityProfile>(id: string, key: K) => {
+    const apply = () => {
+      settingsStore.save();
+      webRtcManager.setQualityPreset('CUSTOM');
+    };
+
+    const setValue = <K extends keyof QualityProfile>(key: K, value: number) => {
+      if (typeof settingsStore.customProfile[key] !== 'number') return;
+      (settingsStore.customProfile[key] as number) = value;
+    };
+
+    // The free-form number box behind each "custom" entry.
+    const bindInput = <K extends keyof QualityProfile>(id: string, key: K) => {
       const input = container.querySelector<HTMLInputElement>(`#custom-${id}`);
       input?.addEventListener('change', () => {
         const val = parseInt(input.value, 10);
-        if (!isNaN(val) && val > 0) {
-          if (typeof settingsStore.customProfile[key] === 'number') {
-            (settingsStore.customProfile[key] as number) = val;
-          }
-          settingsStore.save();
-          webRtcManager.setQualityPreset('CUSTOM');
-        }
+        if (isNaN(val) || val <= 0) return;
+        setValue(key, val);
+        apply();
       });
     };
 
-    bind('audioBitrate', 'audioBitrateKbps');
-    bind('cameraWidth', 'cameraWidth');
-    bind('cameraHeight', 'cameraHeight');
-    bind('cameraFps', 'cameraFps');
-    bind('cameraBitrate', 'cameraBitrateKbps');
-    bind('screenWidth', 'screenWidth');
-    bind('screenHeight', 'screenHeight');
-    bind('screenFps', 'screenFps');
-    bind('screenBitrate', 'screenBitrateKbps');
+    // The dropdown of common values. Picking "custom" only reveals the box —
+    // the stored value stays untouched until the user actually types one (#476).
+    const bindSelect = <K extends keyof QualityProfile>(id: string, key: K) => {
+      const select = container.querySelector<HTMLSelectElement>(`#q-select-${id}`);
+      const input = container.querySelector<HTMLInputElement>(`#custom-${id}`);
+      select?.addEventListener('change', () => {
+        if (select.value === CUSTOM_OPTION) {
+          if (input) {
+            input.style.display = '';
+            input.focus();
+          }
+          return;
+        }
+        if (input) input.style.display = 'none';
+        const val = parseInt(select.value, 10);
+        if (isNaN(val) || val <= 0) return;
+        setValue(key, val);
+        apply();
+      });
+    };
+
+    const bindResolution = (kind: 'camera' | 'screen') => {
+      const widthKey = (kind === 'camera' ? 'cameraWidth' : 'screenWidth') as keyof QualityProfile;
+      const heightKey = (kind === 'camera' ? 'cameraHeight' : 'screenHeight') as keyof QualityProfile;
+      const aspectSelect = container.querySelector<HTMLSelectElement>(`#q-aspect-${kind}`);
+      const resSelect = container.querySelector<HTMLSelectElement>(`#q-res-${kind}`);
+      const customRow = container.querySelector<HTMLElement>(`#q-res-${kind}-custom`);
+
+      resSelect?.addEventListener('change', () => {
+        if (resSelect.value === CUSTOM_OPTION) {
+          if (customRow) customRow.style.display = '';
+          return;
+        }
+        if (customRow) customRow.style.display = 'none';
+        const [width, height] = resSelect.value.split('x').map((part) => parseInt(part, 10));
+        if (isNaN(width) || isNaN(height)) return;
+        setValue(widthKey, width);
+        setValue(heightKey, height);
+        apply();
+      });
+
+      aspectSelect?.addEventListener('change', () => {
+        const group = aspectRatioGroup(aspectSelect.value);
+        // Switching the aspect ratio snaps to the entry closest in height, so
+        // the user keeps roughly the same quality instead of being thrown to
+        // the top of the new list.
+        const currentHeight = settingsStore.customProfile[heightKey] as number;
+        const target = closestResolution(group, currentHeight);
+        if (resSelect) {
+          resSelect.innerHTML = this.renderResolutionOptions(group, target.width, target.height);
+        }
+        if (customRow) customRow.style.display = 'none';
+        setValue(widthKey, target.width);
+        setValue(heightKey, target.height);
+        apply();
+      });
+    };
+
+    bindSelect('audioBitrate', 'audioBitrateKbps');
+    bindInput('audioBitrate', 'audioBitrateKbps');
+    bindSelect('cameraFps', 'cameraFps');
+    bindInput('cameraFps', 'cameraFps');
+    bindSelect('cameraBitrate', 'cameraBitrateKbps');
+    bindInput('cameraBitrate', 'cameraBitrateKbps');
+    bindSelect('screenFps', 'screenFps');
+    bindInput('screenFps', 'screenFps');
+    bindSelect('screenBitrate', 'screenBitrateKbps');
+    bindInput('screenBitrate', 'screenBitrateKbps');
+    bindInput('cameraWidth', 'cameraWidth');
+    bindInput('cameraHeight', 'cameraHeight');
+    bindInput('screenWidth', 'screenWidth');
+    bindInput('screenHeight', 'screenHeight');
+    bindResolution('camera');
+    bindResolution('screen');
   }
 }

@@ -25,3 +25,9 @@ Open from the gear icon on the connection screen or bottom bar.
 | Normal | 32 kbps | 480p | 720p | General use |
 | High Quality | 48 kbps | 720p | 1080p | Fast internet and a PC to spare |
 | Gaming | 28 kbps | reduced | smooth (60 FPS) | Gaming: prioritises voice and fluid screen |
+
+The **Custom** profile offers dropdowns with the most common values — aspect
+ratio (16:9, 16:10, 4:3 and 21:9), resolution (from the lowest up to 4K), FPS
+and bitrate. Every dropdown keeps a **Custom...** entry that reveals the plain
+number box for anything outside the list. Changing the aspect ratio keeps the
+resolution closest to the one you were already using.
