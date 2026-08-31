@@ -453,6 +453,8 @@ export const ptBR = {
   'main.deleteChannel': 'Apagar canal',
   'main.editChannel': 'Editar canal',
   'main.privateChannelBadge': 'Canal privado',
+  'main.channelReorderFailed': 'Não foi possível reordenar os canais',
+  'main.channelReorderHint': 'Arraste para reordenar',
   'main.delete': 'Apagar',
   'main.deleteTextChannelTitle': 'Apagar canal de texto',
   'main.deleteVoiceChannelTitle': 'Apagar canal de voz',

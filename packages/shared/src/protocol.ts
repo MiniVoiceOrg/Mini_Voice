@@ -1,4 +1,4 @@
-import { AttachmentStorageInfo, ChannelSummary, ChatMessage, Role, ServerDetails, TurnAvailability, TurnInstallStage, UserRoleSummary, UserSummary, VoiceParticipantState, WebRtcSignalPayload } from './models.js';
+import { AttachmentStorageInfo, ChannelSummary, ChannelType, ChatMessage, Role, ServerDetails, TurnAvailability, TurnInstallStage, UserRoleSummary, UserSummary, VoiceParticipantState, WebRtcSignalPayload } from './models.js';
 
 export enum ProtocolErrorCode {
   AUTH_INVALID_PASSWORD = 'AUTH_INVALID_PASSWORD',
@@ -37,6 +37,7 @@ export enum MessageType {
   CHANNEL_CREATE = 'CHANNEL_CREATE',
   CHANNEL_UPDATE = 'CHANNEL_UPDATE',
   CHANNEL_DELETE = 'CHANNEL_DELETE',
+  CHANNEL_REORDER = 'CHANNEL_REORDER',
   USER_CHANGE_NICKNAME = 'USER_CHANGE_NICKNAME',
   USER_UPDATE_AVATAR = 'USER_UPDATE_AVATAR',
   SERVER_UPDATE_SETTINGS = 'SERVER_UPDATE_SETTINGS',
@@ -82,6 +83,7 @@ export enum MessageType {
   CHANNEL_CREATED = 'CHANNEL_CREATED',
   CHANNEL_UPDATED = 'CHANNEL_UPDATED',
   CHANNEL_DELETED = 'CHANNEL_DELETED',
+  CHANNELS_REORDERED = 'CHANNELS_REORDERED',
   CHAT_MESSAGE = 'CHAT_MESSAGE',
   CHAT_HISTORY = 'CHAT_HISTORY',
   CHAT_UPLOAD_TOKEN = 'CHAT_UPLOAD_TOKEN',
@@ -180,6 +182,28 @@ export interface ChannelUpdatePayload {
 
 export interface ChannelDeletePayload {
   channelId: string;
+}
+
+/**
+ * Reorders the channels of one kind (#471).
+ *
+ * The whole list is sent rather than a single "move this one here": the client
+ * already knows the order it is showing, and sending it whole means the server
+ * never has to guess what the other positions became.
+ */
+export interface ChannelReorderPayload {
+  type: ChannelType;
+  /** Every channel of that type, in the order they should appear. */
+  orderedIds: string[];
+}
+
+/**
+ * The new positions, broadcast after a reorder (#471). Only the channels the
+ * recipient can already see are included, so a private channel is not revealed
+ * by its position alone.
+ */
+export interface ChannelsReorderedPayload {
+  positions: Array<{ channelId: string; position: number }>;
 }
 
 export interface UserChangeNicknamePayload {

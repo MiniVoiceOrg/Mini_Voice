@@ -14,6 +14,8 @@ import {
   ChannelCreatedPayload,
   ChannelDeletePayload,
   ChannelDeletedPayload,
+  ChannelReorderPayload,
+  ChannelsReorderedPayload,
   ChannelUpdatePayload,
   ChannelUpdatedPayload,
   ChatHistoryPayload,
@@ -294,6 +296,11 @@ export class WebSocketServer {
       case MessageType.CHANNEL_DELETE:
         if (!(await this.requirePermission(session, Permission.MANAGE_CHANNELS, requestId))) return;
         await this.handleChannelDelete(session, payload as ChannelDeletePayload, requestId);
+        break;
+
+      case MessageType.CHANNEL_REORDER:
+        if (!(await this.requirePermission(session, Permission.MANAGE_CHANNELS, requestId))) return;
+        await this.handleChannelReorder(session, payload as ChannelReorderPayload, requestId);
         break;
 
       case MessageType.USER_CHANGE_NICKNAME:
@@ -778,6 +785,50 @@ export class WebSocketServer {
     }
 
     await this.reconcileChannelVisibility();
+  }
+
+  /**
+   * Applies a new channel order and tells everyone (#471).
+   *
+   * Each recipient only gets the positions of the channels they can already
+   * see: sending the whole list would leak the existence of private channels
+   * they have no access to.
+   */
+  private async handleChannelReorder(
+    session: ClientSession,
+    payload: ChannelReorderPayload,
+    requestId?: string
+  ): Promise<void> {
+    const result = await this.channelService.reorderChannels(payload);
+    if (!result.success || !result.positions) {
+      this.sendError(
+        session.ws,
+        result.errorCode || ProtocolErrorCode.BAD_REQUEST,
+        result.errorMessage || 'Erro ao reordenar canais',
+        requestId
+      );
+      return;
+    }
+
+    const positions = result.positions;
+    const visibleTo = (peer: ClientSession) =>
+      positions.filter((p) => peer.visibleChannelIds?.has(p.channelId));
+
+    this.send(session.ws, {
+      type: MessageType.CHANNELS_REORDERED,
+      requestId,
+      payload: { positions: visibleTo(session) } satisfies ChannelsReorderedPayload,
+    });
+
+    for (const [ws, peer] of this.sessions.entries()) {
+      if (ws === session.ws || !peer.user || ws.readyState !== WebSocket.OPEN) continue;
+      const mine = visibleTo(peer);
+      if (mine.length === 0) continue;
+      this.send(ws, {
+        type: MessageType.CHANNELS_REORDERED,
+        payload: { positions: mine } satisfies ChannelsReorderedPayload,
+      });
+    }
   }
 
   private async handleChannelDelete(

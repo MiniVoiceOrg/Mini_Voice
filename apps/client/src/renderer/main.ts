@@ -7,6 +7,7 @@ import {
   ChannelCreatedPayload,
   ChannelDeletedPayload,
   ChannelUpdatedPayload,
+  ChannelsReorderedPayload,
   ChatHistoryPayload,
   ChatMessage,
   MessageType,
@@ -551,6 +552,10 @@ class App {
 
     appEvents.on(`message.${MessageType.CHANNEL_UPDATED}`, (payload: ChannelUpdatedPayload) => {
       serverStore.updateChannel(payload.channel);
+    });
+
+    appEvents.on(`message.${MessageType.CHANNELS_REORDERED}`, (payload: ChannelsReorderedPayload) => {
+      serverStore.applyChannelPositions(payload.positions);
     });
 
     appEvents.on(`message.${MessageType.CHAT_MESSAGE}`, (message: ChatMessage) => {

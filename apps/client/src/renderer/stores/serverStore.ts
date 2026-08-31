@@ -102,6 +102,7 @@ export class ServerStore {
   public addChannel(channel: ChannelSummary): void {
     if (this.serverDetails) {
       this.serverDetails.channels.push(channel);
+      this.sortChannels();
       this.bus.emit('server.updated');
     }
   }
@@ -126,6 +127,40 @@ export class ServerStore {
 
     this.serverDetails.channels[index] = channel;
     this.bus.emit('server.updated');
+  }
+
+  /**
+   * Applies a new channel order (#471).
+   *
+   * Only the positions of channels this client can see are sent, so anything
+   * not mentioned is left where it is. Sorting here (rather than in the view)
+   * keeps a single source of truth for the order: the list in the store is
+   * always the list as it should be shown.
+   */
+  public applyChannelPositions(positions: Array<{ channelId: string; position: number }>): void {
+    if (!this.serverDetails || positions.length === 0) return;
+
+    const byId = new Map(positions.map((p) => [p.channelId, p.position]));
+    let changed = false;
+    for (const channel of this.serverDetails.channels) {
+      const next = byId.get(channel.id);
+      if (next !== undefined && next !== channel.position) {
+        channel.position = next;
+        changed = true;
+      }
+    }
+    if (!changed) return;
+
+    this.sortChannels();
+    this.bus.emit('server.updated');
+  }
+
+  /**
+   * Orders channels the way the server does: by position, falling back to
+   * creation time so channels sharing a position keep a stable order (#471).
+   */
+  private sortChannels(): void {
+    this.serverDetails?.channels.sort((a, b) => a.position - b.position || a.createdAt - b.createdAt);
   }
 
   public updateCurrentUser(user: UserSummary): void {

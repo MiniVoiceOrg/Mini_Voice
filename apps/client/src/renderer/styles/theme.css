@@ -1036,6 +1036,38 @@ input:focus, textarea:focus, select:focus {
   transition: background-color 0.12s, color 0.12s;
 }
 
+/* Reordering channels by dragging (#471). The insertion point is drawn on the
+   row being hovered rather than by moving anything, so the list does not jump
+   around under the cursor while the drag is still undecided. */
+.channel-dragging {
+  opacity: 0.45;
+}
+
+.channel-drop-before,
+.channel-drop-after {
+  position: relative;
+}
+
+.channel-drop-before::before,
+.channel-drop-after::after {
+  content: '';
+  position: absolute;
+  left: 4px;
+  right: 4px;
+  height: 2px;
+  border-radius: 2px;
+  background: var(--accent-primary);
+  pointer-events: none;
+}
+
+.channel-drop-before::before {
+  top: -1px;
+}
+
+.channel-drop-after::after {
+  bottom: -1px;
+}
+
 .channel-item:hover {
   background-color: var(--bg-panel);
   color: var(--text-primary);

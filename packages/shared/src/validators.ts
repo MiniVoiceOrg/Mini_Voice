@@ -79,6 +79,17 @@ export const channelUpdateSchema = z.object({
   allowedRoleIds: channelAllowedRoleIdsSchema.optional(),
 });
 
+// Reordenar os canais de um tipo (#471). A lista chega inteira, na ordem
+// desejada; o limite acompanha o de canais por servidor e o `min(1)` recusa uma
+// reordenação vazia, que só poderia vir de um payload malformado.
+export const channelReorderSchema = z.object({
+  type: z.enum(['VOICE', 'TEXT']),
+  orderedIds: z
+    .array(z.string().min(1, 'Canal inválido'))
+    .min(1, 'Nenhum canal informado')
+    .max(200, 'Canais demais'),
+});
+
 export const roleNameSchema = z
   .string()
   .min(1, 'Nome do cargo é obrigatório')

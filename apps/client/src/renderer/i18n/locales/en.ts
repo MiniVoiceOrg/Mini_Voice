@@ -452,6 +452,8 @@ export const en: TranslationMap = {
   'main.deleteChannel': 'Delete channel',
   'main.editChannel': 'Edit channel',
   'main.privateChannelBadge': 'Private channel',
+  'main.channelReorderFailed': 'Could not reorder the channels',
+  'main.channelReorderHint': 'Drag to reorder',
   'main.delete': 'Delete',
   'main.deleteTextChannelTitle': 'Delete text channel',
   'main.deleteVoiceChannelTitle': 'Delete voice channel',

@@ -1,4 +1,5 @@
 import { MessageType, Permission, UserSummary, canAccessChannel } from '@monky/shared';
+import type { ChannelType } from '@monky/shared';
 import { escapeHtml } from '../utils/html';
 import { appEvents } from '../core/EventBus';
 import { networkClient } from '../core/NetworkClient';
@@ -811,6 +812,142 @@ export class MainView {
         this.openChannelMenu(channelId, rect.left, rect.bottom + 4);
       });
     });
+
+    this.setupChannelReorder();
+  }
+
+  /**
+   * Lets managers drag channels into a new order (#471).
+   *
+   * Text and voice are reordered independently, so a drag only ever finds drop
+   * targets inside its own list. The dragged element carries its type in the
+   * drag data, which is what keeps a voice channel from landing among the text
+   * ones — the check has to happen on `dragover` (there is no way to reject a
+   * drop after the fact) and the payload itself is unreadable there, so the type
+   * travels as part of the MIME type.
+   */
+  private setupChannelReorder(): void {
+    if (!serverStore.hasPermission(Permission.MANAGE_CHANNELS)) return;
+
+    const lists: Array<{ el: HTMLElement | null; type: ChannelType }> = [
+      { el: document.getElementById('text-channels-list'), type: 'TEXT' },
+      { el: document.getElementById('voice-channels-list'), type: 'VOICE' },
+    ];
+
+    for (const { el: listEl, type } of lists) {
+      if (!listEl) continue;
+      const mime = `text/monky-channel-${type.toLowerCase()}`;
+      // A voice channel and its participants live in a wrapper; a text channel
+      // is the item itself. Dragging and dropping act on whichever is the direct
+      // child of the list, so the participants travel with their channel.
+      const rows = Array.from(listEl.children) as HTMLElement[];
+
+      for (const row of rows) {
+        const handle = (row.matches('.channel-item') ? row : row.querySelector('.channel-item')) as HTMLElement | null;
+        if (!handle) continue;
+        const channelId = handle.getAttribute('data-channel-id');
+        if (!channelId) continue;
+
+        handle.draggable = true;
+        // Dragging is invisible without a hint, and the row has no title of its
+        // own to lose.
+        if (!handle.title) handle.title = t('main.channelReorderHint');
+        handle.addEventListener('dragstart', (e: Event) => {
+          const de = e as DragEvent;
+          de.dataTransfer?.setData(mime, channelId);
+          de.dataTransfer!.effectAllowed = 'move';
+          row.classList.add('channel-dragging');
+        });
+        handle.addEventListener('dragend', () => {
+          row.classList.remove('channel-dragging');
+          listEl.querySelectorAll('.channel-drop-before, .channel-drop-after').forEach((n) => {
+            n.classList.remove('channel-drop-before', 'channel-drop-after');
+          });
+        });
+
+        row.addEventListener('dragover', (e: Event) => {
+          const de = e as DragEvent;
+          if (!de.dataTransfer?.types.includes(mime)) return;
+          de.preventDefault();
+          de.stopPropagation();
+          de.dataTransfer.dropEffect = 'move';
+          const rect = row.getBoundingClientRect();
+          const after = de.clientY > rect.top + rect.height / 2;
+          row.classList.toggle('channel-drop-before', !after);
+          row.classList.toggle('channel-drop-after', after);
+        });
+        row.addEventListener('dragleave', (e: Event) => {
+          const next = (e as DragEvent).relatedTarget as Node | null;
+          if (next && row.contains(next)) return;
+          row.classList.remove('channel-drop-before', 'channel-drop-after');
+        });
+        row.addEventListener('drop', (e: Event) => {
+          const de = e as DragEvent;
+          const draggedId = de.dataTransfer?.getData(mime);
+          const after = row.classList.contains('channel-drop-after');
+          row.classList.remove('channel-drop-before', 'channel-drop-after');
+          if (!draggedId) return;
+          de.preventDefault();
+          de.stopPropagation();
+          if (draggedId === channelId) return;
+          this.commitChannelOrder(type, draggedId, channelId, after);
+        });
+      }
+
+      // Dropping on the empty space below the list sends the channel to the end.
+      listEl.addEventListener('dragover', (e: Event) => {
+        const de = e as DragEvent;
+        if (!de.dataTransfer?.types.includes(mime)) return;
+        de.preventDefault();
+        de.dataTransfer.dropEffect = 'move';
+      });
+      listEl.addEventListener('drop', (e: Event) => {
+        const de = e as DragEvent;
+        const draggedId = de.dataTransfer?.getData(mime);
+        if (!draggedId) return;
+        de.preventDefault();
+        this.commitChannelOrder(type, draggedId, null, true);
+      });
+    }
+  }
+
+  /**
+   * Sends the reordered list to the server (#471).
+   *
+   * The new order is applied locally right away so the drop feels instant, and
+   * the broadcast that comes back simply confirms it. A failure re-renders from
+   * the store, which still holds the order the server knows about.
+   */
+  private commitChannelOrder(
+    type: ChannelType,
+    draggedId: string,
+    targetId: string | null,
+    after: boolean
+  ): void {
+    const channels = serverStore.serverDetails?.channels.filter((c) => c.type === type) ?? [];
+    const ids = channels.map((c) => c.id).filter((id) => id !== draggedId);
+    if (ids.length === channels.length) return;
+
+    let index = ids.length;
+    if (targetId) {
+      const at = ids.indexOf(targetId);
+      if (at === -1) return;
+      index = after ? at + 1 : at;
+    }
+    ids.splice(index, 0, draggedId);
+
+    serverStore.applyChannelPositions(ids.map((channelId, position) => ({ channelId, position })));
+
+    void networkClient
+      .sendRequest(MessageType.CHANNEL_REORDER, { type, orderedIds: ids })
+      .catch((err: unknown) => {
+        void showAlert({
+          title: t('common.error'),
+          message: (err as Error)?.message || t('main.channelReorderFailed'),
+          variant: 'danger',
+        });
+        this.renderChannels();
+      });
   }
 
   /** Opens the per-channel options menu at the given screen coordinates (#151). */
