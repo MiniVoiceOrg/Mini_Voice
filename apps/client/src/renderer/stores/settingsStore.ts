@@ -172,7 +172,7 @@ export class SettingsStore {
    */
   private readVolume(map: Record<string, number>, sessionId: string, legacyClientId?: string): number {
     const raw = map[sessionId] ?? (legacyClientId ? map[legacyClientId] : undefined);
-    return typeof raw === 'number' && !isNaN(raw) ? Math.max(0, Math.min(100, raw)) : 100;
+    return typeof raw === 'number' && !isNaN(raw) ? Math.max(0, Math.min(200, raw)) : 100;
   }
 
   public getUserVolume(sessionId: string, legacyClientId?: string): number {
@@ -182,7 +182,7 @@ export class SettingsStore {
 
   public setUserVolume(sessionId: string, volume: number): void {
     if (!sessionId) return;
-    const clamped = Math.max(0, Math.min(100, Math.round(volume)));
+    const clamped = Math.max(0, Math.min(200, Math.round(volume)));
     this.userVolumes[sessionId] = clamped;
     this.save();
     appEvents.emit('user_volume.changed', { sessionId, volume: clamped });
@@ -195,7 +195,7 @@ export class SettingsStore {
 
   public setScreenAudioVolume(sessionId: string, volume: number): void {
     if (!sessionId) return;
-    const clamped = Math.max(0, Math.min(100, Math.round(volume)));
+    const clamped = Math.max(0, Math.min(200, Math.round(volume)));
     this.screenAudioVolumes[sessionId] = clamped;
     this.save();
     appEvents.emit('screen_audio_volume.changed', { sessionId, volume: clamped });

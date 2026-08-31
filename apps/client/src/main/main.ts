@@ -9,6 +9,8 @@ import { HOME_MIN_HEIGHT, HOME_MIN_WIDTH } from './windowSizing';
 
 import fs from 'fs';
 
+app.commandLine.appendSwitch('autoplay-policy', 'no-user-gesture-required');
+
 let mainWindow: BrowserWindow | null = null;
 let trayManager: TrayManager | null = null;
 const serverManager = new ServerManager();

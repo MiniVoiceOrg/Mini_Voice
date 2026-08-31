@@ -262,6 +262,7 @@ function runTests() {
       'sess-1': 75,
       'sess-2': 150,
       'sess-3': -20,
+      'sess-4': 250,
     },
     screenAudioVolumes: {
       'sess-screen': 100,
@@ -272,14 +273,17 @@ function runTests() {
   assert(store3.inputMode === 'voice_activity', 'inputMode inválido é sanitizado para fallback "voice_activity"');
   assert(store3.pttReleaseDelay === 0, 'pttReleaseDelay negativo é sanitizado para mínimo 0');
   assert(store3.getUserVolume('sess-1') === 75, 'Volume de usuário 75% lido corretamente');
-  assert(store3.getUserVolume('sess-2') === 100, 'Volume de usuário > 100% clamped para 100%');
+  assert(store3.getUserVolume('sess-2') === 150, 'Volume de usuário 150% (amplificado) lido corretamente');
   assert(store3.getUserVolume('sess-3') === 0, 'Volume de usuário < 0% clamped para 0%');
+  assert(store3.getUserVolume('sess-4') === 200, 'Volume de usuário > 200% clamped para 200%');
   assert(store3.getScreenAudioVolume('sess-screen') === 100, 'Volume de screen audio 100% lido corretamente');
 
   store3.setUserVolume('sess-test', 80);
   assert(store3.getUserVolume('sess-test') === 80, 'setUserVolume aceita 80%');
-  store3.setUserVolume('sess-test-overflow', 150);
-  assert(store3.getUserVolume('sess-test-overflow') === 100, 'setUserVolume 150% é clamped para 100%');
+  store3.setUserVolume('sess-test-amp', 175);
+  assert(store3.getUserVolume('sess-test-amp') === 175, 'setUserVolume aceita 175% (amplificado)');
+  store3.setUserVolume('sess-test-overflow', 250);
+  assert(store3.getUserVolume('sess-test-overflow') === 200, 'setUserVolume 250% é clamped para 200%');
 
   // --- Seleção de release do atualizador automático (#354) ---
   console.log('\n--- Testando seleção de release do atualizador ---');
