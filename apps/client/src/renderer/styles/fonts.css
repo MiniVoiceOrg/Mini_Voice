@@ -1,0 +1,33 @@
+/**
+ * Local font faces.
+ *
+ * These used to come from fonts.googleapis.com, which meant that opening the app
+ * without internet left every `material-symbols-outlined` element rendering its
+ * ligature name as plain text and dropped Inter/JetBrains Mono entirely (#457).
+ * Monky is a self-hosted app that has to work on a LAN with no internet, so the
+ * fonts ship with the build.
+ *
+ * Only the latin and latin-ext subsets are bundled: the interface is pt-BR/en and
+ * every accented character it needs lives there. Text outside those ranges falls
+ * back to the system font, exactly as it did before.
+ *
+ * The icon font is a single ~3.6 MB variable woff2 covering the whole Material
+ * Symbols set. Subsetting it would shave megabytes but silently break the next
+ * icon someone adds, which is the failure mode this issue is about.
+ */
+
+@import 'material-symbols/outlined.css';
+
+@import '@fontsource/inter/latin-400.css';
+@import '@fontsource/inter/latin-500.css';
+@import '@fontsource/inter/latin-600.css';
+@import '@fontsource/inter/latin-700.css';
+@import '@fontsource/inter/latin-ext-400.css';
+@import '@fontsource/inter/latin-ext-500.css';
+@import '@fontsource/inter/latin-ext-600.css';
+@import '@fontsource/inter/latin-ext-700.css';
+
+@import '@fontsource/jetbrains-mono/latin-400.css';
+@import '@fontsource/jetbrains-mono/latin-500.css';
+@import '@fontsource/jetbrains-mono/latin-ext-400.css';
+@import '@fontsource/jetbrains-mono/latin-ext-500.css';
