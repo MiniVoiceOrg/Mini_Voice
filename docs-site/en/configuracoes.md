@@ -3,6 +3,12 @@
 Open from the gear icon on the connection screen or bottom bar.
 
 - **Profile** — nickname and picture.
+- **Servers and settings** — export your saved servers and app settings to a
+  `.monkybackup` file and restore them on another computer. You pick what goes in
+  and what comes out each time, and the data can also ride along with the
+  identity backup. The file is protected by the password you set when exporting:
+  the saved server list may contain server passwords, so it never reaches the
+  disk in the clear. Without that password the backup cannot be recovered.
 - **Devices** — microphone, speaker/headphones and camera, with preview and list refresh.
 - **Voice sensitivity (VAD)** — adjust while watching the meter; leave the marker above the silent level.
 - **Noise suppression (RNNoise)** — reduces keyboard, clicks and room noise.

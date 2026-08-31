@@ -81,10 +81,13 @@ export class InviteModal {
 
           <!-- Password Option -->
           <div style="border-top: 1px solid var(--border-color); padding-top: 10px; margin-top: 2px; display: flex; flex-direction: column; gap: 8px;">
-            <label style="display: flex; align-items: center; gap: 8px; font-size: 12px; cursor: pointer; user-select: none;">
-              <input id="chk-invite-password" type="checkbox" ${defaultPassword ? 'checked' : ''} style="cursor: pointer;">
-              <span style="font-weight: 500; color: var(--text-primary);">${t('invite.includePassword')}</span>
-            </label>
+            <div style="display: flex; align-items: center; justify-content: space-between; gap: 12px;">
+              <label for="chk-invite-password" style="font-size: 12px; font-weight: 500; color: var(--text-primary); cursor: pointer; user-select: none;">${t('invite.includePassword')}</label>
+              <label class="toggle-switch" aria-label="${t('invite.includePassword')}">
+                <input id="chk-invite-password" type="checkbox" ${defaultPassword ? 'checked' : ''}>
+                <span class="toggle-slider"></span>
+              </label>
+            </div>
             <div id="invite-password-container" style="${defaultPassword ? 'display: block;' : 'display: none;'}">
               <input id="input-invite-password" type="text" value="${escapeHtml(defaultPassword)}" placeholder="${t('invite.passwordPlaceholder')}" style="width: 100%; font-size: 12px; padding: 6px 10px;">
             </div>

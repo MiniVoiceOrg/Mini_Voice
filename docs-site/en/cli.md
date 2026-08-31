@@ -367,6 +367,7 @@ monky config set <key> [value]     # change it directly
 | `icon` | Path to an image, copied into the data directory. Empty or `clear` removes it | no icon |
 | `maxUsers` | Maximum registered members. `0` removes the limit | `20` |
 | `allowSoundboard` | Allows the soundboard (`true`/`false`) | `true` |
+| `allowEveryoneMention` | Allows `@everyone`/`@todos` in chat (`true`/`false`) | `true` |
 | `maxAttachmentFileBytes` | Maximum size per attachment, in bytes | no limit |
 | `maxAttachmentStorageBytes` | Total attachment storage, in bytes | no limit |
 | `autoUpdate` | Enables the daily automatic update (`true`/`false`) | `false` |

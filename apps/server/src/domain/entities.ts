@@ -8,6 +8,8 @@ export interface ServerRecord {
   maxUsers: number;
   ownerUserId?: string | null;
   allowSoundboard?: boolean;
+  /** Whether `@todos` / `@everyone` pings the whole channel (#464). */
+  allowEveryoneMention?: boolean;
   iconPath?: string | null;
   // Attachment storage limits in bytes (#11); null → shared defaults.
   maxAttachmentFileBytes?: number | null;

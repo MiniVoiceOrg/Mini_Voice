@@ -5,6 +5,7 @@ import { connectionStore } from '../../../stores/connectionStore';
 import { getLanguage, setLanguage, SUPPORTED_LANGUAGES, t, SupportedLanguage } from '../../../i18n';
 import { pickAndCropImage } from '../../ImageCropModal';
 import { showIdentityExportDialog, showIdentityImportDialog } from '../../IdentityDialogs';
+import { showBackupExportDialog, showBackupImportDialog } from '../../BackupDialogs';
 import { showAlert } from '../../Dialog';
 import { attachInputEmojiPicker } from '../../../utils/inputEmojiPicker';
 
@@ -88,6 +89,27 @@ export class AccountTab {
           </div>
         </div>
       </div>
+      <div class="form-group" style="border-top: 1px solid var(--border-color); padding-top: 14px; margin-top: 14px;">
+        <label style="display: flex; align-items: center; gap: 6px;">
+          <span class="material-symbols-outlined md-16" style="color: var(--accent-primary);">backup</span>
+          ${t('backup.sectionTitle')}
+        </label>
+        <div style="padding: 12px; background: var(--bg-card); border: 1px solid var(--border-color); border-radius: var(--radius-md);">
+          <div style="font-size: 12px; color: var(--text-secondary); line-height: 1.45; margin-bottom: 10px;">
+            ${t('backup.sectionIntro')}
+          </div>
+          <div style="display: flex; gap: 8px; flex-wrap: wrap;">
+            <button type="button" id="btn-export-backup" class="btn btn-secondary">
+              <span class="material-symbols-outlined md-16" style="margin-right: 4px;">download</span>
+              ${t('backup.exportAction')}
+            </button>
+            <button type="button" id="btn-import-backup" class="btn btn-secondary">
+              <span class="material-symbols-outlined md-16" style="margin-right: 4px;">upload</span>
+              ${t('backup.importAction')}
+            </button>
+          </div>
+        </div>
+      </div>
     `;
   }
 
@@ -149,9 +171,24 @@ export class AccountTab {
         connectionStore.clientId = imported.clientId;
         connectionStore.publicKey = imported.publicKey;
         connectionStore.hasIdentity = true;
-        showAlert({ title: t('identity.importTitle'), message: t('identity.importSuccess') });
+        const restored = imported.restoredScopes ?? [];
+        const message = imported.extrasFailed
+          ? `${t('identity.importSuccess')} ${t('backup.extrasRestoreFailed')}`
+          : restored.length > 0
+            ? `${t('identity.importSuccess')} ${t('backup.extrasRestored')}`
+            : t('identity.importSuccess');
+        showAlert({ title: t('identity.importTitle'), message });
         callbacks.onReloadModal();
       }
+    });
+
+    container.querySelector<HTMLButtonElement>('#btn-export-backup')?.addEventListener('click', async () => {
+      await showBackupExportDialog();
+    });
+
+    container.querySelector<HTMLButtonElement>('#btn-import-backup')?.addEventListener('click', async () => {
+      const applied = await showBackupImportDialog();
+      if (applied && applied.length > 0) callbacks.onReloadModal();
     });
   }
 

@@ -1,4 +1,4 @@
-import { bumpVersion, determineBumpType, calculateNextVersion, promoteBetaTag, BETA_SUFFIX, parseVersionTag, compareVersionTags, getLatestReleaseTag, getLatestSemverTag } from './calculate-version.js';
+import { bumpVersion, determineBumpType, calculateNextVersion, promoteBetaTag, BETA_SUFFIX, parseVersionTag, compareVersionTags, getLatestReleaseTag, getLatestSemverTag, splitCommitEntries, bumpTypeForEntry, collectBumps, applyBumps } from './calculate-version.js';
 
 console.log('=== Início dos Testes de Versionamento SemVer (#122) ===');
 
@@ -38,12 +38,15 @@ console.assert(determineBumpType(['major: redesign architecture']) === 'major', 
 console.log('✔ determineBumpType identificou corretamente major, minor e patch');
 
 // 3. Test calculateNextVersion helper
+//
+// Cada commit move o número: a feature leva 1.0.55 a 1.1.0 e o fix seguinte
+// soma o patch em cima dela (#465).
 const resMinor = calculateNextVersion({
   prevTag: 'v1.0.55',
   commits: ['feat(ui): toggle noise suppression', 'fix(ui): fix alignment'],
 });
-console.assert(resMinor.nextVersion === '1.1.0', 'calculateNextVersion com feat deve resultar em 1.1.0');
-console.assert(resMinor.nextTag === 'v1.1.0', 'nextTag deve ser v1.1.0');
+console.assert(resMinor.nextVersion === '1.1.1', 'feat seguido de fix deve resultar em 1.1.1');
+console.assert(resMinor.nextTag === 'v1.1.1', 'nextTag deve ser v1.1.1');
 
 const resPatch = calculateNextVersion({
   prevTag: 'v1.0.55',
@@ -231,6 +234,118 @@ console.assert(
 // Promover a última beta publica exatamente os números dela.
 console.assert(promoteBetaTag('v1.2.0-beta') === '1.2.0', 'promoção usa os números da beta');
 console.log('✔ Numeração a partir da última release validada com sucesso! (#378)');
+
+// 6. Um bump por commit, não um por release (#465)
+//
+// Antes, a release inteira ganhava um único bump: o do tipo mais alto que
+// aparecesse no intervalo. Um PR com três correções movia um patch só, e o
+// squash piorava isso, porque colapsava o PR inteiro num commit e só o título
+// era lido. Agora cada commit descrito no intervalo move o número.
+
+// Uma mensagem simples é um commit só.
+console.assert(splitCommitEntries('fix: algo').length === 1, 'mensagem simples é um commit');
+console.assert(splitCommitEntries('').length === 0, 'mensagem vazia não gera commit');
+
+// A mensagem de squash que o GitHub escreve: título + a lista dos commits.
+const squash = [
+  'fix: varias correcoes (#469)',
+  '',
+  '* fix: primeira correcao',
+  '',
+  'Um corpo qualquer explicando a primeira.',
+  '',
+  '* fix: segunda correcao',
+  '',
+  '* fix: terceira correcao',
+  '',
+  'Co-authored-by: Copilot <223556219+Copilot@users.noreply.github.com>',
+].join('\n');
+console.assert(splitCommitEntries(squash).length === 3, 'o squash rende os 3 commits que carrega');
+console.assert(
+  collectBumps([squash]).join(',') === 'patch,patch,patch',
+  'os 3 commits do squash valem 3 patches'
+);
+// O cenário exato da issue: 1.0.0 com 3 bugs vira 1.0.3.
+console.assert(
+  calculateNextVersion({ prevTag: 'v1.0.0', commits: [squash] }).nextVersion === '1.0.3',
+  '3 correcoes num PR levam 1.0.0 a 1.0.3'
+);
+
+// O título do squash não pode ser contado junto com os itens, senão o mesmo
+// trabalho bumparia duas vezes.
+console.assert(
+  splitCommitEntries('fix: uma coisa (#1)\n\n* fix: uma coisa').length === 1,
+  'o título do squash é ignorado quando os itens estão presentes'
+);
+
+// 2 features e 3 correções no mesmo PR, na ordem em que foram feitas.
+const squashMisto = [
+  'feat: pacote de mudancas (#470)',
+  '',
+  '* feat: primeira feature',
+  '* feat: segunda feature',
+  '* fix: primeiro bug',
+  '* fix: segundo bug',
+  '* fix: terceiro bug',
+].join('\n');
+console.assert(
+  calculateNextVersion({ prevTag: 'v1.0.0', commits: [squashMisto] }).nextVersion === '1.2.3',
+  '2 features e 3 correcoes levam 1.0.0 a 1.2.3'
+);
+
+// A ordem importa, porque os bumps são aplicados em sequência.
+console.assert(applyBumps('1.0.0', ['patch', 'minor']) === '1.1.0', 'o minor zera o patch anterior');
+console.assert(applyBumps('1.0.0', ['minor', 'patch']) === '1.1.1', 'o patch soma sobre o minor');
+console.assert(applyBumps('1.0.0', []) === '1.0.1', 'sem commits reconhecidos ainda anda um patch');
+console.assert(applyBumps('v1.8.0-beta', ['patch', 'patch']) === '1.8.2', 'aplica sobre uma beta');
+
+// Classificação de um commit isolado, com ou sem o marcador de lista.
+console.assert(bumpTypeForEntry('* feat: x') === 'minor', 'item de lista com feat é minor');
+console.assert(bumpTypeForEntry('- fix(ui): x') === 'patch', 'item de lista com fix é patch');
+console.assert(bumpTypeForEntry('* feat!: x') === 'major', 'item de lista com ! é major');
+console.assert(
+  bumpTypeForEntry('* refactor: x\n\nBREAKING CHANGE: muda tudo') === 'major',
+  'BREAKING CHANGE no corpo do item é major'
+);
+console.assert(bumpTypeForEntry('sem tipo nenhum') === 'patch', 'commit sem tipo é patch');
+
+// O breaking change de um item não pode contaminar os outros: o bloco de cada
+// commit vai até o item seguinte.
+const squashComBreaking = [
+  'feat: mudancas (#471)',
+  '',
+  '* fix: correcao comum',
+  '',
+  '* feat!: muda o protocolo',
+  '',
+  'BREAKING CHANGE: cliente e servidor precisam subir juntos.',
+].join('\n');
+console.assert(
+  collectBumps([squashComBreaking]).join(',') === 'patch,major',
+  'o breaking change fica no item a que pertence'
+);
+console.assert(
+  calculateNextVersion({ prevTag: 'v1.0.0', commits: [squashComBreaking] }).nextVersion === '2.0.0',
+  'o major zera o patch que veio antes dele'
+);
+console.assert(
+  determineBumpType([squashComBreaking]) === 'major',
+  'determineBumpType continua reportando o tipo mais alto'
+);
+
+// Prosa no corpo não pode virar commit. Só listas com um tipo conhecido contam.
+const comProsa = [
+  'fix: uma correcao (#472)',
+  '',
+  '- o problema acontecia ao sair da chamada',
+  '- a correcao limpa o estado no teardown',
+].join('\n');
+console.assert(
+  collectBumps([comProsa]).length === 1,
+  'bullets de prosa não são contados como commits'
+);
+
+console.log('✔ Bump por commit validado com sucesso! (#465)');
 
 if (failures > 0) {
   console.error(`=== ${failures} asserção(ões) de versionamento falharam ===`);

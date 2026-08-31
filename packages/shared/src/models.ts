@@ -131,6 +131,8 @@ export interface ServerDetails {
   maxUsers: number;
   hasPassword?: boolean;
   allowSoundboard?: boolean;
+  /** Whether `@todos` / `@everyone` mentions the whole channel (#464). */
+  allowEveryoneMention?: boolean;
   iconUrl?: string | null;
   channels: ChannelSummary[];
   /** One entry per live connection: a user signed in from two devices appears twice (#309). */

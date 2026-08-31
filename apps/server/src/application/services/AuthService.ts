@@ -333,6 +333,7 @@ export class AuthService {
       maxUsers: server.maxUsers,
       hasPassword: !!(server.passwordHash && server.passwordHash.length > 0),
       allowSoundboard: server.allowSoundboard !== false,
+      allowEveryoneMention: server.allowEveryoneMention !== false,
       turnEnabled: Boolean(server.turnEnabled),
       iconUrl: this.avatarStorage.getPublicUrl(server.iconPath),
       channels: visibleChannels.map((c) => ({
@@ -394,6 +395,7 @@ export class AuthService {
     name?: string;
     password?: string | null;
     allowSoundboard?: boolean;
+    allowEveryoneMention?: boolean;
     iconBase64?: string | null;
     maxAttachmentFileBytes?: number;
     maxAttachmentStorageBytes?: number;
@@ -404,6 +406,7 @@ export class AuthService {
     name?: string;
     hasPassword?: boolean;
     allowSoundboard?: boolean;
+    allowEveryoneMention?: boolean;
     iconUrl?: string | null;
     attachmentStorage?: AttachmentStorageInfo;
     maxUsers?: number;
@@ -467,6 +470,9 @@ export class AuthService {
     if (payload.allowSoundboard !== undefined) {
       updates.allowSoundboard = Boolean(payload.allowSoundboard);
     }
+    if (payload.allowEveryoneMention !== undefined) {
+      updates.allowEveryoneMention = Boolean(payload.allowEveryoneMention);
+    }
 
     if (payload.turnEnabled !== undefined) {
       updates.turnEnabled = Boolean(payload.turnEnabled);
@@ -513,6 +519,7 @@ export class AuthService {
       name: updatedServer?.name || server.name,
       hasPassword: !!(updatedServer?.passwordHash && updatedServer.passwordHash.length > 0),
       allowSoundboard: updatedServer?.allowSoundboard !== false,
+      allowEveryoneMention: updatedServer?.allowEveryoneMention !== false,
       iconUrl: this.avatarStorage.getPublicUrl(updatedServer?.iconPath),
       attachmentStorage: await this.attachmentService.getStorageInfo(),
       maxUsers: updatedServer?.maxUsers ?? server.maxUsers,
