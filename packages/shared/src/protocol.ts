@@ -195,6 +195,8 @@ export interface ServerUpdateSettingsPayload {
   name?: string;
   password?: string | null; // null or empty string removes the password
   allowSoundboard?: boolean;
+  /** Enables or disables the `@todos` / `@everyone` mention (#464). */
+  allowEveryoneMention?: boolean;
   iconBase64?: string | null; // Data URL, pure base64, or null to remove
   // Attachment storage limits in bytes (#11).
   maxAttachmentFileBytes?: number;
@@ -362,6 +364,8 @@ export interface ServerSettingsUpdatedPayload {
   name: string;
   hasPassword: boolean;
   allowSoundboard?: boolean;
+  /** Current state of the `@todos` / `@everyone` mention (#464). */
+  allowEveryoneMention?: boolean;
   iconUrl?: string | null;
   // Current attachment-storage limits + usage, so the settings UI stays in sync (#11).
   attachmentStorage?: AttachmentStorageInfo;

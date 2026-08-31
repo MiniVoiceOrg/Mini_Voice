@@ -919,6 +919,7 @@ export class WebSocketServer {
       name: result.name!,
       hasPassword: result.hasPassword!,
       allowSoundboard: result.allowSoundboard,
+      allowEveryoneMention: result.allowEveryoneMention,
       iconUrl: result.iconUrl,
       attachmentStorage: result.attachmentStorage,
       maxUsers: result.maxUsers,

@@ -81,6 +81,7 @@ export const ptBR = {
   'config.askPort': 'Porta do servidor',
   'config.askIcon': 'Caminho da imagem do servidor (deixe vazio para remover)',
   'config.askSoundboard': 'Permitir soundboard?',
+  'config.askEveryoneMention': 'Permitir menção @todos?',
   'config.askTurn': 'Habilitar o relay de mídia (TURN)?',
   'config.askAutoUpdate': 'Habilitar atualização automática?',
   'config.askMaxUsers': 'Limite de membros (0 para sem limite)',

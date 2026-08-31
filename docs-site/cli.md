@@ -369,6 +369,7 @@ monky config set <chave> [valor]    # altera direto
 | `icon` | Caminho de uma imagem, copiada para a pasta de dados. Vazio ou `clear` remove | sem ícone |
 | `maxUsers` | Máximo de membros cadastrados. `0` remove o limite | `20` |
 | `allowSoundboard` | Permite o soundboard (`true`/`false`) | `true` |
+| `allowEveryoneMention` | Permite `@todos`/`@everyone` no chat (`true`/`false`) | `true` |
 | `maxAttachmentFileBytes` | Tamanho máximo por anexo, em bytes | sem limite |
 | `maxAttachmentStorageBytes` | Espaço total para anexos, em bytes | sem limite |
 | `autoUpdate` | Liga a atualização automática diária (`true`/`false`) | `false` |

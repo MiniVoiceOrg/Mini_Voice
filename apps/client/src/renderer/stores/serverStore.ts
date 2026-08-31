@@ -181,7 +181,8 @@ export class ServerStore {
     iconUrl?: string | null,
     attachmentStorage?: AttachmentStorageInfo,
     maxUsers?: number,
-    turnEnabled?: boolean
+    turnEnabled?: boolean,
+    allowEveryoneMention?: boolean
   ): void {
     if (this.serverDetails) {
       this.serverDetails.name = name;
@@ -200,6 +201,9 @@ export class ServerStore {
       }
       if (turnEnabled !== undefined) {
         this.serverDetails.turnEnabled = turnEnabled;
+      }
+      if (allowEveryoneMention !== undefined) {
+        this.serverDetails.allowEveryoneMention = allowEveryoneMention;
       }
       this.bus.emit('server.updated');
       this.bus.emit('server.meta_updated', this.serverDetails);

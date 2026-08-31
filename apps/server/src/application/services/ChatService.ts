@@ -5,6 +5,7 @@ import {
   LIMITS,
   ProtocolErrorCode,
   attachmentCaptionSchema,
+  hasEveryoneMention,
   messageContentSchema,
 } from '@monky/shared';
 import { MentionRecord, MessageRecord } from '../../domain/entities';
@@ -12,6 +13,7 @@ import {
   IChannelRepository,
   IMentionRepository,
   IMessageRepository,
+  IServerRepository,
   IUserRepository,
 } from '../../domain/repositories';
 import { AvatarStorageService } from '../../infrastructure/security/AvatarStorageService';
@@ -26,7 +28,15 @@ export class ChatService {
     private mentionRepo: IMentionRepository,
     private avatarStorage: AvatarStorageService,
     private rateLimiter: RateLimiter,
-    private attachmentService: AttachmentService
+    private attachmentService: AttachmentService,
+    private serverRepo: IServerRepository,
+    /**
+     * Whether a user may see a channel (#464). Injected as a callback so the
+     * chat layer does not have to know about roles and permissions: `@todos`
+     * must never ping people who cannot even see the private channel it was
+     * written in.
+     */
+    private canUserAccessChannel: (userId: string, channelId: string) => Promise<boolean>
   ) {}
 
   public async sendMessage(
@@ -125,6 +135,9 @@ export class ChatService {
    * a case-insensitive substring `@<nickname>` (nicknames may contain spaces, so
    * a token split is not reliable). Returns the list of mentioned user ids so the
    * caller can notify online users in real time.
+   *
+   * `@todos` / `@everyone` mentions everyone who can see the channel, when the
+   * server allows it (#464).
    */
   private async persistMentions(
     authorId: string,
@@ -137,11 +150,23 @@ export class ChatService {
     const allUsers = await this.userRepo.listAll();
     const mentionedUserIds: string[] = [];
 
+    let mentionsEveryone = hasEveryoneMention(message.content);
+    if (mentionsEveryone) {
+      const server = await this.serverRepo.getServer();
+      if (server?.allowEveryoneMention === false) mentionsEveryone = false;
+    }
+
     for (const candidate of allUsers) {
       if (candidate.id === authorId) continue;
+
+      let mentioned = false;
       const nickname = candidate.nickname.trim().toLowerCase();
-      if (!nickname) continue;
-      if (!lowerContent.includes('@' + nickname)) continue;
+      if (nickname && lowerContent.includes('@' + nickname)) {
+        mentioned = true;
+      } else if (mentionsEveryone && (await this.canUserAccessChannel(candidate.id, channelId))) {
+        mentioned = true;
+      }
+      if (!mentioned) continue;
 
       mentionedUserIds.push(candidate.id);
       const mention: MentionRecord = {

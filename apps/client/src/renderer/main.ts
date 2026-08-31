@@ -19,6 +19,7 @@ import {
   VoiceStateChangedPayload,
   VoiceUserJoinedPayload,
   VoiceUserLeftPayload,
+  hasEveryoneMention,
 } from '@monky/shared';
 import { audioProcessor } from './core/AudioProcessor';
 import { appEvents } from './core/EventBus';
@@ -562,7 +563,12 @@ class App {
         const me = serverStore.currentUser;
         if (me && message.userId !== me.id) {
           const nick = (me.nickname || '').trim().toLowerCase();
-          const isMention = !!nick && message.content.toLowerCase().includes(`@${nick}`);
+          // `@todos` counts as a mention for everyone in the channel when the
+          // server allows it (#464).
+          const everyoneAllowed = serverStore.serverDetails?.allowEveryoneMention !== false;
+          const isMention =
+            (!!nick && message.content.toLowerCase().includes(`@${nick}`)) ||
+            (everyoneAllowed && hasEveryoneMention(message.content));
 
           // Resolve the chat-sound mode with the 3-level precedence
           // channel → server → global (#153).

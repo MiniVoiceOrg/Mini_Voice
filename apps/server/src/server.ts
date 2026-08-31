@@ -67,6 +67,7 @@ export async function ensureServerSeedData(
       maxUsers: config.maxUsers ?? LIMITS.MAX_USERS_DEFAULT,
       ownerUserId: null,
       allowSoundboard: true,
+      allowEveryoneMention: true,
     });
 
     await channelRepo.create({
@@ -223,7 +224,9 @@ export class MonkyServer {
       mentionRepo,
       avatarStorage,
       rateLimiter,
-      attachmentService
+      attachmentService,
+      serverRepo,
+      (userId, channelId) => channelService.canUserAccessChannel(userId, channelId)
     );
 
     let getOnlineUsers: () => any = () => new Map();
