@@ -394,24 +394,15 @@ monky config set turn true          # ver "Relay de mídia (TURN)" abaixo
 ## Relay de mídia (TURN)
 
 Por padrão, a voz e o vídeo do Monky trafegam **direto entre os participantes**
-(P2P). O servidor só intermedeia a apresentação inicial. Isso é ótimo: menos
-latência e banda quase zero para quem hospeda.
+(P2P). Quando dois membros estão atrás de **CGNAT**, eles não conseguem se
+enxergar e a chamada não conecta. O TURN resolve fazendo o servidor **repassar a
+mídia** desse par.
 
-O problema aparece quando dois membros estão atrás de **CGNAT** — comum em
-internet móvel e em boa parte dos provedores residenciais no Brasil. Nesse
-cenário os dois lados podem simplesmente não conseguir se enxergar, e a chamada
-entre eles não conecta, mesmo que cada um conecte normalmente com os demais.
-
-O TURN resolve isso fazendo o servidor **repassar a mídia** desse par
-específico. É o último recurso: o WebRTC sempre tenta a rota direta primeiro e
-só cai no relay quando não há alternativa.
-
-### Requisitos
-
-- Host **Linux** com IP público (uma VPS típica). Não existe pacote do coturn
-  para Windows ou macOS, então o relay não está disponível nessas plataformas.
-- Portas liberadas: `3478/tcp`, `3478/udp` e a faixa `49152-65535/udp`.
-- Banda no host: cada par relayado consome upload **e** download do servidor.
+::: tip Guia completo
+Veja a [página dedicada do Relay TURN](/turn) com instruções detalhadas de
+portas, firewall (Oracle Cloud, AWS, iptables, ufw), verificação e
+troubleshooting.
+:::
 
 ### Ativando
 
@@ -420,34 +411,24 @@ monky config set turn true
 monky restart
 ```
 
-O coturn é instalado **automaticamente** pela sua distro, na primeira vez que
-você liga o relay. Isso vale tanto para o comando acima quanto para o botão em
-Configurações do Servidor → Voz e Vídeo no app.
+O coturn é instalado **automaticamente** pela sua distro. Se o servidor não rodar
+como root, rode uma vez: `sudo bash scripts/install-turn.sh`
 
-Instalar pacote exige root. Se o servidor não rodar como root nem tiver `sudo`
-sem senha, o Monky não consegue fazer isso sozinho e avisa — nesse caso, rode
-uma vez:
+### Portas necessárias
+
+| Porta | Protocolo | Função |
+|---|---|---|
+| `3478` | TCP e UDP | Sinalização TURN |
+| `49152-65535` | UDP | Relay de mídia |
+
+Devem estar abertas **tanto no firewall do Linux quanto no painel do provedor**
+(Oracle Cloud, AWS, etc.).
+
+### Verificando
 
 ```bash
-sudo bash scripts/install-turn.sh
+monky status    # deve mostrar ✔ acessível
 ```
-
-A instalação desabilita o serviço de sistema do coturn de propósito: quem sobe e
-configura o processo é o próprio Monky, e duas instâncias brigariam pela porta
-3478.
-
-::: warning Não esqueça do firewall do provedor
-Liberar as portas no `ufw`/`iptables` não basta se a sua VPS tiver firewall no
-painel do provedor (Oracle Cloud, AWS, Azure e GCP têm). O relay parece ligado
-e mesmo assim ninguém conecta.
-:::
-
-### Conferindo se está funcionando
-
-No app, um participante conectado via relay ganha um ícone âmbar `swap_horiz`
-ao lado do nome, tanto no palco quanto na lista do canal de voz. Se ninguém
-mostrar o ícone, ou todo mundo está conectando direto (o cenário ideal) ou o
-relay não subiu — confira com `monky logs`, que registra a saída do coturn.
 
 ### Desligando
 

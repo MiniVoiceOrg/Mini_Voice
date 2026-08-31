@@ -41,7 +41,7 @@ referência completa dos comandos está em [Monky CLI](/cli).
 Quando dois membros estão atrás de CGNAT, eles podem não conseguir se conectar
 diretamente. O Monky traz um **relay TURN opcional** (desligado por padrão) que
 repassa a mídia desse par pelo servidor — veja
-[Relay de mídia (TURN)](/cli#relay-de-midia-turn). Sem ele, a saída para redes
+[Relay de mídia (TURN)](/turn). Sem ele, a saída para redes
 muito restritas continua sendo uma VPN.
 
 ## Manutenção
