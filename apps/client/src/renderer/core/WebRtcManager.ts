@@ -897,21 +897,7 @@ export class WebRtcManager {
       event.track.onunmute = () => {
         this.voiceParticipants.setRemoteStream(peerSessionId, remoteStream);
         if (event.track.kind === 'audio') {
-          const audioEl = this.mediaRouter.getAudioElement(peerSessionId);
-          if (audioEl) {
-            audioEl.muted = this.isDeafened || voiceStore.getEffectiveDeafened();
-            // Only (re)assign srcObject if it actually changed: reassigning the
-            // same stream can reset the element's audio output sink back to the
-            // OS default in Chromium, sending voice to the wrong device (#46).
-            if (audioEl.srcObject !== remoteStream) {
-              audioEl.srcObject = remoteStream;
-            }
-            // Force-reapply the selected speaker before playing, since a track
-            // (re)unmute after rejoining can drop the previously set sink.
-            this.mediaRouter.applySinkToElement(audioEl, undefined, true).finally(() => {
-              audioEl.play().catch(() => {});
-            });
-          }
+          this.mediaRouter.ensureVoiceAudioElement(peerSessionId, remoteStream);
         } else if (event.track.kind === 'video') {
           const videoEl = document.getElementById(`video-${peerSessionId}-camera`) as HTMLVideoElement;
           if (videoEl) {
@@ -1409,6 +1395,10 @@ export class WebRtcManager {
   public setDeafened(deafened: boolean): void {
     this.isDeafened = deafened;
     this.mediaRouter.setDeafened(deafened);
+  }
+
+  public setScreenAudioMuted(peerSessionId: string, muted: boolean): void {
+    this.mediaRouter.setScreenAudioMuted(peerSessionId, muted);
   }
 
   public async setSpeakerDeviceId(deviceId: string): Promise<void> {

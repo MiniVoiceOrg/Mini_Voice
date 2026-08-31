@@ -632,8 +632,6 @@ export class VoiceStageView {
         // Persisted per device, not per person (#363): the same person sharing
         // from two machines gets one slider each.
         settingsStore.setScreenAudioVolume(sessionId, vol);
-        const audioEl = document.querySelector(`audio[data-screen-audio-session="${sessionId}"]`) as HTMLAudioElement | null;
-        if (audioEl) audioEl.volume = vol / 100;
       });
     });
 
@@ -660,18 +658,16 @@ export class VoiceStageView {
         if (!slider) return;
         const sessionId = slider.getAttribute('data-session-id');
         if (!sessionId) return;
-        const audioEl = document.querySelector(`audio[data-screen-audio-session="${sessionId}"]`) as HTMLAudioElement | null;
-
         const icon = btn.querySelector('.material-symbols-outlined');
         if (this.mutedScreenSessionIds.has(sessionId)) {
           this.mutedScreenSessionIds.delete(sessionId);
-          if (audioEl) audioEl.muted = voiceStore.getEffectiveDeafened() ? true : false;
+          webRtcManager.setScreenAudioMuted(sessionId, false);
           if (icon) icon.textContent = 'volume_up';
           btn.title = t('stage.screenAudioVolume');
           wrapper?.classList.remove('screen-audio-muted');
         } else {
           this.mutedScreenSessionIds.add(sessionId);
-          if (audioEl) audioEl.muted = true;
+          webRtcManager.setScreenAudioMuted(sessionId, true);
           if (icon) icon.textContent = 'volume_off';
           btn.title = t('stage.screenAudioMuted');
           wrapper?.classList.add('screen-audio-muted');
@@ -947,7 +943,7 @@ export class VoiceStageView {
             ${isRemoteScreen ? `
               <div class="stage-volume-wrapper">
                 <div class="stage-volume-popup">
-                  <input type="range" class="stage-screen-volume-slider" data-session-id="${sidOf(p)}" min="0" max="100" value="${settingsStore.getScreenAudioVolume(sidOf(p), p.user.clientId)}" />
+                  <input type="range" class="stage-screen-volume-slider" data-session-id="${sidOf(p)}" min="0" max="200" value="${settingsStore.getScreenAudioVolume(sidOf(p), p.user.clientId)}" />
                 </div>
                 <button class="stage-volume-btn" title="${t('stage.screenAudioVolume')}" aria-label="${t('stage.volumeAria')}">
                   <span class="material-symbols-outlined md-18">volume_up</span>

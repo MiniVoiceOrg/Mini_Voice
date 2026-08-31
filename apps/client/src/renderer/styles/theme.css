@@ -5520,10 +5520,11 @@ body > .reconnect-overlay {
   width: 100%;
   height: 6px;
   border-radius: var(--radius-full);
+  --slider-color: var(--accent-primary);
   background: linear-gradient(
     to right,
-    var(--accent-primary) 0%,
-    var(--accent-primary) var(--slider-fill, 100%),
+    var(--slider-color) 0%,
+    var(--slider-color) var(--slider-fill, 100%),
     rgba(255, 255, 255, 0.2) var(--slider-fill, 100%),
     rgba(255, 255, 255, 0.2) 100%
   ) !important;
@@ -5532,6 +5533,7 @@ body > .reconnect-overlay {
   border: none;
   padding: 0;
   margin: 0;
+  transition: --slider-color 0.2s ease;
 }
 
 .user-volume-slider::-webkit-slider-runnable-track {
@@ -5558,12 +5560,12 @@ body > .reconnect-overlay {
 
 .user-volume-slider::-webkit-slider-thumb:hover {
   transform: scale(1.15);
-  box-shadow: 0 0 8px var(--accent-primary);
+  box-shadow: 0 0 8px var(--slider-color, var(--accent-primary));
 }
 
 .user-volume-slider::-webkit-slider-thumb:active {
   transform: scale(1.25);
-  background: var(--accent-primary);
+  background: var(--slider-color, var(--accent-primary));
 }
 
 .context-menu-quick-btns {
