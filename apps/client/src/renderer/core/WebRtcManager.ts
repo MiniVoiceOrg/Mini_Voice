@@ -38,6 +38,11 @@ export interface PeerSession {
   watchdogTimer?: any;
   disconnectGraceTimer?: any;
   isRecovering: boolean;
+  /**
+   * Last relay verdict pushed to the participant list, so the periodic sample
+   * only writes (and logs) when the route actually changes (#466).
+   */
+  isRelayed?: boolean;
 }
 
 /**
@@ -60,6 +65,15 @@ export class WebRtcManager {
    * only decides when to warn.
    */
   private static readonly PEER_FAILURE_THRESHOLD_MS = 20000;
+
+  /**
+   * How often the route to each connected peer is re-read (#466).
+   *
+   * Cheap enough to keep running for the whole call — `getStats()` on a handful
+   * of peers every few seconds — and short enough that the indicator catches up
+   * with an ICE upgrade well before anyone reads anything into it.
+   */
+  private static readonly RELAY_SAMPLE_INTERVAL_MS = 5000;
 
   private peers: Map<string, PeerSession> = new Map();
   private mediaRouter: RemoteMediaRouter;
@@ -92,6 +106,8 @@ export class WebRtcManager {
    * working is usually a blip worth waiting out.
    */
   private everConnectedPeers: Set<string> = new Set();
+  /** Interval timers that keep the relay indicator honest, per peer (#466). */
+  private relayMonitors: Map<string, any> = new Map();
   private localAudioTrack: MediaStreamTrack | null = null;
   private localCameraTrack: MediaStreamTrack | null = null;
   /** Local screen video tracks keyed by share id (#253). */
@@ -389,6 +405,7 @@ export class WebRtcManager {
 
     if (existing) {
       this.clearPeerTimers(existing);
+      this.stopRelayMonitor(peerSessionId);
       this.vadMonitor.cleanupRemoteVad(peerSessionId);
       try {
         existing.pc.close();
@@ -517,9 +534,20 @@ export class WebRtcManager {
     appEvents.emit('remote.peer_recovered', { sessionId: peerSessionId });
   }
 
+  /**
+   * Wipes everything this manager knows about a peer link (#466).
+   *
+   * The indicators describe a link, not a person, so they have to go the moment
+   * the link does. Leaving them behind is what kept the relay badge on somebody
+   * after the call ended, and showed "no direct connection" next to a person
+   * sitting in a different voice channel — where there is no link at all.
+   */
   private forgetPeerFailureState(peerSessionId: string): void {
     this.clearPeerFailureCountdown(peerSessionId);
+    this.stopRelayMonitor(peerSessionId);
     this.voiceParticipants.setPeerConnecting(peerSessionId, false);
+    this.voiceParticipants.setPeerConnectionFailed(peerSessionId, false);
+    this.voiceParticipants.setPeerRelayed(peerSessionId, false);
     this.failedPeers.delete(peerSessionId);
     this.everConnectedPeers.delete(peerSessionId);
   }
@@ -528,42 +556,120 @@ export class WebRtcManager {
    * Checks whether the established link is going through a TURN relay (#425).
    *
    * ICE picks the relay on its own, and only when no direct path exists, so
-   * this is read from the succeeded candidate pair rather than assumed from
-   * whether a TURN server was offered. Either endpoint being of type `relay`
-   * means the media is being forwarded by the server.
+   * this is read from the candidate pair actually carrying media rather than
+   * assumed from whether a TURN server was offered. Either endpoint being of
+   * type `relay` means the media is being forwarded by the server.
+   *
+   * Sampled repeatedly rather than once, because the first pair to succeed is
+   * frequently not the final one: relay pairs have the lowest priority but the
+   * shortest round trip, so ICE regularly connects through the relay and then
+   * promotes the direct pair a moment later. Reading it once at `connected`
+   * froze that first instant and left calls that had gone direct permanently
+   * labelled as relayed (#466).
    */
-  private async detectRelayUsage(peerSessionId: string, session: PeerSession): Promise<void> {
+  private async sampleRelayUsage(peerSessionId: string, session: PeerSession): Promise<void> {
     try {
       const stats = await session.pc.getStats();
+      const pair = WebRtcManager.selectedCandidatePair(stats);
+      if (!pair) return;
 
-      for (const report of stats.values()) {
-        if (report.type !== 'candidate-pair' || !report.nominated || report.state !== 'succeeded') continue;
+      const local = pair.localCandidateId ? stats.get(pair.localCandidateId) : undefined;
+      const remote = pair.remoteCandidateId ? stats.get(pair.remoteCandidateId) : undefined;
+      if (!local && !remote) return;
 
-        const local = report.localCandidateId ? stats.get(report.localCandidateId) : undefined;
-        const remote = report.remoteCandidateId ? stats.get(report.remoteCandidateId) : undefined;
-        const relayed = local?.candidateType === 'relay' || remote?.candidateType === 'relay';
+      const relayed = local?.candidateType === 'relay' || remote?.candidateType === 'relay';
+      if (session.isRelayed === relayed) return;
+      session.isRelayed = relayed;
+      this.voiceParticipants.setPeerRelayed(peerSessionId, relayed);
 
-        this.voiceParticipants.setPeerRelayed(peerSessionId, relayed);
-        if (relayed) {
-          clientLog.info('WEBRTC', `Peer ${peerSessionId} connected via TURN relay`, {
-            localType: local?.candidateType,
-            remoteType: remote?.candidateType,
-          });
-          console.log(`[WebRTC] Peer ${peerSessionId} is connected through the TURN relay.`);
-        } else {
-          clientLog.info('WEBRTC', `Peer ${peerSessionId} connected directly (P2P)`, {
-            localType: local?.candidateType,
-            remoteType: remote?.candidateType,
-          });
-        }
-        return;
-      }
+      clientLog.info(
+        'WEBRTC',
+        relayed
+          ? `Peer ${peerSessionId} is going through the TURN relay`
+          : `Peer ${peerSessionId} is connected directly (P2P)`,
+        { localType: local?.candidateType, remoteType: remote?.candidateType }
+      );
+      console.log(
+        `[WebRTC] Peer ${peerSessionId} route: ${relayed ? 'TURN relay' : 'direct'} (${local?.candidateType} / ${remote?.candidateType})`
+      );
     } catch (error) {
       clientLog.warn('WEBRTC', `Failed to detect relay usage for peer ${peerSessionId}`, {
         error: error instanceof Error ? error.message : String(error),
       });
       console.warn('[WebRTC] Failed to determine whether the peer is relayed:', error);
     }
+  }
+
+  /**
+   * The candidate pair currently carrying media, or undefined while ICE has not
+   * settled on one.
+   *
+   * `transport.selectedCandidatePairId` is the authoritative answer. The
+   * `nominated` fallback exists for engines that omit it, but it is a weaker
+   * signal: nomination shows up in the stats at different moments on each side
+   * of a call, which is how the very same link ended up flagged as relayed on
+   * one machine and as direct on the other (#466).
+   */
+  private static selectedCandidatePair(stats: RTCStatsReport): any | undefined {
+    for (const report of stats.values()) {
+      if (report.type === 'transport' && report.selectedCandidatePairId) {
+        const pair = stats.get(report.selectedCandidatePairId);
+        if (pair) return pair;
+      }
+    }
+    for (const report of stats.values()) {
+      if (report.type === 'candidate-pair' && report.state === 'succeeded' && (report.selected || report.nominated)) {
+        return report;
+      }
+    }
+    return undefined;
+  }
+
+  /** Keeps the relay indicator following the route ICE is actually using (#466). */
+  private startRelayMonitor(peerSessionId: string, session: PeerSession): void {
+    // A recovery throws the RTCPeerConnection away and builds a new one under
+    // the same key, so this always rebinds to the session that just connected
+    // rather than leaving the indicator tied to a connection that is gone.
+    this.stopRelayMonitor(peerSessionId);
+    void this.sampleRelayUsage(peerSessionId, session);
+
+    const timer = setInterval(() => {
+      if (this.peers.get(peerSessionId) !== session || session.pc.connectionState === 'closed') {
+        clearInterval(timer);
+        if (this.relayMonitors.get(peerSessionId) === timer) {
+          this.relayMonitors.delete(peerSessionId);
+        }
+        return;
+      }
+      void this.sampleRelayUsage(peerSessionId, session);
+    }, WebRtcManager.RELAY_SAMPLE_INTERVAL_MS);
+
+    this.relayMonitors.set(peerSessionId, timer);
+  }
+
+  private stopRelayMonitor(peerSessionId: string): void {
+    const timer = this.relayMonitors.get(peerSessionId);
+    if (timer) {
+      clearInterval(timer);
+      this.relayMonitors.delete(peerSessionId);
+    }
+  }
+
+  /**
+   * Whether this peer is in the very call we are in right now (#466).
+   *
+   * The server relays RTC signals by session id alone, without checking voice
+   * channels, so this is the only place that can tell an offer belonging to our
+   * call apart from one left over from a call that has already moved on.
+   * Requiring a known voice state on our own channel is safe because the join
+   * broadcast always reaches us before any signal from that peer: both travel
+   * the same socket, and the server queues the broadcast while handling the
+   * join, before the peer could even send its first offer.
+   */
+  private isPeerInOurCall(peerSessionId: string): boolean {
+    const channelId = voiceStore.currentVoiceChannelId;
+    if (!channelId) return false;
+    return this.voiceParticipants.get(peerSessionId)?.voiceState?.channelId === channelId;
   }
 
   /**
@@ -587,6 +693,7 @@ export class WebRtcManager {
         return;
       }
       this.clearPeerTimers(existingSession);
+      this.stopRelayMonitor(peerSessionId);
       try {
         existingSession.pc.close();
       } catch (e) {}
@@ -842,7 +949,7 @@ export class WebRtcManager {
         this.voiceParticipants.setRemoteStream(peerSessionId, remoteStream);
         this.everConnectedPeers.add(peerSessionId);
         this.markPeerReachable(peerSessionId);
-        void this.detectRelayUsage(peerSessionId, session);
+        this.startRelayMonitor(peerSessionId, session);
       } else if (state === 'failed') {
         this.clearPeerTimers(session);
         appEvents.emit('remote.peer_degraded', { sessionId: peerSessionId });
@@ -933,6 +1040,19 @@ export class WebRtcManager {
 
     let session = this.peers.get(fromSessionId);
     if (!session && signalType === 'offer') {
+      // An offer is the one signal that builds a link out of nothing, so it is
+      // also the one that has to be checked against the call we are actually
+      // in. Signalling is asynchronous: an offer sent just before somebody left
+      // the channel — or before we left it — still lands here afterwards, and
+      // answering it opened a peer connection nobody was on the other end of.
+      // That connection then sat there until the 20s countdown expired and
+      // pinned "no direct connection" on a person sitting in a different voice
+      // channel, where there is no link to fail in the first place (#466).
+      if (!this.isPeerInOurCall(fromSessionId)) {
+        clientLog.info('WEBRTC', `Ignoring offer from ${fromSessionId}: not in our voice channel`);
+        console.log(`[WebRTC] Ignoring stale offer from ${fromSessionId} — not in our call.`);
+        return;
+      }
       await this.connectToPeer(fromSessionId, false);
       session = this.peers.get(fromSessionId);
     }
@@ -1408,6 +1528,11 @@ export class WebRtcManager {
     this.peerFailureTimers.clear();
     this.failedPeers.clear();
     this.everConnectedPeers.clear();
+
+    for (const timer of this.relayMonitors.values()) {
+      clearInterval(timer);
+    }
+    this.relayMonitors.clear();
 
     // Stop any remaining pending tracks
     for (const item of this.pendingScreenAudioTracks.values()) {

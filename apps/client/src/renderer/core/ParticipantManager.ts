@@ -156,6 +156,12 @@ export class ParticipantManager {
     if (participant) {
       participant.voiceState = undefined;
       participant.isSpeaking = false;
+      // Every peer-link indicator describes a WebRTC link, and there is no link
+      // to somebody who is not in a call. Keeping them would carry a stale
+      // "relayed" or "no direct connection" badge into the member list (#466).
+      participant.isConnecting = false;
+      participant.peerConnectionFailed = false;
+      participant.isRelayed = false;
       this.scheduleUpdate();
     }
   }
