@@ -300,7 +300,7 @@ export class ServerRailView {
           ${busy ? 'disabled' : ''}
           style="padding: 0;"
         >
-          ${iconUrl ? `<img src="${escapeHtml(iconUrl)}" style="width: 100%; height: 100%; object-fit: cover; border-radius: inherit; display: block;">` : `<span>${escapeHtml(initial)}</span>`}
+          ${iconUrl ? `<img src="${escapeHtml(iconUrl)}" data-fallback="initial" data-fallback-initial="${escapeHtml(initial)}" style="width: 100%; height: 100%; object-fit: cover; border-radius: inherit; display: block;">` : `<span>${escapeHtml(initial)}</span>`}
           <span class="server-rail-status-dot" data-status="${isCurrent || background ? 'online' : 'checking'}"></span>
           ${badge}
         </button>

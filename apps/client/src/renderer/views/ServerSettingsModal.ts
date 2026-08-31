@@ -13,7 +13,7 @@ import { serverStore } from '../stores/serverStore';
 import { settingsStore, ChatSoundMode } from '../stores/settingsStore';
 import { t } from '../i18n';
 import { enableBackdropClose } from '../utils/modal';
-import logoUrl from '../assets/logo.png';
+import logoUrl from '../assets/Logo.png';
 import { pickAndCropImage } from './ImageCropModal';
 import { attachInputEmojiPicker } from '../utils/inputEmojiPicker';
 import { ServerGeneralTab } from './serverSettings/tabs/ServerGeneralTab';

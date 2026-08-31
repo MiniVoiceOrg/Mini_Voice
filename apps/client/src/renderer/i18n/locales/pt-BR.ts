@@ -8,6 +8,7 @@
 export const ptBR = {
   // ── Comum ────────────────────────────────────────────────────────────────
   'common.cancel': 'Cancelar',
+  'common.imageLoadFailed': 'Não foi possível carregar esta imagem',
   'common.confirm': 'Confirmar',
   'common.save': 'Salvar',
   'common.close': 'Fechar',
