@@ -305,6 +305,8 @@ export interface IpcEvents {
   'ptt:state-changed': [active: boolean];
   'ptt:captured': [binding: PttKeyBinding];
   'screen-audio:frame': [buffer: ArrayBuffer | Uint8Array];
+  /** Falha assincrona da captura nativa (dispositivo caiu, stream derrubado pelo sistema). */
+  'screen-audio:error': [message: string];
   'tray:toggle-mute': [];
   'tray:toggle-deafen': [];
   'updater:progress': [percent: number];
