@@ -13,6 +13,8 @@
     "src/renderer/*.d.ts",
     "src/renderer/utils/**/*",
     "src/renderer/core/EventBus.ts",
+    "src/renderer/core/ClientLogService.ts",
+    "src/renderer/core/VideoService.ts",
     "src/renderer/stores/**/*",
     "test/**/*"
   ]

@@ -14,15 +14,56 @@ export class VideoService {
   private screenStreams: Map<string, MediaStream> = new Map();
   /** Maps stream id → desktop source id so the picker can hide active shares. */
   private screenSourceIds: Map<string, string> = new Map();
-  private currentPreset: QualityPresetType = 'NORMAL';
+  private currentPreset: QualityPresetType = settingsStore.qualityPreset;
 
   public setQualityPreset(preset: QualityPresetType): void {
     this.currentPreset = preset;
   }
 
+  /**
+   * Applies the quality preset dynamically to current preset and updates
+   * constraints on any active camera or screen share tracks.
+   */
+  public async applyQualityPreset(preset: QualityPresetType): Promise<void> {
+    this.currentPreset = preset;
+    const profile = this.getProfile();
+    const isHighFps = profile.screenFps >= 60 || preset === 'GAMING' || preset === 'ULTRA';
+
+    if (this.cameraStream) {
+      const cameraTrack = this.cameraStream.getVideoTracks()[0];
+      if (cameraTrack && cameraTrack.readyState === 'live') {
+        try {
+          await cameraTrack.applyConstraints({
+            width: { ideal: profile.cameraWidth },
+            height: { ideal: profile.cameraHeight },
+            frameRate: { ideal: profile.cameraFps, max: profile.cameraFps },
+          });
+        } catch (err) {
+          clientLog.warn('VIDEO', 'Failed to apply constraints to camera track', { error: String(err) });
+        }
+      }
+    }
+
+    for (const [shareId, stream] of this.screenStreams.entries()) {
+      const screenTrack = stream.getVideoTracks()[0];
+      if (screenTrack && screenTrack.readyState === 'live') {
+        screenTrack.contentHint = isHighFps ? 'motion' : 'detail';
+        try {
+          await screenTrack.applyConstraints({
+            width: { max: profile.screenWidth },
+            height: { max: profile.screenHeight },
+            frameRate: { max: profile.screenFps },
+          });
+        } catch (err) {
+          clientLog.warn('SCREEN_SHARE', 'Failed to apply constraints to screen track', { shareId, error: String(err) });
+        }
+      }
+    }
+  }
+
   public getProfile(): QualityProfile {
     if (this.currentPreset === 'CUSTOM') return settingsStore.customProfile;
-    return QUALITY_PRESETS[this.currentPreset];
+    return QUALITY_PRESETS[this.currentPreset] || QUALITY_PRESETS.NORMAL;
   }
 
   public async startCamera(deviceId?: string): Promise<MediaStream> {
@@ -161,8 +202,8 @@ export class VideoService {
     const screenTrack = stream.getVideoTracks()[0];
 
     // Hint the encoder about the content type so it optimizes correctly:
-    // gaming favors fluid motion, desktop sharing favors sharp detail.
-    screenTrack.contentHint = (this.currentPreset === 'GAMING' || this.currentPreset === 'ULTRA') ? 'motion' : 'detail';
+    // gaming / 60+ fps favors fluid motion, desktop sharing favors sharp detail.
+    screenTrack.contentHint = (profile.screenFps >= 60 || this.currentPreset === 'GAMING' || this.currentPreset === 'ULTRA') ? 'motion' : 'detail';
 
     screenTrack.onended = () => {
       // Fires only when the track ends on its own — e.g. the shared window/app

@@ -14,6 +14,7 @@ import { clientLog } from './ClientLogService';
 import { settingsStore } from '../stores/settingsStore';
 import { serverStore, type ServerStore } from '../stores/serverStore';
 import { voiceStore } from '../stores/voiceStore';
+import { videoService } from './VideoService';
 import { RemoteMediaRouter } from './webrtc/RemoteMediaRouter';
 import { RemoteVadMonitor } from './webrtc/RemoteVadMonitor';
 import { RtcDiagnosticsCollector } from './webrtc/RtcDiagnosticsCollector';
@@ -128,7 +129,7 @@ export class WebRtcManager {
   private localScreenAudioTrack: MediaStreamTrack | null = null;
   private screenAudioStream: MediaStream | null = null;
   private screenAudioStreamId: string | null = null;
-  private currentPreset: QualityPresetType = 'NORMAL';
+  private currentPreset: QualityPresetType = settingsStore.qualityPreset;
   private currentSessionId: string = '';
   private isDeafened: boolean = false;
 
@@ -231,6 +232,9 @@ export class WebRtcManager {
 
   public setQualityPreset(preset: QualityPresetType): void {
     this.currentPreset = preset;
+    videoService.applyQualityPreset(preset).catch((err) => {
+      clientLog.warn('WEBRTC', 'Error applying quality preset to videoService', { error: String(err) });
+    });
     this.applyBitrateConstraints();
   }
 
@@ -1412,7 +1416,7 @@ export class WebRtcManager {
   }
 
   private async applyBitrateConstraints(): Promise<void> {
-    const profile = this.currentPreset === 'CUSTOM' ? settingsStore.customProfile : QUALITY_PRESETS[this.currentPreset];
+    const profile = this.currentPreset === 'CUSTOM' ? settingsStore.customProfile : (QUALITY_PRESETS[this.currentPreset] || QUALITY_PRESETS.NORMAL);
     for (const session of this.peers.values()) {
       for (const sender of session.pc.getSenders()) {
         if (!sender.track) continue;
@@ -1429,14 +1433,15 @@ export class WebRtcManager {
             const isScreen = this.isLocalScreenTrack(sender.track);
             params.encodings[0].maxBitrate =
               (isScreen ? profile.screenBitrateKbps : profile.cameraBitrateKbps) * 1000;
+            params.encodings[0].maxFramerate = isScreen ? profile.screenFps : profile.cameraFps;
 
-            // Gaming/Ultra favor fluid motion (drop resolution before framerate);
-            // desktop/camera favors sharpness (drop framerate before resolution).
-            const highFps = this.currentPreset === 'GAMING' || this.currentPreset === 'ULTRA';
-            (params as any).degradationPreference =
-              (isScreen && highFps) || (!isScreen && this.currentPreset === 'ULTRA')
-                ? 'maintain-framerate'
-                : 'maintain-resolution';
+            if (this.currentPreset === 'GAMING') {
+              // Gaming mode prioritizes fluid motion (drops resolution before framerate)
+              params.degradationPreference = 'maintain-framerate';
+            } else {
+              // Ultra, High, Custom and Normal prioritize resolution fidelity (maintains resolution without downscaling)
+              params.degradationPreference = 'maintain-resolution';
+            }
           }
 
           await sender.setParameters(params);

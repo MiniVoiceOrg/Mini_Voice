@@ -574,6 +574,56 @@ function runTests() {
   conexao.updateSavedServerMeta('192.168.0.1', 3000, { name: 'Inexistente' });
   assert(conexao.savedServers.length === 2, 'Servidor que não está na lista não cria entrada nova');
 
+  // Sincronização de Presets de Qualidade de Vídeo e Compartilhamento de Tela (#474)
+  console.log('\n--- Testando sincronização de presets de qualidade de tela (#474) ---');
+  const { videoService } = require('../src/renderer/core/VideoService');
+  const { settingsStore: globalSettingsStore } = require('../src/renderer/stores/settingsStore');
+
+  // Testar ULTRA preset
+  globalSettingsStore.qualityPreset = 'ULTRA';
+  videoService.applyQualityPreset('ULTRA');
+  const ultraProfile = videoService.getProfile();
+  assert(ultraProfile.screenWidth === 1920, 'ULTRA preset define resolução de tela 1920 de largura');
+  assert(ultraProfile.screenHeight === 1080, 'ULTRA preset define resolução de tela 1080 de altura');
+  assert(ultraProfile.screenFps === 60, 'ULTRA preset define 60 fps para tela');
+  assert(ultraProfile.screenBitrateKbps === 8000, 'ULTRA preset define 8000 kbps para tela');
+
+  // Testar GAMING preset
+  globalSettingsStore.qualityPreset = 'GAMING';
+  videoService.applyQualityPreset('GAMING');
+  const gamingProfile = videoService.getProfile();
+  assert(gamingProfile.screenWidth === 1920 && gamingProfile.screenHeight === 1080, 'GAMING preset é 1080p');
+  assert(gamingProfile.screenFps === 60, 'GAMING preset é 60 fps');
+  assert(gamingProfile.screenBitrateKbps === 6000, 'GAMING preset define 6000 kbps');
+
+  // Testar ECONOMIC preset
+  globalSettingsStore.qualityPreset = 'ECONOMIC';
+  videoService.applyQualityPreset('ECONOMIC');
+  const economicProfile = videoService.getProfile();
+  assert(economicProfile.screenWidth === 854 && economicProfile.screenHeight === 480, 'ECONOMIC preset é 480p');
+  assert(economicProfile.screenFps === 15, 'ECONOMIC preset capa em 15 fps');
+  assert(economicProfile.screenBitrateKbps === 900, 'ECONOMIC preset capa bitrate em 900 kbps');
+
+  // Testar CUSTOM preset
+  globalSettingsStore.qualityPreset = 'CUSTOM';
+  globalSettingsStore.customProfile = {
+    name: 'Personalizado',
+    audioBitrateKbps: 48,
+    cameraWidth: 1920,
+    cameraHeight: 1080,
+    cameraFps: 60,
+    cameraBitrateKbps: 4000,
+    screenWidth: 2560,
+    screenHeight: 1440,
+    screenFps: 60,
+    screenBitrateKbps: 48000,
+  };
+  videoService.applyQualityPreset('CUSTOM');
+  const customProfile = videoService.getProfile();
+  assert(customProfile.screenWidth === 2560 && customProfile.screenHeight === 1440, 'CUSTOM preset aceita 1440p personalizado');
+  assert(customProfile.screenFps === 60, 'CUSTOM preset aceita 60 fps');
+  assert(customProfile.screenBitrateKbps === 48000, 'CUSTOM preset aceita 48000 kbps de bitrate');
+
   console.log(`\n=== Relatório dos Testes ===`);
   console.log(`Total: ${passed + failed} | Passaram: ${passed} | Falharam: ${failed}`);
 
