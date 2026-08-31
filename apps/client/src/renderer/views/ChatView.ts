@@ -507,7 +507,7 @@ export class ChatView {
 
     return `
       <div class="${rowClass}" data-user-id="${m.userId}" data-message-id="${m.id}">
-        <img class="chat-author-avatar" src="${avatarSrc}">
+        <img class="chat-author-avatar" src="${avatarSrc}" data-fallback="avatar">
         <div class="chat-message-body">
           <div class="chat-author-header">
             <span class="chat-author-name">${escapeHtml(m.userNickname)}</span>
@@ -1146,7 +1146,7 @@ export class ChatView {
         const online = u.status !== 'DISCONNECTED';
         return `
           <div class="mention-item ${i === this.mentionActiveIndex ? 'active' : ''}" data-mention-index="${i}">
-            <img class="mention-avatar" src="${getAvatarUrl(u.avatarUrl)}">
+            <img class="mention-avatar" src="${getAvatarUrl(u.avatarUrl)}" data-fallback="avatar">
             <span class="mention-nick">${escapeHtml(u.nickname)}</span>
             <span class="mention-status-dot ${online ? 'online' : 'offline'}"></span>
           </div>

@@ -7,6 +7,7 @@ import type { TranslationMap } from '../index';
 export const en: TranslationMap = {
   // ── Common ───────────────────────────────────────────────────────────────
   'common.cancel': 'Cancel',
+  'common.imageLoadFailed': 'Could not load this image',
   'common.confirm': 'Confirm',
   'common.save': 'Save',
   'common.close': 'Close',

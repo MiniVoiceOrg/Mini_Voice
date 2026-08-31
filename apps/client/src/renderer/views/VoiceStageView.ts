@@ -964,7 +964,7 @@ export class VoiceStageView {
         `}
       ` : `
         <div class="stage-avatar-wrapper">
-          <img class="stage-avatar-img" src="${avatarSrc}">
+          <img class="stage-avatar-img" src="${avatarSrc}" data-fallback="avatar">
           ${!isMini ? `
             <div class="stage-participant-name">${escapeHtml(participantManager.displayName(p))} ${isLocal ? `(${t('common.you')})` : ''}</div>
           ` : ''}
