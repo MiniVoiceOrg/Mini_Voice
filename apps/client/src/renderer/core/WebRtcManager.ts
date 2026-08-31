@@ -656,6 +656,23 @@ export class WebRtcManager {
   }
 
   /**
+   * Whether this peer is in the very call we are in right now (#466).
+   *
+   * The server relays RTC signals by session id alone, without checking voice
+   * channels, so this is the only place that can tell an offer belonging to our
+   * call apart from one left over from a call that has already moved on.
+   * Requiring a known voice state on our own channel is safe because the join
+   * broadcast always reaches us before any signal from that peer: both travel
+   * the same socket, and the server queues the broadcast while handling the
+   * join, before the peer could even send its first offer.
+   */
+  private isPeerInOurCall(peerSessionId: string): boolean {
+    const channelId = voiceStore.currentVoiceChannelId;
+    if (!channelId) return false;
+    return this.voiceParticipants.get(peerSessionId)?.voiceState?.channelId === channelId;
+  }
+
+  /**
    * Another device of our own in the same call. We still link up with it so
    * camera and screen share work, but its audio is dropped: playing it would
    * feed the speakers of one device into the microphone of the other (#309).
@@ -1023,6 +1040,19 @@ export class WebRtcManager {
 
     let session = this.peers.get(fromSessionId);
     if (!session && signalType === 'offer') {
+      // An offer is the one signal that builds a link out of nothing, so it is
+      // also the one that has to be checked against the call we are actually
+      // in. Signalling is asynchronous: an offer sent just before somebody left
+      // the channel — or before we left it — still lands here afterwards, and
+      // answering it opened a peer connection nobody was on the other end of.
+      // That connection then sat there until the 20s countdown expired and
+      // pinned "no direct connection" on a person sitting in a different voice
+      // channel, where there is no link to fail in the first place (#466).
+      if (!this.isPeerInOurCall(fromSessionId)) {
+        clientLog.info('WEBRTC', `Ignoring offer from ${fromSessionId}: not in our voice channel`);
+        console.log(`[WebRTC] Ignoring stale offer from ${fromSessionId} — not in our call.`);
+        return;
+      }
       await this.connectToPeer(fromSessionId, false);
       session = this.peers.get(fromSessionId);
     }
