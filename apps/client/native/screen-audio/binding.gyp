@@ -32,7 +32,7 @@
         [
           "OS=='mac'",
           {
-            "sources": ["src/mac/sc_capture.mm"],
+            "sources": ["src/mac/sc_capture.mm", "src/mac/window_owners.mm"],
             "xcode_settings": {
               "GCC_ENABLE_CPP_EXCEPTIONS": "YES",
               "CLANG_ENABLE_OBJC_ARC": "YES",
@@ -42,6 +42,8 @@
                 "-framework CoreMedia",
                 "-framework AVFoundation",
                 "-framework Foundation",
+                "-framework CoreGraphics",
+                "-framework AppKit",
                 "-framework CoreAudio"
               ]
             },

@@ -16,6 +16,7 @@ bool platform_start(uint32_t targetPid, uint32_t loopbackMode, int64_t includeWi
 void platform_stop();
 const char* platform_get_last_error();
 int platform_get_status() { return 0; }
+Napi::Value platform_list_window_owners(Napi::Env env);
 #else
 bool platform_is_supported() { return false; }
 bool platform_start(uint32_t, uint32_t, int64_t, uint32_t, uint32_t, Napi::ThreadSafeFunction) { return false; }
@@ -134,12 +135,24 @@ Napi::Value GetStatus(const Napi::CallbackInfo& info) {
   return Napi::Number::New(info.Env(), platform_get_status());
 }
 
+// Lista as janelas visiveis junto do app que as criou. So o macOS implementa:
+// nas outras plataformas o Electron ja entrega `appIcon` por conta propria e a
+// lista vazia mantem o chamador no caminho padrao (#455).
+Napi::Value ListWindowOwners(const Napi::CallbackInfo& info) {
+#if defined(__MACOS__)
+  return platform_list_window_owners(info.Env());
+#else
+  return Napi::Array::New(info.Env());
+#endif
+}
+
 Napi::Object Init(Napi::Env env, Napi::Object exports) {
   exports.Set("isSupported", Napi::Function::New(env, IsSupported));
   exports.Set("start", Napi::Function::New(env, Start));
   exports.Set("stop", Napi::Function::New(env, Stop));
   exports.Set("getLastError", Napi::Function::New(env, GetLastError));
   exports.Set("getStatus", Napi::Function::New(env, GetStatus));
+  exports.Set("listWindowOwners", Napi::Function::New(env, ListWindowOwners));
   return exports;
 }
 
