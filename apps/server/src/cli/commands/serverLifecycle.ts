@@ -439,40 +439,107 @@ function formatUptime(startedAtMs: number): string {
 }
 
 /**
- * Renders one frame of the real-time dashboard, clearing the terminal first.
+ * Cached TURN status so the dashboard can show it without blocking the render.
+ * Updated asynchronously in the background every cycle.
+ */
+interface TurnCache {
+  enabled: boolean | null;
+  coturnOk: boolean;
+  coturnProblem: string | null;
+  portProblem: string | null;
+}
+
+let turnCache: TurnCache = { enabled: null, coturnOk: false, coturnProblem: null, portProblem: null };
+
+async function refreshTurnCache(dataDir: string): Promise<void> {
+  try {
+    await withContext(dataDir, async (ctx) => {
+      const server = await ctx.serverRepo.getServer();
+      if (!server) { turnCache.enabled = null; return; }
+      turnCache.enabled = Boolean(server.turnEnabled);
+      if (!turnCache.enabled) return;
+      const reason = CoturnManager.getUnavailabilityReason();
+      if (reason) {
+        turnCache.coturnOk = false;
+        turnCache.coturnProblem = reason;
+        turnCache.portProblem = null;
+      } else {
+        turnCache.coturnOk = true;
+        turnCache.coturnProblem = null;
+        turnCache.portProblem = await CoturnManager.checkPortReachability();
+      }
+    }, false);
+  } catch {
+    // DB locked — keep stale cache
+  }
+}
+
+/**
+ * Renders one frame of the real-time dashboard without flicker.
+ *
+ * Instead of clearing the whole screen (which causes a visible flash), we move
+ * the cursor to the top-left, write the full frame, then erase everything
+ * below. This produces a smooth in-place update.
  */
 function renderDashboard(server: RegisteredServer): void {
   const { status, process: entry } = readServerStatus(server.dataDir);
   const port = server.port ?? readLocalConfig(server.dataDir).port ?? LIMITS.DEFAULT_PORT;
 
-  // Clear terminal and move cursor to top-left
-  process.stdout.write('\x1b[2J\x1b[H');
+  const lines: string[] = [];
+  const push = (s: string = '') => lines.push(s);
 
-  console.log(color('╔══════════════════════════════════════════════════╗', ANSI.cyan));
-  console.log(color('║', ANSI.cyan) + color(`  ${t('lifecycle.dashboard')}`, ANSI.bold) + ' '.repeat(25) + color('║', ANSI.cyan));
-  console.log(color('╚══════════════════════════════════════════════════╝', ANSI.cyan));
-  console.log();
+  push(color('╔══════════════════════════════════════════════════╗', ANSI.cyan));
+  push(color('║', ANSI.cyan) + color(`  ${t('lifecycle.dashboard')}`, ANSI.bold) + ' '.repeat(25) + color('║', ANSI.cyan));
+  push(color('╚══════════════════════════════════════════════════╝', ANSI.cyan));
+  push();
 
-  console.log(color(`  ${t('lifecycle.dashboardServer')}`, ANSI.bold));
-  console.log(`    ${t('config.askName')}: ${server.name || 'Monky Server'}`);
-  console.log(`    status:   ${statusLabel(status)}`);
-  console.log(`    ${t('config.askPort')}: ${port}`);
-  console.log(`    dataDir:  ${server.dataDir}`);
-  console.log(`    process:  ${getPm2ProcessName(server.dataDir)}`);
+  // ── Server ──
+  push(color(`  ${t('lifecycle.dashboardServer')}`, ANSI.bold));
+  push(`    ${t('config.askName')}: ${server.name || 'Monky Server'}`);
+  push(`    status:   ${statusLabel(status)}`);
+  push(`    ${t('config.askPort')}: ${port}`);
+  push(`    dataDir:  ${server.dataDir}`);
+  push(`    process:  ${getPm2ProcessName(server.dataDir)}`);
 
+  // ── Process ──
   if (entry) {
-    console.log();
-    console.log(color(`  ${t('lifecycle.dashboardProcess')}`, ANSI.bold));
-    console.log(`    pid:      ${entry.pid || '-'}`);
-    console.log(`    uptime:   ${entry.pm2_env?.pm_uptime ? formatUptime(entry.pm2_env.pm_uptime) : '-'}`);
-    console.log(`    restarts: ${entry.pm2_env?.restart_time ?? 0}`);
-    console.log(`    memory:   ${entry.monit?.memory ? `${Math.round(entry.monit.memory / 1024 / 1024)} MB` : '-'}`);
-    console.log(`    cpu:      ${entry.monit?.cpu !== undefined ? `${entry.monit.cpu}%` : '-'}`);
+    push();
+    push(color(`  ${t('lifecycle.dashboardProcess')}`, ANSI.bold));
+    push(`    pid:      ${entry.pid || '-'}`);
+    push(`    uptime:   ${entry.pm2_env?.pm_uptime ? formatUptime(entry.pm2_env.pm_uptime) : '-'}`);
+    push(`    restarts: ${entry.pm2_env?.restart_time ?? 0}`);
+    push(`    memory:   ${entry.monit?.memory ? `${Math.round(entry.monit.memory / 1024 / 1024)} MB` : '-'}`);
+    push(`    cpu:      ${entry.monit?.cpu !== undefined ? `${entry.monit.cpu}%` : '-'}`);
   }
 
-  console.log();
-  console.log(color(`  ${t('lifecycle.dashboardUpdated', { time: new Date().toLocaleTimeString() })}`, ANSI.dim));
-  console.log(color(`  ${t('lifecycle.dashboardExit')}`, ANSI.dim));
+  // ── TURN ──
+  if (turnCache.enabled !== null) {
+    push();
+    push(color(`  ${t('lifecycle.turnTitle')}`, ANSI.bold));
+    push(`    turn:     ${formatBool(turnCache.enabled)}`);
+    if (turnCache.enabled) {
+      if (!turnCache.coturnOk) {
+        push(`    coturn:   ${color(t('lifecycle.coturnUnavailable'), ANSI.yellow)}`);
+        if (turnCache.coturnProblem) push(`              ${color(turnCache.coturnProblem, ANSI.dim)}`);
+      } else {
+        push(`    coturn:   ${color(t('lifecycle.coturnInstalled'), ANSI.green)}`);
+        push(`    port:     ${TURN_LISTENING_PORT}`);
+        if (turnCache.portProblem) {
+          push(`    status:   ${color(t('lifecycle.turnPortBlocked'), ANSI.yellow)}`);
+          push(`              ${color(turnCache.portProblem, ANSI.dim)}`);
+        } else {
+          push(`    status:   ${color(t('lifecycle.turnAccessible'), ANSI.green)}`);
+        }
+      }
+    }
+  }
+
+  push();
+  push(color(`  ${t('lifecycle.dashboardUpdated', { time: new Date().toLocaleTimeString() })}`, ANSI.dim));
+  push(color(`  ${t('lifecycle.dashboardExit')}`, ANSI.dim));
+
+  // Move cursor to top-left, write frame, then erase anything below
+  process.stdout.write('\x1b[H' + lines.join('\n') + '\n\x1b[J');
 }
 
 /**
@@ -491,8 +558,14 @@ export async function statusServerCommand(globalArgs: GlobalArgs, args: string[]
     const target = await resolveTargetServer(globalArgs, 'monitorar');
 
     // --watch mode: real-time dashboard that refreshes every 2s (#441)
+    // Hide cursor for cleaner output, clear screen once
+    process.stdout.write('\x1b[?25l\x1b[2J');
+    // Seed TURN cache before first render, then render
+    await refreshTurnCache(target.dataDir);
     renderDashboard(target);
-    const interval = setInterval(() => renderDashboard(target), 2000);
+    const interval = setInterval(() => {
+      refreshTurnCache(target.dataDir).then(() => renderDashboard(target));
+    }, 2000);
 
     const cleanup = () => {
       clearInterval(interval);
