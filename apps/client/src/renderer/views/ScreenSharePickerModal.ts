@@ -138,7 +138,9 @@ export class ScreenSharePickerModal {
           <div class="source-item ${this.selectedSourceId === s.id ? 'selected' : ''}" data-source-id="${escapeHtml(s.id)}">
             <img class="source-thumbnail" src="${s.thumbnailDataUrl}" alt="${escapeHtml(s.name)}">
             <div class="source-name" title="${escapeHtml(s.name)}">
-              ${s.appIconDataUrl ? `<img src="${s.appIconDataUrl}" style="width: 14px; height: 14px; vertical-align: middle; margin-right: 4px;">` : ''}
+              ${s.appIconDataUrl
+                ? `<img class="source-app-icon" src="${s.appIconDataUrl}" alt="">`
+                : `<span class="material-symbols-outlined source-app-icon-fallback">${s.type === 'screen' ? 'desktop_windows' : 'web_asset'}</span>`}
               ${escapeHtml(s.name)}
             </div>
           </div>

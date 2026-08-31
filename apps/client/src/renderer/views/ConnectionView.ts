@@ -252,7 +252,7 @@ export class ConnectionView {
 
           <!-- Avatar Picker -->
           <div class="avatar-picker" style="margin-bottom: 14px; gap: 12px;">
-            <img id="avatar-preview" class="avatar-preview-img" style="width: 46px; height: 46px;" src="${getAvatarUrl(this.selectedAvatarBase64)}">
+            <img id="avatar-preview" class="avatar-preview-img" style="width: 46px; height: 46px;" src="${getAvatarUrl(this.selectedAvatarBase64)}" data-fallback="avatar">
             <div>
               <button id="btn-select-avatar" class="btn btn-secondary" style="padding: 5px 10px; font-size: 11px;">
                 <span class="material-symbols-outlined md-14" style="margin-right: 4px;">photo_camera</span>
@@ -666,7 +666,7 @@ export class ConnectionView {
           ? `http://${host}:${port}${u.avatarUrl}`
           : u.avatarUrl || getAvatarUrl(null);
         const title = escapeHtml(u.nickname || t('connection.unknownUser'));
-        return `<img class="preview-avatar" src="${raw}" title="${title}" onerror="this.src='${getAvatarUrl(null)}'">`;
+        return `<img class="preview-avatar" src="${raw}" title="${title}" data-fallback="avatar">`;
       })
       .join('');
 

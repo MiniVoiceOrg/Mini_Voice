@@ -5325,6 +5325,22 @@ body > .reconnect-overlay {
   text-overflow: ellipsis;
 }
 
+/* Nem toda janela entrega um icone de app (helpers sem bundle, apps de linha de
+   comando), entao o marcador generico evita um nome desalinhado ao lado dos que
+   tem icone (#455). */
+.source-app-icon,
+.source-app-icon-fallback {
+  width: 14px;
+  height: 14px;
+  vertical-align: middle;
+  margin-right: 4px;
+}
+
+.source-app-icon-fallback {
+  font-size: 14px;
+  color: var(--text-muted);
+}
+
 /* ── Update Banner ───────────────────────────────────────── */
 .update-banner {
   position: fixed;

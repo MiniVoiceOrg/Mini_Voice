@@ -46,6 +46,7 @@ import { showAlert } from './views/Dialog';
 import { showIdentityImportDialog } from './views/IdentityDialogs';
 import { initI18n, t } from './i18n';
 import { toAbsoluteServerIconUrl } from './utils/avatar';
+import { installImageFallback } from './utils/imageFallback';
 import { clientLog } from './core/ClientLogService';
 
 class App {
@@ -55,6 +56,10 @@ class App {
 
   constructor() {
     this.appContainer = document.getElementById('app')!;
+    // Any image that fails to load gets a friendly placeholder instead of the
+    // browser's broken-image glyph (#456). Installed first so it also covers
+    // whatever the very first render paints.
+    installImageFallback();
     // Routes incoming server events to the right state bundle. It must be in
     // place before any connection exists, otherwise the first events would be
     // applied to whatever store happens to be active (#400).
@@ -65,6 +70,9 @@ class App {
     // Must run before any await in init(): otherwise the Windows-style window
     // controls stay visible on macOS during onboarding/identity loading (#307)
     this.setupTitleBar();
+    // Registered before any await: quitting during onboarding must still take
+    // the user out of whatever server is connected (#458).
+    this.setupGracefulQuit();
 
     this.init();
   }
@@ -181,6 +189,31 @@ class App {
 
     window.api?.onTrayToggleDeafen(() => {
       this.toggleDeafenFromTray();
+    });
+  }
+
+  /**
+   * Leaves every server before the process dies (#458).
+   *
+   * Closing the app used to just drop the WebSockets. The server cannot tell
+   * that apart from a network blip, so it held the person in the voice channel
+   * for the whole reconnection grace period: everyone else kept seeing a
+   * participant who could no longer speak, and no leave sound played. Sending
+   * the logout explicitly makes the departure immediate and deliberate.
+   *
+   * The main process waits for the ack (with a short timeout) before quitting.
+   */
+  private setupGracefulQuit(): void {
+    window.api?.onAppBeforeQuit(() => {
+      try {
+        sessionManager.removeAll();
+      } catch (err) {
+        clientLog.error('CONNECTION', 'Failed to leave servers before quitting', {
+          error: (err as Error)?.message,
+        });
+      } finally {
+        void window.api?.notifyLeaveComplete();
+      }
     });
   }
 

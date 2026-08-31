@@ -144,7 +144,7 @@ export class MainView {
             <div class="user-control-main">
               <div id="user-profile-btn" class="user-profile-summary" title="${t('main.profileSettings')}">
                 <div class="user-avatar-container">
-                  <img id="main-user-avatar" class="user-avatar-main ${voiceStore.isSpeaking ? 'speaking' : ''}" src="${getAvatarUrl(u.avatarUrl)}">
+                  <img id="main-user-avatar" class="user-avatar-main ${voiceStore.isSpeaking ? 'speaking' : ''}" src="${getAvatarUrl(u.avatarUrl)}" data-fallback="avatar">
                 </div>
                 <div class="user-info-text">
                   <span id="main-user-name" class="user-name-display">${escapeHtml(u.nickname)}</span>
@@ -630,7 +630,7 @@ export class MainView {
 
                   return `
                     <div id="voice-mini-user-${sessionId}" class="voice-participant-mini ${isSpeaking ? 'speaking' : ''}" data-session-id="${sessionId}" title="${escapeHtml(displayName)} (${t('main.rightClickVolumeShort')})">
-                      <img class="voice-mini-avatar" src="${avatar}">
+                      <img class="voice-mini-avatar" src="${avatar}" data-fallback="avatar">
                       <span class="voice-mini-name">${escapeHtml(displayName)}</span>
                       ${isPeerFailed ? `<span class="material-symbols-outlined md-14 voice-mini-icon peer-failed" title="${peerFailureTooltip('main.peerConnectionFailed')}">link_off</span>` : ''}
                       ${isConnecting ? `<span class="material-symbols-outlined md-14 voice-mini-icon peer-connecting" title="${t('main.peerConnecting')}">sync</span>` : ''}
@@ -1045,7 +1045,7 @@ export class MainView {
       return `
         <div class="member-item ${effectiveOffline ? 'member-offline' : ''} ${isReconnecting ? 'reconnecting' : ''}" data-user-id="${m.id}" title="${escapeHtml(m.nickname)} ${isLocal ? `(${t('common.you')})` : `(${t('main.rightClickVolume')})`}">
           <div class="member-avatar-wrapper">
-            <img class="member-avatar-img" src="${avatar}">
+            <img class="member-avatar-img" src="${avatar}" data-fallback="avatar">
             <span class="status-indicator ${statusClass}"></span>
           </div>
           <div class="member-info">

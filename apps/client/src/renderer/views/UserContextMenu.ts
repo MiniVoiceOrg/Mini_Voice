@@ -65,7 +65,7 @@ export class UserContextMenu {
     this.menuEl.className = 'user-context-menu';
     this.menuEl.innerHTML = `
       <div class="context-menu-header">
-        <img class="context-menu-avatar" src="${avatarSrc}" alt="">
+        <img class="context-menu-avatar" src="${avatarSrc}" alt="" data-fallback="avatar">
         <div class="context-menu-user-info">
           <span class="context-menu-nickname">${escapeHtml(user.nickname)}</span>
           <span class="context-menu-subtext">${t('userMenu.audioSettings')}</span>
