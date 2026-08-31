@@ -97,7 +97,7 @@ export const ptBR = {
   'invite.tip': '<b>Dica:</b> Para amigos em outra internet conectarem direto pelo seu IP público, a porta deve estar liberada no roteador. Se você usa Radmin VPN ou Hamachi, use o IP da VPN!',
   'invite.copied': 'Convite completo copiado para a área de transferência!',
   'invite.copyButton': 'Copiar Convite',
-  'invite.clipboardText': 'Convite para o Monky!\nServidor: {server}\nIP / Host: {host}\nPorta: {port}{passwordLine}\n\nBaixe a versão mais recente do Monky:\nhttps://github.com/MonkyOrg/Monky/releases/latest\n\nCole esses dados na aba "{tab}" do aplicativo!',
+  'invite.clipboardText': 'Convite para o Monky!\nServidor: {server}\nIP / Host: {host}\nPorta: {port}{passwordLine}\n\nBaixe o Monky:\nhttps://monkyorg.github.io/Monky/download.html\n\nCole esses dados na aba "{tab}" do aplicativo!',
   'invite.clipboardPassword': '\nSenha: {password}',
   'invite.ipLabel': 'Endereço IP do Servidor',
   'invite.fetchingIps': 'Buscando IPs do servidor...',

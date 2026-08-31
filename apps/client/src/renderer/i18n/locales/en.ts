@@ -96,7 +96,7 @@ export const en: TranslationMap = {
   'invite.tip': '<b>Tip:</b> For friends on another network to connect straight to your public IP, the port must be forwarded on your router. If you use Radmin VPN or Hamachi, share the VPN IP instead!',
   'invite.copied': 'Full invitation copied to clipboard!',
   'invite.copyButton': 'Copy Invitation',
-  'invite.clipboardText': 'Monky invite!\nServer: {server}\nIP / Host: {host}\nPort: {port}{passwordLine}\n\nDownload the latest release of Monky:\nhttps://github.com/MonkyOrg/Monky/releases/latest\n\nPaste these details into the "{tab}" tab of the app!',
+  'invite.clipboardText': 'Monky invite!\nServer: {server}\nIP / Host: {host}\nPort: {port}{passwordLine}\n\nDownload Monky:\nhttps://monkyorg.github.io/Monky/en/download.html\n\nPaste these details into the "{tab}" tab of the app!',
   'invite.clipboardPassword': '\nPassword: {password}',
   'invite.ipLabel': 'Server IP Address',
   'invite.fetchingIps': 'Fetching server IPs...',
