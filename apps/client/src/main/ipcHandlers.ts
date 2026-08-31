@@ -103,6 +103,13 @@ async function downloadToFile(url: string, destPath: string): Promise<void> {
   });
 }
 
+interface NativeWindowOwner {
+  windowId: number;
+  pid: number;
+  bundlePath: string;
+  appName: string;
+}
+
 // Screen audio native module (compiled only on CI — graceful fallback)
 let screenAudio: {
   isSupported: () => boolean;
@@ -110,12 +117,68 @@ let screenAudio: {
   stop: () => { success: boolean };
   getLastError: () => string;
   getStatus: () => number;
+  listWindowOwners?: () => NativeWindowOwner[];
 } | null = null;
 try {
   screenAudio = require('@monky/screen-audio');
 } catch (e) {
   console.warn('[ScreenAudio:Main] Native module not available:', (e as Error).message);
   screenAudio = null;
+}
+
+// Icones de app nao mudam enquanto o app roda, e ler o bundle do disco a cada
+// abertura do seletor de tela seria desperdicio.
+const appIconCache = new Map<string, string | null>();
+
+/** Extrai o id nativo de `window:<id nativo>:<id do webContents>`. */
+function nativeWindowIdFromSourceId(sourceId: string): number | null {
+  const parts = sourceId.split(':');
+  if (parts[0] !== 'window') return null;
+  const nativeId = Number(parts[1]);
+  return Number.isFinite(nativeId) ? nativeId : null;
+}
+
+/**
+ * No macOS o Electron devolve `appIcon` vazio para janelas, mesmo com
+ * `fetchWindowIcons: true` (#455). Descobrimos o app dono de cada janela pelo
+ * modulo nativo e lemos o icone do proprio bundle.
+ */
+async function resolveMacAppIcons(sourceIds: string[]): Promise<Map<string, string>> {
+  const iconsBySourceId = new Map<string, string>();
+  if (process.platform !== 'darwin' || !screenAudio?.listWindowOwners) return iconsBySourceId;
+
+  let owners: NativeWindowOwner[];
+  try {
+    owners = screenAudio.listWindowOwners();
+  } catch (e) {
+    console.warn('[ScreenShare:Main] Falha ao listar donos de janela:', (e as Error).message);
+    return iconsBySourceId;
+  }
+
+  const bundlePathByWindowId = new Map<number, string>();
+  for (const owner of owners) bundlePathByWindowId.set(owner.windowId, owner.bundlePath);
+
+  for (const sourceId of sourceIds) {
+    const nativeId = nativeWindowIdFromSourceId(sourceId);
+    if (nativeId === null) continue;
+    const bundlePath = bundlePathByWindowId.get(nativeId);
+    if (!bundlePath) continue;
+
+    let dataUrl = appIconCache.get(bundlePath);
+    if (dataUrl === undefined) {
+      try {
+        const icon = await app.getFileIcon(bundlePath, { size: 'normal' });
+        dataUrl = icon.isEmpty() ? null : icon.toDataURL();
+      } catch (e) {
+        console.warn(`[ScreenShare:Main] Sem icone para ${bundlePath}:`, (e as Error).message);
+        dataUrl = null;
+      }
+      appIconCache.set(bundlePath, dataUrl);
+    }
+    if (dataUrl) iconsBySourceId.set(sourceId, dataUrl);
+  }
+
+  return iconsBySourceId;
 }
 
 export interface SetupIpcOptions {
@@ -285,13 +348,18 @@ export function setupIpcHandlers(
       fetchWindowIcons: true,
     });
 
-    return sources.map((s) => ({
-      id: s.id,
-      name: s.name,
-      type: s.id.startsWith('screen:') ? 'screen' : 'window',
-      thumbnailDataUrl: s.thumbnail.toDataURL(),
-      appIconDataUrl: s.appIcon ? s.appIcon.toDataURL() : null,
-    }));
+    const macIcons = await resolveMacAppIcons(sources.map((s) => s.id));
+
+    return sources.map((s) => {
+      const electronIcon = s.appIcon && !s.appIcon.isEmpty() ? s.appIcon.toDataURL() : null;
+      return {
+        id: s.id,
+        name: s.name,
+        type: s.id.startsWith('screen:') ? 'screen' : 'window',
+        thumbnailDataUrl: s.thumbnail.toDataURL(),
+        appIconDataUrl: electronIcon ?? macIcons.get(s.id) ?? null,
+      };
+    });
   });
 
   // Avatar Image Selection Dialog
