@@ -867,6 +867,7 @@ export class ChatView {
         charCounter.innerText = `${input.value.length}/${LIMITS.MAX_MESSAGE_LENGTH}`;
       }
       autoResize();
+      this.persistDraft(input.value);
       this.updateMentionDropup(input);
       if (composeLinkTimer) clearTimeout(composeLinkTimer);
       composeLinkTimer = setTimeout(updateComposeLinkPreview, 500);
@@ -876,6 +877,21 @@ export class ChatView {
     input?.addEventListener('paste', () => {
       setTimeout(updateComposeLinkPreview, 100);
     });
+
+    // A restored draft (#478) has to look exactly like it did before the view
+    // was rebuilt. It is assigned here rather than written into the template
+    // because the HTML parser silently eats a newline right after the opening
+    // `<textarea>` tag, which would swallow the first line of a draft that
+    // starts with a line break.
+    const draft = this.currentChannelId ? chatStore.getDraft(this.currentChannelId) : '';
+    if (input && draft.length > 0) {
+      input.value = draft;
+      if (charCounter) {
+        charCounter.innerText = `${input.value.length}/${LIMITS.MAX_MESSAGE_LENGTH}`;
+      }
+      autoResize();
+      updateComposeLinkPreview();
+    }
 
     const handleSend = () => {
       if (!input || !this.currentChannelId || !serverStore.hasPermission(Permission.SEND_MESSAGES)) return;
@@ -898,6 +914,7 @@ export class ChatView {
 
       this.clearPending();
       input.value = '';
+      this.persistDraft('');
       input.style.height = 'auto';
       if (charCounter) {
         charCounter.innerText = `0/${LIMITS.MAX_MESSAGE_LENGTH}`;
@@ -1237,6 +1254,17 @@ export class ChatView {
     }
     input.style.height = 'auto';
     input.style.height = `${Math.min(input.scrollHeight, 120)}px`;
+    this.persistDraft(input.value);
+  }
+
+  /**
+   * Keeps the store in sync with the composer so the text is still there after
+   * the view is rebuilt (#478). Called from every place that writes to the
+   * textarea without going through a real `input` event.
+   */
+  private persistDraft(text: string): void {
+    if (!this.currentChannelId) return;
+    chatStore.setDraft(this.currentChannelId, text);
   }
 
   private closeMentionDropup(): void {

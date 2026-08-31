@@ -4771,6 +4771,95 @@ button[data-loading="1"]::after {
   flex-shrink: 0;
 }
 
+/* Custom quality profile: dropdowns of common values (#476). */
+.quality-custom-block {
+  margin-bottom: 10px;
+  padding-bottom: 8px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+.quality-custom-title {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 8px;
+}
+
+.quality-custom-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 6px;
+}
+
+.quality-custom-label {
+  color: var(--text-secondary);
+  font-size: 11px;
+  min-width: 68px;
+  flex-shrink: 0;
+}
+
+.quality-custom-select {
+  flex: 1 1 auto;
+  min-width: 0;
+  padding: 4px 6px;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-color);
+  border-radius: 4px;
+  color: var(--text-primary);
+  font-size: 12px;
+}
+
+.quality-custom-input {
+  width: 88px;
+  flex-shrink: 0;
+  padding: 4px 6px;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-color);
+  border-radius: 4px;
+  color: var(--text-primary);
+  font-size: 12px;
+}
+
+.quality-custom-unit {
+  font-size: 11px;
+  color: var(--text-muted);
+  flex-shrink: 0;
+}
+
+/* Offline marker in the role member editor (#477). */
+.member-badge-offline {
+  font-size: 10px;
+  font-weight: 600;
+  background-color: rgba(255, 255, 255, 0.08);
+  color: var(--text-muted);
+  padding: 1px 5px;
+  border-radius: var(--radius-sm);
+  flex-shrink: 0;
+}
+
+/* Search box above the role member list (#477). */
+.role-members-search {
+  flex: 1 1 180px;
+  min-width: 140px;
+  padding: 6px 10px;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-md);
+  color: var(--text-primary);
+  font-size: 12px;
+}
+
+.role-members-search:focus {
+  outline: none;
+  border-color: var(--accent-primary);
+}
+
+.role-members-bulk {
+  font-size: 11px;
+  padding: 6px 10px;
+}
+
 .member-role-tags {
   display: flex;
   flex-wrap: wrap;

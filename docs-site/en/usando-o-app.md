@@ -18,6 +18,8 @@ Whoever broadcasts shows a **LIVE** badge. Click the card to spotlight it or use
 
 Each text channel has history saved on the server, avatars, timestamps, basic formatting and an anti-flood limit of 10 messages every 5 seconds.
 
+A message you started but haven't sent stays with the channel you were typing in. Jumping to the voice stage, opening another channel and coming back does not wipe the text — each channel keeps its own draft, which only goes away when you send the message or leave the server.
+
 ## Mentions
 
 Typing `@` in the message box opens the member list: pick someone to insert `@nickname`. Whoever is mentioned gets the highlight on the message, the channel badge and the mention sound.

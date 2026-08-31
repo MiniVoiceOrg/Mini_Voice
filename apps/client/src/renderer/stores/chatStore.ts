@@ -11,6 +11,10 @@ export class ChatStore {
   private mentionChannels: Set<string> = new Set();
   // Text channels with unread messages for the current user (#263).
   private unreadChannels: Set<string> = new Set();
+  // Half-written messages, keyed by channelId (#478). They live in the store
+  // instead of the view because the view is torn down and rebuilt whenever the
+  // center area switches between chat and the voice stage.
+  private drafts: Map<string, string> = new Map();
   // Maximum number of messages kept in memory per channel to bound memory usage.
   private static readonly MAX_MESSAGES_PER_CHANNEL = 250;
 
@@ -93,10 +97,31 @@ export class ChatStore {
     return this.unreadChannels.size > 0 || this.mentionChannels.size > 0;
   }
 
+  /**
+   * Remembers what the user had typed but not sent in a channel, so leaving for
+   * the voice stage or another channel doesn't throw the text away (#478).
+   */
+  public setDraft(channelId: string, text: string): void {
+    if (text.length === 0) {
+      this.drafts.delete(channelId);
+      return;
+    }
+    this.drafts.set(channelId, text);
+  }
+
+  public getDraft(channelId: string): string {
+    return this.drafts.get(channelId) || '';
+  }
+
+  public clearDraft(channelId: string): void {
+    this.drafts.delete(channelId);
+  }
+
   public clear(): void {
     this.messages.clear();
     this.mentionChannels.clear();
     this.unreadChannels.clear();
+    this.drafts.clear();
     this.bus.emit('chat.cleared');
   }
 }
