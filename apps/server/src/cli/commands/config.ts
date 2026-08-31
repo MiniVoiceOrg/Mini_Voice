@@ -12,6 +12,7 @@ import {
 } from '../constants';
 import { CliContext, readLocalConfig, writeLocalConfig } from '../context';
 import { formatBool, formatDate, parseBoolean, parseMemberLimit, parsePositiveInt } from '../formatters';
+import { t } from '../i18n/index';
 import {
   getPm2ProcessName,
   isMonkyServerRunning,
@@ -29,24 +30,24 @@ import { CoturnManager } from '../../infrastructure/turn/CoturnManager';
  */
 function turnStatusSuffix(): string {
   const reason = CoturnManager.getUnavailabilityReason();
-  return reason ? color(`  (indisponível: ${reason})`, ANSI.yellow) : '';
+  return reason ? color(`  (${t('config.turnUnavailable', { reason })})`, ANSI.yellow) : '';
 }
 
 export async function showConfig(ctx: CliContext): Promise<void> {
   const server = await ctx.serverRepo.getServer();
   if (!server) {
-    throw new Error('Servidor não encontrado.');
+    throw new Error(t('create.serverNotFound'));
   }
 
   const localConfig = readLocalConfig(ctx.dataDir);
   const owner = server.ownerUserId ? await ctx.userRepo.findById(server.ownerUserId) : null;
-  console.log(color('Configuração do servidor', ANSI.bold));
+  console.log(color(t('config.title'), ANSI.bold));
   console.log(`dataDir: ${ctx.dataDir}`);
   console.log(`id: ${server.id}`);
   console.log(`name: ${server.name}`);
   console.log(`port: ${localConfig.port || LIMITS.DEFAULT_PORT}`);
   console.log(`hasPassword: ${formatBool(Boolean(server.passwordHash))}`);
-  console.log(`maxUsers: ${server.maxUsers > LIMITS.MAX_USERS_UNLIMITED ? server.maxUsers : 'sem limite'}`);
+  console.log(`maxUsers: ${server.maxUsers > LIMITS.MAX_USERS_UNLIMITED ? server.maxUsers : t('config.noLimit')}`);
   console.log(`ownerUserId: ${server.ownerUserId ?? '-'}`);
   console.log(`ownerNickname: ${owner?.nickname ?? '-'}`);
   console.log(`allowSoundboard: ${formatBool(server.allowSoundboard !== false)}`);
@@ -60,7 +61,7 @@ export async function showConfig(ctx: CliContext): Promise<void> {
 
 export async function askConfigKey(): Promise<ConfigKey> {
   const choice = await askChoice(
-    'Qual configuração deseja alterar?',
+    t('config.whichKey'),
     CONFIG_KEYS.map((key) => `${key}`)
   );
   return choice as ConfigKey;
@@ -70,7 +71,7 @@ export async function setConfig(ctx: CliContext, key: string, value?: string): P
   const normalizedKey = (key.trim() || (await askConfigKey())) as ConfigKey;
   const server = await ctx.serverRepo.getServer();
   if (!server) {
-    throw new Error('Servidor não encontrado.');
+    throw new Error(t('create.serverNotFound'));
   }
 
   const localConfig = readLocalConfig(ctx.dataDir);
@@ -92,35 +93,35 @@ export async function setConfig(ctx: CliContext, key: string, value?: string): P
   if (nextValue === undefined) {
     switch (normalizedKey) {
       case 'name':
-        nextValue = await ask('Nome do servidor', currentValues.name);
+        nextValue = await ask(t('config.askName'), currentValues.name);
         break;
       case 'password':
-        nextValue = await promptPassword('Senha do servidor (deixe vazio para remover): ');
+        nextValue = await promptPassword(t('config.askPassword'));
         break;
       case 'port':
-        nextValue = await ask('Porta do servidor', currentValues.port);
+        nextValue = await ask(t('config.askPort'), currentValues.port);
         break;
       case 'icon':
-        nextValue = await ask('Caminho da imagem do servidor (deixe vazio para remover)');
+        nextValue = await ask(t('config.askIcon'));
         break;
       case 'allowSoundboard':
-        nextValue = await askChoice('Permitir soundboard?', ['true', 'false']);
+        nextValue = await askChoice(t('config.askSoundboard'), ['true', 'false']);
         break;
       case 'turn':
-        nextValue = await askChoice('Habilitar o relay de mídia (TURN)?', ['true', 'false']);
+        nextValue = await askChoice(t('config.askTurn'), ['true', 'false']);
         break;
       case 'autoUpdate':
-        nextValue = await askChoice('Habilitar atualização automática?', ['true', 'false']);
+        nextValue = await askChoice(t('config.askAutoUpdate'), ['true', 'false']);
         break;
       case 'maxUsers':
-        nextValue = await ask('Limite de membros (0 para sem limite)', currentValues.maxUsers);
+        nextValue = await ask(t('config.askMaxUsers'), currentValues.maxUsers);
         break;
       case 'maxAttachmentFileBytes':
       case 'maxAttachmentStorageBytes':
-        nextValue = await ask(`Valor para ${normalizedKey}`, currentValues[normalizedKey]);
+        nextValue = await ask(t('config.askValue', { key: normalizedKey }), currentValues[normalizedKey]);
         break;
       default:
-        nextValue = await ask(`Valor para ${normalizedKey}`);
+        nextValue = await ask(t('config.askValue', { key: normalizedKey }));
     }
   }
 
@@ -128,7 +129,7 @@ export async function setConfig(ctx: CliContext, key: string, value?: string): P
     case 'name': {
       const nextName = nextValue.trim();
       if (nextName.length < 2) {
-        throw new Error('O nome do servidor deve ter pelo menos 2 caracteres.');
+        throw new Error(t('config.nameTooShort'));
       }
       await ctx.serverRepo.updateServer({ name: nextName });
       registerServer(ctx.dataDir, { name: nextName });
@@ -150,7 +151,7 @@ export async function setConfig(ctx: CliContext, key: string, value?: string): P
 
       const processName = getPm2ProcessName(ctx.dataDir);
       if (isMonkyServerRunning(processName)) {
-        const shouldRestart = await confirm('Servidor está rodando. Deseja reiniciar agora para aplicar a nova porta?', true);
+        const shouldRestart = await confirm(t('config.restartForPort'), true);
         if (shouldRestart) {
           const ecosystemPath = writeEcosystem({
             dataDir: ctx.dataDir,
@@ -158,12 +159,12 @@ export async function setConfig(ctx: CliContext, key: string, value?: string): P
             serverName: (await ctx.serverRepo.getServer())?.name || DEFAULT_SERVER_NAME,
           });
           spawnSync('pm2', ['startOrRestart', ecosystemPath], { stdio: 'inherit', shell: true });
-          console.log(color('Servidor reiniciado com a nova porta.', ANSI.green));
+          console.log(color(t('config.portRestarted'), ANSI.green));
         } else {
-          console.log(color('A nova porta será usada no próximo "monky start" ou "monky restart".', ANSI.dim));
+          console.log(color(t('config.portNextStartOrRestart'), ANSI.dim));
         }
       } else {
-        console.log(color('A nova porta será usada no próximo "monky start".', ANSI.dim));
+        console.log(color(t('config.portNextStart'), ANSI.dim));
       }
       registerServer(ctx.dataDir, { port: portNum });
       break;
@@ -172,11 +173,11 @@ export async function setConfig(ctx: CliContext, key: string, value?: string): P
       const iconValue = nextValue.trim();
       if (!iconValue || ['clear', 'none', 'remove'].includes(iconValue.toLowerCase())) {
         await ctx.serverRepo.updateServer({ iconPath: null });
-        console.log(color('Ícone removido.', ANSI.dim));
+        console.log(color(t('config.iconRemoved'), ANSI.dim));
       } else {
         const resolvedPath = path.resolve(iconValue);
         if (!fs.existsSync(resolvedPath)) {
-          throw new Error(`Arquivo não encontrado: ${resolvedPath}`);
+          throw new Error(t('config.fileNotFound', { path: resolvedPath }));
         }
         const destDir = path.join(ctx.dataDir, 'icons');
         await fs.promises.mkdir(destDir, { recursive: true });
@@ -194,9 +195,7 @@ export async function setConfig(ctx: CliContext, key: string, value?: string): P
       if (nextMax > LIMITS.MAX_USERS_UNLIMITED) {
         const memberCount = await ctx.userRepo.count();
         if (nextMax < memberCount) {
-          throw new Error(
-            `O servidor já tem ${memberCount} membros. Remova membros antes de definir um limite menor.`
-          );
+          throw new Error(t('config.tooManyMembers', { count: memberCount }));
         }
       }
       await ctx.serverRepo.updateServer({ maxUsers: nextMax });
@@ -211,28 +210,22 @@ export async function setConfig(ctx: CliContext, key: string, value?: string): P
         // Same intent as the desktop toggle: asking is enough, the server does
         // the installing (#431).
         if (!CoturnManager.isSupportedPlatform()) {
-          throw new Error(
-            'O relay TURN só é suportado em servidores Linux. Não existe pacote do coturn para Windows ou macOS.'
-          );
+          throw new Error(t('config.turnLinuxOnly'));
         }
-        console.log('Instalando o coturn (pode levar alguns minutos)...');
+        console.log(t('config.installingCoturn'));
         const outcome = await CoturnManager.ensureInstalled();
         if (!outcome.ok) {
           switch (outcome.reason) {
             case 'no-privileges':
-              throw new Error(
-                'O coturn não está instalado e este comando não tem privilégio para instalá-lo. Rode "sudo monky config set turn true" ou "sudo bash scripts/install-turn.sh".'
-              );
+              throw new Error(t('config.coturnNoPrivileges'));
             case 'unknown-package-manager':
-              throw new Error(
-                'Nenhum gerenciador de pacotes conhecido foi encontrado. Instale o coturn manualmente no host.'
-              );
+              throw new Error(t('config.coturnNoPackageManager'));
             default:
-              throw new Error(`Não foi possível instalar o coturn: ${outcome.detail ?? 'erro desconhecido'}`);
+              throw new Error(t('config.coturnInstallFailed', { detail: outcome.detail ?? 'unknown error' }));
           }
         }
         if (!outcome.alreadyInstalled) {
-          console.log(color('coturn instalado com sucesso.', ANSI.green));
+          console.log(color(t('config.coturnInstalled'), ANSI.green));
         }
       }
       const updates: { turnEnabled: boolean; turnSecret?: string } = { turnEnabled: enabled };
@@ -246,9 +239,7 @@ export async function setConfig(ctx: CliContext, key: string, value?: string): P
       // The running process holds its own copy of this setting, so the change
       // only takes effect once it reloads.
       if (isMonkyServerRunning(getPm2ProcessName(ctx.dataDir))) {
-        console.log(
-          color('O servidor está rodando. Rode "monky restart" para aplicar a mudança do relay.', ANSI.yellow)
-        );
+        console.log(color(t('config.turnRestartNeeded'), ANSI.yellow));
       }
       if (enabled) {
         // Run a real port check instead of a static reminder.
@@ -256,7 +247,7 @@ export async function setConfig(ctx: CliContext, key: string, value?: string): P
         if (portProblem) {
           console.log(color('⚠ ' + portProblem, ANSI.yellow));
         } else {
-          console.log(color('✔ Porta TURN acessível.', ANSI.green));
+          console.log(color(t('config.turnPortOk'), ANSI.green));
         }
       }
       break;
@@ -272,16 +263,18 @@ export async function setConfig(ctx: CliContext, key: string, value?: string): P
       if (enabled) {
         let schedule: AutoUpdateSchedule = { type: 'daily', value: '04:00' };
         if (process.stdin.isTTY) {
-          const scheduleMode = await askChoice('Tipo de agendamento do auto-update:', [
-            'Diário em horário fixo (ex: 04:00)',
-            'Intervalo de horas (ex: a cada 2 horas)',
+          const dailyOption = t('config.autoUpdateDaily');
+          const intervalOption = t('config.autoUpdateInterval');
+          const scheduleMode = await askChoice(t('config.autoUpdateScheduleType'), [
+            dailyOption,
+            intervalOption,
           ]);
-          if (scheduleMode.startsWith('Intervalo')) {
-            const hoursStr = await ask('Intervalo em horas para verificar atualizações', '2');
+          if (scheduleMode === intervalOption) {
+            const hoursStr = await ask(t('config.autoUpdateHoursInterval'), '2');
             const hours = Math.max(1, parseInt(hoursStr, 10) || 2);
             schedule = { type: 'interval', value: hours };
           } else {
-            const timeStr = await ask('Horário diário da verificação (HH:MM)', '04:00');
+            const timeStr = await ask(t('config.autoUpdateDailyTime'), '04:00');
             schedule = { type: 'daily', value: timeStr.trim() || '04:00' };
           }
         }
@@ -292,8 +285,8 @@ export async function setConfig(ctx: CliContext, key: string, value?: string): P
       break;
     }
     default:
-      throw new Error(`Chave não suportada: ${key}`);
+      throw new Error(t('config.unsupportedKey', { key }));
   }
 
-  console.log(color(`Configuração "${normalizedKey}" atualizada com sucesso.`, ANSI.green));
+  console.log(color(t('config.updated', { key: normalizedKey }), ANSI.green));
 }

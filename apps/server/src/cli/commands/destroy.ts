@@ -13,6 +13,7 @@ import { unregisterServer } from '../registry';
 import { resolveTargetServer } from '../target';
 import { ask, confirm } from '../prompts';
 import { countOnlineUsers, resolveServerPort } from '../onlineUsers';
+import { t } from '../i18n/index';
 
 export async function destroyCommand(globalArgs: GlobalArgs): Promise<void> {
   // resolveTargetServer only returns directories that actually hold a Monky
@@ -21,32 +22,33 @@ export async function destroyCommand(globalArgs: GlobalArgs): Promise<void> {
   const target = await resolveTargetServer(globalArgs, 'destruir');
   const dataDir = target.dataDir;
 
-  console.log(color('⚠️  ATENÇÃO: Esta ação é IRREVERSÍVEL!', ANSI.red));
-  console.log(color(`Todos os dados do servidor em "${dataDir}" serão apagados:`, ANSI.red));
-  console.log(`  - Banco de dados (mensagens, membros, cargos)`);
-  console.log(`  - Arquivos anexados`);
-  console.log(`  - Avatares`);
-  console.log(`  - Configurações`);
+  console.log(color(t('destroy.warning'), ANSI.red));
+  console.log(color(t('destroy.allDataWillBeDeleted', { dataDir }), ANSI.red));
+  console.log(t('destroy.database'));
+  console.log(t('destroy.attachments'));
+  console.log(t('destroy.avatars'));
+  console.log(t('destroy.settings'));
   console.log();
 
   // Warn about live sessions before the typed confirmation, so the owner knows
   // what is at stake while deciding (#334).
   const onlineUsers = await countOnlineUsers(resolveServerPort(target));
   if (onlineUsers !== null && onlineUsers > 0) {
-    const people = onlineUsers === 1 ? '1 pessoa conectada' : `${onlineUsers} pessoas conectadas`;
-    console.log(color(`Há ${people} neste servidor agora — todas serão desconectadas.`, ANSI.yellow));
+    console.log(
+      color(onlineUsers === 1 ? t('destroy.onlineOne') : t('destroy.onlineMany', { count: onlineUsers }), ANSI.yellow)
+    );
     console.log();
   }
 
-  const confirmText = await ask(`Digite "DESTROY" para confirmar`);
+  const confirmText = await ask(t('destroy.typeDestroy'));
   if (confirmText !== 'DESTROY') {
-    console.log(color('Operação cancelada.', ANSI.yellow));
+    console.log(color(t('prompt.cancelled'), ANSI.yellow));
     return;
   }
 
-  const doubleConfirm = await confirm('Tem certeza absoluta? Isso não pode ser desfeito.', false);
+  const doubleConfirm = await confirm(t('destroy.doubleConfirm'), false);
   if (!doubleConfirm) {
-    console.log(color('Operação cancelada.', ANSI.yellow));
+    console.log(color(t('prompt.cancelled'), ANSI.yellow));
     return;
   }
 
@@ -66,5 +68,5 @@ export async function destroyCommand(globalArgs: GlobalArgs): Promise<void> {
   await fs.promises.rm(dataDir, { recursive: true, force: true });
   unregisterServer(dataDir);
 
-  console.log(color('Servidor destruído com sucesso. Todos os dados foram apagados.', ANSI.green));
+  console.log(color(t('destroy.success'), ANSI.green));
 }

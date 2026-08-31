@@ -19,6 +19,7 @@ import { hasServerDatabase, RegisteredServer, registerServer } from '../registry
 import { confirmDisconnectingUsers } from '../onlineUsers';
 import { knownServers, resolveTargetServer } from '../target';
 import { CoturnManager, TURN_LISTENING_PORT } from '../../infrastructure/turn/CoturnManager';
+import { t } from '../i18n/index';
 
 /**
  * Flags that only ever applied while the database was being created.
@@ -38,10 +39,7 @@ const REMOVED_START_OPTIONS: Record<string, string> = {
 function rejectRemovedStartOptions(args: string[]): void {
   for (const [option, replacement] of Object.entries(REMOVED_START_OPTIONS)) {
     if (args.includes(option)) {
-      throw new Error(
-        `"${option}" não é aceito em "monky start" — ele só teria efeito ao criar o servidor.\n` +
-          `Use: ${replacement}`
-      );
+      throw new Error(t('lifecycle.removedOption', { option, replacement }));
     }
   }
 }
@@ -93,7 +91,7 @@ export async function buildStartPlan(dataDir: string, args: string[]): Promise<S
  */
 function retireLegacyProcess(dataDir: string): void {
   if (!findLegacyProcessFor(dataDir)) return;
-  console.log(color('Migrando o processo PM2 antigo ("monky-server") para o novo formato...', ANSI.dim));
+  console.log(color(t('lifecycle.migratingPm2'), ANSI.dim));
   spawnSync('pm2', ['delete', LEGACY_PM2_PROCESS_NAME], { stdio: 'ignore', shell: true });
 }
 
@@ -110,8 +108,8 @@ export async function startServerCommand(globalArgs: GlobalArgs, args: string[])
 
   const existing = findPm2Process(processName);
   if (existing?.pm2_env?.status === 'online') {
-    console.log(color(`O servidor já está em execução (PID ${existing.pid}).`, ANSI.yellow));
-    console.log(color('Use "monky restart" para reiniciar ou "monky stop" para parar.', ANSI.dim));
+    console.log(color(t('lifecycle.alreadyRunning', { pid: existing.pid ?? '-' }), ANSI.yellow));
+    console.log(color(t('lifecycle.useRestartOrStop'), ANSI.dim));
     return;
   }
 
@@ -122,24 +120,24 @@ export async function startServerCommand(globalArgs: GlobalArgs, args: string[])
   // about from a previous "monky stop" picks up the current port.
   const result = spawnSync('pm2', ['startOrRestart', ecosystemPath], { stdio: 'inherit', shell: true });
   if (result.status !== 0) {
-    throw new Error('Falha ao iniciar o servidor via PM2.');
+    throw new Error(t('lifecycle.startFailed'));
   }
 
   spawnSync('pm2', ['save'], { stdio: 'ignore', shell: true });
   registerServer(target.dataDir, { name: plan.serverName, port: plan.port });
 
   console.log();
-  console.log(color('Servidor Monky iniciado com sucesso!', ANSI.green));
-  console.log(`porta: ${plan.port}`);
+  console.log(color(t('lifecycle.started'), ANSI.green));
+  console.log(t('target.portSuffix', { port: plan.port }));
   console.log(`dataDir: ${plan.dataDir}`);
   console.log(`serverName: ${plan.serverName}`);
-  console.log(`processo PM2: ${processName}`);
+  console.log(`PM2 process: ${processName}`);
   console.log();
-  console.log(color('Comandos úteis:', ANSI.bold));
-  console.log(`  monky status    — ver estado do servidor`);
-  console.log(`  monky logs      — ver logs em tempo real`);
-  console.log(`  monky restart   — reiniciar o servidor`);
-  console.log(`  monky stop      — parar o servidor`);
+  console.log(color(t('lifecycle.helpTitle'), ANSI.bold));
+  console.log(t('lifecycle.helpStatus'));
+  console.log(t('lifecycle.helpLogs'));
+  console.log(t('lifecycle.helpRestart'));
+  console.log(t('lifecycle.helpStop'));
 }
 
 export async function stopServerCommand(globalArgs: GlobalArgs): Promise<void> {
@@ -153,7 +151,7 @@ export async function stopServerCommand(globalArgs: GlobalArgs): Promise<void> {
 
   if (!isMonkyServerRegistered(processName) && findLegacyProcessFor(target.dataDir)) {
     spawnSync('pm2', ['stop', LEGACY_PM2_PROCESS_NAME], { stdio: 'inherit', shell: true });
-    console.log(color('Servidor Monky parado com sucesso.', ANSI.green));
+    console.log(color(t('lifecycle.stopped'), ANSI.green));
     return;
   }
 
@@ -161,16 +159,16 @@ export async function stopServerCommand(globalArgs: GlobalArgs): Promise<void> {
   if (result.status !== 0) {
     const output = `${result.stdout ?? ''}${result.stderr ?? ''}`;
     if (output.includes('not found')) {
-      console.log(color('Esse servidor não está registrado no PM2 — nada a parar.', ANSI.yellow));
+      console.log(color(t('lifecycle.notRegistered'), ANSI.yellow));
       return;
     }
-    throw new Error('Falha ao parar o servidor.');
+    throw new Error(t('lifecycle.stopFailed'));
   }
 
   // The process is kept in PM2 on purpose: deleting it discards the logs right
   // when they matter most, after a crash or a manual stop.
-  console.log(color('Servidor Monky parado com sucesso.', ANSI.green));
-  console.log(color(`Os logs continuam disponíveis em "monky logs".`, ANSI.dim));
+  console.log(color(t('lifecycle.stopped'), ANSI.green));
+  console.log(color(t('lifecycle.logsAvailable'), ANSI.dim));
 }
 
 export async function restartServerCommand(globalArgs: GlobalArgs, args: string[] = []): Promise<void> {
@@ -180,7 +178,7 @@ export async function restartServerCommand(globalArgs: GlobalArgs, args: string[
   const processName = getPm2ProcessName(target.dataDir);
 
   if (!isMonkyServerRegistered(processName) && !findLegacyProcessFor(target.dataDir)) {
-    console.log(color('Esse servidor não está registrado no PM2. Use "monky start" primeiro.', ANSI.yellow));
+    console.log(color(t('lifecycle.notRegisteredStart'), ANSI.yellow));
     return;
   }
 
@@ -196,14 +194,14 @@ export async function restartServerCommand(globalArgs: GlobalArgs, args: string[
 
   const result = spawnSync('pm2', ['startOrRestart', ecosystemPath], { stdio: 'inherit', shell: true });
   if (result.status !== 0) {
-    throw new Error('Falha ao reiniciar o servidor.');
+    throw new Error(t('lifecycle.restartFailed'));
   }
 
   spawnSync('pm2', ['save'], { stdio: 'ignore', shell: true });
   registerServer(target.dataDir, { name: plan.serverName, port: plan.port });
 
-  console.log(color('Servidor Monky reiniciado com sucesso.', ANSI.green));
-  console.log(`porta: ${plan.port}`);
+  console.log(color(t('lifecycle.restarted'), ANSI.green));
+  console.log(t('target.portSuffix', { port: plan.port }));
 }
 
 /**
@@ -225,7 +223,7 @@ function classifyLogLine(line: string): LogLevel | null {
 function parseLevelOption(value: string): LogLevel {
   const normalized = value.trim().toUpperCase();
   if ((LOG_LEVELS as string[]).includes(normalized)) return normalized as LogLevel;
-  throw new Error(`Nível inválido: ${value}. Use ${LOG_LEVELS.join(', ')}.`);
+  throw new Error(t('lifecycle.invalidLevel', { value, levels: LOG_LEVELS.join(', ') }));
 }
 
 export async function logsServerCommand(globalArgs: GlobalArgs, args: string[] = []): Promise<void> {
@@ -237,10 +235,10 @@ export async function logsServerCommand(globalArgs: GlobalArgs, args: string[] =
   const minLevel = levelOption ? parseLevelOption(levelOption) : null;
 
   if (!isPm2Available()) {
-    console.log(color('PM2 não está instalado, então não há logs persistidos para ler.', ANSI.yellow));
-    console.log(color('O "monky logs" lê os logs do servidor iniciado com "monky start" (que roda via PM2).', ANSI.dim));
-    console.log(color('Instale com: npm install -g pm2', ANSI.dim));
-    console.log(color('Se o servidor foi iniciado pelo app Monky, use o Monitor do Servidor no próprio app.', ANSI.dim));
+    console.log(color(t('lifecycle.pm2NoLogs'), ANSI.yellow));
+    console.log(color(t('lifecycle.logsExplain'), ANSI.dim));
+    console.log(color(t('pm2.installHint'), ANSI.dim));
+    console.log(color(t('lifecycle.serverMonkyApp'), ANSI.dim));
     return;
   }
 
@@ -251,8 +249,8 @@ export async function logsServerCommand(globalArgs: GlobalArgs, args: string[] =
     if (findLegacyProcessFor(target.dataDir)) {
       processName = LEGACY_PM2_PROCESS_NAME;
     } else {
-      console.log(color('Esse servidor não está registrado no PM2 — não há logs para exibir.', ANSI.yellow));
-      console.log(color('Use "monky start" para iniciar o servidor.', ANSI.dim));
+      console.log(color(t('lifecycle.logsNoRegistered'), ANSI.yellow));
+      console.log(color(t('lifecycle.logsUseStart'), ANSI.dim));
       return;
     }
   }
@@ -260,12 +258,12 @@ export async function logsServerCommand(globalArgs: GlobalArgs, args: string[] =
   const pm2Args = ['logs', processName, '--lines', String(lines)];
   if (!follow) pm2Args.push('--nostream');
 
-  const describeFilter = minLevel ? ` (nível ${minLevel} ou acima)` : '';
+  const describeFilter = minLevel ? t('lifecycle.levelFilter', { level: minLevel }) : '';
   console.log(
     color(
       follow
-        ? `Exibindo logs de "${target.name || target.dataDir}"${describeFilter} — Ctrl+C para sair...`
-        : `Últimas ${lines} linhas de "${target.name || target.dataDir}"${describeFilter}...`,
+        ? t('lifecycle.showingLogs', { name: target.name || target.dataDir, filter: describeFilter })
+        : t('lifecycle.lastLines', { lines, name: target.name || target.dataDir, filter: describeFilter }),
       ANSI.dim
     )
   );
@@ -314,28 +312,28 @@ function statusLabel(status: string): string {
 
 function readServerStatus(dataDir: string): { status: string; process: ReturnType<typeof findPm2Process> } {
   const found = findPm2Process(getPm2ProcessName(dataDir)) ?? findLegacyProcessFor(dataDir);
-  return { status: found?.pm2_env?.status ?? 'não iniciado', process: found };
+  return { status: found?.pm2_env?.status ?? 'not started', process: found };
 }
 
 function printServerDetails(server: RegisteredServer): void {
   const { status, process: entry } = readServerStatus(server.dataDir);
   const port = server.port ?? readLocalConfig(server.dataDir).port ?? LIMITS.DEFAULT_PORT;
 
-  console.log(color(`Estado do servidor: ${server.name || 'Servidor Monky'}`, ANSI.bold));
+  console.log(color(t('lifecycle.serverState', { name: server.name || 'Monky Server' }), ANSI.bold));
   console.log(`status: ${statusLabel(status)}`);
   console.log(`dataDir: ${server.dataDir}`);
-  console.log(`porta: ${port}`);
-  console.log(`processo PM2: ${getPm2ProcessName(server.dataDir)}`);
+  console.log(`${t('target.portSuffix', { port })}`);
+  console.log(`PM2 process: ${getPm2ProcessName(server.dataDir)}`);
 
   if (!entry) {
-    console.log(color('Use "monky start" para iniciar.', ANSI.dim));
+    console.log(color(t('lifecycle.useStart'), ANSI.dim));
     return;
   }
 
   console.log(`pid: ${entry.pid || '-'}`);
   console.log(`uptime: ${entry.pm2_env?.pm_uptime ? new Date(entry.pm2_env.pm_uptime).toISOString() : '-'}`);
   console.log(`restarts: ${entry.pm2_env?.restart_time ?? 0}`);
-  console.log(`memória: ${entry.monit?.memory ? `${Math.round(entry.monit.memory / 1024 / 1024)} MB` : '-'}`);
+  console.log(`memory: ${entry.monit?.memory ? `${Math.round(entry.monit.memory / 1024 / 1024)} MB` : '-'}`);
   console.log(`cpu: ${entry.monit?.cpu !== undefined ? `${entry.monit.cpu}%` : '-'}`);
 
   // TURN relay info (#441)
@@ -344,7 +342,7 @@ function printServerDetails(server: RegisteredServer): void {
 
 export function printServerTable(servers: RegisteredServer[]): void {
   const rows = servers.map((server) => ({
-    name: server.name || 'Servidor Monky',
+    name: server.name || 'Monky Server',
     status: readServerStatus(server.dataDir).status,
     port: String(server.port ?? readLocalConfig(server.dataDir).port ?? LIMITS.DEFAULT_PORT),
     dataDir: server.dataDir,
@@ -355,8 +353,8 @@ export function printServerTable(servers: RegisteredServer[]): void {
   const portWidth = Math.max(5, ...rows.map((row) => row.port.length));
 
   console.log(
-    `${color(pad('NOME', nameWidth), ANSI.cyan)}  ${color(pad('STATUS', statusWidth), ANSI.cyan)}  ` +
-      `${color(pad('PORTA', portWidth), ANSI.cyan)}  ${color('PASTA DE DADOS', ANSI.cyan)}`
+    `${color(pad(t('lifecycle.tableNome'), nameWidth), ANSI.cyan)}  ${color(pad(t('lifecycle.tableStatus'), statusWidth), ANSI.cyan)}  ` +
+      `${color(pad(t('lifecycle.tablePorta'), portWidth), ANSI.cyan)}  ${color(t('lifecycle.tableDataDir'), ANSI.cyan)}`
   );
 
   for (const row of rows) {
@@ -368,8 +366,8 @@ export function printServerTable(servers: RegisteredServer[]): void {
 export async function listServersCommand(): Promise<void> {
   const servers = knownServers();
   if (servers.length === 0) {
-    console.log(color('Nenhum servidor Monky encontrado nesta máquina.', ANSI.yellow));
-    console.log(color('Crie um com "monky create".', ANSI.dim));
+    console.log(color(t('lifecycle.noneFound'), ANSI.yellow));
+    console.log(color(t('lifecycle.createHint'), ANSI.dim));
     return;
   }
   printServerTable(servers);
@@ -398,23 +396,23 @@ async function printTurnStatusAsync(dataDir: string): Promise<void> {
       if (!server) return;
       const turnEnabled = Boolean(server.turnEnabled);
       console.log();
-      console.log(color('Relay TURN', ANSI.bold));
+      console.log(color(t('lifecycle.turnTitle'), ANSI.bold));
       console.log(`turn: ${formatBool(turnEnabled)}`);
       if (turnEnabled) {
         const reason = CoturnManager.getUnavailabilityReason();
         if (reason) {
-          console.log(`coturn: ${color('indisponível', ANSI.yellow)}`);
+          console.log(`coturn: ${color(t('lifecycle.coturnUnavailable'), ANSI.yellow)}`);
           console.log(`  ${color(reason, ANSI.dim)}`);
         } else {
-          console.log(`coturn: ${color('instalado', ANSI.green)}`);
-          console.log(`porta: ${TURN_LISTENING_PORT}`);
+          console.log(`coturn: ${color(t('lifecycle.coturnInstalled'), ANSI.green)}`);
+          console.log(`port: ${TURN_LISTENING_PORT}`);
           // Check port reachability
           const portProblem = await CoturnManager.checkPortReachability();
           if (portProblem) {
-            console.log(`status: ${color('⚠ porta bloqueada', ANSI.yellow)}`);
+            console.log(`status: ${color(t('lifecycle.turnPortBlocked'), ANSI.yellow)}`);
             console.log(`  ${color(portProblem, ANSI.dim)}`);
           } else {
-            console.log(`status: ${color('✔ acessível', ANSI.green)}`);
+            console.log(`status: ${color(t('lifecycle.turnAccessible'), ANSI.green)}`);
           }
         }
       }
@@ -451,30 +449,30 @@ function renderDashboard(server: RegisteredServer): void {
   process.stdout.write('\x1b[2J\x1b[H');
 
   console.log(color('╔══════════════════════════════════════════════════╗', ANSI.cyan));
-  console.log(color('║', ANSI.cyan) + color(`  Monky Server Dashboard`, ANSI.bold) + ' '.repeat(25) + color('║', ANSI.cyan));
+  console.log(color('║', ANSI.cyan) + color(`  ${t('lifecycle.dashboard')}`, ANSI.bold) + ' '.repeat(25) + color('║', ANSI.cyan));
   console.log(color('╚══════════════════════════════════════════════════╝', ANSI.cyan));
   console.log();
 
-  console.log(color('  Servidor', ANSI.bold));
-  console.log(`    nome:     ${server.name || 'Servidor Monky'}`);
+  console.log(color(`  ${t('lifecycle.dashboardServer')}`, ANSI.bold));
+  console.log(`    ${t('config.askName')}: ${server.name || 'Monky Server'}`);
   console.log(`    status:   ${statusLabel(status)}`);
-  console.log(`    porta:    ${port}`);
+  console.log(`    ${t('config.askPort')}: ${port}`);
   console.log(`    dataDir:  ${server.dataDir}`);
-  console.log(`    processo: ${getPm2ProcessName(server.dataDir)}`);
+  console.log(`    process:  ${getPm2ProcessName(server.dataDir)}`);
 
   if (entry) {
     console.log();
-    console.log(color('  Processo', ANSI.bold));
+    console.log(color(`  ${t('lifecycle.dashboardProcess')}`, ANSI.bold));
     console.log(`    pid:      ${entry.pid || '-'}`);
     console.log(`    uptime:   ${entry.pm2_env?.pm_uptime ? formatUptime(entry.pm2_env.pm_uptime) : '-'}`);
     console.log(`    restarts: ${entry.pm2_env?.restart_time ?? 0}`);
-    console.log(`    memória:  ${entry.monit?.memory ? `${Math.round(entry.monit.memory / 1024 / 1024)} MB` : '-'}`);
+    console.log(`    memory:   ${entry.monit?.memory ? `${Math.round(entry.monit.memory / 1024 / 1024)} MB` : '-'}`);
     console.log(`    cpu:      ${entry.monit?.cpu !== undefined ? `${entry.monit.cpu}%` : '-'}`);
   }
 
   console.log();
-  console.log(color(`  Atualizado: ${new Date().toLocaleTimeString()}`, ANSI.dim));
-  console.log(color('  Pressione Ctrl+C para sair.', ANSI.dim));
+  console.log(color(`  ${t('lifecycle.dashboardUpdated', { time: new Date().toLocaleTimeString() })}`, ANSI.dim));
+  console.log(color(`  ${t('lifecycle.dashboardExit')}`, ANSI.dim));
 }
 
 /**
@@ -501,7 +499,7 @@ export async function statusServerCommand(globalArgs: GlobalArgs, args: string[]
       // Show cursor again and print a clean exit line
       process.stdout.write('\x1b[?25h');
       console.log();
-      console.log(color('Dashboard encerrado.', ANSI.dim));
+      console.log(color(t('lifecycle.dashboardClosed'), ANSI.dim));
       process.exit(0);
     };
     process.on('SIGINT', cleanup);
@@ -518,8 +516,8 @@ export async function statusServerCommand(globalArgs: GlobalArgs, args: string[]
 
   const servers = knownServers();
   if (servers.length === 0) {
-    console.log(color('Nenhum servidor Monky encontrado nesta máquina.', ANSI.yellow));
-    console.log(color('Crie um com "monky create".', ANSI.dim));
+    console.log(color(t('lifecycle.noneFound'), ANSI.yellow));
+    console.log(color(t('lifecycle.createHint'), ANSI.dim));
     return;
   }
 
@@ -531,5 +529,5 @@ export async function statusServerCommand(globalArgs: GlobalArgs, args: string[]
 
   printServerTable(servers);
   console.log();
-  console.log(color('Use "monky status --data <pasta>" para detalhes de um servidor.', ANSI.dim));
+  console.log(color(t('lifecycle.useStatusData'), ANSI.dim));
 }

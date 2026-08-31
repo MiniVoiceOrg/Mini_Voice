@@ -1,6 +1,7 @@
 import { createDecipheriv, createPrivateKey, createPublicKey, pbkdf2Sync } from 'crypto';
 import { deriveClientIdFromPublicKey, normalizePublicKeyHex } from '@monky/shared';
 import { EXPORT_PREFIX, PBKDF2_ITERATIONS } from './constants';
+import { t } from './i18n/index';
 
 export interface ExportEnvelope {
   version: 1;
@@ -24,7 +25,7 @@ export interface DecryptedIdentity {
 
 export function buildExportKey(password: string, salt: Buffer): Buffer {
   if (!password.trim()) {
-    throw new Error('Informe a senha da identidade.');
+    throw new Error(t('identity.noPassword'));
   }
   return pbkdf2Sync(password, salt, PBKDF2_ITERATIONS, 32, 'sha256');
 }
@@ -32,13 +33,13 @@ export function buildExportKey(password: string, salt: Buffer): Buffer {
 export function decryptIdentityExport(exportedIdentity: string, password: string): DecryptedIdentity {
   const normalized = exportedIdentity.trim();
   if (!normalized.startsWith(EXPORT_PREFIX)) {
-    throw new Error('Código de identidade inválido.');
+    throw new Error(t('identity.invalidCode'));
   }
 
   const encodedPayload = normalized.slice(EXPORT_PREFIX.length);
   const envelope = JSON.parse(Buffer.from(encodedPayload, 'base64').toString('utf8')) as ExportEnvelope;
   if (!envelope?.salt || !envelope?.iv || !envelope?.tag || !envelope?.ciphertext) {
-    throw new Error('Conteúdo da identidade inválido.');
+    throw new Error(t('identity.invalidContent'));
   }
 
   const key = buildExportKey(password, Buffer.from(envelope.salt, 'hex'));
@@ -53,11 +54,11 @@ export function decryptIdentityExport(exportedIdentity: string, password: string
     ]).toString('utf8');
     payload = JSON.parse(decrypted) as ExportPayload;
   } catch {
-    throw new Error('Senha incorreta ou identidade corrompida.');
+    throw new Error(t('identity.wrongPassword'));
   }
 
   if (!payload?.privateKeyDerBase64) {
-    throw new Error('Identidade descriptografada inválida.');
+    throw new Error(t('identity.invalidDecrypted'));
   }
 
   const privateKey = createPrivateKey({
@@ -70,7 +71,7 @@ export function decryptIdentityExport(exportedIdentity: string, password: string
   );
 
   if (payload.publicKey && normalizePublicKeyHex(payload.publicKey) !== publicKey) {
-    throw new Error('A identidade descriptografada não corresponde à chave pública informada.');
+    throw new Error(t('identity.keyMismatch'));
   }
 
   return {
