@@ -53,10 +53,13 @@ function buildDialog(params: {
       <div class="dialog-message">${escapeHtml(params.message)}</div>
       ${
         params.checkboxLabel
-          ? `<label class="dialog-checkbox">
-               <input type="checkbox" data-action="remember">
+          ? `<div class="dialog-checkbox">
                <span>${escapeHtml(params.checkboxLabel)}</span>
-             </label>`
+               <label class="toggle-switch" aria-label="${escapeHtml(params.checkboxLabel)}">
+                 <input type="checkbox" data-action="remember">
+                 <span class="toggle-slider"></span>
+               </label>
+             </div>`
           : ''
       }
       <div class="modal-footer">

@@ -5189,20 +5189,18 @@ body > .reconnect-overlay {
 .dialog-checkbox {
   display: flex;
   align-items: center;
-  gap: 8px;
+  justify-content: space-between;
+  gap: 12px;
   margin-top: 14px;
   font-size: 13px;
   color: var(--text-secondary);
-  cursor: pointer;
   user-select: none;
 }
 
+/* The switch inside brings its own sizing; the old checkbox rules would
+   squash it (#472 follow-up). */
 .dialog-checkbox input {
-  width: 15px;
-  height: 15px;
-  accent-color: var(--accent-primary);
   cursor: pointer;
-  flex-shrink: 0;
 }
 
 /* Square crop dialog used before an image becomes a picture (#255). */
@@ -6428,4 +6426,17 @@ button:hover .role-option-check:not(.checked) {
 }
 .toggle-switch input:disabled + .toggle-slider {
   opacity: 0.45;
+}
+/* Compact variant for dense toolbars, where the full-size switch would push the
+   row taller than the controls next to it. */
+.toggle-switch-sm {
+  width: 28px;
+  height: 16px;
+}
+.toggle-switch-sm .toggle-slider::before {
+  width: 10px;
+  height: 10px;
+}
+.toggle-switch-sm input:checked + .toggle-slider::before {
+  transform: translateX(12px);
 }
