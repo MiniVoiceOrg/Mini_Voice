@@ -18,6 +18,7 @@ export class QualityTab {
           <option value="NORMAL" ${settingsStore.qualityPreset === 'NORMAL' ? 'selected' : ''}>${t('settings.presetNormal')}</option>
           <option value="HIGH" ${settingsStore.qualityPreset === 'HIGH' ? 'selected' : ''}>${t('settings.presetHigh')}</option>
           <option value="GAMING" ${settingsStore.qualityPreset === 'GAMING' ? 'selected' : ''}>${t('settings.presetGaming')}</option>
+          <option value="ULTRA" ${settingsStore.qualityPreset === 'ULTRA' ? 'selected' : ''}>${t('settings.presetUltra')}</option>
           <option value="CUSTOM" ${settingsStore.qualityPreset === 'CUSTOM' ? 'selected' : ''}>${t('settings.presetCustom')}</option>
         </select>
         <div id="preset-details" style="margin-top: 8px; padding: 10px 12px; background: rgba(255,255,255,0.03); border: 1px solid var(--border-color); border-radius: var(--radius-md);">
@@ -25,6 +26,10 @@ export class QualityTab {
         </div>
         <small style="display: block; margin-top: 6px; color: var(--text-muted); font-size: 11px;">
           ${t('settings.qualityFootnote')}
+        </small>
+        <small style="display: block; margin-top: 4px; color: var(--accent-primary); font-size: 11px;">
+          <span class="material-symbols-outlined" style="font-size: 14px; vertical-align: middle;">bolt</span>
+          ${t('settings.qualityInstantApply')}
         </small>
       </div>
     `;

@@ -208,5 +208,5 @@ export interface WebRtcSignalPayload {
 export interface BandwidthSettings {
   maxUploadKbps: number;
   maxDownloadKbps: number;
-  qualityPreset: 'ECONOMIC' | 'NORMAL' | 'HIGH' | 'GAMING';
+  qualityPreset: 'ECONOMIC' | 'NORMAL' | 'HIGH' | 'GAMING' | 'ULTRA';
 }

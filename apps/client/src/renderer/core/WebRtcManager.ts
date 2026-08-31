@@ -1292,10 +1292,11 @@ export class WebRtcManager {
             params.encodings[0].maxBitrate =
               (isScreen ? profile.screenBitrateKbps : profile.cameraBitrateKbps) * 1000;
 
-            // Gaming favors fluid motion (drop resolution before framerate);
+            // Gaming/Ultra favor fluid motion (drop resolution before framerate);
             // desktop/camera favors sharpness (drop framerate before resolution).
+            const highFps = this.currentPreset === 'GAMING' || this.currentPreset === 'ULTRA';
             (params as any).degradationPreference =
-              isScreen && this.currentPreset === 'GAMING'
+              (isScreen && highFps) || (!isScreen && this.currentPreset === 'ULTRA')
                 ? 'maintain-framerate'
                 : 'maintain-resolution';
           }
