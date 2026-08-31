@@ -1,5 +1,6 @@
 import { ANSI, color, DEFAULT_DATA_DIR } from './constants';
 import { GlobalArgs, readLocalConfig } from './context';
+import { t } from './i18n/index';
 import { askChoice } from './prompts';
 import { discoverPm2DataDirs } from './pm2';
 import {
@@ -28,8 +29,8 @@ export function knownServers(): RegisteredServer[] {
 
 export function describeServer(server: RegisteredServer): string {
   const port = server.port ?? readLocalConfig(server.dataDir).port;
-  const suffix = port ? ` — porta ${port}` : '';
-  return `${server.name || 'Servidor Monky'}${suffix} — ${server.dataDir}`;
+  const suffix = port ? ` — ${t('target.portSuffix', { port })}` : '';
+  return `${server.name || 'Monky Server'}${suffix} — ${server.dataDir}`;
 }
 
 /**
@@ -42,9 +43,7 @@ export function describeServer(server: RegisteredServer): string {
 export async function resolveTargetServer(globalArgs: GlobalArgs, action: string): Promise<RegisteredServer> {
   if (globalArgs.dataDirSpecified) {
     if (!hasServerDatabase(globalArgs.dataDir)) {
-      throw new Error(
-        `Nenhum servidor Monky em: ${globalArgs.dataDir}\nCrie um com: monky create --data "${globalArgs.dataDir}"`
-      );
+      throw new Error(t('target.notFound', { dataDir: globalArgs.dataDir }));
     }
     return findServerByDataDir(globalArgs.dataDir) ?? registerServer(globalArgs.dataDir);
   }
@@ -52,7 +51,7 @@ export async function resolveTargetServer(globalArgs: GlobalArgs, action: string
   const servers = knownServers();
 
   if (servers.length === 0) {
-    throw new Error('Nenhum servidor Monky encontrado nesta máquina.\nCrie um com: monky create');
+    throw new Error(t('target.noneOnMachine'));
   }
 
   if (servers.length === 1) {
@@ -61,14 +60,11 @@ export async function resolveTargetServer(globalArgs: GlobalArgs, action: string
 
   if (!process.stdin.isTTY) {
     const list = servers.map((server) => `  --data "${server.dataDir}"`).join('\n');
-    throw new Error(
-      `Há ${servers.length} servidores nesta máquina e o terminal não é interativo.\n` +
-        `Escolha um com --data:\n${list}`
-    );
+    throw new Error(t('target.multipleNonInteractive', { count: servers.length, list }));
   }
 
-  console.log(color(`Há ${servers.length} servidores Monky nesta máquina.`, ANSI.dim));
+  console.log(color(t('target.multipleFound', { count: servers.length }), ANSI.dim));
   const labels = servers.map(describeServer);
-  const selected = await askChoice(`Qual servidor deseja ${action}?`, labels);
+  const selected = await askChoice(t('target.whichServer', { action }), labels);
   return servers[labels.indexOf(selected)];
 }
