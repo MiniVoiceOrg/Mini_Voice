@@ -109,18 +109,26 @@ export class QualityTab {
   /**
    * A dropdown of common values plus a "custom" entry that reveals the plain
    * number box the tab used to show for everything (#476).
+   *
+   * The free-form box sits on its own row instead of beside the dropdown so
+   * every row keeps the same three columns and nothing shifts sideways when a
+   * field is switched to custom.
    */
   private renderNumberChoice(id: string, label: string, options: number[], value: number, unit: string): string {
     const isKnown = options.includes(value);
     return `
       <div class="quality-custom-row">
-        <label class="quality-custom-label">${label}</label>
-        <select id="q-select-${id}" class="quality-custom-select">
+        <label class="quality-custom-label" for="q-select-${id}">${label}</label>
+        <select id="q-select-${id}" class="quality-custom-control">
           ${options.map((option) => `<option value="${option}" ${option === value ? 'selected' : ''}>${option}${unit ? ` ${unit}` : ''}</option>`).join('')}
           <option value="${CUSTOM_OPTION}" ${isKnown ? '' : 'selected'}>${t('settings.optionCustom')}</option>
         </select>
-        <input id="custom-${id}" type="number" min="1" value="${value}" class="quality-custom-input" style="${isKnown ? 'display: none;' : ''}">
-        ${unit ? `<span class="quality-custom-unit">${unit}</span>` : ''}
+        <span class="quality-custom-unit"></span>
+      </div>
+      <div class="quality-custom-row" id="q-custom-${id}" ${isKnown ? 'hidden' : ''}>
+        <span class="quality-custom-label"></span>
+        <input id="custom-${id}" type="number" min="1" value="${value}" class="quality-custom-control">
+        <span class="quality-custom-unit">${unit}</span>
       </div>
     `;
   }
@@ -133,25 +141,29 @@ export class QualityTab {
 
     return `
       <div class="quality-custom-row">
-        <label class="quality-custom-label">${t('settings.aspectRatio')}</label>
-        <select id="q-aspect-${kind}" class="quality-custom-select">
+        <label class="quality-custom-label" for="q-aspect-${kind}">${t('settings.aspectRatio')}</label>
+        <select id="q-aspect-${kind}" class="quality-custom-control">
           ${ASPECT_RATIO_GROUPS.map((item) => `<option value="${item.id}" ${item.id === aspectId ? 'selected' : ''}>${item.label}</option>`).join('')}
         </select>
+        <span class="quality-custom-unit"></span>
       </div>
       <div class="quality-custom-row">
-        <label class="quality-custom-label">${t('settings.resolution')}</label>
-        <select id="q-res-${kind}" class="quality-custom-select">
+        <label class="quality-custom-label" for="q-res-${kind}">${t('settings.resolution')}</label>
+        <select id="q-res-${kind}" class="quality-custom-control">
           ${this.renderResolutionOptions(group, width, height)}
         </select>
+        <span class="quality-custom-unit"></span>
       </div>
-      <div class="quality-custom-row" id="q-res-${kind}-custom" style="${isKnownResolution ? 'display: none;' : ''}">
-        <label class="quality-custom-label"></label>
-        <input id="custom-${kind}Width" type="number" min="1" value="${width}" class="quality-custom-input" title="${t('settings.width')}">
-        <span class="quality-custom-unit">×</span>
-        <input id="custom-${kind}Height" type="number" min="1" value="${height}" class="quality-custom-input" title="${t('settings.height')}">
+      <div class="quality-custom-row" id="q-res-${kind}-custom" ${isKnownResolution ? 'hidden' : ''}>
+        <span class="quality-custom-label"></span>
+        <div class="quality-custom-pair">
+          <input id="custom-${kind}Width" type="number" min="1" value="${width}" title="${t('settings.width')}" aria-label="${t('settings.width')}">
+          <span class="quality-custom-times">×</span>
+          <input id="custom-${kind}Height" type="number" min="1" value="${height}" title="${t('settings.height')}" aria-label="${t('settings.height')}">
+        </div>
         <span class="quality-custom-unit">px</span>
       </div>
-      ${this.renderNumberChoice(`${kind}Fps`, 'FPS', FPS_OPTIONS, fps, '')}
+      ${this.renderNumberChoice(`${kind}Fps`, 'FPS', FPS_OPTIONS, fps, 'fps')}
       ${this.renderNumberChoice(`${kind}Bitrate`, t('settings.bitrate'), VIDEO_BITRATE_OPTIONS, bitrate, 'kbps')}
     `;
   }
@@ -212,16 +224,15 @@ export class QualityTab {
     // the stored value stays untouched until the user actually types one (#476).
     const bindSelect = <K extends keyof QualityProfile>(id: string, key: K) => {
       const select = container.querySelector<HTMLSelectElement>(`#q-select-${id}`);
+      const customRow = container.querySelector<HTMLElement>(`#q-custom-${id}`);
       const input = container.querySelector<HTMLInputElement>(`#custom-${id}`);
       select?.addEventListener('change', () => {
         if (select.value === CUSTOM_OPTION) {
-          if (input) {
-            input.style.display = '';
-            input.focus();
-          }
+          if (customRow) customRow.hidden = false;
+          input?.focus();
           return;
         }
-        if (input) input.style.display = 'none';
+        if (customRow) customRow.hidden = true;
         const val = parseInt(select.value, 10);
         if (isNaN(val) || val <= 0) return;
         setValue(key, val);
@@ -238,10 +249,10 @@ export class QualityTab {
 
       resSelect?.addEventListener('change', () => {
         if (resSelect.value === CUSTOM_OPTION) {
-          if (customRow) customRow.style.display = '';
+          if (customRow) customRow.hidden = false;
           return;
         }
-        if (customRow) customRow.style.display = 'none';
+        if (customRow) customRow.hidden = true;
         const [width, height] = resSelect.value.split('x').map((part) => parseInt(part, 10));
         if (isNaN(width) || isNaN(height)) return;
         setValue(widthKey, width);
@@ -259,7 +270,7 @@ export class QualityTab {
         if (resSelect) {
           resSelect.innerHTML = this.renderResolutionOptions(group, target.width, target.height);
         }
-        if (customRow) customRow.style.display = 'none';
+        if (customRow) customRow.hidden = true;
         setValue(widthKey, target.width);
         setValue(heightKey, target.height);
         apply();
