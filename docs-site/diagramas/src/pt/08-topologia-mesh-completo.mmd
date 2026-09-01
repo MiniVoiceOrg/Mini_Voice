@@ -1,0 +1,19 @@
+flowchart TB
+    subgraph N3["3 pessoas — 3 conexões"]
+        A1((Ana)) --- B1((Bruno))
+        B1 --- C1((Carla))
+        A1 --- C1
+    end
+
+    subgraph N5["5 pessoas — 10 conexões"]
+        A((Ana)) --- B((Bruno))
+        A --- C((Carla))
+        A --- D((Davi))
+        A --- E((Elis))
+        B --- C
+        B --- D
+        B --- E
+        C --- D
+        C --- E
+        D --- E
+    end

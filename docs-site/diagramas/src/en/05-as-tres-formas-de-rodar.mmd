@@ -1,0 +1,10 @@
+flowchart TB
+    CODE["<b>apps/server</b><br/>WebSocket + SQLite<br/>the same in all three"]
+
+    CODE --> A["<b>From the app</b><br/>inside the Electron<br/>process"]
+    CODE --> B["<b>From the Monky CLI</b><br/>PM2 daemon,<br/>registry in ~/.monky"]
+    CODE --> C["<b>On a VPS</b><br/>the same CLI, on a<br/>machine that stays on"]
+
+    A --> A1["dies when you close the app;<br/>tied to your home IP"]
+    B --> B1["survives logout<br/>and reboots"]
+    C --> C1["a stable address for<br/>people outside"]

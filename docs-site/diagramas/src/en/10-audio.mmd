@@ -1,0 +1,7 @@
+flowchart LR
+    MIC["Microphone<br/>getUserMedia"] --> AC["AudioContext<br/>48 kHz"]
+    AC --> RN["RNNoise<br/>(optional)"]
+    RN --> DEST["Outgoing stream"]
+    AC --> AN["Analyser<br/>speech detection"]
+    DEST --> PC["To the peers"]
+    AN -->|every 50 ms| UI["Who is speaking<br/>indicator"]

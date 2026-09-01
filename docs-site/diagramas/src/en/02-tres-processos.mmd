@@ -1,0 +1,9 @@
+flowchart LR
+    subgraph Electron["Electron app"]
+        M["<b>Main</b><br/>src/main/<br/><br/>window, tray,<br/>auto-update,<br/>native module,<br/>local server"]
+        P["<b>Preload</b><br/>src/preload/<br/><br/>the bridge<br/>window.api"]
+        R["<b>Renderer</b><br/>src/renderer/<br/><br/>the whole UI,<br/>WebRTC,<br/>WebSocket"]
+    end
+
+    M <-->|IPC| P
+    P <-->|contextBridge| R

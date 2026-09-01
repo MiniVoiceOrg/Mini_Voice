@@ -1,0 +1,19 @@
+sequenceDiagram
+    participant A as Ana (client)
+    participant S as Server
+    participant B as Bruno (peer)
+
+    Note over A,S: Ana's network drops
+    A--xS: WebSocket closes
+    Note over S: holds the session for 20 s<br/>instead of announcing the departure
+    S-->>B: (nobody is told yet)
+
+    loop 1s · 2s · 3s · 5s
+        A->>S: retries the connection
+    end
+
+    A->>S: AUTH_CONNECT + challenge again
+    S->>A: server state reloaded from scratch
+    Note over A: tears down EVERY P2P connection<br/>and rebuilds from the new list
+    A->>S: VOICE_JOIN (rejoins the channel)
+    A-->>B: new P2P connection

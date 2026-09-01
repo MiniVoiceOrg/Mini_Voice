@@ -1,0 +1,11 @@
+sequenceDiagram
+    participant C as Client
+    participant S as Server
+
+    C->>S: AUTH_CONNECT<br/>(public key, nickname, protocol version, server password?)
+    Note over S: validates the protocol version,<br/>the server password and the nickname
+    S->>C: AUTH_CHALLENGE (random nonce)
+    Note over C: signs the nonce with<br/>the private key
+    C->>S: AUTH_CHALLENGE_RESPONSE (signature)
+    Note over S: checks the signature<br/>against the public key
+    S->>C: server state: channels, members, roles, history

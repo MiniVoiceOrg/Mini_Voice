@@ -1,0 +1,18 @@
+flowchart TB
+    subgraph CP["Plano de controle — passa pelo servidor"]
+        direction LR
+        S[("Servidor Monky<br/>WebSocket + SQLite")]
+    end
+
+    subgraph MP["Plano de mídia — nunca passa pelo servidor"]
+        direction LR
+        A2["Ana"] <-->|"voz · vídeo · tela"| B2["Bruno"]
+        B2 <-->|"voz · vídeo · tela"| C2["Carla"]
+        A2 <-->|"voz · vídeo · tela"| C2
+    end
+
+    A["Ana"] <-->|"login, canais, chat,<br/>sinalização"| S
+    B["Bruno"] <--> S
+    C["Carla"] <--> S
+
+    CP -.->|"o servidor só apresenta<br/>os pares uns aos outros"| MP

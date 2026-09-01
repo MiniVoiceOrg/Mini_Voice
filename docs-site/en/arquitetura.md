@@ -12,26 +12,12 @@ in [`docs/especificacao-tecnica.md`](https://github.com/MonkyOrg/Monky/blob/main
 Everything in Monky starts from one split: **what the server controls** and
 **what travels directly between people**.
 
-```mermaid
-flowchart TB
-    subgraph CP["Control plane — goes through the server"]
-        direction LR
-        S[("Monky server<br/>WebSocket + SQLite")]
-    end
+<div class="diagrama">
 
-    subgraph MP["Media plane — never touches the server"]
-        direction LR
-        A2["Ana"] <-->|"voice · video · screen"| B2["Bruno"]
-        B2 <-->|"voice · video · screen"| C2["Carla"]
-        A2 <-->|"voice · video · screen"| C2
-    end
+![The core idea: two separate planes](../diagramas/en/01-a-ideia-central-dois-planos-separados.claro.svg){.tema-claro}
+![The core idea: two separate planes](../diagramas/en/01-a-ideia-central-dois-planos-separados.escuro.svg){.tema-escuro}
 
-    A["Ana"] <-->|"login, channels, chat,<br/>signaling"| S
-    B["Bruno"] <--> S
-    C["Carla"] <--> S
-
-    CP -.->|"the server only introduces<br/>the peers to each other"| MP
-```
+</div>
 
 The server handles login, channels, chat, roles and **signaling**. It introduces
 participants to each other and then steps aside: voice, video and screen travel
@@ -63,17 +49,12 @@ import the **same** types and the **same** validators.
 
 Electron splits the app into three contexts, and Monky respects that split:
 
-```mermaid
-flowchart LR
-    subgraph Electron["Electron app"]
-        M["<b>Main</b><br/>src/main/<br/><br/>window, tray,<br/>auto-update,<br/>native module,<br/>local server"]
-        P["<b>Preload</b><br/>src/preload/<br/><br/>the bridge<br/>window.api"]
-        R["<b>Renderer</b><br/>src/renderer/<br/><br/>the whole UI,<br/>WebRTC,<br/>WebSocket"]
-    end
+<div class="diagrama">
 
-    M <-->|IPC| P
-    P <-->|contextBridge| R
-```
+![Three processes](../diagramas/en/02-tres-processos.claro.svg){.tema-claro}
+![Three processes](../diagramas/en/02-tres-processos.escuro.svg){.tema-escuro}
+
+</div>
 
 The renderer runs with `contextIsolation: true` and `nodeIntegration: false`: the
 UI **has no access to Node**. Anything that needs the operating system — picking
@@ -89,13 +70,12 @@ template strings and re-render themselves.
 State lives in singleton stores that emit events on a bus (`appEvents`), and
 views subscribe to whatever concerns them:
 
-```mermaid
-flowchart LR
-    N["NetworkClient<br/>(WebSocket)"] -->|server event| ST["Stores<br/>serverStore, voiceStore,<br/>chatStore, connectionStore,<br/>settingsStore"]
-    ST -->|appEvents.emit| EB(["EventBus"])
-    EB -->|appEvents.on| V["Views<br/>MainView, ChatView,<br/>VoiceStageView…"]
-    V -->|user action| N
-```
+<div class="diagrama">
+
+![The UI uses no framework](../diagramas/en/03-a-interface-nao-usa-framework.claro.svg){.tema-claro}
+![The UI uses no framework](../diagramas/en/03-a-interface-nao-usa-framework.escuro.svg){.tema-escuro}
+
+</div>
 
 ### The services
 
@@ -120,26 +100,12 @@ Every large client responsibility lives in its own class, under
 There is no local database, but it is not all `localStorage` either: the client
 stores in **two places with different guarantees**, and the difference matters.
 
-```mermaid
-flowchart TB
-    subgraph LS["localStorage — the renderer reads and writes"]
-        direction TB
-        L1["<b>monky_settings</b><br/>quality, devices,<br/>volumes, shortcuts, soundboard"]
-        L2["<b>monky_nickname</b> · <b>monky_avatar</b><br/>your visual identity"]
-        L3["<b>monky_saved_servers</b> · <b>monky_created_servers</b><br/>saved and created servers"]
-        L4["<b>monky_device_id</b> · <b>monky_language</b><br/>this device and the language"]
-    end
+<div class="diagrama">
 
-    subgraph UD["userData on disk — only the main process reaches it"]
-        direction TB
-        D1["<b>identity.json</b><br/>your key pair,<br/>encrypted with safeStorage"]
-        D2["<b>server-data/</b><br/>the server database,<br/>when you host from the app"]
-    end
+![What is stored on your machine](../diagramas/en/04-o-que-fica-salvo-na-sua-maquina.claro.svg){.tema-claro}
+![What is stored on your machine](../diagramas/en/04-o-que-fica-salvo-na-sua-maquina.escuro.svg){.tema-escuro}
 
-    R["Renderer"] --> LS
-    R -->|window.api| M["Main"]
-    M --> UD
-```
+</div>
 
 | Key | Contents |
 |---|---|
@@ -164,18 +130,12 @@ the clear, and the record itself says which of the two happened.
 The same server code goes up in three shapes, and the difference is not
 technical — it is about who looks after it:
 
-```mermaid
-flowchart TB
-    CODE["<b>apps/server</b><br/>WebSocket + SQLite<br/>the same code in all three"]
+<div class="diagrama">
 
-    CODE --> A["<b>From the app</b><br/>Electron imports the server<br/>and runs it in its own process"]
-    CODE --> B["<b>From the Monky CLI</b><br/>PM2 daemon, registry<br/>in ~/.monky/servers.json"]
-    CODE --> C["<b>On a VPS</b><br/>the same CLI, on a machine<br/>that stays on"]
+![The three ways to run it](../diagramas/en/05-as-tres-formas-de-rodar.claro.svg){.tema-claro}
+![The three ways to run it](../diagramas/en/05-as-tres-formas-de-rodar.escuro.svg){.tema-escuro}
 
-    A --> A1["dies when you close the app<br/>and depends on your home IP"]
-    B --> B1["survives logout and comes<br/>back after a reboot"]
-    C --> C1["a stable address for<br/>people joining from outside"]
-```
+</div>
 
 Hosting **from the app** is the two-click path, and that is why the client
 imports `@monky/server` directly: no separate process, no admin port. The price
@@ -191,17 +151,12 @@ There is no dependency injection container: wiring is explicit, done by hand in
 `MonkyServer.create()`. You can read the file and see exactly what depends on
 what.
 
-```mermaid
-flowchart TB
-    WS["<b>infrastructure/websocket</b><br/>WebSocketServer — receives the frame,<br/>identifies the type and routes it"]
-    SV["<b>application/services</b><br/>AuthService · ChatService · ChannelService<br/>RoleService · PermissionService<br/>SignalingService · UserService · AttachmentService"]
-    RP["<b>infrastructure/database</b><br/>Repositories + SQLite"]
-    SEC["<b>infrastructure/security</b><br/>RateLimiter · avatar and attachment<br/>storage · password hashing"]
+<div class="diagrama">
 
-    WS --> SV
-    SV --> RP
-    SV --> SEC
-```
+![Layers](../diagramas/en/06-camadas.claro.svg){.tema-claro}
+![Layers](../diagramas/en/06-camadas.escuro.svg){.tema-escuro}
+
+</div>
 
 Beyond the WebSocket, the server exposes a few HTTP routes: `/health`, `/preview`
 and `/invite-info` (public information for the invite screen), `/avatars/*` and
@@ -243,19 +198,12 @@ respected.
 Login is challenge–response with public-key cryptography. You have no account and
 no sign-up: your identity **is** your key pair.
 
-```mermaid
-sequenceDiagram
-    participant C as Client
-    participant S as Server
+<div class="diagrama">
 
-    C->>S: AUTH_CONNECT<br/>(public key, nickname, protocol version, server password?)
-    Note over S: validates the protocol version,<br/>the server password and the nickname
-    S->>C: AUTH_CHALLENGE (random nonce)
-    Note over C: signs the nonce with<br/>the private key
-    C->>S: AUTH_CHALLENGE_RESPONSE (signature)
-    Note over S: checks the signature<br/>against the public key
-    S->>C: server state: channels, members, roles, history
-```
+![Authentication: the server never sees a password of yours](../diagramas/en/07-autenticacao-o-servidor-nunca-ve-uma-sen.claro.svg){.tema-claro}
+![Authentication: the server never sees a password of yours](../diagramas/en/07-autenticacao-o-servidor-nunca-ve-uma-sen.escuro.svg){.tema-escuro}
+
+</div>
 
 The `clientId` is derived from the public key itself, so it cannot be forged:
 without the private key you cannot sign the challenge.
@@ -327,27 +275,12 @@ its extension. Renaming an executable to `.png` does not fool the check.
 
 Each participant opens a direct connection to **every** other one.
 
-```mermaid
-flowchart TB
-    subgraph N3["3 people — 3 connections"]
-        A1((Ana)) --- B1((Bruno))
-        B1 --- C1((Carla))
-        A1 --- C1
-    end
+<div class="diagrama">
 
-    subgraph N5["5 people — 10 connections"]
-        A((Ana)) --- B((Bruno))
-        A --- C((Carla))
-        A --- D((Davi))
-        A --- E((Elis))
-        B --- C
-        B --- D
-        B --- E
-        C --- D
-        C --- E
-        D --- E
-    end
-```
+![Topology: full mesh](../diagramas/en/08-topologia-mesh-completo.claro.svg){.tema-claro}
+![Topology: full mesh](../diagramas/en/08-topologia-mesh-completo.escuro.svg){.tema-escuro}
+
+</div>
 
 With **N** participants, each person keeps **N−1** connections and the channel has
 **N(N−1)/2** in total. Whoever shares a screen sends the same video N−1 times,
@@ -367,30 +300,12 @@ would need an SFU — and then the server would be carrying media again.
 The server only delivers envelopes. It rewrites the sender (so nobody can forge an
 identity) and refuses delivery if the two peers are not in the same voice channel.
 
-```mermaid
-sequenceDiagram
-    participant A as Ana
-    participant S as Server
-    participant B as Bruno
+<div class="diagrama">
 
-    A->>S: VOICE_JOIN
-    S-->>B: VOICE_USER_JOINED (Ana joined)
+![Signaling](../diagramas/en/09-sinalizacao.claro.svg){.tema-claro}
+![Signaling](../diagramas/en/09-sinalizacao.escuro.svg){.tema-escuro}
 
-    Note over A,B: from here on the server only relays
-    A->>S: RTC_SIGNAL (offer)
-    S->>B: RTC_SIGNAL (offer, from Ana)
-    B->>S: RTC_SIGNAL (answer)
-    S->>A: RTC_SIGNAL (answer, from Bruno)
-
-    loop while ICE discovers paths
-        A->>S: RTC_SIGNAL (candidate)
-        S->>B: RTC_SIGNAL (candidate)
-        B->>S: RTC_SIGNAL (candidate)
-        S->>A: RTC_SIGNAL (candidate)
-    end
-
-    A-->>B: direct media, P2P
-```
+</div>
 
 ### Getting through NAT
 
@@ -420,15 +335,12 @@ the connection to that peer from scratch.
 
 ### Audio
 
-```mermaid
-flowchart LR
-    MIC["Microphone<br/>getUserMedia"] --> AC["AudioContext<br/>48 kHz"]
-    AC --> RN["RNNoise<br/>(optional)"]
-    RN --> DEST["Outgoing stream"]
-    AC --> AN["Analyser<br/>speech detection"]
-    DEST --> PC["To the peers"]
-    AN -->|every 50 ms| UI["Who is speaking<br/>indicator"]
-```
+<div class="diagrama">
+
+![Audio](../diagramas/en/10-audio.claro.svg){.tema-claro}
+![Audio](../diagramas/en/10-audio.escuro.svg){.tema-escuro}
+
+</div>
 
 Capture already asks the browser for echo cancellation and automatic gain. Noise
 suppression has one subtlety: when you turn on Monky's **RNNoise**, the browser's
@@ -504,27 +416,12 @@ waits (1s, 2s, 3s, 5s — the last one repeats). The server keeps the session al
 for **20 seconds** before announcing the departure, so a quick Wi-Fi hiccup does
 not throw anyone off the list.
 
-```mermaid
-sequenceDiagram
-    participant A as Ana (client)
-    participant S as Server
-    participant B as Bruno (peer)
+<div class="diagrama">
 
-    Note over A,S: Ana's network drops
-    A--xS: WebSocket closes
-    Note over S: holds the session for 20 s<br/>instead of announcing the departure
-    S-->>B: (nobody is told yet)
+![Reconnection](../diagramas/en/11-reconexao.claro.svg){.tema-claro}
+![Reconnection](../diagramas/en/11-reconexao.escuro.svg){.tema-escuro}
 
-    loop 1s · 2s · 3s · 5s
-        A->>S: retries the connection
-    end
-
-    A->>S: AUTH_CONNECT + challenge again
-    S->>A: server state reloaded from scratch
-    Note over A: tears down EVERY P2P connection<br/>and rebuilds from the new list
-    A->>S: VOICE_JOIN (rejoins the channel)
-    A-->>B: new P2P connection
-```
+</div>
 
 Notice the least intuitive step: on the way back the client **tears down every
 P2P connection and starts over**, including the ones that looked alive. It sounds
