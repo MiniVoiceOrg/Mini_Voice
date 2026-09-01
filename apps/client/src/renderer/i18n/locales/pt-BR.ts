@@ -539,6 +539,7 @@ export const ptBR = {
   'main.serverHostingCall': '{name} — sua chamada continua aqui',
   'main.callHereTooltip': 'Sua chamada de voz está neste servidor',
   'main.unreadHereTooltip': 'Mensagens novas neste servidor',
+  'main.mentionHereTooltip': 'Você foi mencionado neste servidor',
   'main.rightClickVolume': 'Botão direito para ajustar volume',
   'main.rightClickVolumeShort': 'Clique c/ botão direito p/ ajustar volume',
   'main.micMuted': 'Microfone mutado',

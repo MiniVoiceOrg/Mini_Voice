@@ -588,7 +588,10 @@ input:focus, textarea:focus, select:focus {
      would sit behind it, unreachable. */
   padding-bottom: calc(var(--user-card-height, 64px) + 16px);
   gap: 8px;
-  overflow-y: auto;
+  min-height: 0;
+  /* Only the server list scrolls (below); the rail itself must not, or the
+     home button would scroll out of reach (#479). */
+  overflow: hidden;
 }
 
 .server-rail-home,
@@ -658,7 +661,15 @@ input:focus, textarea:focus, select:focus {
 .server-rail-badge[data-kind='unread'] {
   width: 12px;
   height: 12px;
-  background-color: var(--accent-primary);
+  background-color: #fff;
+}
+
+/* An unread @-mention outranks plain unread messages and is called out in
+   red, matching the mention badge used in the channel list (#479). */
+.server-rail-badge[data-kind='mention'] {
+  width: 12px;
+  height: 12px;
+  background-color: var(--danger);
 }
 
 .server-rail-status-dot[data-status='offline'] {
@@ -768,11 +779,28 @@ input:focus, textarea:focus, select:focus {
   flex-shrink: 0;
 }
 
+/* The saved servers scroll on their own so a long list stays reachable and
+   never runs under the floating user card, whose height the rail already
+   reserves as padding (#473, #479). The bar is 60px wide and a visible track
+   would eat into the avatars, so it scrolls silently: no scrollbar is drawn,
+   only the wheel/trackpad gesture. `min-height: 0` is what allows a flex child
+   to shrink past its content and overflow at all. */
 .server-rail-list {
   display: flex;
   flex-direction: column;
   align-items: center;
   width: 100%;
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  overflow-x: hidden;
+  overscroll-behavior: contain;
+  scrollbar-width: none;
+}
+
+.server-rail-list::-webkit-scrollbar {
+  width: 0;
+  height: 0;
 }
 
 .server-rail-drop-zone {

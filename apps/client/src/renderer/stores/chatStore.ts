@@ -98,6 +98,14 @@ export class ChatStore {
   }
 
   /**
+   * Whether any channel holds an unread @-mention. The rail badge separates it
+   * from plain unread so a mention shows up in red instead of white (#479).
+   */
+  public hasAnyMention(): boolean {
+    return this.mentionChannels.size > 0;
+  }
+
+  /**
    * Remembers what the user had typed but not sent in a channel, so leaving for
    * the voice stage or another channel doesn't throw the text away (#478).
    */
