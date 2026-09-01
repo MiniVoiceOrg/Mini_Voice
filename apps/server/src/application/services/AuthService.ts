@@ -333,6 +333,8 @@ export class AuthService {
       maxUsers: server.maxUsers,
       hasPassword: !!(server.passwordHash && server.passwordHash.length > 0),
       allowSoundboard: server.allowSoundboard !== false,
+      allowEveryoneMention: server.allowEveryoneMention !== false,
+      turnEnabled: Boolean(server.turnEnabled),
       iconUrl: this.avatarStorage.getPublicUrl(server.iconPath),
       channels: visibleChannels.map((c) => ({
         id: c.id,
@@ -393,18 +395,22 @@ export class AuthService {
     name?: string;
     password?: string | null;
     allowSoundboard?: boolean;
+    allowEveryoneMention?: boolean;
     iconBase64?: string | null;
     maxAttachmentFileBytes?: number;
     maxAttachmentStorageBytes?: number;
     maxUsers?: number;
+    turnEnabled?: boolean;
   }): Promise<{
     success: boolean;
     name?: string;
     hasPassword?: boolean;
     allowSoundboard?: boolean;
+    allowEveryoneMention?: boolean;
     iconUrl?: string | null;
     attachmentStorage?: AttachmentStorageInfo;
     maxUsers?: number;
+    turnEnabled?: boolean;
     errorMessage?: string;
   }> {
     const server = await this.serverRepo.getServer();
@@ -464,6 +470,19 @@ export class AuthService {
     if (payload.allowSoundboard !== undefined) {
       updates.allowSoundboard = Boolean(payload.allowSoundboard);
     }
+    if (payload.allowEveryoneMention !== undefined) {
+      updates.allowEveryoneMention = Boolean(payload.allowEveryoneMention);
+    }
+
+    if (payload.turnEnabled !== undefined) {
+      updates.turnEnabled = Boolean(payload.turnEnabled);
+      // Mint the shared secret the first time the relay is switched on, and
+      // keep it afterwards: rotating it would invalidate every credential
+      // already handed out, dropping the calls currently being relayed.
+      if (updates.turnEnabled && !server.turnSecret) {
+        updates.turnSecret = randomBytes(32).toString('hex');
+      }
+    }
 
     if (payload.iconBase64 !== undefined) {
       if (!payload.iconBase64 || payload.iconBase64.trim() === '') {
@@ -500,9 +519,11 @@ export class AuthService {
       name: updatedServer?.name || server.name,
       hasPassword: !!(updatedServer?.passwordHash && updatedServer.passwordHash.length > 0),
       allowSoundboard: updatedServer?.allowSoundboard !== false,
+      allowEveryoneMention: updatedServer?.allowEveryoneMention !== false,
       iconUrl: this.avatarStorage.getPublicUrl(updatedServer?.iconPath),
       attachmentStorage: await this.attachmentService.getStorageInfo(),
       maxUsers: updatedServer?.maxUsers ?? server.maxUsers,
+      turnEnabled: Boolean(updatedServer?.turnEnabled),
     };
   }
 }

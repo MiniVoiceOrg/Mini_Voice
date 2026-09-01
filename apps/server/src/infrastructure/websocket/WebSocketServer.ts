@@ -14,6 +14,8 @@ import {
   ChannelCreatedPayload,
   ChannelDeletePayload,
   ChannelDeletedPayload,
+  ChannelReorderPayload,
+  ChannelsReorderedPayload,
   ChannelUpdatePayload,
   ChannelUpdatedPayload,
   ChatHistoryPayload,
@@ -69,6 +71,7 @@ import { SignalingService } from '../../application/services/SignalingService';
 import { UserService } from '../../application/services/UserService';
 import { IServerRepository } from '../../domain/repositories';
 import { scanServerNetworkInterfaces } from '../discovery/ServerIpScanner';
+import { CoturnManager } from '../turn/CoturnManager';
 import { Logger } from '../logger/Logger';
 
 interface ClientSession {
@@ -93,6 +96,15 @@ interface ClientSession {
    * changes.
    */
   visibleChannelIds?: Set<string>;
+  /**
+   * Hostname this client used to reach the server, from the upgrade request's
+   * `Host` header (#425).
+   *
+   * TURN URLs are built from it instead of an address the server guesses about
+   * itself, which would be wrong behind a reverse proxy, on a multi-homed host
+   * or on a LAN. Whatever brought the client here is reachable by definition.
+   */
+  requestHost?: string;
 }
 
 export class WebSocketServer {
@@ -114,7 +126,8 @@ export class WebSocketServer {
     private serverRepo: IServerRepository,
     private attachmentService: AttachmentService,
     private permissionService: PermissionService,
-    private roleService: RoleService
+    private roleService: RoleService,
+    private coturnManager: CoturnManager
   ) {
     this.wss = new WSServer({ server: this.server });
     this.setupWss();
@@ -157,8 +170,27 @@ export class WebSocketServer {
     return targets.length;
   }
 
-  private setupWss(): void {
-    this.wss.on('connection', (ws: WebSocket, req: http.IncomingMessage) => {
+  /**
+   * Extracts the hostname from a `Host` header, dropping the port (#425).
+   *
+   * The port has to go because the TURN listener is on 3478, not on whatever
+   * port the client used to reach the API. IPv6 literals arrive bracketed
+   * (`[::1]:3000`) and the brackets are kept, since ICE URLs need them too.
+   */
+  private static parseRequestHostname(header: string | undefined): string | undefined {
+    const raw = (header || '').trim();
+    if (!raw) return undefined;
+
+    if (raw.startsWith('[')) {
+      const end = raw.indexOf(']');
+      return end > 0 ? raw.slice(0, end + 1) : undefined;
+    }
+
+    const host = raw.split(':')[0].trim();
+    return host.length > 0 ? host : undefined;
+  }
+
+  private setupWss(): void {    this.wss.on('connection', (ws: WebSocket, req: http.IncomingMessage) => {
       const ip = req.socket.remoteAddress || 'unknown';
       Logger.info('NETWORK', `New connection established from ${ip}`);
 
@@ -166,6 +198,7 @@ export class WebSocketServer {
         ws,
         isAlive: true,
         ip,
+        requestHost: WebSocketServer.parseRequestHostname(req.headers.host),
       };
       this.sessions.set(ws, session);
 
@@ -263,6 +296,11 @@ export class WebSocketServer {
       case MessageType.CHANNEL_DELETE:
         if (!(await this.requirePermission(session, Permission.MANAGE_CHANNELS, requestId))) return;
         await this.handleChannelDelete(session, payload as ChannelDeletePayload, requestId);
+        break;
+
+      case MessageType.CHANNEL_REORDER:
+        if (!(await this.requirePermission(session, Permission.MANAGE_CHANNELS, requestId))) return;
+        await this.handleChannelReorder(session, payload as ChannelReorderPayload, requestId);
         break;
 
       case MessageType.USER_CHANGE_NICKNAME:
@@ -473,12 +511,18 @@ export class WebSocketServer {
 
     // Send AUTH_SUCCESS to the connecting client
     const successPayload: AuthSuccessPayload = {
-      server: result.serverDetails,
+      server: {
+        ...result.serverDetails,
+        // Told at login because it never changes while the process lives: it
+        // depends on the host OS and on coturn being installed (#429).
+        turnAvailability: CoturnManager.describeAvailability(),
+      },
       currentUser: result.user,
       roles: result.serverDetails.roles,
       userRoles: result.serverDetails.userRoles,
       ownerId: result.serverDetails.ownerId,
       myPermissions: result.serverDetails.myPermissions,
+      iceServers: await this.buildIceServersFor(result.user.id, session),
     };
 
     this.send(session.ws, {
@@ -499,8 +543,93 @@ export class WebSocketServer {
     Logger.info('NETWORK', `User ${result.user.nickname} (${result.user.id}) joined the server.`);
   }
 
-  private async handleChatSend(
-    session: ClientSession,
+  /**
+   * ICE servers for one client: STUN always, plus the relay when it is up (#425).
+   *
+   * The credentials are minted per connection and expire on their own, so a
+   * leaked `AUTH_SUCCESS` cannot be replayed forever, and a member removed from
+   * the server loses relay access once their current set lapses.
+   */
+  /**
+   * Brings the relay in line with the freshly saved setting (#425).
+   *
+   * Members already in a call keep the ICE servers they were given at login, so
+   * switching the relay on only helps the calls started afterwards — which is
+   * why the UI tells the operator to reconnect.
+   */
+  private async applyTurnState(enabled: boolean): Promise<void> {
+    try {
+      if (!enabled) {
+        await this.coturnManager.stop();
+        return;
+      }
+      const server = await this.serverRepo.getServer();
+      if (!server?.turnSecret) {
+        Logger.warn('NETWORK', 'TURN relay enabled without a shared secret; leaving it off.');
+        return;
+      }
+      const started = await this.coturnManager.start(server.turnSecret);
+      if (!started) return;
+
+      // Verify the relay is actually reachable. A VPS whose firewall blocks
+      // port 3478 will silently swallow TURN allocations, and the only sign is
+      // that members behind CGNAT never connect — exactly the bug #425
+      // reported. Checking right after start catches the most common
+      // misconfiguration before anyone tries to call.
+      const portProblem = await CoturnManager.checkPortReachability();
+      if (portProblem) {
+        Logger.warn('NETWORK', `TURN relay started but may not work: ${portProblem}`);
+      }
+    } catch (error) {
+      Logger.error('NETWORK', 'Failed to apply the TURN relay state', error);
+    }
+  }
+
+  /**
+   * Makes sure coturn is actually usable, installing it when needed.
+   *
+   * Returns null when the relay can run, or the reason it cannot.
+   */
+  private async ensureRelayCanRun(session: ClientSession): Promise<string | null> {
+    if (!CoturnManager.isSupportedPlatform()) {
+      return 'O relay TURN só é suportado em servidores Linux. Não existe pacote do coturn para Windows ou macOS.';
+    }
+    if (CoturnManager.isInstalled()) return null;
+
+    // The install takes minutes, so whoever asked for it gets told how far it
+    // has gone instead of watching a frozen modal (#438).
+    const outcome = await CoturnManager.ensureInstalled((progress) => {
+      this.send(session.ws, { type: MessageType.TURN_INSTALL_PROGRESS, payload: progress });
+    });
+    if (outcome.ok) return null;
+
+    switch (outcome.reason) {
+      case 'no-privileges':
+        return 'O coturn não está instalado e o servidor não tem privilégio para instalá-lo. Rode "sudo bash scripts/install-turn.sh" no host.';
+      case 'unknown-package-manager':
+        return 'O coturn não está instalado e nenhum gerenciador de pacotes conhecido foi encontrado. Instale o coturn manualmente no host.';
+      case 'unsupported-platform':
+        return 'O relay TURN só é suportado em servidores Linux. Não existe pacote do coturn para Windows ou macOS.';
+      default:
+        return `Não foi possível instalar o coturn automaticamente: ${outcome.detail ?? 'erro desconhecido'}`;
+    }
+  }
+
+  private async buildIceServersFor(userId: string, session: ClientSession) {
+    try {
+      const server = await this.serverRepo.getServer();
+      return this.coturnManager.buildIceServers(
+        userId,
+        session.requestHost ?? null,
+        server?.turnSecret ?? null
+      );
+    } catch (error) {
+      Logger.warn('NETWORK', 'Failed to build the ICE server list; sending STUN only.', error);
+      return this.coturnManager.buildIceServers(userId, null, null);
+    }
+  }
+
+  private async handleChatSend(    session: ClientSession,
     payload: ChatSendPayload,
     requestId?: string
   ): Promise<void> {
@@ -658,6 +787,50 @@ export class WebSocketServer {
     await this.reconcileChannelVisibility();
   }
 
+  /**
+   * Applies a new channel order and tells everyone (#471).
+   *
+   * Each recipient only gets the positions of the channels they can already
+   * see: sending the whole list would leak the existence of private channels
+   * they have no access to.
+   */
+  private async handleChannelReorder(
+    session: ClientSession,
+    payload: ChannelReorderPayload,
+    requestId?: string
+  ): Promise<void> {
+    const result = await this.channelService.reorderChannels(payload);
+    if (!result.success || !result.positions) {
+      this.sendError(
+        session.ws,
+        result.errorCode || ProtocolErrorCode.BAD_REQUEST,
+        result.errorMessage || 'Erro ao reordenar canais',
+        requestId
+      );
+      return;
+    }
+
+    const positions = result.positions;
+    const visibleTo = (peer: ClientSession) =>
+      positions.filter((p) => peer.visibleChannelIds?.has(p.channelId));
+
+    this.send(session.ws, {
+      type: MessageType.CHANNELS_REORDERED,
+      requestId,
+      payload: { positions: visibleTo(session) } satisfies ChannelsReorderedPayload,
+    });
+
+    for (const [ws, peer] of this.sessions.entries()) {
+      if (ws === session.ws || !peer.user || ws.readyState !== WebSocket.OPEN) continue;
+      const mine = visibleTo(peer);
+      if (mine.length === 0) continue;
+      this.send(ws, {
+        type: MessageType.CHANNELS_REORDERED,
+        payload: { positions: mine } satisfies ChannelsReorderedPayload,
+      });
+    }
+  }
+
   private async handleChannelDelete(
     session: ClientSession,
     payload: ChannelDeletePayload,
@@ -766,6 +939,18 @@ export class WebSocketServer {
   ): Promise<void> {
     if (!session.user) return;
 
+    // Switching the relay on is the whole intent, so the server installs coturn
+    // itself when it is missing rather than sending the operator to a terminal
+    // (#431). Only a relay that truly cannot run is rejected, so the toggle
+    // never shows "on" while nothing is actually relaying (#425).
+    if (payload.turnEnabled === true) {
+      const blocked = await this.ensureRelayCanRun(session);
+      if (blocked) {
+        this.sendError(session.ws, ProtocolErrorCode.TURN_UNAVAILABLE, blocked, requestId);
+        return;
+      }
+    }
+
     const result = await this.authService.updateServerSettings(payload);
     if (!result.success) {
       this.sendError(
@@ -777,13 +962,24 @@ export class WebSocketServer {
       return;
     }
 
+    if (payload.turnEnabled !== undefined) {
+      await this.applyTurnState(Boolean(result.turnEnabled));
+    }
+
     const broadcastPayload: ServerSettingsUpdatedPayload = {
       name: result.name!,
       hasPassword: result.hasPassword!,
       allowSoundboard: result.allowSoundboard,
+      allowEveryoneMention: result.allowEveryoneMention,
       iconUrl: result.iconUrl,
       attachmentStorage: result.attachmentStorage,
       maxUsers: result.maxUsers,
+      turnEnabled: result.turnEnabled,
+      // Installing coturn changes the answer to "can this host relay?", and the
+      // clients still hold the one from login. Sending it back is what keeps
+      // the settings screen from offering to install what is already there
+      // (#438).
+      turnAvailability: CoturnManager.describeAvailability(),
     };
 
     // Broadcast updated server settings to all clients
@@ -1306,6 +1502,19 @@ export class WebSocketServer {
       this.sessionSockets.delete(sessionId);
     }
 
+    // A call cannot outlive the socket that carries its signalling: once this
+    // connection is gone the person can no longer be heard, WebRTC has nowhere
+    // to renegotiate and nobody can move them out of the channel. So leaving
+    // voice is immediate for every kind of disconnect — closing the app,
+    // crashing or dropping the network — and everyone still in the channel gets
+    // the departure (and its sound) right away instead of after the 20 s
+    // reconnection grace period (#458).
+    //
+    // Presence in the member list keeps that grace period (#44): the person is
+    // still shown as "reconnecting", and the client rejoins the voice channel by
+    // itself as soon as it reconnects.
+    this.announceVoiceLeave(user, sessionId);
+
     // Graceful logout (user clicked disconnect / switched servers): remove them
     // immediately. Otherwise treat it as a possible temporary connection loss
     // and give them a grace period to reconnect before announcing USER_LEFT.
@@ -1340,26 +1549,37 @@ export class WebSocketServer {
   }
 
   /**
+   * Takes one connection out of its voice channel and tells everyone about it.
+   *
+   * Idempotent: `leaveVoiceChannel` returns null when the session is not in a
+   * channel, so calling it twice (a socket that reports both `error` and
+   * `close`, for instance) announces the departure only once.
+   */
+  private announceVoiceLeave(user: UserSummary, sessionId: string): void {
+    const previousVoice = this.signalingService.leaveVoiceChannel(sessionId);
+    if (!previousVoice) return;
+
+    const leavePayload: VoiceUserLeftPayload = {
+      channelId: previousVoice.channelId,
+      userId: user.id,
+      sessionId,
+    };
+    this.broadcast({
+      type: MessageType.VOICE_USER_LEFT,
+      payload: leavePayload,
+    });
+  }
+
+  /**
    * Removes one connection from voice, announces USER_LEFT for it and logs the
    * departure. Used both for graceful logouts and when the reconnection grace
    * period expires. The person may still be online from another device, which
    * the client resolves from the `sessionId` carried in the payload (#309).
    */
   private finalizeSessionLeave(user: UserSummary, sessionId: string): void {
-    // Leave voice channel if in one
-    const previousVoice = this.signalingService.leaveVoiceChannel(sessionId);
-    if (previousVoice) {
-      const leavePayload: VoiceUserLeftPayload = {
-        channelId: previousVoice.channelId,
-        userId: user.id,
-        sessionId,
-      };
-      this.broadcast({
-        type: MessageType.VOICE_USER_LEFT,
-        payload: leavePayload,
-      });
-    }
-
+    // Normally already done by handleDisconnect; kept for the paths that
+    // finalize a session without going through it.
+    this.announceVoiceLeave(user, sessionId);
     const userLeftPayload: UserLeftPayload = {
       userId: user.id,
       sessionId,

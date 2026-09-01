@@ -66,10 +66,13 @@ export class ServerMonitorModal {
           </div>
           <input id="monitor-search" type="text" placeholder="${t('serverMonitor.searchPlaceholder')}"
             style="flex: 1; min-width: 140px; font-size: 12px; padding: 5px 10px; height: 26px;">
-          <label style="display: flex; align-items: center; gap: 4px; font-size: 11px; color: var(--text-muted); cursor: pointer; white-space: nowrap;">
-            <input id="monitor-autoscroll" type="checkbox" checked style="margin: 0;">
-            ${t('serverMonitor.autoScroll')}
-          </label>
+          <div style="display: flex; align-items: center; gap: 6px; font-size: 11px; color: var(--text-muted); white-space: nowrap;">
+            <label for="monitor-autoscroll" style="cursor: pointer;">${t('serverMonitor.autoScroll')}</label>
+            <label class="toggle-switch toggle-switch-sm" aria-label="${t('serverMonitor.autoScroll')}">
+              <input id="monitor-autoscroll" type="checkbox" checked>
+              <span class="toggle-slider"></span>
+            </label>
+          </div>
         </div>
 
         <div id="monitor-logs" style="background: var(--bg-tertiary, #1e1f22); border: 1px solid var(--border-color); border-radius: var(--radius-md); height: 320px; overflow-y: auto; padding: 8px 10px; font-family: var(--font-mono); font-size: 11px; line-height: 1.6;">

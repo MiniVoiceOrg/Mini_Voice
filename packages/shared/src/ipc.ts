@@ -3,7 +3,7 @@
  * Define as mensagens e eventos trafegados entre o Main Process e o Renderer Process.
  */
 
-import type { LogEntry } from './logging.js';
+import type { ClientLogConfig, ClientLogEntry, LogEntry } from './logging.js';
 
 export interface DesktopSource {
   id: string;
@@ -188,12 +188,43 @@ export interface AppIdentityResult {
 }
 
 /**
+ * Import result. `extras` carries the opaque servers/settings backup that may
+ * have been exported alongside the identity (#472); only the renderer knows how
+ * to read it.
+ */
+export interface AppIdentityImportResult extends AppIdentityResult {
+  extras?: string;
+}
+
+export interface BackupSaveResult {
+  success: boolean;
+  filePath?: string;
+  error?: string;
+}
+
+export interface BackupOpenResult {
+  success: boolean;
+  contents?: string;
+  error?: string;
+}
+
+/** Result of sealing a backup with the user's password (#472). */
+export interface BackupCryptoResult {
+  success: boolean;
+  payload?: string;
+  contents?: string;
+  error?: string;
+}
+
+/**
  * Mapeamento de Canais Bidirecionais (Invoke / Handle)
  */
 export interface IpcInvokeChannels {
   // Janela
   'window:minimize': { args: []; returnType: void };
+  'window:maximize': { args: []; returnType: void };
   'window:toggle-maximize': { args: []; returnType: void };
+  'window:set-in-server': { args: [inServer: boolean]; returnType: void };
   'window:close': { args: []; returnType: void };
 
   // Sistema / App
@@ -204,14 +235,22 @@ export interface IpcInvokeChannels {
   'app:set-auto-start': { args: [enabled: boolean]; returnType: void };
   'app:set-minimize-to-tray': { args: [enabled: boolean]; returnType: void };
   'app:download-file': { args: [url: string, fileName: string]; returnType: { success: boolean; error?: string } };
+  // Ack do renderer ao 'app:before-quit': confirma que ja saiu das chamadas (#458)
+  'app:leave-complete': { args: []; returnType: void };
 
   // Identidade
   'identity:has': { args: []; returnType: boolean };
   'identity:get': { args: []; returnType: AppIdentityResult };
   'identity:get-client-id': { args: []; returnType: string };
   'identity:sign-challenge': { args: [nonceHex: string]; returnType: string };
-  'identity:export': { args: [password: string]; returnType: string };
-  'identity:import': { args: [exportedIdentity: string, password: string]; returnType: AppIdentityResult };
+  'identity:export': { args: [password: string, extras?: string]; returnType: string };
+  'identity:import': { args: [exportedIdentity: string, password: string]; returnType: AppIdentityImportResult };
+
+  // Backup de servidores salvos e configuracoes (#472)
+  'backup:save-file': { args: [contents: string, suggestedName: string]; returnType: BackupSaveResult };
+  'backup:open-file': { args: []; returnType: BackupOpenResult };
+  'backup:encrypt': { args: [contents: string, password: string]; returnType: BackupCryptoResult };
+  'backup:decrypt': { args: [payload: string, password: string]; returnType: BackupCryptoResult };
 
   // Servidor Local
   'server-host:start': { args: [options: HostServerOptions]; returnType: { success: boolean; error?: string } };
@@ -227,6 +266,7 @@ export interface IpcInvokeChannels {
   'lan:stop': { args: []; returnType: void };
 
   // Captura de Tela
+  'screen-share:ensure-permission': { args: []; returnType: boolean };
   'screen-share:get-sources': { args: []; returnType: DesktopSource[] };
 
   // Diálogos Nativos
@@ -276,12 +316,23 @@ export interface IpcInvokeChannels {
   'updater:check': { args: []; returnType: UpdateCheckResult };
   'updater:download': { args: [allowBeta: boolean]; returnType: UpdateSimpleResult };
   'updater:install': { args: []; returnType: UpdateSimpleResult };
+
+  // Client Logging (#444)
+  'client-log:write': { args: [entry: ClientLogEntry]; returnType: void };
+  'client-log:get-config': { args: []; returnType: ClientLogConfig };
+  'client-log:set-config': { args: [config: Partial<ClientLogConfig>]; returnType: void };
+  'client-log:export': { args: []; returnType: { success: boolean; filePath?: string; error?: string } };
+  'client-log:get-size': { args: []; returnType: number };
+  'client-log:clear': { args: []; returnType: void };
 }
 
 /**
  * Mapeamento de Eventos Unidirecionais (Main -> Renderer via webContents.send)
  */
 export interface IpcEvents {
+  // Pedido de despedida antes do processo morrer: o renderer sai das chamadas e
+  // avisa os servidores enquanto ainda esta vivo (#458)
+  'app:before-quit': [];
   'lan:found': [server: DiscoveredLanServer];
   'lan:lost': [server: DiscoveredLanServer];
   'soundboard:shortcut-triggered': [soundName: string];
@@ -289,12 +340,15 @@ export interface IpcEvents {
   'ptt:state-changed': [active: boolean];
   'ptt:captured': [binding: PttKeyBinding];
   'screen-audio:frame': [buffer: ArrayBuffer | Uint8Array];
+  /** Falha assincrona da captura nativa (dispositivo caiu, stream derrubado pelo sistema). */
+  'screen-audio:error': [message: string];
   'tray:toggle-mute': [];
   'tray:toggle-deafen': [];
   'updater:progress': [percent: number];
   'updater:downloaded': [info: { manual: boolean }];
   'updater:error': [message: string];
   'server-host:log': [entry: LogEntry];
+  'server-host:status-changed': [status: { isRunning: boolean; port: number | null; serverId: string | null }];
 }
 
 export type IpcInvokeChannel = keyof IpcInvokeChannels;

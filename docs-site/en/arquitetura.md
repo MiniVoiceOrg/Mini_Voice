@@ -398,14 +398,20 @@ Almost nobody has a direct public IP, so peers need to work out how to reach eac
 other. Monky uses public **STUN servers** (Google and Cloudflare) so each side can
 discover its own external address.
 
-::: warning There is no TURN server
+::: tip TURN is optional, and off by default
 STUN only *discovers* the path; it does not relay anything. When the network is too
 restrictive — symmetric NAT, corporate firewall, some carrier CGNATs — there is no
 direct path and the media connection fails.
 
-A TURN server would solve it by relaying the media. But TURN carries video, and
+A **TURN** server solves it by relaying the media. But TURN carries video, and
 costs bandwidth proportional to usage — which reintroduces exactly the cost the
-P2P architecture avoids. Monky has no TURN today.
+P2P architecture avoids. That is why Monky's relay is **optional** and ships
+off: whoever hosts decides whether to pay that bandwidth.
+
+When enabled, the server runs a **coturn** alongside it and hands out the
+credentials at login. ICE still prefers the direct route and only uses the relay
+for the pairs that genuinely cannot connect. Details in
+[Media relay (TURN)](/en/turn).
 :::
 
 When a connection drops or stalls, `WebRtcManager` first tries an **ICE restart**
@@ -557,8 +563,9 @@ Things that follow directly from the architecture, and are not bugs:
 
 - **Mesh does not scale.** Great for a handful of friends, bad for dozens. Moving
   past it would require an SFU.
-- **No TURN.** Very restrictive networks can prevent the media connection even
-  when the server is reachable.
+- **TURN is off by default.** Very restrictive networks can prevent the media
+  connection even when the server is reachable. An optional relay exists, but it
+  costs the host bandwidth and only runs on Linux.
 - **The protocol requires an exact match.** Client and server need the same
   `PROTOCOL_VERSION`; updating only one side breaks the connection.
 - **Screen audio only on Windows and macOS**, because it depends on each system's

@@ -9,13 +9,14 @@ import {
   parsePermissionNames,
   permissionLabel,
 } from '../formatters';
+import { t } from '../i18n/index';
 import { ask, askChoice, askMultiChoice, confirm } from '../prompts';
 import { selectUser } from './members';
 
 export async function resolveRole(ctx: CliContext, query: string): Promise<RoleRecord> {
   const normalized = query.trim();
   if (!normalized) {
-    throw new Error('Informe um cargo.');
+    throw new Error(t('roles.enterRole'));
   }
 
   const byId = await ctx.roleRepo.findById(normalized);
@@ -24,7 +25,7 @@ export async function resolveRole(ctx: CliContext, query: string): Promise<RoleR
   const byName = await ctx.roleRepo.findByName(normalized);
   if (byName) return byName;
 
-  throw new Error(`Cargo não encontrado: ${normalized}`);
+  throw new Error(t('roles.notFound', { query: normalized }));
 }
 
 export async function selectRole(
@@ -39,7 +40,7 @@ export async function selectRole(
 
   const roles = rolesOverride ?? (await ctx.roleRepo.listAll());
   if (roles.length === 0) {
-    throw new Error('Nenhum cargo cadastrado.');
+    throw new Error(t('roles.noRoles'));
   }
 
   const labels = roles.map((r) => `${r.name} (${r.id})`);
@@ -57,7 +58,7 @@ export async function listRoles(ctx: CliContext): Promise<void> {
   }
 
   if (roles.length === 0) {
-    console.log(color('Nenhum cargo cadastrado.', ANSI.yellow));
+    console.log(color(t('roles.noRoles'), ANSI.yellow));
     return;
   }
 
@@ -76,18 +77,18 @@ export async function createRoleInteractive(ctx: CliContext, args: string[]): Pr
   const inlineColor = args[1];
   const inlinePermissions = args.slice(2).join(' ');
 
-  const name = inlineName?.trim() || (await ask('Nome do cargo'));
+  const name = inlineName?.trim() || (await ask(t('roles.askName')));
   if (name.trim().length < 2) {
-    throw new Error('O nome do cargo deve ter pelo menos 2 caracteres.');
+    throw new Error(t('roles.nameTooShort'));
   }
 
-  const colorInput = inlineColor !== undefined ? inlineColor : await ask('Cor do cargo (#RRGGBB, opcional)');
+  const colorInput = inlineColor !== undefined ? inlineColor : await ask(t('roles.askColor'));
   const roleColor = normalizeRoleColor(colorInput || '');
 
   const selectedPermissions = inlinePermissions.trim()
     ? parsePermissionNames(inlinePermissions)
     : await askMultiChoice(
-        'Permissões do cargo:',
+        t('roles.permissionsLabel'),
         PERMISSION_OPTIONS.map((entry) => `${permissionLabel(entry.name)} (${entry.name})`)
       );
 
@@ -108,47 +109,47 @@ export async function createRoleInteractive(ctx: CliContext, args: string[]): Pr
   };
 
   await ctx.roleRepo.create(role);
-  console.log(color(`Cargo "${role.name}" criado com sucesso.`, ANSI.green));
+  console.log(color(t('roles.created', { name: role.name }), ANSI.green));
 }
 
 export async function assignRoleInteractive(ctx: CliContext, args: string[], unassign: boolean): Promise<void> {
-  const user = await selectUser(ctx, 'Membros do servidor:', args[0]);
+  const user = await selectUser(ctx, t('members.selectToGrant'), args[0]);
   const availableRoles = unassign ? await ctx.roleRepo.listRolesForUser(user.id) : await ctx.roleRepo.listAll();
 
   if (availableRoles.length === 0) {
-    console.log(color(unassign ? 'Esse membro não possui cargos removíveis.' : 'Nenhum cargo disponível.', ANSI.yellow));
+    console.log(color(unassign ? t('roles.noRemovableRoles') : t('roles.noAvailable'), ANSI.yellow));
     return;
   }
 
   const role = await selectRole(
     ctx,
-    unassign ? 'Selecione o cargo para remover:' : 'Selecione o cargo para atribuir:',
+    unassign ? t('roles.selectToRemove') : t('roles.selectToAssign'),
     args[1],
     availableRoles
   );
 
   if (unassign && role.isDefault) {
-    throw new Error('O cargo padrão não pode ser removido.');
+    throw new Error(t('roles.defaultCannotRemove'));
   }
 
   if (unassign) {
     await ctx.roleRepo.unassignRole(user.id, role.id);
-    console.log(color(`Cargo ${role.name} removido de ${user.nickname}.`, ANSI.green));
+    console.log(color(t('roles.unassigned', { role: role.name, user: user.nickname }), ANSI.green));
     return;
   }
 
   await ctx.roleRepo.assignRole(user.id, role.id);
-  console.log(color(`Cargo ${role.name} atribuído para ${user.nickname}.`, ANSI.green));
+  console.log(color(t('roles.assigned', { role: role.name, user: user.nickname }), ANSI.green));
 }
 
 export async function deleteRoleInteractive(ctx: CliContext, args: string[]): Promise<void> {
-  const role = await selectRole(ctx, 'Selecione o cargo para remover:', args[0]);
-  const accepted = await confirm(`Confirma a remoção do cargo ${role.name}?`, false);
+  const role = await selectRole(ctx, t('roles.selectToRemove'), args[0]);
+  const accepted = await confirm(t('roles.confirmDelete', { name: role.name }), false);
   if (!accepted) {
-    console.log(color('Operação cancelada.', ANSI.yellow));
+    console.log(color(t('prompt.cancelled'), ANSI.yellow));
     return;
   }
 
   await ctx.roleRepo.delete(role.id);
-  console.log(color(`Cargo ${role.name} removido com sucesso.`, ANSI.green));
+  console.log(color(t('roles.deleted', { name: role.name }), ANSI.green));
 }

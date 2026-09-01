@@ -1,4 +1,4 @@
-import { AttachmentStorageInfo, ChannelSummary, ChatMessage, Role, ServerDetails, UserRoleSummary, UserSummary, VoiceParticipantState, WebRtcSignalPayload } from './models.js';
+import { AttachmentStorageInfo, ChannelSummary, ChannelType, ChatMessage, Role, ServerDetails, TurnAvailability, TurnInstallStage, UserRoleSummary, UserSummary, VoiceParticipantState, WebRtcSignalPayload } from './models.js';
 
 export enum ProtocolErrorCode {
   AUTH_INVALID_PASSWORD = 'AUTH_INVALID_PASSWORD',
@@ -19,6 +19,11 @@ export enum ProtocolErrorCode {
   UNAUTHORIZED = 'UNAUTHORIZED',
   PERMISSION_DENIED = 'PERMISSION_DENIED',
   BAD_REQUEST = 'BAD_REQUEST',
+  /**
+   * The relay cannot run on the host. Kept apart from BAD_REQUEST so the
+   * client can explain what to do instead of showing a generic message (#429).
+   */
+  TURN_UNAVAILABLE = 'TURN_UNAVAILABLE',
 }
 
 export enum MessageType {
@@ -32,6 +37,7 @@ export enum MessageType {
   CHANNEL_CREATE = 'CHANNEL_CREATE',
   CHANNEL_UPDATE = 'CHANNEL_UPDATE',
   CHANNEL_DELETE = 'CHANNEL_DELETE',
+  CHANNEL_REORDER = 'CHANNEL_REORDER',
   USER_CHANGE_NICKNAME = 'USER_CHANGE_NICKNAME',
   USER_UPDATE_AVATAR = 'USER_UPDATE_AVATAR',
   SERVER_UPDATE_SETTINGS = 'SERVER_UPDATE_SETTINGS',
@@ -62,6 +68,11 @@ export enum MessageType {
   SERVER_STATE = 'SERVER_STATE',
   ROLES_LIST = 'ROLES_LIST',
   SERVER_SETTINGS_UPDATED = 'SERVER_SETTINGS_UPDATED',
+  /**
+   * Server -> client, while coturn is being installed (#438). Purely
+   * informational: a client that does not know it simply ignores it.
+   */
+  TURN_INSTALL_PROGRESS = 'TURN_INSTALL_PROGRESS',
   SERVER_INVITE_INFO = 'SERVER_INVITE_INFO',
   SERVER_SHUTDOWN = 'SERVER_SHUTDOWN',
   USER_JOINED = 'USER_JOINED',
@@ -72,6 +83,7 @@ export enum MessageType {
   CHANNEL_CREATED = 'CHANNEL_CREATED',
   CHANNEL_UPDATED = 'CHANNEL_UPDATED',
   CHANNEL_DELETED = 'CHANNEL_DELETED',
+  CHANNELS_REORDERED = 'CHANNELS_REORDERED',
   CHAT_MESSAGE = 'CHAT_MESSAGE',
   CHAT_HISTORY = 'CHAT_HISTORY',
   CHAT_UPLOAD_TOKEN = 'CHAT_UPLOAD_TOKEN',
@@ -172,6 +184,28 @@ export interface ChannelDeletePayload {
   channelId: string;
 }
 
+/**
+ * Reorders the channels of one kind (#471).
+ *
+ * The whole list is sent rather than a single "move this one here": the client
+ * already knows the order it is showing, and sending it whole means the server
+ * never has to guess what the other positions became.
+ */
+export interface ChannelReorderPayload {
+  type: ChannelType;
+  /** Every channel of that type, in the order they should appear. */
+  orderedIds: string[];
+}
+
+/**
+ * The new positions, broadcast after a reorder (#471). Only the channels the
+ * recipient can already see are included, so a private channel is not revealed
+ * by its position alone.
+ */
+export interface ChannelsReorderedPayload {
+  positions: Array<{ channelId: string; position: number }>;
+}
+
 export interface UserChangeNicknamePayload {
   newNickname: string;
 }
@@ -185,6 +219,8 @@ export interface ServerUpdateSettingsPayload {
   name?: string;
   password?: string | null; // null or empty string removes the password
   allowSoundboard?: boolean;
+  /** Enables or disables the `@todos` / `@everyone` mention (#464). */
+  allowEveryoneMention?: boolean;
   iconBase64?: string | null; // Data URL, pure base64, or null to remove
   // Attachment storage limits in bytes (#11).
   maxAttachmentFileBytes?: number;
@@ -192,6 +228,8 @@ export interface ServerUpdateSettingsPayload {
   // Membership cap counted in registered members, or LIMITS.MAX_USERS_UNLIMITED
   // to remove the cap entirely (#403).
   maxUsers?: number;
+  /** Turn the host's TURN relay on or off (#425). Linux-only; see CoturnManager. */
+  turnEnabled?: boolean;
 }
 
 export interface RoleCreatePayload {
@@ -302,6 +340,21 @@ export interface RtcCandidateInfo {
 }
 
 // Server Responses & Broadcast Payloads
+
+/**
+ * One ICE server the client should dial, shaped exactly like the browser's
+ * `RTCIceServer` so it can be handed to `RTCPeerConnection` untouched (#425).
+ *
+ * TURN entries carry ephemeral credentials derived per user, so this is
+ * deliberately sent in `AUTH_SUCCESS` (addressed to one client) rather than in
+ * `ServerDetails`, which is broadcast.
+ */
+export interface IceServerConfig {
+  urls: string[];
+  username?: string;
+  credential?: string;
+}
+
 export interface AuthSuccessPayload {
   server: ServerDetails;
   currentUser: UserSummary;
@@ -309,6 +362,13 @@ export interface AuthSuccessPayload {
   userRoles?: UserRoleSummary[];
   ownerId?: string | null;
   myPermissions?: number;
+  /**
+   * STUN/TURN servers for this client's WebRTC connections (#425).
+   *
+   * Optional: servers released before TURN support omit it, and clients fall
+   * back to their built-in STUN list, which is the previous behaviour.
+   */
+  iceServers?: IceServerConfig[];
 }
 
 export interface ServerErrorPayload {
@@ -328,11 +388,34 @@ export interface ServerSettingsUpdatedPayload {
   name: string;
   hasPassword: boolean;
   allowSoundboard?: boolean;
+  /** Current state of the `@todos` / `@everyone` mention (#464). */
+  allowEveryoneMention?: boolean;
   iconUrl?: string | null;
   // Current attachment-storage limits + usage, so the settings UI stays in sync (#11).
   attachmentStorage?: AttachmentStorageInfo;
   // Membership cap in registered members; LIMITS.MAX_USERS_UNLIMITED means none (#403).
   maxUsers?: number;
+  /** Current state of the host's TURN relay (#425). */
+  turnEnabled?: boolean;
+  /**
+   * Relay availability as it stands *after* this update (#438).
+   *
+   * Switching the relay on can install coturn, which changes the answer to
+   * "can this host relay?". Without sending it back, clients would keep the
+   * availability from login and go on offering to install what is already
+   * installed.
+   */
+  turnAvailability?: TurnAvailability;
+}
+
+/** Progress of an automatic coturn installation (#438). */
+export interface TurnInstallProgressPayload {
+  /** Steps already finished. */
+  completed: number;
+  total: number;
+  /** Whole percent, so the client does not have to compute it. */
+  percent: number;
+  stage: TurnInstallStage;
 }
 
 export interface SoundboardPlayedPayload {

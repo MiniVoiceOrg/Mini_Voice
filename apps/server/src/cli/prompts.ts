@@ -1,5 +1,6 @@
 import readline from 'readline';
 import { ANSI, color } from './constants';
+import { t } from './i18n/index';
 
 export async function ask(question: string, defaultValue?: string): Promise<string> {
   const label = defaultValue !== undefined ? `${question} (${defaultValue}): ` : `${question}: `;
@@ -39,7 +40,7 @@ export async function askChoiceArrows(question: string, choices: string[]): Prom
   const stdout = process.stdout;
 
   stdout.write(`${color(question, ANSI.bold)}\n`);
-  stdout.write(color('  Use ↑↓ para navegar, Enter para selecionar\n', ANSI.dim));
+  stdout.write(color(`  ${t('prompt.navigate')}\n`, ANSI.dim));
 
   let cursor = 0;
   renderChoiceList(choices, cursor);
@@ -94,7 +95,7 @@ export async function askChoiceArrows(question: string, choices: string[]): Prom
     const onData = (data: string) => {
       if (data === '\u0003') {
         cleanup();
-        reject(new Error('Operação cancelada.'));
+        reject(new Error(t('prompt.cancelled')));
         return;
       }
       if (data === '\r' || data === '\n') {
@@ -141,20 +142,20 @@ export async function askChoiceFallback(question: string, choices: string[]): Pr
   });
 
   while (true) {
-    const answer = await ask('Selecione uma opção');
+    const answer = await ask(t('prompt.selectOption'));
     const numeric = Number.parseInt(answer, 10);
     if (Number.isInteger(numeric) && numeric >= 1 && numeric <= choices.length) {
       return choices[numeric - 1];
     }
     const direct = choices.find((choice) => choice.toLowerCase() === answer.toLowerCase());
     if (direct) return direct;
-    console.log(color('Opção inválida. Tente novamente.', ANSI.yellow));
+    console.log(color(t('prompt.invalidOption'), ANSI.yellow));
   }
 }
 
 export async function askChoice(question: string, choices: string[]): Promise<string> {
   if (choices.length === 0) {
-    throw new Error('Nenhuma opção disponível.');
+    throw new Error(t('prompt.noOptions'));
   }
   if (process.stdin.isTTY) {
     return askChoiceArrows(question, choices);
@@ -169,7 +170,7 @@ export async function confirm(question: string, defaultYes: boolean = true): Pro
     if (!answer) return defaultYes;
     if (['s', 'sim', 'y', 'yes'].includes(answer)) return true;
     if (['n', 'nao', 'não', 'no'].includes(answer)) return false;
-    console.log(color('Responda com S ou N.', ANSI.yellow));
+    console.log(color(t('prompt.yesOrNo'), ANSI.yellow));
   }
 }
 
@@ -178,7 +179,7 @@ export async function askMultiChoiceArrows(question: string, choices: string[]):
   const stdout = process.stdout;
 
   stdout.write(`${color(question, ANSI.bold)}\n`);
-  stdout.write(color('  Use ↑↓ para navegar, Espaço para marcar/desmarcar, Enter para confirmar\n', ANSI.dim));
+  stdout.write(color(`  ${t('prompt.multiSelect')}\n`, ANSI.dim));
 
   let cursor = 0;
   const selected = new Set<number>();
@@ -198,7 +199,7 @@ export async function askMultiChoiceArrows(question: string, choices: string[]):
     const onData = (data: string) => {
       if (data === '\u0003') {
         cleanup();
-        reject(new Error('Operação cancelada.'));
+        reject(new Error(t('prompt.cancelled')));
         return;
       }
       if (data === '\r' || data === '\n') {
@@ -208,7 +209,7 @@ export async function askMultiChoiceArrows(question: string, choices: string[]):
         if (result.length) {
           stdout.write(`${color('✔', ANSI.green)} ${result.join(', ')}\n`);
         } else {
-          stdout.write(`${color('—', ANSI.dim)} nenhuma selecionada\n`);
+          stdout.write(`${color('—', ANSI.dim)} ${t('prompt.noneSelected')}\n`);
         }
         resolve(result);
         return;
@@ -255,10 +256,10 @@ export async function askMultiChoiceFallback(question: string, choices: string[]
   choices.forEach((choice, index) => {
     console.log(`  ${index + 1}. [ ] ${choice}`);
   });
-  console.log(color('Digite os números separados por vírgula. Deixe vazio para nenhuma permissão.', ANSI.dim));
+  console.log(color(t('prompt.enterNumbers'), ANSI.dim));
 
   while (true) {
-    const answer = await ask('Permissões');
+    const answer = await ask(t('prompt.permissions'));
     if (!answer.trim()) {
       return [];
     }
@@ -281,7 +282,7 @@ export async function askMultiChoiceFallback(question: string, choices: string[]
     }
 
     if (valid) return [...result];
-    console.log(color('Seleção inválida. Use números separados por vírgula.', ANSI.yellow));
+    console.log(color(t('prompt.invalidSelection'), ANSI.yellow));
   }
 }
 
@@ -328,7 +329,7 @@ export async function promptPassword(question: string): Promise<string> {
         if (char === '\u0003') {
           stdout.write('\n');
           cleanup();
-          reject(new Error('Operação cancelada.'));
+          reject(new Error(t('prompt.cancelled')));
           return;
         }
         if (char === '\b' || char === '\u007f') {

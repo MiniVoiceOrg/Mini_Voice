@@ -4,6 +4,8 @@ export {
   RECONNECT_DELAYS_MS,
   QUALITY_PRESETS,
   DEFAULT_CUSTOM_PROFILE,
+  EVERYONE_MENTION_TOKENS,
+  hasEveryoneMention,
 } from './constants.js';
 export type { QualityPresetType, QualityProfile } from './constants.js';
 

@@ -2,6 +2,7 @@ import fs from 'fs';
 import path from 'path';
 import { execSync, spawnSync } from 'child_process';
 import { ANSI, color } from './constants';
+import { t } from './i18n/index';
 import { canonicalDataDir, LEGACY_PM2_PROCESS_NAME, serverIdFor } from './registry';
 
 export const PM2_PROCESS_PREFIX = 'monky-server';
@@ -118,11 +119,11 @@ export function findLegacyProcessFor(dataDir: string): Pm2Process | null {
 
 export function ensurePm2(): void {
   if (!isPm2Available()) {
-    console.log(color('PM2 não encontrado. Instalando globalmente...', ANSI.yellow));
+    console.log(color(t('pm2.notFound'), ANSI.yellow));
     try {
       execSync('npm install -g pm2', { stdio: 'inherit' });
     } catch {
-      throw new Error('Falha ao instalar PM2. Instale manualmente: npm install -g pm2');
+      throw new Error(t('pm2.installFailed'));
     }
   }
 }
@@ -135,8 +136,8 @@ export function ensurePm2(): void {
  */
 export function requirePm2(action: string): boolean {
   if (isPm2Available()) return true;
-  console.log(color(`PM2 não está instalado, então não há o que ${action}.`, ANSI.yellow));
-  console.log(color('Instale com: npm install -g pm2', ANSI.dim));
+  console.log(color(t('pm2.notInstalled', { action }), ANSI.yellow));
+  console.log(color(t('pm2.installHint'), ANSI.dim));
   return false;
 }
 

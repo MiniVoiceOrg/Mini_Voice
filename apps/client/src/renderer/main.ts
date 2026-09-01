@@ -7,6 +7,7 @@ import {
   ChannelCreatedPayload,
   ChannelDeletedPayload,
   ChannelUpdatedPayload,
+  ChannelsReorderedPayload,
   ChatHistoryPayload,
   ChatMessage,
   MessageType,
@@ -19,6 +20,7 @@ import {
   VoiceStateChangedPayload,
   VoiceUserJoinedPayload,
   VoiceUserLeftPayload,
+  hasEveryoneMention,
 } from '@monky/shared';
 import { audioProcessor } from './core/AudioProcessor';
 import { appEvents } from './core/EventBus';
@@ -46,6 +48,8 @@ import { showAlert } from './views/Dialog';
 import { showIdentityImportDialog } from './views/IdentityDialogs';
 import { initI18n, t } from './i18n';
 import { toAbsoluteServerIconUrl } from './utils/avatar';
+import { installImageFallback } from './utils/imageFallback';
+import { clientLog } from './core/ClientLogService';
 
 class App {
   private appContainer: HTMLElement;
@@ -54,6 +58,10 @@ class App {
 
   constructor() {
     this.appContainer = document.getElementById('app')!;
+    // Any image that fails to load gets a friendly placeholder instead of the
+    // browser's broken-image glyph (#456). Installed first so it also covers
+    // whatever the very first render paints.
+    installImageFallback();
     // Routes incoming server events to the right state bundle. It must be in
     // place before any connection exists, otherwise the first events would be
     // applied to whatever store happens to be active (#400).
@@ -64,11 +72,18 @@ class App {
     // Must run before any await in init(): otherwise the Windows-style window
     // controls stay visible on macOS during onboarding/identity loading (#307)
     this.setupTitleBar();
+    // Registered before any await: quitting during onboarding must still take
+    // the user out of whatever server is connected (#458).
+    this.setupGracefulQuit();
 
     this.init();
   }
 
   private async init(): Promise<void> {
+    // Initialise client logging (#444)
+    await clientLog.init();
+    clientLog.info('APP', 'Renderer process initialising');
+
     initI18n();
 
     // Check if identity exists BEFORE rendering anything
@@ -89,6 +104,9 @@ class App {
 
     this.setupGlobalEventListeners();
     this.setupTraySync();
+
+    // Initialize and sync quality preset to WebRtcManager and VideoService (#474)
+    webRtcManager.setQualityPreset(settingsStore.qualityPreset);
 
     // Render connection view initially
     this.connectionView.render();
@@ -176,6 +194,31 @@ class App {
 
     window.api?.onTrayToggleDeafen(() => {
       this.toggleDeafenFromTray();
+    });
+  }
+
+  /**
+   * Leaves every server before the process dies (#458).
+   *
+   * Closing the app used to just drop the WebSockets. The server cannot tell
+   * that apart from a network blip, so it held the person in the voice channel
+   * for the whole reconnection grace period: everyone else kept seeing a
+   * participant who could no longer speak, and no leave sound played. Sending
+   * the logout explicitly makes the departure immediate and deliberate.
+   *
+   * The main process waits for the ack (with a short timeout) before quitting.
+   */
+  private setupGracefulQuit(): void {
+    window.api?.onAppBeforeQuit(() => {
+      try {
+        sessionManager.removeAll();
+      } catch (err) {
+        clientLog.error('CONNECTION', 'Failed to leave servers before quitting', {
+          error: (err as Error)?.message,
+        });
+      } finally {
+        void window.api?.notifyLeaveComplete();
+      }
     });
   }
 
@@ -344,6 +387,9 @@ class App {
         this.syncLocalVoiceMediaState();
 
         webRtcManager.setCurrentSessionId(payload.currentUser.sessionId || payload.currentUser.id);
+        // Adopt the relay this server offers before any peer connection is
+        // opened, so calls started right after login can already use it (#425).
+        webRtcManager.setIceServers(payload.iceServers);
         // Drop any stale peer connections left over from a dropped session.
         webRtcManager.closeAllPeers();
       }
@@ -512,6 +558,10 @@ class App {
       serverStore.updateChannel(payload.channel);
     });
 
+    appEvents.on(`message.${MessageType.CHANNELS_REORDERED}`, (payload: ChannelsReorderedPayload) => {
+      serverStore.applyChannelPositions(payload.positions);
+    });
+
     appEvents.on(`message.${MessageType.CHAT_MESSAGE}`, (message: ChatMessage) => {
       chatStore.addMessage(message);
       // Incoming chat cue (#152), honoring the mute / mentions-only settings
@@ -521,7 +571,12 @@ class App {
         const me = serverStore.currentUser;
         if (me && message.userId !== me.id) {
           const nick = (me.nickname || '').trim().toLowerCase();
-          const isMention = !!nick && message.content.toLowerCase().includes(`@${nick}`);
+          // `@todos` counts as a mention for everyone in the channel when the
+          // server allows it (#464).
+          const everyoneAllowed = serverStore.serverDetails?.allowEveryoneMention !== false;
+          const isMention =
+            (!!nick && message.content.toLowerCase().includes(`@${nick}`)) ||
+            (everyoneAllowed && hasEveryoneMention(message.content));
 
           // Resolve the chat-sound mode with the 3-level precedence
           // channel → server → global (#153).
@@ -724,4 +779,18 @@ class App {
 // Bootstrap when DOM ready
 document.addEventListener('DOMContentLoaded', () => {
   new App();
+});
+
+// Global error handlers for uncaught exceptions (#444)
+window.addEventListener('error', (event) => {
+  clientLog.error('APP', `Uncaught error: ${event.message}`, {
+    filename: event.filename,
+    lineno: event.lineno,
+    colno: event.colno,
+  });
+});
+
+window.addEventListener('unhandledrejection', (event) => {
+  const reason = event.reason instanceof Error ? event.reason.message : String(event.reason);
+  clientLog.error('APP', `Unhandled promise rejection: ${reason}`);
 });

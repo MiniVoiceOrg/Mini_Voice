@@ -17,9 +17,11 @@ export const CONFIG_KEYS = [
   'icon',
   'maxUsers',
   'allowSoundboard',
+  'allowEveryoneMention',
   'maxAttachmentFileBytes',
   'maxAttachmentStorageBytes',
   'autoUpdate',
+  'turn',
 ] as const;
 
 export type ConfigKey = (typeof CONFIG_KEYS)[number];

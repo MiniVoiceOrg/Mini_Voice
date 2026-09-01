@@ -369,11 +369,14 @@ monky config set <chave> [valor]    # altera direto
 | `icon` | Caminho de uma imagem, copiada para a pasta de dados. Vazio ou `clear` remove | sem ícone |
 | `maxUsers` | Máximo de membros cadastrados. `0` remove o limite | `20` |
 | `allowSoundboard` | Permite o soundboard (`true`/`false`) | `true` |
+| `allowEveryoneMention` | Permite `@todos`/`@everyone` no chat (`true`/`false`) | `true` |
 | `maxAttachmentFileBytes` | Tamanho máximo por anexo, em bytes | sem limite |
 | `maxAttachmentStorageBytes` | Espaço total para anexos, em bytes | sem limite |
 | `autoUpdate` | Liga a atualização automática diária (`true`/`false`) | `false` |
+| `turn` | Liga o relay de mídia TURN (`true`/`false`). Só em Linux, exige o coturn instalado | `false` |
 
 Alterar `port` com o servidor no ar oferece reiniciar na hora para aplicar.
+Alterar `turn` exige um `monky restart` manual.
 
 ### Exemplos
 
@@ -384,6 +387,55 @@ monky config set password           # digitada de forma oculta
 monky config set password clear     # remove a senha
 monky config set maxUsers 50
 monky config set autoUpdate true
+monky config set turn true          # ver "Relay de mídia (TURN)" abaixo
+```
+
+---
+
+## Relay de mídia (TURN)
+
+Por padrão, a voz e o vídeo do Monky trafegam **direto entre os participantes**
+(P2P). Quando dois membros estão atrás de **CGNAT**, eles não conseguem se
+enxergar e a chamada não conecta. O TURN resolve fazendo o servidor **repassar a
+mídia** desse par.
+
+::: tip Guia completo
+Veja a [página dedicada do Relay TURN](/turn) com instruções detalhadas de
+portas, firewall (Oracle Cloud, AWS, iptables, ufw), verificação e
+troubleshooting.
+:::
+
+### Ativando
+
+```bash
+monky config set turn true
+monky restart
+```
+
+O coturn é instalado **automaticamente** pela sua distro. Se o servidor não rodar
+como root, rode uma vez: `sudo bash scripts/install-turn.sh`
+
+### Portas necessárias
+
+| Porta | Protocolo | Função |
+|---|---|---|
+| `3478` | TCP e UDP | Sinalização TURN |
+| `49152-65535` | UDP | Relay de mídia |
+
+Devem estar abertas **tanto no firewall do Linux quanto no painel do provedor**
+(Oracle Cloud, AWS, etc.).
+
+### Verificando
+
+```bash
+monky status    # deve mostrar ✔ acessível
+```
+
+### Desligando
+
+```bash
+monky config set turn false
+monky restart
 ```
 
 ---

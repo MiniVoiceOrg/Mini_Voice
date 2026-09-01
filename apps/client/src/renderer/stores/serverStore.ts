@@ -1,6 +1,7 @@
-import { AttachmentStorageInfo, ChannelSummary, DEFAULT_PERMISSIONS, Permission, Role, ServerDetails, UserRoleSummary, UserSummary, hasPermission } from '@monky/shared';
+import { AttachmentStorageInfo, ChannelSummary, DEFAULT_PERMISSIONS, Permission, Role, ServerDetails, TurnAvailability, UserRoleSummary, UserSummary, hasPermission } from '@monky/shared';
 import { appEvents, EventBus } from '../core/EventBus';
 import { createActiveProxy } from '../core/activeProxy';
+import { clientLog } from '../core/ClientLogService';
 
 export class ServerStore {
   /**
@@ -21,6 +22,11 @@ export class ServerStore {
   public knownMembers: Map<string, UserSummary> = new Map();
 
   public setServerDetails(details: ServerDetails, currentUser: UserSummary): void {
+    clientLog.info('SERVER_HOST', `Server details received: "${details.name}"`, {
+      channels: details.channels.length,
+      members: details.members.length,
+      turnEnabled: details.turnEnabled,
+    });
     // The server sends one entry per live connection (#309). The member list is
     // per person, so it holds a collapsed copy — the untouched original still
     // feeds the per-session voice lists.
@@ -96,6 +102,7 @@ export class ServerStore {
   public addChannel(channel: ChannelSummary): void {
     if (this.serverDetails) {
       this.serverDetails.channels.push(channel);
+      this.sortChannels();
       this.bus.emit('server.updated');
     }
   }
@@ -120,6 +127,40 @@ export class ServerStore {
 
     this.serverDetails.channels[index] = channel;
     this.bus.emit('server.updated');
+  }
+
+  /**
+   * Applies a new channel order (#471).
+   *
+   * Only the positions of channels this client can see are sent, so anything
+   * not mentioned is left where it is. Sorting here (rather than in the view)
+   * keeps a single source of truth for the order: the list in the store is
+   * always the list as it should be shown.
+   */
+  public applyChannelPositions(positions: Array<{ channelId: string; position: number }>): void {
+    if (!this.serverDetails || positions.length === 0) return;
+
+    const byId = new Map(positions.map((p) => [p.channelId, p.position]));
+    let changed = false;
+    for (const channel of this.serverDetails.channels) {
+      const next = byId.get(channel.id);
+      if (next !== undefined && next !== channel.position) {
+        channel.position = next;
+        changed = true;
+      }
+    }
+    if (!changed) return;
+
+    this.sortChannels();
+    this.bus.emit('server.updated');
+  }
+
+  /**
+   * Orders channels the way the server does: by position, falling back to
+   * creation time so channels sharing a position keep a stable order (#471).
+   */
+  private sortChannels(): void {
+    this.serverDetails?.channels.sort((a, b) => a.position - b.position || a.createdAt - b.createdAt);
   }
 
   public updateCurrentUser(user: UserSummary): void {
@@ -174,7 +215,9 @@ export class ServerStore {
     allowSoundboard?: boolean,
     iconUrl?: string | null,
     attachmentStorage?: AttachmentStorageInfo,
-    maxUsers?: number
+    maxUsers?: number,
+    turnEnabled?: boolean,
+    allowEveryoneMention?: boolean
   ): void {
     if (this.serverDetails) {
       this.serverDetails.name = name;
@@ -191,9 +234,31 @@ export class ServerStore {
       if (maxUsers !== undefined) {
         this.serverDetails.maxUsers = maxUsers;
       }
+      if (turnEnabled !== undefined) {
+        this.serverDetails.turnEnabled = turnEnabled;
+      }
+      if (allowEveryoneMention !== undefined) {
+        this.serverDetails.allowEveryoneMention = allowEveryoneMention;
+      }
       this.bus.emit('server.updated');
       this.bus.emit('server.meta_updated', this.serverDetails);
     }
+  }
+
+  /**
+   * Refreshes what the host can do about the relay (#438).
+   *
+   * Separate from `updateServerMeta` because this is not a setting somebody
+   * chose: it is the host reporting a capability that may have changed on its
+   * own — switching the relay on installs coturn, and from then on the answer
+   * from login is stale.
+   */
+  public setTurnAvailability(availability: TurnAvailability | undefined): void {
+    if (!this.serverDetails || availability === undefined) return;
+    clientLog.info('SERVER_HOST', 'TURN availability updated', { availability });
+    this.serverDetails.turnAvailability = availability;
+    this.bus.emit('server.updated');
+    this.bus.emit('server.meta_updated', this.serverDetails);
   }
 
   public updateRoles(roles: Role[], userRoles: UserRoleSummary[]): void {
@@ -278,6 +343,35 @@ export class ServerStore {
     });
   }
 
+  /**
+   * Returns all known members (online + offline), sorted with online/voice
+   * users first, then offline, each sub-group sorted by role then name (#401).
+   */
+  public getAllMembersInDisplayOrder(): UserSummary[] {
+    const onlineIds = new Set((this.serverDetails?.members ?? []).map((m) => m.id));
+    const all = new Map<string, UserSummary>();
+
+    // Online members first (authoritative state)
+    for (const m of (this.serverDetails?.members ?? [])) {
+      all.set(m.id, m);
+    }
+    // Offline members from knownMembers
+    for (const [id, m] of this.knownMembers) {
+      if (!all.has(id)) {
+        all.set(id, { ...m, status: 'DISCONNECTED' as const });
+      }
+    }
+
+    return Array.from(all.values()).sort((a, b) => {
+      const aOnline = onlineIds.has(a.id) ? 0 : 1;
+      const bOnline = onlineIds.has(b.id) ? 0 : 1;
+      if (aOnline !== bOnline) return aOnline - bOnline;
+      const diff = this.getUserHighestRolePosition(b.id) - this.getUserHighestRolePosition(a.id);
+      if (diff !== 0) return diff;
+      return a.nickname.localeCompare(b.nickname);
+    });
+  }
+
   public recalculateMyPermissions(): number {
     if (!this.currentUser) {
       this.myPermissions = 0;
@@ -295,6 +389,7 @@ export class ServerStore {
   }
 
   public clear(): void {
+    clientLog.info('SERVER_HOST', 'Server store cleared');
     this.serverDetails = null;
     this.currentUser = null;
     this.activeTextChannelId = null;

@@ -28,6 +28,7 @@ import { AttachmentStorageService } from './infrastructure/security/AttachmentSt
 import { AvatarStorageService } from './infrastructure/security/AvatarStorageService';
 import { PasswordService } from './infrastructure/security/PasswordService';
 import { RateLimiter } from './infrastructure/security/RateLimiter';
+import { CoturnManager } from './infrastructure/turn/CoturnManager';
 import { WebSocketServer } from './infrastructure/websocket/WebSocketServer';
 
 export interface ServerConfig {
@@ -66,6 +67,7 @@ export async function ensureServerSeedData(
       maxUsers: config.maxUsers ?? LIMITS.MAX_USERS_DEFAULT,
       ownerUserId: null,
       allowSoundboard: true,
+      allowEveryoneMention: true,
     });
 
     await channelRepo.create({
@@ -165,6 +167,8 @@ export class MonkyServer {
   private rateLimiter: RateLimiter;
   private lanBroadcaster: LanBroadcaster;
   private attachmentService: AttachmentService;
+  private coturnManager: CoturnManager;
+  private serverRepo: SqliteServerRepository;
   private startedAt: number | null = null;
 
   private constructor(
@@ -175,7 +179,9 @@ export class MonkyServer {
     avatarStorage: AvatarStorageService,
     rateLimiter: RateLimiter,
     lanBroadcaster: LanBroadcaster,
-    attachmentService: AttachmentService
+    attachmentService: AttachmentService,
+    coturnManager: CoturnManager,
+    serverRepo: SqliteServerRepository
   ) {
     this.dbConn = dbConn;
     this.httpServer = httpServer;
@@ -184,6 +190,8 @@ export class MonkyServer {
     this.rateLimiter = rateLimiter;
     this.lanBroadcaster = lanBroadcaster;
     this.attachmentService = attachmentService;
+    this.coturnManager = coturnManager;
+    this.serverRepo = serverRepo;
   }
 
   public static async create(config: ServerConfig): Promise<MonkyServer> {
@@ -216,7 +224,9 @@ export class MonkyServer {
       mentionRepo,
       avatarStorage,
       rateLimiter,
-      attachmentService
+      attachmentService,
+      serverRepo,
+      (userId, channelId) => channelService.canUserAccessChannel(userId, channelId)
     );
 
     let getOnlineUsers: () => any = () => new Map();
@@ -356,6 +366,8 @@ export class MonkyServer {
       res.end();
     });
 
+    const coturnManager = new CoturnManager(config.dataDir);
+
     const wsServer = new WebSocketServer(
       httpServer,
       authService,
@@ -366,7 +378,8 @@ export class MonkyServer {
       serverRepo,
       attachmentService,
       permissionService,
-      roleService
+      roleService,
+      coturnManager
     );
 
     getOnlineUsers = () => wsServer.getOnlineUsersMap();
@@ -377,7 +390,18 @@ export class MonkyServer {
       discoveryPort: config.discoveryPort,
     });
 
-    return new MonkyServer(config, dbConn, httpServer, wsServer, avatarStorage, rateLimiter, lanBroadcaster, attachmentService);
+    return new MonkyServer(
+      config,
+      dbConn,
+      httpServer,
+      wsServer,
+      avatarStorage,
+      rateLimiter,
+      lanBroadcaster,
+      attachmentService,
+      coturnManager,
+      serverRepo
+    );
   }
 
   private static async handleAttachmentUpload(
@@ -533,6 +557,7 @@ export class MonkyServer {
         Logger.info('INFO', `Monky Server running on 0.0.0.0:${this.config.port}`);
         Logger.info('INFO', `Data directory: ${this.config.dataDir}`);
         void this.attachmentService.reconcile();
+        void this.startTurnIfEnabled();
         this.lanBroadcaster
           .start()
           .catch((error) => Logger.warn('NETWORK', 'LAN discovery broadcast unavailable; continuing without it.', error))
@@ -541,8 +566,32 @@ export class MonkyServer {
     });
   }
 
+  /**
+   * Brings the TURN relay up when the operator has enabled it (#425).
+   *
+   * Deliberately not awaited by `start()`: a relay that fails to launch must
+   * not hold up (or take down) the server, since calls still work without it
+   * for everyone whose NAT allows a direct path.
+   */
+  private async startTurnIfEnabled(): Promise<void> {
+    try {
+      const server = await this.serverRepo.getServer();
+      if (!server?.turnEnabled) return;
+
+      const secret = server.turnSecret;
+      if (!secret) {
+        Logger.warn('NETWORK', 'TURN relay is enabled but has no shared secret; leaving it off.');
+        return;
+      }
+      await this.coturnManager.start(secret);
+    } catch (error) {
+      Logger.error('NETWORK', 'Failed to evaluate the TURN relay configuration', error);
+    }
+  }
+
   public async stop(): Promise<void> {
     Logger.info('INFO', 'Stopping Monky Server...');
+    await this.coturnManager.stop();
     await this.lanBroadcaster.stop();
     this.rateLimiter.dispose();
     this.wsServer.close();

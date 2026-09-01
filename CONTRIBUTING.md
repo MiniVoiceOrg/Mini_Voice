@@ -177,6 +177,17 @@ sozinho:
 Repare que **patch é o padrão**: todo merge na `main` publica alguma versão, nem
 que seja um commit de documentação.
 
+**Cada commit move o número, um de cada vez.** A conta não pega só o tipo mais
+alto do intervalo: um PR com três `fix:` leva `1.0.0` a `1.0.3`, e um com duas
+`feat:` seguidas de três `fix:` leva a `1.2.3`. Como os saltos são aplicados na
+ordem em que os commits foram feitos, a ordem importa — uma `feat:` depois de um
+`fix:` zera o patch que ele tinha acabado de somar.
+
+Isso vale mesmo com **squash**, que é como a `main` recebe todo PR. O merge
+colapsa o PR num commit só, mas o GitHub mantém a lista dos commits originais no
+corpo da mensagem, e é ela que é lida. Se você reescrever esse corpo à mão e
+apagar a lista, o PR inteiro volta a valer um salto só — o do título.
+
 A conta parte da **última release publicada, betas inclusive**. Ou seja, uma
 `feat:` mergeada logo depois da beta `1.1.0-beta` sai como `1.2.0-beta`, e não
 como um segundo beta da mesma `1.1.0`.

@@ -38,4 +38,9 @@ function getStatus() {
   return binding.getStatus();
 }
 
-module.exports = { isSupported, start, stop, getLastError, getStatus };
+function listWindowOwners() {
+  if (!binding || typeof binding.listWindowOwners !== 'function') return [];
+  return binding.listWindowOwners();
+}
+
+module.exports = { isSupported, start, stop, getLastError, getStatus, listWindowOwners };

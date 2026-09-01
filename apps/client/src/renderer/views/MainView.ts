@@ -1,4 +1,5 @@
-import { MessageType, Permission } from '@monky/shared';
+import { MessageType, Permission, UserSummary, canAccessChannel } from '@monky/shared';
+import type { ChannelType } from '@monky/shared';
 import { escapeHtml } from '../utils/html';
 import { appEvents } from '../core/EventBus';
 import { networkClient } from '../core/NetworkClient';
@@ -13,6 +14,8 @@ import { settingsStore, ChatSoundMode } from '../stores/settingsStore';
 import { connectionStore, SavedServer } from '../stores/connectionStore';
 import { audioProcessor } from '../core/AudioProcessor';
 import { webRtcManager } from '../core/WebRtcManager';
+import { videoService } from '../core/VideoService';
+import { screenAudioService } from '../core/ScreenAudioService';
 import { ChatView } from './ChatView';
 import { VoiceStageView } from './VoiceStageView';
 import { createChannelModal } from './CreateChannelModal';
@@ -31,6 +34,7 @@ import { userContextMenu } from './UserContextMenu';
 import { soundboardModal } from './SoundboardModal';
 import { soundEffects } from '../core/SoundEffects';
 import { getAvatarUrl, toAbsoluteServerIconUrl } from '../utils/avatar';
+import { peerFailureTooltip } from '../utils/peerFailureHint';
 import { serverRailView } from './ServerRailView';
 import logoUrl from '../assets/Logo.png';
 import { t, tCount } from '../i18n';
@@ -48,6 +52,9 @@ export class MainView {
   private screenShareNoticeSignature: string | null = null;
   private textChannelDragHoverTimer: number | null = null;
   private textChannelDragHoverId: string | null = null;
+  // Measures the floating user card so the server rail can reserve room for it
+  // (#473).
+  private userCardObserver: ResizeObserver | null = null;
 
   constructor(container: HTMLElement) {
     this.container = container;
@@ -141,7 +148,7 @@ export class MainView {
             <div class="user-control-main">
               <div id="user-profile-btn" class="user-profile-summary" title="${t('main.profileSettings')}">
                 <div class="user-avatar-container">
-                  <img id="main-user-avatar" class="user-avatar-main ${voiceStore.isSpeaking ? 'speaking' : ''}" src="${getAvatarUrl(u.avatarUrl)}">
+                  <img id="main-user-avatar" class="user-avatar-main ${voiceStore.isSpeaking ? 'speaking' : ''}" src="${getAvatarUrl(u.avatarUrl)}" data-fallback="avatar">
                 </div>
                 <div class="user-info-text">
                   <span id="main-user-name" class="user-name-display">${escapeHtml(u.nickname)}</span>
@@ -184,6 +191,7 @@ export class MainView {
     this.renderMembers();
     serverRailView.render();
     this.setupChannelsResizer();
+    this.observeUserCardHeight();
 
     const centerStageEl = document.getElementById('main-center-stage')!;
     // Re-rendering happens on every server switch now (#400), so the previous
@@ -332,40 +340,78 @@ export class MainView {
     if (!slot) return;
 
     const sharers = this.getRemoteScreenSharers();
-    const signature = `${this.activeContentView}|${sharers.map((s) => `${s.id}:${s.nickname}`).join(',')}`;
+    const isSelfSharing = voiceStore.isScreenSharing;
+    const signature = `${this.activeContentView}|${isSelfSharing}|${sharers.map((s) => `${s.id}:${s.nickname}`).join(',')}`;
     if (signature === this.screenShareNoticeSignature) return;
     this.screenShareNoticeSignature = signature;
 
-    if (this.activeContentView === 'stage' || sharers.length === 0) {
+    if (this.activeContentView === 'stage' || (sharers.length === 0 && !isSelfSharing)) {
       slot.innerHTML = '';
       return;
     }
 
-    const names = sharers.map((s) => escapeHtml(s.nickname));
-    let label: string;
-    if (names.length === 1) {
-      label = t('main.screenShareNoticeOne', { name: names[0] });
-    } else if (names.length === 2) {
-      label = t('main.screenShareNoticeTwo', { first: names[0], second: names[1] });
-    } else {
-      label = tCount('main.screenShareNoticeMany', names.length - 2, {
-        first: names[0],
-        second: names[1],
-      });
+    const parts: string[] = [];
+
+    // Local user sharing notice with stop button (#416)
+    if (isSelfSharing) {
+      parts.push(`
+        <div class="screenshare-notice screenshare-notice--self">
+          <span class="material-symbols-outlined md-16 screenshare-notice-icon">screen_share</span>
+          <span class="screenshare-notice-text">${t('main.screenShareSelfNotice')}</span>
+          <button id="screenshare-self-stop-btn" class="screenshare-notice-btn screenshare-notice-btn--danger">${t('screenShare.stopSharing')}</button>
+        </div>
+      `);
     }
 
-    const single = sharers.length === 1;
-    slot.innerHTML = `
-      <div class="screenshare-notice">
-        <span class="material-symbols-outlined md-16 screenshare-notice-icon">screen_share</span>
-        <span class="screenshare-notice-text" title="${label}">${label}</span>
-        <button id="screenshare-notice-btn" class="screenshare-notice-btn">${single ? t('main.screenShareWatch') : t('main.screenShareGoToStage')}</button>
-      </div>
-    `;
+    // Remote sharers notice
+    if (sharers.length > 0) {
+      const names = sharers.map((s) => escapeHtml(s.nickname));
+      let label: string;
+      if (names.length === 1) {
+        label = t('main.screenShareNoticeOne', { name: names[0] });
+      } else if (names.length === 2) {
+        label = t('main.screenShareNoticeTwo', { first: names[0], second: names[1] });
+      } else {
+        label = tCount('main.screenShareNoticeMany', names.length - 2, {
+          first: names[0],
+          second: names[1],
+        });
+      }
 
-    document.getElementById('screenshare-notice-btn')?.addEventListener('click', () => {
-      this.openVoiceStage(single ? sharers[0].id : undefined);
+      const single = sharers.length === 1;
+      parts.push(`
+        <div class="screenshare-notice">
+          <span class="material-symbols-outlined md-16 screenshare-notice-icon">screen_share</span>
+          <span class="screenshare-notice-text" title="${label}">${label}</span>
+          <button id="screenshare-notice-btn" class="screenshare-notice-btn">${single ? t('main.screenShareWatch') : t('main.screenShareGoToStage')}</button>
+        </div>
+      `);
+    }
+
+    slot.innerHTML = parts.join('');
+
+    // Stop self-sharing handler
+    document.getElementById('screenshare-self-stop-btn')?.addEventListener('click', async () => {
+      videoService.stopScreenShare();
+      await webRtcManager.removeAllLocalScreenTracks();
+      voiceStore.setScreenSharing(false);
+      callClient().send(MessageType.VOICE_STATE_UPDATE, {
+        screenShareIds: [],
+        isScreenSharing: false,
+      });
+      if (screenAudioService.getIsCapturing()) {
+        await screenAudioService.stop();
+      }
+      this.updateScreenShareNotice();
     });
+
+    // Watch remote sharer handler
+    if (sharers.length > 0) {
+      const single = sharers.length === 1;
+      document.getElementById('screenshare-notice-btn')?.addEventListener('click', () => {
+        this.openVoiceStage(single ? sharers[0].id : undefined);
+      });
+    }
   }
 
   /**
@@ -583,11 +629,17 @@ export class MainView {
                   const isMicMuted = isSelfMuted || isServerMuted || isSelfDeafened || isServerDeafened;
                   const avatar = getAvatarUrl(p.user.avatarUrl);
                   const displayName = participantManager.displayName(p);
+                  const isPeerFailed = !isLocal && (p.peerConnectionFailed ?? false);
+                  const isConnecting = !isLocal && !isPeerFailed && (p.isConnecting ?? false);
+                  const isRelayed = !isLocal && !isPeerFailed && !isConnecting && (p.isRelayed ?? false);
 
                   return `
                     <div id="voice-mini-user-${sessionId}" class="voice-participant-mini ${isSpeaking ? 'speaking' : ''}" data-session-id="${sessionId}" title="${escapeHtml(displayName)} (${t('main.rightClickVolumeShort')})">
-                      <img class="voice-mini-avatar" src="${avatar}">
+                      <img class="voice-mini-avatar" src="${avatar}" data-fallback="avatar">
                       <span class="voice-mini-name">${escapeHtml(displayName)}</span>
+                      ${isPeerFailed ? `<span class="material-symbols-outlined md-14 voice-mini-icon peer-failed" title="${peerFailureTooltip('main.peerConnectionFailed')}">link_off</span>` : ''}
+                      ${isConnecting ? `<span class="material-symbols-outlined md-14 voice-mini-icon peer-connecting" title="${t('main.peerConnecting')}">sync</span>` : ''}
+                      ${isRelayed ? `<span class="material-symbols-outlined md-14 voice-mini-icon relayed" title="${t('main.peerRelayed')}">swap_horiz</span>` : ''}
                       ${isServerDeafened ? `<span class="material-symbols-outlined md-14 voice-mini-icon muted" title="${t('permissions.serverDeafened')}">hearing_disabled</span>` : ''}
                       ${isServerMuted ? `<span class="material-symbols-outlined md-14 voice-mini-icon muted" title="${t('permissions.serverMuted')}">admin_panel_settings</span>` : ''}
                       ${isMicMuted ? `<span class="material-symbols-outlined md-14 voice-mini-icon muted" title="${t('main.micMuted')}">mic_off</span>` : ''}
@@ -764,6 +816,142 @@ export class MainView {
         this.openChannelMenu(channelId, rect.left, rect.bottom + 4);
       });
     });
+
+    this.setupChannelReorder();
+  }
+
+  /**
+   * Lets managers drag channels into a new order (#471).
+   *
+   * Text and voice are reordered independently, so a drag only ever finds drop
+   * targets inside its own list. The dragged element carries its type in the
+   * drag data, which is what keeps a voice channel from landing among the text
+   * ones — the check has to happen on `dragover` (there is no way to reject a
+   * drop after the fact) and the payload itself is unreadable there, so the type
+   * travels as part of the MIME type.
+   */
+  private setupChannelReorder(): void {
+    if (!serverStore.hasPermission(Permission.MANAGE_CHANNELS)) return;
+
+    const lists: Array<{ el: HTMLElement | null; type: ChannelType }> = [
+      { el: document.getElementById('text-channels-list'), type: 'TEXT' },
+      { el: document.getElementById('voice-channels-list'), type: 'VOICE' },
+    ];
+
+    for (const { el: listEl, type } of lists) {
+      if (!listEl) continue;
+      const mime = `text/monky-channel-${type.toLowerCase()}`;
+      // A voice channel and its participants live in a wrapper; a text channel
+      // is the item itself. Dragging and dropping act on whichever is the direct
+      // child of the list, so the participants travel with their channel.
+      const rows = Array.from(listEl.children) as HTMLElement[];
+
+      for (const row of rows) {
+        const handle = (row.matches('.channel-item') ? row : row.querySelector('.channel-item')) as HTMLElement | null;
+        if (!handle) continue;
+        const channelId = handle.getAttribute('data-channel-id');
+        if (!channelId) continue;
+
+        handle.draggable = true;
+        // Dragging is invisible without a hint, and the row has no title of its
+        // own to lose.
+        if (!handle.title) handle.title = t('main.channelReorderHint');
+        handle.addEventListener('dragstart', (e: Event) => {
+          const de = e as DragEvent;
+          de.dataTransfer?.setData(mime, channelId);
+          de.dataTransfer!.effectAllowed = 'move';
+          row.classList.add('channel-dragging');
+        });
+        handle.addEventListener('dragend', () => {
+          row.classList.remove('channel-dragging');
+          listEl.querySelectorAll('.channel-drop-before, .channel-drop-after').forEach((n) => {
+            n.classList.remove('channel-drop-before', 'channel-drop-after');
+          });
+        });
+
+        row.addEventListener('dragover', (e: Event) => {
+          const de = e as DragEvent;
+          if (!de.dataTransfer?.types.includes(mime)) return;
+          de.preventDefault();
+          de.stopPropagation();
+          de.dataTransfer.dropEffect = 'move';
+          const rect = row.getBoundingClientRect();
+          const after = de.clientY > rect.top + rect.height / 2;
+          row.classList.toggle('channel-drop-before', !after);
+          row.classList.toggle('channel-drop-after', after);
+        });
+        row.addEventListener('dragleave', (e: Event) => {
+          const next = (e as DragEvent).relatedTarget as Node | null;
+          if (next && row.contains(next)) return;
+          row.classList.remove('channel-drop-before', 'channel-drop-after');
+        });
+        row.addEventListener('drop', (e: Event) => {
+          const de = e as DragEvent;
+          const draggedId = de.dataTransfer?.getData(mime);
+          const after = row.classList.contains('channel-drop-after');
+          row.classList.remove('channel-drop-before', 'channel-drop-after');
+          if (!draggedId) return;
+          de.preventDefault();
+          de.stopPropagation();
+          if (draggedId === channelId) return;
+          this.commitChannelOrder(type, draggedId, channelId, after);
+        });
+      }
+
+      // Dropping on the empty space below the list sends the channel to the end.
+      listEl.addEventListener('dragover', (e: Event) => {
+        const de = e as DragEvent;
+        if (!de.dataTransfer?.types.includes(mime)) return;
+        de.preventDefault();
+        de.dataTransfer.dropEffect = 'move';
+      });
+      listEl.addEventListener('drop', (e: Event) => {
+        const de = e as DragEvent;
+        const draggedId = de.dataTransfer?.getData(mime);
+        if (!draggedId) return;
+        de.preventDefault();
+        this.commitChannelOrder(type, draggedId, null, true);
+      });
+    }
+  }
+
+  /**
+   * Sends the reordered list to the server (#471).
+   *
+   * The new order is applied locally right away so the drop feels instant, and
+   * the broadcast that comes back simply confirms it. A failure re-renders from
+   * the store, which still holds the order the server knows about.
+   */
+  private commitChannelOrder(
+    type: ChannelType,
+    draggedId: string,
+    targetId: string | null,
+    after: boolean
+  ): void {
+    const channels = serverStore.serverDetails?.channels.filter((c) => c.type === type) ?? [];
+    const ids = channels.map((c) => c.id).filter((id) => id !== draggedId);
+    if (ids.length === channels.length) return;
+
+    let index = ids.length;
+    if (targetId) {
+      const at = ids.indexOf(targetId);
+      if (at === -1) return;
+      index = after ? at + 1 : at;
+    }
+    ids.splice(index, 0, draggedId);
+
+    serverStore.applyChannelPositions(ids.map((channelId, position) => ({ channelId, position })));
+
+    void networkClient
+      .sendRequest(MessageType.CHANNEL_REORDER, { type, orderedIds: ids })
+      .catch((err: unknown) => {
+        void showAlert({
+          title: t('common.error'),
+          message: (err as Error)?.message || t('main.channelReorderFailed'),
+          variant: 'danger',
+        });
+        this.renderChannels();
+      });
   }
 
   /** Opens the per-channel options menu at the given screen coordinates (#151). */
@@ -955,54 +1143,93 @@ export class MainView {
     const listEl = document.getElementById('members-list-items');
     const countEl = document.getElementById('members-count-label');
 
-    const members = serverStore.getMembersInDisplayOrder();
+    const allMembers = serverStore.getAllMembersInDisplayOrder();
+    const onlineMembers = allMembers.filter((m) => m.status !== 'DISCONNECTED');
+    const offlineMembers = allMembers.filter((m) => m.status === 'DISCONNECTED');
+
+    // For private channel visibility: determine which voice channels the local
+    // user can see, so members in invisible private channels appear as offline.
+    const myRoleIds = serverStore.getUserRoleIds(serverStore.currentUser?.id ?? '');
+    const myPerms = serverStore.myPermissions;
+    const visibleChannelIds = new Set(
+      (serverStore.serverDetails.channels ?? [])
+        .filter((ch) => canAccessChannel(ch, myPerms, myRoleIds))
+        .map((ch) => ch.id)
+    );
 
     if (countEl) {
-      countEl.innerText = t('main.membersCount', { count: members.length });
+      countEl.innerText = t('main.membersCount', { count: allMembers.length });
     }
 
-    if (listEl) {
-      listEl.innerHTML = members.map((m) => {
-        const isLocal = m.id === serverStore.currentUser?.id;
-        const vm = participantManager.getByUserId(m.id);
-        const voiceState = vm?.voiceState;
-        const inVoice = !!voiceState;
-        const isReconnecting = participantManager.isUserReconnecting(m.id);
-        const avatar = getAvatarUrl(m.avatarUrl);
-        const isServerDeafened = isLocal ? voiceStore.serverDeafened : (voiceState?.serverDeafened ?? false);
-        const isServerMuted = isLocal ? voiceStore.serverMuted : (voiceState?.serverMuted ?? false);
-        const isSelfDeafened = isLocal ? voiceStore.isDeafened : (voiceState?.isDeafened ?? false);
-        const isSelfMuted = isLocal ? voiceStore.isMuted : (voiceState?.isMuted ?? false);
-        const isMicMuted = inVoice && (isSelfMuted || isServerMuted || isSelfDeafened || isServerDeafened);
+    const renderMemberItem = (m: UserSummary, isOffline: boolean): string => {
+      const isLocal = m.id === serverStore.currentUser?.id;
+      const vm = participantManager.getByUserId(m.id);
+      const voiceState = vm?.voiceState;
+      // If the member is in a private channel the local user cannot access,
+      // mask them as offline so their presence is not leaked (#401).
+      const inPrivateHiddenChannel = voiceState && !visibleChannelIds.has(voiceState.channelId);
+      const effectiveOffline = isOffline || inPrivateHiddenChannel;
+      const inVoice = !!voiceState && !inPrivateHiddenChannel;
+      const isReconnecting = !effectiveOffline && participantManager.isUserReconnecting(m.id);
+      const avatar = getAvatarUrl(m.avatarUrl);
+      const isServerDeafened = !effectiveOffline && (isLocal ? voiceStore.serverDeafened : (voiceState?.serverDeafened ?? false));
+      const isServerMuted = !effectiveOffline && (isLocal ? voiceStore.serverMuted : (voiceState?.serverMuted ?? false));
+      const isSelfDeafened = !effectiveOffline && (isLocal ? voiceStore.isDeafened : (voiceState?.isDeafened ?? false));
+      const isSelfMuted = !effectiveOffline && (isLocal ? voiceStore.isMuted : (voiceState?.isMuted ?? false));
+      const isMicMuted = inVoice && (isSelfMuted || isServerMuted || isSelfDeafened || isServerDeafened);
 
-        return `
-          <div class="member-item ${isReconnecting ? 'reconnecting' : ''}" data-user-id="${m.id}" title="${escapeHtml(m.nickname)} ${isLocal ? `(${t('common.you')})` : `(${t('main.rightClickVolume')})`}">
-            <div class="member-avatar-wrapper">
-              <img class="member-avatar-img" src="${avatar}">
-              <span class="status-indicator ${isReconnecting ? 'reconnecting' : (inVoice ? 'voice' : 'online')}"></span>
-            </div>
-            <div class="member-info">
-              <div class="member-name-row">
-                <span class="member-name">${escapeHtml(m.nickname)}</span>
-                ${isLocal ? `<span class="member-badge-you">${t('common.you')}</span>` : ''}
-                ${m.id === serverStore.ownerId ? `<span class="member-badge-you">${t('roles.ownerBadge')}</span>` : ''}
-                ${isReconnecting ? `<span class="member-reconnecting-badge" title="${t('main.reconnectingTitle')}"><span class="material-symbols-outlined md-14 spin">sync</span></span>` : ''}
-                ${voiceState?.isScreenSharing ? `<span class="member-live-badge" title="${t('main.sharingScreen')}">LIVE</span>` : ''}
-                ${voiceState?.isCameraOn ? `<span class="material-symbols-outlined md-14 member-cam-icon" title="${t('main.cameraOn')}">videocam</span>` : ''}
-                ${isServerDeafened ? `<span class="material-symbols-outlined md-14 member-cam-icon" title="${t('permissions.serverDeafened')}">hearing_disabled</span>` : ''}
-                ${isServerMuted ? `<span class="material-symbols-outlined md-14 member-cam-icon" title="${t('permissions.serverMuted')}">admin_panel_settings</span>` : ''}
-                ${isMicMuted ? `<span class="material-symbols-outlined md-14 member-cam-icon" title="${t('main.micMuted')}">mic_off</span>` : ''}
-                ${isSelfDeafened ? `<span class="material-symbols-outlined md-14 member-cam-icon" title="${t('main.audioMuted')}">headset_off</span>` : ''}
-              </div>
-              ${(() => {
-                const userRoles = serverStore.getUserRoles(m.id).filter((r) => !r.isDefault);
-                return userRoles.length ? `<div class="member-role-tags">${userRoles.map((role) => `<span class="member-role-tag" style="${role.color ? `--role-color: ${role.color}` : ''}">${escapeHtml(role.name)}</span>`).join('')}</div>` : '';
-              })()}
-              <span class="member-subtext">${isReconnecting ? t('main.reconnecting') : (inVoice ? t('main.inVoiceChannel') : t('main.statusOnline'))}</span>
-            </div>
+      const statusClass = isReconnecting ? 'reconnecting' : (inVoice ? 'voice' : (effectiveOffline ? 'offline' : 'online'));
+      const statusText = isReconnecting
+        ? t('main.reconnecting')
+        : (inVoice ? t('main.inVoiceChannel') : (effectiveOffline ? t('main.statusOffline') : t('main.statusOnline')));
+
+      return `
+        <div class="member-item ${effectiveOffline ? 'member-offline' : ''} ${isReconnecting ? 'reconnecting' : ''}" data-user-id="${m.id}" title="${escapeHtml(m.nickname)} ${isLocal ? `(${t('common.you')})` : `(${t('main.rightClickVolume')})`}">
+          <div class="member-avatar-wrapper">
+            <img class="member-avatar-img" src="${avatar}" data-fallback="avatar">
+            <span class="status-indicator ${statusClass}"></span>
           </div>
-        `;
-      }).join('');
+          <div class="member-info">
+            <div class="member-name-row">
+              <span class="member-name">${escapeHtml(m.nickname)}</span>
+              ${isLocal ? `<span class="member-badge-you">${t('common.you')}</span>` : ''}
+              ${m.id === serverStore.ownerId ? `<span class="member-badge-you">${t('roles.ownerBadge')}</span>` : ''}
+              ${isReconnecting ? `<span class="member-reconnecting-badge" title="${t('main.reconnectingTitle')}"><span class="material-symbols-outlined md-14 spin">sync</span></span>` : ''}
+              ${(!effectiveOffline && voiceState?.isScreenSharing) ? `<span class="member-live-badge" title="${t('main.sharingScreen')}">LIVE</span>` : ''}
+              ${(!effectiveOffline && voiceState?.isCameraOn) ? `<span class="material-symbols-outlined md-14 member-cam-icon" title="${t('main.cameraOn')}">videocam</span>` : ''}
+              ${isServerDeafened ? `<span class="material-symbols-outlined md-14 member-cam-icon" title="${t('permissions.serverDeafened')}">hearing_disabled</span>` : ''}
+              ${isServerMuted ? `<span class="material-symbols-outlined md-14 member-cam-icon" title="${t('permissions.serverMuted')}">admin_panel_settings</span>` : ''}
+              ${isMicMuted ? `<span class="material-symbols-outlined md-14 member-cam-icon" title="${t('main.micMuted')}">mic_off</span>` : ''}
+              ${isSelfDeafened ? `<span class="material-symbols-outlined md-14 member-cam-icon" title="${t('main.audioMuted')}">headset_off</span>` : ''}
+            </div>
+            ${(() => {
+              const userRoles = serverStore.getUserRoles(m.id).filter((r) => !r.isDefault);
+              return userRoles.length ? `<div class="member-role-tags">${userRoles.map((role) => `<span class="member-role-tag" style="${role.color ? `--role-color: ${role.color}` : ''}">${escapeHtml(role.name)}</span>`).join('')}</div>` : '';
+            })()}
+            <span class="member-subtext">${statusText}</span>
+          </div>
+        </div>
+      `;
+    };
+
+    if (listEl) {
+      const sections: string[] = [];
+
+      if (onlineMembers.length > 0) {
+        sections.push(`
+          <div class="member-section-header">${t('main.membersOnline')} — ${onlineMembers.length}</div>
+          ${onlineMembers.map((m) => renderMemberItem(m, false)).join('')}
+        `);
+      }
+
+      if (offlineMembers.length > 0) {
+        sections.push(`
+          <div class="member-section-header">${t('main.membersOffline')} — ${offlineMembers.length}</div>
+          ${offlineMembers.map((m) => renderMemberItem(m, true)).join('')}
+        `);
+      }
+
+      listEl.innerHTML = sections.join('');
 
       // Attach contextmenu listeners to member items
       listEl.querySelectorAll('.member-item').forEach((item) => {
@@ -1011,7 +1238,7 @@ export class MainView {
           mouseEvent.preventDefault();
           const userId = item.getAttribute('data-user-id');
           if (!userId) return;
-          const member = serverStore.serverDetails?.members.find((u) => u.id === userId);
+          const member = serverStore.knownMembers.get(userId) ?? serverStore.serverDetails?.members.find((u) => u.id === userId);
           if (member) {
             userContextMenu.open(mouseEvent.clientX, mouseEvent.clientY, member);
           }
@@ -1282,7 +1509,8 @@ export class MainView {
     });
 
     const u7 = appEvents.on(`message.${MessageType.SERVER_SETTINGS_UPDATED}`, (payload: any) => {
-      serverStore.updateServerMeta(payload.name, payload.hasPassword, payload.allowSoundboard, payload.iconUrl, payload.attachmentStorage, payload.maxUsers);
+      serverStore.updateServerMeta(payload.name, payload.hasPassword, payload.allowSoundboard, payload.iconUrl, payload.attachmentStorage, payload.maxUsers, payload.turnEnabled, payload.allowEveryoneMention);
+      serverStore.setTurnAvailability(payload.turnAvailability);
       // The store above is the one of whichever server sent this. Everything
       // below writes to the screen and to the saved-server list, so it may only
       // run for the server actually being looked at (#400).
@@ -1396,6 +1624,32 @@ export class MainView {
     );
   }
 
+  /**
+   * Keeps the server rail clear of the floating user card (#473).
+   *
+   * The card overlaps the bottom of the rail, so without reserving room the
+   * last servers in a long list would sit behind it, unreachable. The height is
+   * measured instead of hardcoded because it changes with the screen-share
+   * notice and the voice connection row.
+   */
+  private observeUserCardHeight(): void {
+    this.userCardObserver?.disconnect();
+    this.userCardObserver = null;
+
+    const layout = this.container.querySelector('.main-layout') as HTMLElement | null;
+    const card = this.container.querySelector('.user-control-bar') as HTMLElement | null;
+    if (!layout || !card) return;
+
+    const apply = () => {
+      layout.style.setProperty('--user-card-height', `${Math.ceil(card.getBoundingClientRect().height)}px`);
+    };
+    apply();
+
+    if (typeof ResizeObserver === 'undefined') return;
+    this.userCardObserver = new ResizeObserver(apply);
+    this.userCardObserver.observe(card);
+  }
+
   private unbindListeners(): void {
     this.unbindEvents.forEach((u) => u());
     this.unbindEvents = [];
@@ -1405,6 +1659,8 @@ export class MainView {
     this.stopSidebarPing();
     this.clearTextChannelDragHover();
     this.unbindListeners();
+    this.userCardObserver?.disconnect();
+    this.userCardObserver = null;
     this.chatView?.destroy();
     this.voiceStageView?.destroy();
   }

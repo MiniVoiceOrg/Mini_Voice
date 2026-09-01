@@ -3,12 +3,17 @@ import {
   MessageType,
   Permission,
   ServerUpdateSettingsPayload,
+  TurnInstallProgressPayload,
+  TurnInstallStage,
 } from '@monky/shared';
 import { networkClient } from '../core/NetworkClient';
+import { appEvents } from '../core/EventBus';
+import { setButtonLoading } from '../utils/buttonLoading';
 import { serverStore } from '../stores/serverStore';
 import { settingsStore, ChatSoundMode } from '../stores/settingsStore';
 import { t } from '../i18n';
-import logoUrl from '../assets/logo.png';
+import { enableBackdropClose } from '../utils/modal';
+import logoUrl from '../assets/Logo.png';
 import { pickAndCropImage } from './ImageCropModal';
 import { attachInputEmojiPicker } from '../utils/inputEmojiPicker';
 import { ServerGeneralTab } from './serverSettings/tabs/ServerGeneralTab';
@@ -24,6 +29,8 @@ export class ServerSettingsModal {
   private shouldRemovePassword = false;
   private pendingIconBase64: string | null | undefined = undefined;
   private activeTab = 'general';
+  /** Set while the host installs coturn, which must not be interrupted (#438). */
+  private installingRelay = false;
   private detachGeneralTab: (() => void) | null = null;
   private detachEmojiPicker: (() => void) | null = null;
 
@@ -138,6 +145,15 @@ export class ServerSettingsModal {
             </div>
 
             <!-- Footer Action Bar -->
+            <div id="turn-install-progress" class="turn-install-progress" hidden>
+              <div class="turn-install-progress-head">
+                <span class="material-symbols-outlined md-16">download</span>
+                <span id="turn-install-stage">${t('serverSettings.turnInstallTitle')}</span>
+                <span id="turn-install-percent" class="turn-install-percent">0%</span>
+              </div>
+              <div class="turn-install-bar"><div id="turn-install-bar-fill" class="turn-install-bar-fill" style="width: 0%;"></div></div>
+              <div class="turn-install-hint">${t('serverSettings.turnInstallHint')}</div>
+            </div>
             <div class="modal-footer" style="padding: 14px 24px; border-top: 1px solid var(--border-color); background: var(--bg-panel); margin-top: auto; ${canManageServer ? '' : 'justify-content: flex-end;'}">
               <button type="button" id="btn-cancel" class="btn btn-secondary">${t('common.cancel')}</button>
               ${canManageServer ? `<button type="submit" id="btn-save" class="btn btn-primary">${t('serverSettings.save')}</button>` : ''}
@@ -185,18 +201,23 @@ export class ServerSettingsModal {
     const inputName = this.modalEl.querySelector('#input-server-name') as HTMLInputElement;
     const inputPass = this.modalEl.querySelector('#input-server-pass') as HTMLInputElement;
     const checkboxAllowSoundboard = this.modalEl.querySelector('#checkbox-allow-soundboard') as HTMLInputElement | null;
+    const checkboxAllowEveryoneMention = this.modalEl.querySelector('#checkbox-allow-everyone-mention') as HTMLInputElement | null;
+    const checkboxTurnEnabled = this.modalEl.querySelector('#checkbox-turn-enabled') as HTMLInputElement | null;
     const passHelpText = this.modalEl.querySelector('#pass-help-text') as HTMLElement | null;
     const statusDesc = this.modalEl.querySelector('#password-status-desc') as HTMLElement | null;
     const canManageServer = serverStore.hasPermission(Permission.MANAGE_SERVER);
 
     btnClose?.addEventListener('click', () => this.close());
     btnCancel?.addEventListener('click', () => this.close());
+    enableBackdropClose(this.modalEl, () => { if (!this.installingRelay) this.close(); });
 
     this.detachGeneralTab = this.generalTab.attach(this.modalEl);
 
-    // Close on ESC key (#243)
+    // Close on ESC key (#243). Not while the host is installing coturn: the
+    // modal is the only place showing how far it got, and closing it would
+    // leave the operator guessing (#438).
     const handleEsc = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') { this.close(); }
+      if (e.key === 'Escape' && !this.installingRelay) { this.close(); }
     };
     window.addEventListener('keydown', handleEsc);
     (this.modalEl as any)._escHandler = handleEsc;
@@ -296,6 +317,17 @@ export class ServerSettingsModal {
         allowSoundboard,
       };
 
+      if (checkboxAllowEveryoneMention) {
+        payload.allowEveryoneMention = checkboxAllowEveryoneMention.checked;
+      }
+
+      // Only sent when the host can actually run the relay: the checkbox is
+      // disabled otherwise, and submitting `false` would be indistinguishable
+      // from the operator turning it off (#425).
+      if (checkboxTurnEnabled && !checkboxTurnEnabled.disabled) {
+        payload.turnEnabled = checkboxTurnEnabled.checked;
+      }
+
       if (this.shouldRemovePassword) {
         payload.password = null;
       } else if (passVal && passVal.trim().length > 0) {
@@ -344,13 +376,30 @@ export class ServerSettingsModal {
       }
 
       const btnSave = this.modalEl?.querySelector('#btn-save') as HTMLButtonElement;
-      if (btnSave) {
-        btnSave.disabled = true;
-        btnSave.innerText = t('serverSettings.saving');
-      }
+      const btnCancel = this.modalEl?.querySelector('#btn-cancel') as HTMLButtonElement | null;
+      const btnClose = this.modalEl?.querySelector('#modal-close') as HTMLButtonElement | null;
+      // Switching the relay on may install coturn on the host first, which
+      // takes far longer than the 8s default. Giving up early would report a
+      // failure over an installation that is going fine (#431).
+      const installsRelay = payload.turnEnabled === true && !serverStore.serverDetails?.turnAvailability?.supported;
+      // `disabled` alone left the button looking clickable through a job that
+      // can run for minutes, so it also takes the shared loading state (#438).
+      setButtonLoading(btnSave, true);
+      if (btnCancel) btnCancel.disabled = true;
+      // Walking out mid-install would leave the operator with no idea whether
+      // the host is still working on it.
+      if (btnClose) btnClose.disabled = true;
+
+      const stopProgress = installsRelay ? this.trackInstallProgress() : null;
+      this.installingRelay = installsRelay;
 
       try {
-        await networkClient.sendRequest(MessageType.SERVER_UPDATE_SETTINGS, payload);
+        await networkClient.sendRequest(
+          MessageType.SERVER_UPDATE_SETTINGS,
+          payload,
+          undefined,
+          installsRelay ? 11 * 60 * 1000 : undefined
+        );
         this.close();
       } catch (err: any) {
         const banner = document.getElementById('server-settings-banner');
@@ -358,10 +407,12 @@ export class ServerSettingsModal {
           banner.innerText = err.message || t('serverSettings.saveError');
           banner.classList.add('show');
         }
-        if (btnSave) {
-          btnSave.disabled = false;
-          btnSave.innerText = t('serverSettings.save');
-        }
+        setButtonLoading(btnSave, false);
+        if (btnCancel) btnCancel.disabled = false;
+        if (btnClose) btnClose.disabled = false;
+      } finally {
+        this.installingRelay = false;
+        stopProgress?.();
       }
     });
 
@@ -432,6 +483,44 @@ export class ServerSettingsModal {
 
       document.body.appendChild(backdrop);
     });
+  }
+
+  /**
+   * Mirrors the host's coturn installation into the modal (#438).
+   *
+   * The install runs on the server and can take minutes; without this the modal
+   * sat frozen and then simply closed, with no way to tell a slow install from
+   * a hung one. Returns the teardown so the listener never outlives the save —
+   * leaving it attached would leak a handler on every attempt.
+   */
+  private trackInstallProgress(): () => void {
+    const panel = this.modalEl?.querySelector('#turn-install-progress') as HTMLElement | null;
+    const stageEl = this.modalEl?.querySelector('#turn-install-stage') as HTMLElement | null;
+    const percentEl = this.modalEl?.querySelector('#turn-install-percent') as HTMLElement | null;
+    const fillEl = this.modalEl?.querySelector('#turn-install-bar-fill') as HTMLElement | null;
+
+    if (panel) panel.hidden = false;
+    if (stageEl) stageEl.innerText = t('serverSettings.turnInstallTitle');
+
+    const stageLabels: Record<TurnInstallStage, string> = {
+      refreshing: t('serverSettings.turnInstallStageRefreshing'),
+      installing: t('serverSettings.turnInstallStageInstalling'),
+      configuring: t('serverSettings.turnInstallStageConfiguring'),
+    };
+
+    const unsubscribe = appEvents.on(
+      `message.${MessageType.TURN_INSTALL_PROGRESS}`,
+      (progress: TurnInstallProgressPayload) => {
+        if (stageEl) stageEl.innerText = stageLabels[progress.stage] ?? t('serverSettings.turnInstallTitle');
+        if (percentEl) percentEl.innerText = `${progress.percent}%`;
+        if (fillEl) fillEl.style.width = `${progress.percent}%`;
+      }
+    );
+
+    return () => {
+      unsubscribe();
+      if (panel) panel.hidden = true;
+    };
   }
 
   private showBannerError(message: string): void {

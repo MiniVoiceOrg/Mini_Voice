@@ -1,7 +1,11 @@
 import { contextBridge, ipcRenderer } from 'electron';
 import type {
   ActionShortcutBinding,
+  AppIdentityImportResult,
   AppIdentityResult,
+  BackupCryptoResult,
+  ClientLogConfig,
+  ClientLogEntry,
   DesktopSource,
   DiscoveredLanServer,
   HostServerOptions,
@@ -36,8 +40,12 @@ export interface ElectronApi {
   getIdentity: () => Promise<AppIdentityResult>;
   getClientId: () => Promise<string>;
   signChallenge: (nonceHex: string) => Promise<string>;
-  exportIdentity: (password: string) => Promise<string>;
-  importIdentity: (exportedIdentity: string, password: string) => Promise<AppIdentityResult>;
+  exportIdentity: (password: string, extras?: string) => Promise<string>;
+  importIdentity: (exportedIdentity: string, password: string) => Promise<AppIdentityImportResult>;
+  saveBackupFile: (contents: string, suggestedName: string) => Promise<{ success: boolean; filePath?: string; error?: string }>;
+  openBackupFile: () => Promise<{ success: boolean; contents?: string; error?: string }>;
+  encryptBackup: (contents: string, password: string) => Promise<BackupCryptoResult>;
+  decryptBackup: (payload: string, password: string) => Promise<BackupCryptoResult>;
   hostServerStart: (options: HostServerOptions) => Promise<{ success: boolean; error?: string }>;
   hostServerStop: () => Promise<{ success: boolean }>;
   hostServerStatus: () => Promise<{ isRunning: boolean; port: number | null; serverId: string | null }>;
@@ -92,12 +100,23 @@ export interface ElectronApi {
   screenAudioStop: () => Promise<{ success: boolean }>;
   onScreenAudioFrame: (cb: (buffer: ArrayBuffer | Uint8Array) => void) => () => void;
   removeScreenAudioFrameListener: () => void;
+  onScreenAudioError: (cb: (errorMsg: string) => void) => () => void;
   updateTrayVoiceStatus: (status: TrayVoiceStatus) => Promise<void>;
+  // Encerramento gracioso: sair das chamadas antes do processo morrer (#458)
+  onAppBeforeQuit: (cb: () => void) => () => void;
+  notifyLeaveComplete: () => Promise<void>;
   onTrayToggleMute: (cb: () => void) => () => void;
   onTrayToggleDeafen: (cb: () => void) => () => void;
   getAutoStart: () => Promise<boolean>;
   setAutoStart: (enabled: boolean) => Promise<void>;
   setMinimizeToTray: (enabled: boolean) => Promise<void>;
+  // Client Logging (#444)
+  writeClientLog: (entry: ClientLogEntry) => Promise<void>;
+  getClientLogConfig: () => Promise<ClientLogConfig>;
+  setClientLogConfig: (config: Partial<ClientLogConfig>) => Promise<void>;
+  exportClientLogs: () => Promise<{ success: boolean; filePath?: string; error?: string }>;
+  getClientLogSize: () => Promise<number>;
+  clearClientLogs: () => Promise<void>;
   platform: string;
 }
 
@@ -123,8 +142,12 @@ const api: ElectronApi = {
   getIdentity: () => ipcRenderer.invoke('identity:get'),
   getClientId: () => ipcRenderer.invoke('identity:get-client-id'),
   signChallenge: (nonceHex) => ipcRenderer.invoke('identity:sign-challenge', nonceHex),
-  exportIdentity: (password) => ipcRenderer.invoke('identity:export', password),
+  exportIdentity: (password, extras) => ipcRenderer.invoke('identity:export', password, extras),
   importIdentity: (exportedIdentity, password) => ipcRenderer.invoke('identity:import', exportedIdentity, password),
+  saveBackupFile: (contents, suggestedName) => ipcRenderer.invoke('backup:save-file', contents, suggestedName),
+  openBackupFile: () => ipcRenderer.invoke('backup:open-file'),
+  encryptBackup: (contents, password) => ipcRenderer.invoke('backup:encrypt', contents, password),
+  decryptBackup: (payload, password) => ipcRenderer.invoke('backup:decrypt', payload, password),
   hostServerStart: (options) => ipcRenderer.invoke('server-host:start', options),
   hostServerStop: () => ipcRenderer.invoke('server-host:stop'),
   hostServerStatus: () => ipcRenderer.invoke('server-host:status'),
@@ -236,7 +259,22 @@ const api: ElectronApi = {
     };
   },
   removeScreenAudioFrameListener: () => ipcRenderer.removeAllListeners('screen-audio:frame'),
+  onScreenAudioError: (cb) => {
+    const listener = (_e: Electron.IpcRendererEvent, errorMsg: string) => cb(errorMsg);
+    ipcRenderer.on('screen-audio:error', listener);
+    return () => {
+      ipcRenderer.removeListener('screen-audio:error', listener);
+    };
+  },
   updateTrayVoiceStatus: (status) => ipcRenderer.invoke('tray:update-voice-status', status),
+  onAppBeforeQuit: (cb) => {
+    const listener = () => cb();
+    ipcRenderer.on('app:before-quit', listener);
+    return () => {
+      ipcRenderer.removeListener('app:before-quit', listener);
+    };
+  },
+  notifyLeaveComplete: () => ipcRenderer.invoke('app:leave-complete'),
   onTrayToggleMute: (cb) => {
     const listener = () => cb();
     ipcRenderer.on('tray:toggle-mute', listener);
@@ -254,6 +292,13 @@ const api: ElectronApi = {
   getAutoStart: () => ipcRenderer.invoke('app:get-auto-start'),
   setAutoStart: (enabled: boolean) => ipcRenderer.invoke('app:set-auto-start', enabled),
   setMinimizeToTray: (enabled: boolean) => ipcRenderer.invoke('app:set-minimize-to-tray', enabled),
+  // Client Logging (#444)
+  writeClientLog: (entry) => ipcRenderer.invoke('client-log:write', entry),
+  getClientLogConfig: () => ipcRenderer.invoke('client-log:get-config'),
+  setClientLogConfig: (config) => ipcRenderer.invoke('client-log:set-config', config),
+  exportClientLogs: () => ipcRenderer.invoke('client-log:export'),
+  getClientLogSize: () => ipcRenderer.invoke('client-log:get-size'),
+  clearClientLogs: () => ipcRenderer.invoke('client-log:clear'),
   platform: process.platform,
 };
 

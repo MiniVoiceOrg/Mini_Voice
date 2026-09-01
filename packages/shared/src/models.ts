@@ -131,6 +131,8 @@ export interface ServerDetails {
   maxUsers: number;
   hasPassword?: boolean;
   allowSoundboard?: boolean;
+  /** Whether `@todos` / `@everyone` mentions the whole channel (#464). */
+  allowEveryoneMention?: boolean;
   iconUrl?: string | null;
   channels: ChannelSummary[];
   /** One entry per live connection: a user signed in from two devices appears twice (#309). */
@@ -149,7 +151,51 @@ export interface ServerDetails {
   myPermissions?: number;
   // Attachment-storage limits + current usage for the settings UI (#11).
   attachmentStorage?: AttachmentStorageInfo;
+  /**
+   * Whether the host is relaying media through its own TURN server (#425).
+   *
+   * Purely informational for the settings UI: the credentials clients actually
+   * dial live in `AuthSuccessPayload.iceServers`, never here, because they are
+   * per-user and short-lived.
+   */
+  turnEnabled?: boolean;
+
+  /**
+   * Whether this host can actually run the relay, so the UI can disable the
+   * toggle instead of letting the operator switch on something impossible
+   * (#429).
+   *
+   * Absent means the server predates the relay feature: an older build simply
+   * ignores `turnEnabled`, so the toggle would appear to do nothing at all.
+   * That is why availability is reported as a present-or-absent object rather
+   * than a boolean — `undefined` is meaningful here.
+   *
+   * The reason travels as a code, not as prose, because the server has no idea
+   * which language the person reading the screen uses.
+   */
+  turnAvailability?: TurnAvailability;
 }
+
+export type TurnUnavailableReason = 'unsupported-platform' | 'not-installed';
+
+export interface TurnAvailability {
+  supported: boolean;
+  reason?: TurnUnavailableReason;
+  /**
+   * The host is missing coturn but the server can install it on its own when
+   * the relay is switched on (#431). Only meaningful with `not-installed`:
+   * without it the operator has to run the script by hand.
+   */
+  autoInstallable?: boolean;
+}
+
+/**
+ * Which part of the coturn installation is running (#438).
+ *
+ * A code rather than a sentence: the server does not know the language of
+ * whoever is watching the progress bar.
+ */
+export type TurnInstallStage = 'refreshing' | 'installing' | 'configuring';
 
 export interface WebRtcSignalPayload {
   /** Peers are addressed per connection, not per person (#309). */
@@ -164,5 +210,5 @@ export interface WebRtcSignalPayload {
 export interface BandwidthSettings {
   maxUploadKbps: number;
   maxDownloadKbps: number;
-  qualityPreset: 'ECONOMIC' | 'NORMAL' | 'HIGH' | 'GAMING';
+  qualityPreset: 'ECONOMIC' | 'NORMAL' | 'HIGH' | 'GAMING' | 'ULTRA';
 }

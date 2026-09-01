@@ -12,6 +12,22 @@ export interface ParticipantViewModel {
   isReconnecting?: boolean;
   /** True when all WebRTC recovery attempts with this peer have been exhausted. */
   peerConnectionFailed?: boolean;
+  /**
+   * True while the WebRTC link with this peer is still being negotiated (#433).
+   *
+   * Silence during the handshake is indistinguishable from a broken call, so
+   * this fills the gap between joining and the first connected state — and it
+   * comes back during a recovery, when media really has stopped flowing.
+   */
+  isConnecting?: boolean;
+  /**
+   * True when media with this peer is going through the server's TURN relay
+   * instead of a direct link (#425).
+   *
+   * Worth surfacing because a relayed call costs the host bandwidth and adds
+   * latency, so the operator benefits from seeing when it is being used.
+   */
+  isRelayed?: boolean;
 }
 
 export class ParticipantManager {
@@ -88,6 +104,22 @@ export class ParticipantManager {
     }
   }
 
+  public setPeerConnecting(sessionId: string, connecting: boolean): void {
+    const participant = this.participants.get(sessionId);
+    if (participant && participant.isConnecting !== connecting) {
+      participant.isConnecting = connecting;
+      this.scheduleUpdate();
+    }
+  }
+
+  public setPeerRelayed(sessionId: string, relayed: boolean): void {
+    const participant = this.participants.get(sessionId);
+    if (participant && participant.isRelayed !== relayed) {
+      participant.isRelayed = relayed;
+      this.scheduleUpdate();
+    }
+  }
+
   public removeUser(sessionId: string): void {
     this.participants.delete(sessionId);
     this.scheduleUpdate();
@@ -124,6 +156,12 @@ export class ParticipantManager {
     if (participant) {
       participant.voiceState = undefined;
       participant.isSpeaking = false;
+      // Every peer-link indicator describes a WebRTC link, and there is no link
+      // to somebody who is not in a call. Keeping them would carry a stale
+      // "relayed" or "no direct connection" badge into the member list (#466).
+      participant.isConnecting = false;
+      participant.peerConnectionFailed = false;
+      participant.isRelayed = false;
       this.scheduleUpdate();
     }
   }

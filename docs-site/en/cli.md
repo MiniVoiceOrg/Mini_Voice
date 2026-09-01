@@ -367,11 +367,14 @@ monky config set <key> [value]     # change it directly
 | `icon` | Path to an image, copied into the data directory. Empty or `clear` removes it | no icon |
 | `maxUsers` | Maximum registered members. `0` removes the limit | `20` |
 | `allowSoundboard` | Allows the soundboard (`true`/`false`) | `true` |
+| `allowEveryoneMention` | Allows `@everyone`/`@todos` in chat (`true`/`false`) | `true` |
 | `maxAttachmentFileBytes` | Maximum size per attachment, in bytes | no limit |
 | `maxAttachmentStorageBytes` | Total attachment storage, in bytes | no limit |
 | `autoUpdate` | Enables the daily automatic update (`true`/`false`) | `false` |
+| `turn` | Enables the TURN media relay (`true`/`false`). Linux only, requires coturn installed | `false` |
 
 Changing `port` with the server running offers to restart right away.
+Changing `turn` requires a manual `monky restart`.
 
 ### Examples
 
@@ -382,6 +385,55 @@ monky config set password           # typed hidden
 monky config set password clear     # removes the password
 monky config set maxUsers 50
 monky config set autoUpdate true
+monky config set turn true          # see "Media relay (TURN)" below
+```
+
+---
+
+## Media relay (TURN)
+
+By default Monky's voice and video travel **straight between participants**
+(P2P). When two members sit behind **CGNAT**, they cannot see each other and the
+call does not connect. TURN fixes it by having the server **forward the media**
+for that pair.
+
+::: tip Full guide
+See the [dedicated TURN Relay page](/en/turn) with detailed instructions on
+ports, firewalls (Oracle Cloud, AWS, iptables, ufw), verification and
+troubleshooting.
+:::
+
+### Enabling it
+
+```bash
+monky config set turn true
+monky restart
+```
+
+coturn is installed **automatically** from your distro. If the server does not
+run as root, run once: `sudo bash scripts/install-turn.sh`
+
+### Required ports
+
+| Port | Protocol | Purpose |
+|---|---|---|
+| `3478` | TCP and UDP | TURN signaling |
+| `49152-65535` | UDP | Media relay |
+
+Must be open **both in the Linux firewall and the provider's panel** (Oracle
+Cloud, AWS, etc.).
+
+### Checking
+
+```bash
+monky status    # should show ✔ accessible
+```
+
+### Disabling it
+
+```bash
+monky config set turn false
+monky restart
 ```
 
 ---

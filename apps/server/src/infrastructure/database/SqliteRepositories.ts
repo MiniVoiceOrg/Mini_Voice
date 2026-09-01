@@ -16,7 +16,7 @@ export class SqliteServerRepository implements IServerRepository {
   constructor(private db: IDatabaseDriver) {}
 
   async getServer(): Promise<ServerRecord | null> {
-    const row = this.db.prepare('SELECT id, name, password_hash as passwordHash, created_at as createdAt, max_users as maxUsers, owner_user_id as ownerUserId, allow_soundboard as allowSoundboard, icon_path as iconPath, max_attachment_file_bytes as maxAttachmentFileBytes, max_attachment_storage_bytes as maxAttachmentStorageBytes FROM server_meta LIMIT 1').get() as any;
+    const row = this.db.prepare('SELECT id, name, password_hash as passwordHash, created_at as createdAt, max_users as maxUsers, owner_user_id as ownerUserId, allow_soundboard as allowSoundboard, allow_everyone_mention as allowEveryoneMention, icon_path as iconPath, max_attachment_file_bytes as maxAttachmentFileBytes, max_attachment_storage_bytes as maxAttachmentStorageBytes, turn_enabled as turnEnabled, turn_secret as turnSecret FROM server_meta LIMIT 1').get() as any;
     if (!row) return null;
     return {
       id: row.id,
@@ -26,15 +26,18 @@ export class SqliteServerRepository implements IServerRepository {
       maxUsers: row.maxUsers,
       ownerUserId: row.ownerUserId ?? null,
       allowSoundboard: row.allowSoundboard !== undefined ? Boolean(row.allowSoundboard) : true,
+      allowEveryoneMention: row.allowEveryoneMention !== undefined ? Boolean(row.allowEveryoneMention) : true,
       iconPath: row.iconPath || null,
       maxAttachmentFileBytes: row.maxAttachmentFileBytes ?? null,
       maxAttachmentStorageBytes: row.maxAttachmentStorageBytes ?? null,
+      turnEnabled: Boolean(row.turnEnabled),
+      turnSecret: row.turnSecret ?? null,
     };
   }
 
   async createServer(server: ServerRecord): Promise<void> {
     this.db.prepare(
-      'INSERT INTO server_meta (id, name, password_hash, created_at, max_users, owner_user_id, allow_soundboard, icon_path) VALUES (?, ?, ?, ?, ?, ?, ?, ?)'
+      'INSERT INTO server_meta (id, name, password_hash, created_at, max_users, owner_user_id, allow_soundboard, allow_everyone_mention, icon_path) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)'
     ).run(
       server.id,
       server.name,
@@ -43,6 +46,7 @@ export class SqliteServerRepository implements IServerRepository {
       server.maxUsers,
       server.ownerUserId ?? null,
       server.allowSoundboard !== false ? 1 : 0,
+      server.allowEveryoneMention !== false ? 1 : 0,
       server.iconPath || null
     );
   }
@@ -71,6 +75,10 @@ export class SqliteServerRepository implements IServerRepository {
       fields.push('allow_soundboard = ?');
       values.push(server.allowSoundboard ? 1 : 0);
     }
+    if (server.allowEveryoneMention !== undefined) {
+      fields.push('allow_everyone_mention = ?');
+      values.push(server.allowEveryoneMention ? 1 : 0);
+    }
     if (server.iconPath !== undefined) {
       fields.push('icon_path = ?');
       values.push(server.iconPath);
@@ -82,6 +90,14 @@ export class SqliteServerRepository implements IServerRepository {
     if (server.maxAttachmentStorageBytes !== undefined) {
       fields.push('max_attachment_storage_bytes = ?');
       values.push(server.maxAttachmentStorageBytes);
+    }
+    if (server.turnEnabled !== undefined) {
+      fields.push('turn_enabled = ?');
+      values.push(server.turnEnabled ? 1 : 0);
+    }
+    if (server.turnSecret !== undefined) {
+      fields.push('turn_secret = ?');
+      values.push(server.turnSecret);
     }
 
     if (fields.length === 0) return;
@@ -637,7 +653,11 @@ export class SqliteRoleRepository implements IRoleRepository {
   }
 
   async delete(roleId: string): Promise<void> {
-    this.db.prepare('DELETE FROM roles WHERE id = ?').run(roleId);
+    this.db.transaction(() => {
+      this.db.prepare('DELETE FROM user_roles WHERE role_id = ?').run(roleId);
+      this.db.prepare('DELETE FROM channel_allowed_roles WHERE role_id = ?').run(roleId);
+      this.db.prepare('DELETE FROM roles WHERE id = ?').run(roleId);
+    })();
   }
 
   async assignRole(userId: string, roleId: string): Promise<void> {

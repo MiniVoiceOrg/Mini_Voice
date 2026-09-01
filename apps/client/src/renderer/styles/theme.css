@@ -583,6 +583,10 @@ input:focus, textarea:focus, select:focus {
   flex-direction: column;
   align-items: center;
   padding: 10px 0;
+  /* The floating user card overlaps the bottom of the rail (#473), so the list
+     reserves its measured height; otherwise the last servers of a long list
+     would sit behind it, unreachable. */
+  padding-bottom: calc(var(--user-card-height, 64px) + 16px);
   gap: 8px;
   overflow-y: auto;
 }
@@ -723,6 +727,16 @@ input:focus, textarea:focus, select:focus {
   justify-content: center;
 }
 
+.server-rail-item[draggable='true'],
+.server-rail-folder-header[draggable='true'] {
+  cursor: grab;
+}
+
+.server-rail-item.dragging,
+.server-rail-folder-header.dragging {
+  opacity: 0.45;
+}
+
 .server-rail-pill {
   position: absolute;
   left: 0;
@@ -758,8 +772,134 @@ input:focus, textarea:focus, select:focus {
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 8px;
   width: 100%;
+}
+
+.server-rail-drop-zone {
+  width: 100%;
+  min-height: 10px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.server-rail-drop-zone::after {
+  content: '';
+  width: 0;
+  height: 2px;
+  border-radius: var(--radius-full);
+  background-color: var(--accent-primary);
+  opacity: 0;
+  transition: width 0.12s ease, opacity 0.12s ease;
+  box-shadow: 0 0 10px rgba(88, 101, 242, 0.35);
+}
+
+.server-rail-drop-zone.active::after {
+  width: 34px;
+  opacity: 1;
+}
+
+.server-rail-folder {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+}
+
+.server-rail-folder-header {
+  margin: 0 6px 0 8px;
+  min-height: 24px;
+  padding: 4px 8px;
+  border-radius: var(--radius-full);
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--text-secondary);
+  background: rgba(36, 44, 56, 0.35);
+  transition: background-color 0.15s ease, color 0.15s ease, box-shadow 0.15s ease;
+}
+
+.server-rail-folder-header:hover {
+  background: rgba(88, 101, 242, 0.16);
+  color: var(--text-primary);
+}
+
+.server-rail-folder-header.drag-over {
+  background: rgba(88, 101, 242, 0.24);
+  color: var(--text-primary);
+  box-shadow: inset 0 0 0 1px rgba(88, 101, 242, 0.45);
+}
+
+.server-rail-folder-toggle {
+  width: 14px;
+  height: 14px;
+  padding: 0;
+  border: none;
+  background: transparent;
+  color: inherit;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  flex-shrink: 0;
+}
+
+.server-rail-folder-arrow {
+  font-size: 11px;
+  line-height: 1;
+}
+
+.server-rail-folder-icon {
+  color: inherit;
+  opacity: 0.9;
+  flex-shrink: 0;
+}
+
+.server-rail-folder-name {
+  min-width: 0;
+  flex: 1;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.server-rail-folder-children {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+}
+
+.server-rail-folder.collapsed .server-rail-folder-children {
+  display: none;
+}
+
+.server-rail-drop-zone--nested::after {
+  width: 0;
+  margin-left: 14px;
+}
+
+.server-rail-drop-zone--nested.active::after {
+  width: 26px;
+}
+
+.server-rail-item--nested {
+  justify-content: flex-end;
+  padding-right: 4px;
+}
+
+.server-rail-item--nested .server-rail-pill {
+  left: 8px;
+}
+
+.server-rail-item--nested .server-rail-avatar {
+  width: 40px;
+  height: 40px;
+  min-height: 40px;
 }
 
 .server-header {
@@ -898,6 +1038,38 @@ input:focus, textarea:focus, select:focus {
   font-weight: 500;
   cursor: pointer;
   transition: background-color 0.12s, color 0.12s;
+}
+
+/* Reordering channels by dragging (#471). The insertion point is drawn on the
+   row being hovered rather than by moving anything, so the list does not jump
+   around under the cursor while the drag is still undecided. */
+.channel-dragging {
+  opacity: 0.45;
+}
+
+.channel-drop-before,
+.channel-drop-after {
+  position: relative;
+}
+
+.channel-drop-before::before,
+.channel-drop-after::after {
+  content: '';
+  position: absolute;
+  left: 4px;
+  right: 4px;
+  height: 2px;
+  border-radius: 2px;
+  background: var(--accent-primary);
+  pointer-events: none;
+}
+
+.channel-drop-before::before {
+  top: -1px;
+}
+
+.channel-drop-after::after {
+  bottom: -1px;
 }
 
 .channel-item:hover {
@@ -1366,15 +1538,34 @@ input:focus, textarea:focus, select:focus {
   border-radius: var(--radius-md);
 }
 
-/* Bottom User Bar */
+/* Bottom User Bar
+   A floating card: it starts at the very left edge of the window, crossing over
+   the server rail, and ends at the sidebar's right edge (#473).
+
+   The negative left margin is what makes it cross the rail. Keeping the card in
+   the normal flow (rather than absolutely positioned) matters because its height
+   changes with the screen-share notice and the voice connection row — in the
+   flow, the channel list simply gives way instead of ending up hidden behind it.
+
+   The z-index sits above the reconnect overlay (4000) on purpose: the overlay
+   covers everything to the right of the rail, so without this the card would be
+   dimmed on one half and bright on the other. Staying above also keeps mute,
+   deafen, settings and disconnect usable while the app retries, which is the
+   same reasoning that already leaves the rail and the title bar clickable
+   (#321). */
 .user-control-bar {
   background-color: var(--bg-panel);
-  border-top: 1px solid var(--border-color);
-  padding: 6px 8px;
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-lg, 12px);
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.35);
+  padding: 8px;
+  margin: 0 8px 8px calc(8px - var(--server-rail-width));
   display: flex;
   flex-direction: column;
   gap: 6px;
   flex-shrink: 0;
+  position: relative;
+  z-index: 4100;
 }
 
 .user-media-bar {
@@ -1471,6 +1662,18 @@ input:focus, textarea:focus, select:focus {
 
 .screenshare-notice-btn:hover {
   background-color: var(--accent-hover);
+}
+
+.screenshare-notice-btn--danger {
+  background-color: var(--danger);
+}
+
+.screenshare-notice-btn--danger:hover {
+  background-color: var(--danger-hover, #c0392b);
+}
+
+.screenshare-notice--self .screenshare-notice-icon {
+  color: var(--danger);
 }
 
 .voice-conn-text {
@@ -2285,6 +2488,30 @@ input:focus, textarea:focus, select:focus {
   border-radius: 50%;
   object-fit: cover;
   flex-shrink: 0;
+}
+
+/* Placeholder avatar for the @todos entry, which has no user picture (#464). */
+.mention-everyone-icon {
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 13px;
+  background-color: var(--primary, #5865f2);
+  color: #fff;
+}
+
+.mention-everyone-hint {
+  font-size: 11px;
+  color: var(--text-muted, #949ba4);
+  white-space: nowrap;
+}
+
+.mention-item.active .mention-everyone-hint {
+  color: rgba(255, 255, 255, 0.8);
 }
 
 .mention-nick {
@@ -4046,6 +4273,19 @@ input:focus, textarea:focus, select:focus {
   50% { opacity: 0.4; }
 }
 
+/* Handshake in progress (#433): a spin reads as "working on it", which is
+   exactly what distinguishes it from the static failure icon. */
+.stage-peer-connecting-icon,
+.voice-mini-icon.peer-connecting {
+  color: var(--text-muted, #949ba4);
+  animation: peer-connecting-spin 1.4s linear infinite;
+}
+
+@keyframes peer-connecting-spin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+
 .telemetry-overlay {
   position: absolute;
   z-index: 4;
@@ -4381,6 +4621,23 @@ input:focus, textarea:focus, select:focus {
   background-color: var(--warning, #faa61a);
 }
 
+.status-indicator.offline {
+  background-color: var(--text-dim, #72767d);
+}
+
+.member-item.member-offline {
+  opacity: 0.45;
+}
+
+.member-section-header {
+  padding: 8px 12px 4px;
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--text-dim);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
 .member-item.reconnecting {
   opacity: 0.7;
 }
@@ -4404,12 +4661,63 @@ input:focus, textarea:focus, select:focus {
   animation: reconnect-spin 1s linear infinite;
 }
 
+/* Progress of the coturn installation inside the server settings modal (#438).
+   Sits right above the footer so it is visible without scrolling, since the
+   save button it explains is down there. */
+.turn-install-progress {
+  padding: 10px 24px 12px;
+  border-top: 1px solid var(--border-color);
+  background: var(--bg-panel);
+}
+
+.turn-install-progress-head {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.turn-install-percent {
+  margin-left: auto;
+  font-variant-numeric: tabular-nums;
+  color: var(--accent-primary);
+}
+
+.turn-install-bar {
+  margin-top: 6px;
+  height: 6px;
+  border-radius: 3px;
+  background: var(--bg-card);
+  overflow: hidden;
+}
+
+.turn-install-bar-fill {
+  height: 100%;
+  background: var(--accent-primary);
+  transition: width 0.3s ease;
+}
+
+.turn-install-hint {
+  margin-top: 6px;
+  font-size: 11px;
+  color: var(--text-muted);
+}
+
 /* Generic button loading spinner (#48), driven by [data-loading] so it is not
    wiped by handlers that rewrite the button's innerHTML/className. */
+/* The label has to vanish under the spinner, and it comes in two shapes: child
+   elements (icons, spans) and bare text nodes written straight into the button.
+   Only `> *` reached the first kind, so a button labelled with loose text kept
+   showing the word under the spinner (#374). Making the text transparent covers
+   the second kind without touching the spinner, which paints itself with
+   explicit border colors. */
 button[data-loading="1"] {
   position: relative;
   pointer-events: none;
   cursor: default;
+  color: transparent;
 }
 
 button[data-loading="1"] > * {
@@ -4461,6 +4769,129 @@ button[data-loading="1"]::after {
   padding: 1px 5px;
   border-radius: var(--radius-sm);
   flex-shrink: 0;
+}
+
+/* Custom quality profile: dropdowns of common values (#476). */
+.quality-custom-block {
+  margin-bottom: 10px;
+  padding-bottom: 8px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+.quality-custom-title {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 8px;
+}
+
+/* Fixed columns: every label, control and unit lines up down the panel, no
+   matter how long the label text is in each language. */
+.quality-custom-row {
+  display: grid;
+  grid-template-columns: 84px minmax(0, 1fr) 34px;
+  align-items: center;
+  column-gap: 8px;
+  margin-bottom: 6px;
+}
+
+.quality-custom-row[hidden] {
+  display: none;
+}
+
+.quality-custom-label {
+  color: var(--text-secondary);
+  font-size: 11px;
+  line-height: 1.2;
+}
+
+.quality-custom-control {
+  width: 100%;
+  min-width: 0;
+  box-sizing: border-box;
+  height: 28px;
+  padding: 0 6px;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-color);
+  border-radius: 4px;
+  color: var(--text-primary);
+  font-size: 12px;
+}
+
+.quality-custom-control:focus {
+  outline: none;
+  border-color: var(--accent-primary);
+}
+
+/* Width × height share the control column. */
+.quality-custom-pair {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+
+.quality-custom-pair input {
+  flex: 1 1 0;
+  min-width: 0;
+  box-sizing: border-box;
+  height: 28px;
+  padding: 0 6px;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-color);
+  border-radius: 4px;
+  color: var(--text-primary);
+  font-size: 12px;
+}
+
+.quality-custom-pair input:focus {
+  outline: none;
+  border-color: var(--accent-primary);
+}
+
+.quality-custom-times {
+  font-size: 11px;
+  color: var(--text-muted);
+  flex-shrink: 0;
+}
+
+.quality-custom-unit {
+  font-size: 11px;
+  color: var(--text-muted);
+  white-space: nowrap;
+}
+
+/* Offline marker in the role member editor (#477). */
+.member-badge-offline {
+  font-size: 10px;
+  font-weight: 600;
+  background-color: rgba(255, 255, 255, 0.08);
+  color: var(--text-muted);
+  padding: 1px 5px;
+  border-radius: var(--radius-sm);
+  flex-shrink: 0;
+}
+
+/* Search box above the role member list (#477). */
+.role-members-search {
+  flex: 1 1 180px;
+  min-width: 140px;
+  padding: 6px 10px;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-md);
+  color: var(--text-primary);
+  font-size: 12px;
+}
+
+.role-members-search:focus {
+  outline: none;
+  border-color: var(--accent-primary);
+}
+
+.role-members-bulk {
+  font-size: 11px;
+  padding: 6px 10px;
 }
 
 .member-role-tags {
@@ -4524,6 +4955,19 @@ button[data-loading="1"]::after {
 
 .voice-mini-icon.muted {
   color: var(--danger);
+}
+
+.voice-mini-icon.peer-failed {
+  color: var(--danger);
+  animation: peer-failed-pulse 2s ease-in-out infinite;
+}
+
+/*
+ * A relayed peer is working, just not directly (#425), so this stays a calm
+ * static amber rather than borrowing the pulsing red used for real failures.
+ */
+.voice-mini-icon.relayed {
+  color: #f0b232;
 }
 
 .share-active-banner {
@@ -4947,20 +5391,18 @@ body > .reconnect-overlay {
 .dialog-checkbox {
   display: flex;
   align-items: center;
-  gap: 8px;
+  justify-content: space-between;
+  gap: 12px;
   margin-top: 14px;
   font-size: 13px;
   color: var(--text-secondary);
-  cursor: pointer;
   user-select: none;
 }
 
+/* The switch inside brings its own sizing; the old checkbox rules would
+   squash it (#472 follow-up). */
 .dialog-checkbox input {
-  width: 15px;
-  height: 15px;
-  accent-color: var(--accent-primary);
   cursor: pointer;
-  flex-shrink: 0;
 }
 
 /* Square crop dialog used before an image becomes a picture (#255). */
@@ -5081,6 +5523,22 @@ body > .reconnect-overlay {
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+}
+
+/* Nem toda janela entrega um icone de app (helpers sem bundle, apps de linha de
+   comando), entao o marcador generico evita um nome desalinhado ao lado dos que
+   tem icone (#455). */
+.source-app-icon,
+.source-app-icon-fallback {
+  width: 14px;
+  height: 14px;
+  vertical-align: middle;
+  margin-right: 4px;
+}
+
+.source-app-icon-fallback {
+  font-size: 14px;
+  color: var(--text-muted);
 }
 
 /* ── Update Banner ───────────────────────────────────────── */
@@ -5301,10 +5759,11 @@ body > .reconnect-overlay {
   width: 100%;
   height: 6px;
   border-radius: var(--radius-full);
+  --slider-color: var(--accent-primary);
   background: linear-gradient(
     to right,
-    var(--accent-primary) 0%,
-    var(--accent-primary) var(--slider-fill, 100%),
+    var(--slider-color) 0%,
+    var(--slider-color) var(--slider-fill, 100%),
     rgba(255, 255, 255, 0.2) var(--slider-fill, 100%),
     rgba(255, 255, 255, 0.2) 100%
   ) !important;
@@ -5313,6 +5772,7 @@ body > .reconnect-overlay {
   border: none;
   padding: 0;
   margin: 0;
+  transition: --slider-color 0.2s ease;
 }
 
 .user-volume-slider::-webkit-slider-runnable-track {
@@ -5339,12 +5799,12 @@ body > .reconnect-overlay {
 
 .user-volume-slider::-webkit-slider-thumb:hover {
   transform: scale(1.15);
-  box-shadow: 0 0 8px var(--accent-primary);
+  box-shadow: 0 0 8px var(--slider-color, var(--accent-primary));
 }
 
 .user-volume-slider::-webkit-slider-thumb:active {
   transform: scale(1.25);
-  background: var(--accent-primary);
+  background: var(--slider-color, var(--accent-primary));
 }
 
 .context-menu-quick-btns {
@@ -6202,3 +6662,234 @@ button:hover .role-option-check:not(.checked) {
   transform: translateX(16px);
   background: #ffffff;
 }
+/* A switch the host cannot honour has to look inert, not merely refuse the
+   click silently (#429). */
+.toggle-switch:has(input:disabled) {
+  cursor: not-allowed;
+}
+.toggle-switch input:disabled + .toggle-slider {
+  opacity: 0.45;
+}
+/* Compact variant for dense toolbars, where the full-size switch would push the
+   row taller than the controls next to it. */
+.toggle-switch-sm {
+  width: 28px;
+  height: 16px;
+}
+.toggle-switch-sm .toggle-slider::before {
+  width: 10px;
+  height: 10px;
+}
+.toggle-switch-sm input:checked + .toggle-slider::before {
+  transform: translateX(12px);
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   Onboarding Wizard & Tutorial Viewer (#494)
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+/* ── Help button on the connection screen ─────────────────────────────────── */
+.onboarding-help-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  width: 100%;
+  padding: 8px 14px;
+  margin-bottom: 14px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--accent-primary);
+  background: rgba(88, 101, 242, 0.08);
+  border: 1px dashed rgba(88, 101, 242, 0.35);
+  border-radius: var(--radius-md);
+  cursor: pointer;
+  transition: background 0.15s, border-color 0.15s;
+}
+.onboarding-help-btn:hover {
+  background: rgba(88, 101, 242, 0.15);
+  border-color: rgba(88, 101, 242, 0.55);
+}
+
+/* ── Wizard card ──────────────────────────────────────────────────────────── */
+.onboarding-card {
+  animation: onboarding-fade-in 0.2s ease;
+}
+@keyframes onboarding-fade-in {
+  from { opacity: 0; transform: translateY(8px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+/* ── Step dots ────────────────────────────────────────────────────────────── */
+.onboarding-step-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--bg-tertiary);
+  transition: background 0.2s;
+}
+.onboarding-step-dot.active {
+  background: var(--accent-primary);
+}
+.onboarding-step-dot.completed {
+  background: var(--success, #43b581);
+}
+
+/* ── Option cards (clickable rows) ────────────────────────────────────────── */
+.onboarding-option-card {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 14px 16px;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-md);
+  cursor: pointer;
+  transition: background 0.15s, border-color 0.15s, transform 0.1s;
+  text-align: left;
+  width: 100%;
+  color: inherit;
+  font: inherit;
+}
+.onboarding-option-card:hover {
+  background: var(--bg-tertiary);
+  border-color: var(--accent-primary);
+  transform: translateX(2px);
+}
+.onboarding-option-icon {
+  font-size: 24px;
+  color: var(--accent-primary);
+  flex-shrink: 0;
+}
+.onboarding-option-text {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+  flex: 1;
+}
+.onboarding-option-title {
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--text-primary);
+}
+.onboarding-option-desc {
+  font-size: 12px;
+  color: var(--text-secondary);
+}
+.onboarding-option-arrow {
+  color: var(--text-muted);
+  font-size: 20px;
+  flex-shrink: 0;
+}
+
+/* ── Difficulty badges ────────────────────────────────────────────────────── */
+.onboarding-badge {
+  font-size: 11px;
+  font-weight: 600;
+  padding: 2px 8px;
+  border-radius: 10px;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+.onboarding-badge.easy {
+  color: var(--success, #43b581);
+  background: rgba(67, 181, 129, 0.12);
+}
+.onboarding-badge.medium {
+  color: var(--warning, #faa61a);
+  background: rgba(250, 166, 26, 0.12);
+}
+.onboarding-badge.advanced {
+  color: var(--text-secondary);
+  background: rgba(255, 255, 255, 0.06);
+}
+
+/* ── Tutorial viewer card ─────────────────────────────────────────────────── */
+.onboarding-tutorial-card {
+  animation: onboarding-fade-in 0.2s ease;
+}
+
+/* ── Tutorial image placeholder ───────────────────────────────────────────── */
+.tutorial-image-placeholder {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  width: 100%;
+  height: 140px;
+  margin-bottom: 14px;
+  background: var(--bg-tertiary);
+  border: 2px dashed var(--border-color);
+  border-radius: var(--radius-md);
+}
+
+/* ── Tutorial clickable links ─────────────────────────────────────────────── */
+.tutorial-content a {
+  color: var(--accent-primary);
+  text-decoration: underline;
+  cursor: pointer;
+}
+.tutorial-content a:hover {
+  color: var(--accent-primary-hover, #7983f5);
+}
+
+/* ── Terminal-style command blocks ─────────────────────────────────────────── */
+.tutorial-cmd {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 10px 0;
+  padding: 12px 16px;
+  background: #0d1117;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 8px;
+  font-family: 'Cascadia Code', 'Fira Code', 'Consolas', 'Courier New', monospace;
+  font-size: 13px;
+  color: #e6edf3;
+  line-height: 1.6;
+  white-space: nowrap;
+  word-break: normal;
+  position: relative;
+  overflow-x: auto;
+}
+.tutorial-cmd::before {
+  content: '$ ';
+  color: #7ee787;
+  font-weight: 700;
+  flex-shrink: 0;
+  user-select: none;
+}
+.tutorial-cmd-copy {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  flex-shrink: 0;
+  padding: 4px 6px;
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 5px;
+  color: #8b949e;
+  cursor: pointer;
+  font-size: 14px;
+  line-height: 1;
+  transition: background 0.15s, color 0.15s;
+  display: flex;
+  align-items: center;
+}
+.tutorial-cmd-copy:hover {
+  background: rgba(255, 255, 255, 0.12);
+  color: #e6edf3;
+}
+.tutorial-cmd-copy.copied {
+  color: #7ee787;
+  opacity: 1;
+}
+
+/* ── Terminal syntax highlighting ─────────────────────────────────────────── */
+.tutorial-cmd .sh-cmd   { color: #7ee787; font-weight: 600; }  /* commands: green */
+.tutorial-cmd .sh-flag  { color: #79c0ff; }                     /* flags: cyan */
+.tutorial-cmd .sh-url   { color: #ffa657; }                     /* urls: orange */
+.tutorial-cmd .sh-pipe  { color: #d2a8ff; font-weight: 700; }   /* pipes: purple */
+.tutorial-cmd .sh-sudo  { color: #ff7b72; font-weight: 600; }   /* sudo: red */

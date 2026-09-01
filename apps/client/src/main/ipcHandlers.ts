@@ -8,6 +8,7 @@ import path from 'path';
 import { LanDiscovery } from './lanDiscovery';
 import { globalInputHook } from './globalInputHook';
 import { exportIdentity, getClientId, getIdentity, hasIdentity, importIdentity, signChallenge } from './identityService';
+import { BACKUP_ENVELOPE_PREFIX, openEnvelope, sealEnvelope } from './secretEnvelope';
 import { HostServerOptions, ServerManager } from './serverManager';
 import { mt, setMainLanguage } from './i18n';
 import { fetchLinkPreview } from './linkPreview';
@@ -70,35 +71,44 @@ async function downloadToFile(url: string, destPath: string): Promise<void> {
         file.on('error', fail);
         file.on('finish', () => {
           if (settled) return;
-          file.close((closeErr) => {
+          file.close(async (closeErr) => {
             if (closeErr) {
               fail(closeErr);
               return;
             }
-            fs.rm(destPath, { force: true }, (removeErr) => {
-              if (removeErr) {
-                fail(removeErr);
-                return;
+            try {
+              try {
+                await fs.promises.rm(destPath, { force: true });
+                await fs.promises.rename(tempPath, destPath);
+              } catch {
+                // Fallback para cross-device ou locks temporários do Windows
+                await fs.promises.copyFile(tempPath, destPath);
+                await fs.promises.unlink(tempPath).catch(() => {});
               }
-              fs.rename(tempPath, destPath, (renameErr) => {
-                if (renameErr) {
-                  fail(renameErr);
-                  return;
-                }
-                settled = true;
-                resolve();
-              });
-            });
+              settled = true;
+              resolve();
+            } catch (err: any) {
+              fail(err instanceof Error ? err : new Error(String(err)));
+            }
           });
         });
         response.pipe(file);
       });
-      request.on('error', reject);
+      request.setTimeout(30000, () => {
+        request.destroy(new Error('Download timeout'));
+      });
       request.on('error', reject);
     };
 
     requestDownload(url, 0);
   });
+}
+
+interface NativeWindowOwner {
+  windowId: number;
+  pid: number;
+  bundlePath: string;
+  appName: string;
 }
 
 // Screen audio native module (compiled only on CI — graceful fallback)
@@ -108,6 +118,7 @@ let screenAudio: {
   stop: () => { success: boolean };
   getLastError: () => string;
   getStatus: () => number;
+  listWindowOwners?: () => NativeWindowOwner[];
 } | null = null;
 try {
   screenAudio = require('@monky/screen-audio');
@@ -116,8 +127,64 @@ try {
   screenAudio = null;
 }
 
+// Icones de app nao mudam enquanto o app roda, e ler o bundle do disco a cada
+// abertura do seletor de tela seria desperdicio.
+const appIconCache = new Map<string, string | null>();
+
+/** Extrai o id nativo de `window:<id nativo>:<id do webContents>`. */
+function nativeWindowIdFromSourceId(sourceId: string): number | null {
+  const parts = sourceId.split(':');
+  if (parts[0] !== 'window') return null;
+  const nativeId = Number(parts[1]);
+  return Number.isFinite(nativeId) ? nativeId : null;
+}
+
+/**
+ * No macOS o Electron devolve `appIcon` vazio para janelas, mesmo com
+ * `fetchWindowIcons: true` (#455). Descobrimos o app dono de cada janela pelo
+ * modulo nativo e lemos o icone do proprio bundle.
+ */
+async function resolveMacAppIcons(sourceIds: string[]): Promise<Map<string, string>> {
+  const iconsBySourceId = new Map<string, string>();
+  if (process.platform !== 'darwin' || !screenAudio?.listWindowOwners) return iconsBySourceId;
+
+  let owners: NativeWindowOwner[];
+  try {
+    owners = screenAudio.listWindowOwners();
+  } catch (e) {
+    console.warn('[ScreenShare:Main] Falha ao listar donos de janela:', (e as Error).message);
+    return iconsBySourceId;
+  }
+
+  const bundlePathByWindowId = new Map<number, string>();
+  for (const owner of owners) bundlePathByWindowId.set(owner.windowId, owner.bundlePath);
+
+  for (const sourceId of sourceIds) {
+    const nativeId = nativeWindowIdFromSourceId(sourceId);
+    if (nativeId === null) continue;
+    const bundlePath = bundlePathByWindowId.get(nativeId);
+    if (!bundlePath) continue;
+
+    let dataUrl = appIconCache.get(bundlePath);
+    if (dataUrl === undefined) {
+      try {
+        const icon = await app.getFileIcon(bundlePath, { size: 'normal' });
+        dataUrl = icon.isEmpty() ? null : icon.toDataURL();
+      } catch (e) {
+        console.warn(`[ScreenShare:Main] Sem icone para ${bundlePath}:`, (e as Error).message);
+        dataUrl = null;
+      }
+      appIconCache.set(bundlePath, dataUrl);
+    }
+    if (dataUrl) iconsBySourceId.set(sourceId, dataUrl);
+  }
+
+  return iconsBySourceId;
+}
+
 export interface SetupIpcOptions {
   setMinimizeToTray?: (enabled: boolean) => void;
+  clientLogger?: import('./clientLogger').ClientLogger;
 }
 
 /**
@@ -227,8 +294,79 @@ export function setupIpcHandlers(
   ipcMain.handle('identity:get', async () => getIdentity(true));
   ipcMain.handle('identity:get-client-id', async () => getClientId());
   ipcMain.handle('identity:sign-challenge', async (_event, nonceHex: string) => signChallenge(nonceHex));
-  ipcMain.handle('identity:export', async (_event, password: string) => exportIdentity(password));
+  ipcMain.handle('identity:export', async (_event, password: string, extras?: string) =>
+    exportIdentity(password, typeof extras === 'string' ? extras : undefined)
+  );
   ipcMain.handle('identity:import', async (_event, exportedIdentity: string, password: string) => importIdentity(exportedIdentity, password));
+
+  // Backup of saved servers and app settings (#472). The renderer owns the
+  // content (it all lives in localStorage); the main process only picks the
+  // path, seals the file with the user's password and touches the disk.
+  //
+  // The backup carries the passwords of saved servers, so it gets the very same
+  // protection as the identity export instead of landing on disk as plain JSON.
+  ipcMain.handle('backup:encrypt', async (_event, contents: string, password: string) => {
+    if (typeof contents !== 'string' || !contents) {
+      return { success: false, error: 'Conteúdo de backup inválido.' };
+    }
+    try {
+      return { success: true, payload: sealEnvelope(contents, password, BACKUP_ENVELOPE_PREFIX) };
+    } catch (error) {
+      return { success: false, error: error instanceof Error ? error.message : 'Unknown error' };
+    }
+  });
+
+  ipcMain.handle('backup:decrypt', async (_event, payload: string, password: string) => {
+    if (typeof payload !== 'string' || !payload) {
+      return { success: false, error: 'Arquivo de backup inválido.' };
+    }
+    try {
+      const contents = openEnvelope(
+        payload,
+        password,
+        BACKUP_ENVELOPE_PREFIX,
+        'Arquivo de backup inválido.',
+        'Senha incorreta ou backup corrompido.'
+      );
+      return { success: true, contents };
+    } catch (error) {
+      return { success: false, error: error instanceof Error ? error.message : 'Unknown error' };
+    }
+  });
+
+  ipcMain.handle('backup:save-file', async (_event, contents: string, suggestedName: string) => {
+    if (typeof contents !== 'string' || !contents) {
+      return { success: false, error: 'Conteúdo de backup inválido.' };
+    }
+    try {
+      const safeName = sanitizeDownloadFileName(suggestedName || 'monky-backup.monkybackup');
+      const result = await dialog.showSaveDialog(mainWindow, {
+        title: mt('dialog.saveBackup'),
+        defaultPath: path.join(app.getPath('documents'), safeName),
+        filters: [{ name: 'Monky', extensions: ['monkybackup', 'json'] }],
+      });
+      if (result.canceled || !result.filePath) return { success: false };
+      await fs.promises.writeFile(result.filePath, contents, 'utf8');
+      return { success: true, filePath: result.filePath };
+    } catch (error) {
+      return { success: false, error: error instanceof Error ? error.message : 'Unknown error' };
+    }
+  });
+
+  ipcMain.handle('backup:open-file', async () => {
+    try {
+      const result = await dialog.showOpenDialog(mainWindow, {
+        title: mt('dialog.openBackup'),
+        filters: [{ name: 'Monky', extensions: ['monkybackup', 'json'] }],
+        properties: ['openFile'],
+      });
+      if (result.canceled || result.filePaths.length === 0) return { success: false };
+      const contents = await fs.promises.readFile(result.filePaths[0], 'utf8');
+      return { success: true, contents };
+    } catch (error) {
+      return { success: false, error: error instanceof Error ? error.message : 'Unknown error' };
+    }
+  });
 
   // Local Server Management
   ipcMain.handle('server-host:start', async (_, options: HostServerOptions) => {
@@ -282,13 +420,18 @@ export function setupIpcHandlers(
       fetchWindowIcons: true,
     });
 
-    return sources.map((s) => ({
-      id: s.id,
-      name: s.name,
-      type: s.id.startsWith('screen:') ? 'screen' : 'window',
-      thumbnailDataUrl: s.thumbnail.toDataURL(),
-      appIconDataUrl: s.appIcon ? s.appIcon.toDataURL() : null,
-    }));
+    const macIcons = await resolveMacAppIcons(sources.map((s) => s.id));
+
+    return sources.map((s) => {
+      const electronIcon = s.appIcon && !s.appIcon.isEmpty() ? s.appIcon.toDataURL() : null;
+      return {
+        id: s.id,
+        name: s.name,
+        type: s.id.startsWith('screen:') ? 'screen' : 'window',
+        thumbnailDataUrl: s.thumbnail.toDataURL(),
+        appIconDataUrl: electronIcon ?? macIcons.get(s.id) ?? null,
+      };
+    });
   });
 
   // Avatar Image Selection Dialog
@@ -824,10 +967,35 @@ export function setupIpcHandlers(
     };
   });
 
+  // Screen Audio buffer aggregation (batching) to avoid IPC message saturation (#55)
+  let audioBufferAccumulator: Buffer[] = [];
+  let accumulatedBytes = 0;
+  let audioFlushTimer: NodeJS.Timeout | null = null;
+
+  const flushScreenAudioFrames = (): void => {
+    if (audioBufferAccumulator.length === 0) return;
+    const merged = Buffer.concat(audioBufferAccumulator, accumulatedBytes);
+    audioBufferAccumulator = [];
+    accumulatedBytes = 0;
+    if (!mainWindow.isDestroyed()) {
+      mainWindow.webContents.send('screen-audio:frame', merged);
+    }
+  };
+
+  const clearAudioBufferAccumulator = (): void => {
+    if (audioFlushTimer) {
+      clearTimeout(audioFlushTimer);
+      audioFlushTimer = null;
+    }
+    audioBufferAccumulator = [];
+    accumulatedBytes = 0;
+  };
+
   ipcMain.handle('screen-audio:start', (_event, sourceId?: string) => {
     if (!screenAudio || !screenAudio.isSupported()) {
       return { success: false, error: 'Not supported on this platform' };
     }
+    clearAudioBufferAccumulator();
     const excludePid = process.pid;
     // Electron encodes a window source id as `window:<id>:<n>` — the HWND on
     // Windows, the CGWindowID on macOS. When the user shares a single application
@@ -843,8 +1011,31 @@ export function setupIpcHandlers(
     const result = screenAudio.start(
       opts,
       (buffer: Buffer) => {
-        if (!mainWindow.isDestroyed()) {
-          mainWindow.webContents.send('screen-audio:frame', buffer);
+        if (!buffer || buffer.length === 0) {
+          console.warn('[ScreenAudio:Main] Native capture stream error detected (0-byte frame).');
+          const lastErr = screenAudio?.getLastError() || 'Audio device invalidated or disconnected';
+          clearAudioBufferAccumulator();
+          if (mainWindow && !mainWindow.isDestroyed()) {
+            mainWindow.webContents.send('screen-audio:error', lastErr);
+          }
+          return;
+        }
+
+        audioBufferAccumulator.push(buffer);
+        accumulatedBytes += buffer.length;
+
+        // Flush when we accumulate ~16KB of PCM (~40ms) or via timer every ~35ms
+        if (accumulatedBytes >= 16384) {
+          if (audioFlushTimer) {
+            clearTimeout(audioFlushTimer);
+            audioFlushTimer = null;
+          }
+          flushScreenAudioFrames();
+        } else if (!audioFlushTimer) {
+          audioFlushTimer = setTimeout(() => {
+            audioFlushTimer = null;
+            flushScreenAudioFrames();
+          }, 35);
         }
       }
     );
@@ -853,11 +1044,30 @@ export function setupIpcHandlers(
   });
 
   ipcMain.handle('screen-audio:stop', () => {
+    clearAudioBufferAccumulator();
     if (!screenAudio) return { success: false };
     return screenAudio.stop();
   });
 
+  // Client Logging (#444)
+  const logger = options?.clientLogger;
+  if (logger) {
+    ipcMain.handle('client-log:write', (_, entry) => {
+      logger.write(entry);
+    });
+    ipcMain.handle('client-log:get-config', () => logger.getConfig());
+    ipcMain.handle('client-log:set-config', (_, config) => {
+      logger.setConfig(config);
+    });
+    ipcMain.handle('client-log:export', () => logger.exportLogs());
+    ipcMain.handle('client-log:get-size', () => logger.getTotalSize());
+    ipcMain.handle('client-log:clear', () => {
+      logger.clearLogs();
+    });
+  }
+
   mainWindow.on('closed', () => {
+    clearAudioBufferAccumulator();
     void lanDiscovery.stop();
     globalInputHook.destroy();
   });

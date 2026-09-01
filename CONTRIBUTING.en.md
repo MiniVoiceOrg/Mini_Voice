@@ -180,6 +180,18 @@ out the SemVer on its own:
 Note that **patch is the default**: every merge into `main` publishes some
 version, even if it is a documentation commit.
 
+**Every commit moves the number, one step each.** The count does not just take
+the highest type in the range: a PR with three `fix:` takes `1.0.0` to `1.0.3`,
+and one with two `feat:` followed by three `fix:` takes it to `1.2.3`. Since the
+steps are applied in the order the commits were made, order matters — a `feat:`
+after a `fix:` resets the patch it had just added.
+
+This holds under **squash** too, which is how `main` receives every PR. The merge
+collapses the PR into a single commit, but GitHub keeps the list of the original
+commits in the message body, and that list is what gets read. If you rewrite that
+body by hand and drop the list, the whole PR is worth a single step again — the
+one in its title.
+
 The count starts from the **latest published release, betas included**. So a
 `feat:` merged right after the `1.1.0-beta` beta ships as `1.2.0-beta`, not as a
 second beta of that same `1.1.0`.

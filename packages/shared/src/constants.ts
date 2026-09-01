@@ -49,7 +49,32 @@ export const LIMITS = {
 
 export const RECONNECT_DELAYS_MS = [1000, 2000, 3000, 5000] as const;
 
-export type QualityPresetType = 'ECONOMIC' | 'NORMAL' | 'HIGH' | 'GAMING' | 'CUSTOM';
+/**
+ * Tokens that mention everyone in a channel (#464).
+ *
+ * Both languages are always accepted, not just the sender's: a message written
+ * in one language has to reach the person reading the app in the other.
+ * `EVERYONE_MENTION_TOKENS[0]` is the canonical form suggested by the composer.
+ */
+export const EVERYONE_MENTION_TOKENS = ['todos', 'everyone'] as const;
+
+/** True when the text contains an `@todos` / `@everyone` token. */
+export function hasEveryoneMention(content: string): boolean {
+  const lower = content.toLowerCase();
+  return EVERYONE_MENTION_TOKENS.some((token) => {
+    let index = lower.indexOf(`@${token}`);
+    while (index !== -1) {
+      // The token must not be a prefix of a longer word, otherwise "@todosaqui"
+      // (or a nickname starting with "todos") would ping the whole channel.
+      const after = lower[index + token.length + 1];
+      if (after === undefined || !/[\p{L}\p{N}_-]/u.test(after)) return true;
+      index = lower.indexOf(`@${token}`, index + 1);
+    }
+    return false;
+  });
+}
+
+export type QualityPresetType = 'ECONOMIC' | 'NORMAL' | 'HIGH' | 'GAMING' | 'ULTRA' | 'CUSTOM';
 
 export interface QualityProfile {
   name: string;
@@ -112,6 +137,18 @@ export const QUALITY_PRESETS: Record<Exclude<QualityPresetType, 'CUSTOM'>, Quali
     screenHeight: 1080,
     screenFps: 60,
     screenBitrateKbps: 6000,
+  },
+  ULTRA: {
+    name: 'Ultra',
+    audioBitrateKbps: 64,
+    cameraWidth: 1920,
+    cameraHeight: 1080,
+    cameraFps: 60,
+    cameraBitrateKbps: 4000,
+    screenWidth: 1920,
+    screenHeight: 1080,
+    screenFps: 60,
+    screenBitrateKbps: 8000,
   },
 };
 

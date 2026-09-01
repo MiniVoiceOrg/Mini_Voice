@@ -18,6 +18,7 @@ import { networkClient } from './NetworkClient';
 import { callClient } from './serverConnection';
 import { MessageType } from '@monky/shared';
 import { t } from '../i18n';
+import { clientLog } from './ClientLogService';
 
 // Ring-buffer based AudioWorklet processor (inlined as a string so it can be
 // loaded via Blob URL without a separate file).
@@ -86,6 +87,7 @@ class ScreenAudioService {
   private testToneInterval: ReturnType<typeof setInterval> | null = null;
   private frameWatchdog: ReturnType<typeof setTimeout> | null = null;
   private removeFrameListener: (() => void) | null = null;
+  private removeErrorListener: (() => void) | null = null;
 
   public async isSupported(): Promise<boolean> {
     return window.api.screenAudioSupported();
@@ -150,6 +152,7 @@ class ScreenAudioService {
 
     const supported = await this.isSupported();
     if (!supported) {
+      clientLog.warn('MEDIA', 'Screen audio not supported on this platform');
       console.warn('[ScreenAudio] Not supported on this platform');
       appEvents.emit('screen_audio.error', t('screenAudio.unsupportedWindows'));
       return null;
@@ -178,8 +181,18 @@ class ScreenAudioService {
       this.feedSamples(float32);
     });
 
+    // Listen for asynchronous native errors (e.g. device disconnect / invalidation)
+    if (window.api.onScreenAudioError) {
+      this.removeErrorListener = window.api.onScreenAudioError((errorMsg: string) => {
+        console.warn('[ScreenAudio] Asynchronous error from native capture:', errorMsg);
+        appEvents.emit('screen_audio.error', errorMsg);
+        void this.stop();
+      });
+    }
+
     const result = await window.api.screenAudioStart(sourceId);
     if (!result.success) {
+      clientLog.error('MEDIA', 'Failed to start native screen audio capture', { error: result.error });
       console.error('[ScreenAudio] Failed to start native capture:', result.error);
       appEvents.emit('screen_audio.error', `Falha ao iniciar captura: ${result.error}`);
       this.cleanup();
@@ -188,6 +201,7 @@ class ScreenAudioService {
 
     this.isCapturing = true;
     this.isTestTone = false;
+    clientLog.info('MEDIA', 'Native screen audio capture started');
     console.log('[ScreenAudio] Native capture started');
 
     // Watchdog: warn if no frames arrive within timeout
@@ -250,8 +264,6 @@ class ScreenAudioService {
   public async stop(): Promise<void> {
     if (!this.isCapturing) return;
 
-    this.clearFrameWatchdog();
-
     if (this.isTestTone) {
       if (this.testToneInterval) {
         clearInterval(this.testToneInterval);
@@ -259,18 +271,13 @@ class ScreenAudioService {
       }
     } else {
       await window.api.screenAudioStop();
-      if (this.removeFrameListener) {
-        this.removeFrameListener();
-        this.removeFrameListener = null;
-      } else {
-        window.api.removeScreenAudioFrameListener();
-      }
     }
 
     await webRtcManager.setLocalScreenAudioTrack(null);
     callClient().send(MessageType.VOICE_STATE_UPDATE, { isSharingScreenAudio: false });
 
     const mode = this.isTestTone ? 'test-tone' : 'native';
+    clientLog.info('MEDIA', `Screen audio stopped (${mode})`, { framesReceived: this.frameCount });
     console.log(`[ScreenAudio] Stopped (${mode}). Frames: ${this.frameCount}`);
 
     this.cleanup();
@@ -303,19 +310,50 @@ class ScreenAudioService {
   }
 
   private cleanup(): void {
+    if (this.removeFrameListener) {
+      try {
+        this.removeFrameListener();
+      } catch {}
+      this.removeFrameListener = null;
+    } else if (window.api?.removeScreenAudioFrameListener) {
+      try {
+        window.api.removeScreenAudioFrameListener();
+      } catch {}
+    }
+
+    if (this.removeErrorListener) {
+      try {
+        this.removeErrorListener();
+      } catch {}
+      this.removeErrorListener = null;
+    }
+
+    if (this.testToneInterval) {
+      clearInterval(this.testToneInterval);
+      this.testToneInterval = null;
+    }
+
+    this.clearFrameWatchdog();
+
     if (this.outputTrack) {
-      this.outputTrack.stop();
+      try {
+        this.outputTrack.stop();
+      } catch {}
       this.outputTrack = null;
     }
     if (this.workletNode) {
-      this.workletNode.disconnect();
+      try {
+        this.workletNode.disconnect();
+      } catch {}
       this.workletNode = null;
     }
     if (this.destinationNode) {
-      this.destinationNode.disconnect();
+      try {
+        this.destinationNode.disconnect();
+      } catch {}
       this.destinationNode = null;
     }
-    if (this.audioContext) {
+    if (this.audioContext && this.audioContext.state !== 'closed') {
       this.audioContext.close().catch(() => {});
       this.audioContext = null;
     }

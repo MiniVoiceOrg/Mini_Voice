@@ -3,6 +3,7 @@ import { networkClient } from '../core/NetworkClient';
 import { serverStore } from '../stores/serverStore';
 import { connectionStore } from '../stores/connectionStore';
 import { t } from '../i18n';
+import { enableBackdropClose } from '../utils/modal';
 import { AccountTab } from './settings/tabs/AccountTab';
 import { VoiceVideoTab } from './settings/tabs/VoiceVideoTab';
 import { SoundboardTab } from './settings/tabs/SoundboardTab';
@@ -10,6 +11,7 @@ import { StickersTab } from './settings/tabs/StickersTab';
 import { KeybindsTab } from './settings/tabs/KeybindsTab';
 import { NotificationsTab } from './settings/tabs/NotificationsTab';
 import { QualityTab } from './settings/tabs/QualityTab';
+import { LogsTab } from './settings/tabs/LogsTab';
 import { AboutTab } from './settings/tabs/AboutTab';
 
 export class SettingsModal {
@@ -23,6 +25,7 @@ export class SettingsModal {
   private keybindsTab = new KeybindsTab();
   private notificationsTab = new NotificationsTab();
   private qualityTab = new QualityTab();
+  private logsTab = new LogsTab();
   private aboutTab = new AboutTab();
 
   public async open(): Promise<void> {
@@ -64,6 +67,10 @@ export class SettingsModal {
           <button type="button" class="settings-tab-btn ${this.activeTab === 'quality' ? 'active' : ''}" data-tab="quality">
             <span class="material-symbols-outlined md-18">speed</span>
             <span>${t('settings.tabQuality')}</span>
+          </button>
+          <button type="button" class="settings-tab-btn ${this.activeTab === 'logs' ? 'active' : ''}" data-tab="logs">
+            <span class="material-symbols-outlined md-18">description</span>
+            <span>${t('settings.tabLogs')}</span>
           </button>
           <div style="height: 1px; background: var(--border-color); margin: 6px 4px;"></div>
           <button type="button" class="settings-tab-btn ${this.activeTab === 'about' ? 'active' : ''}" data-tab="about">
@@ -117,6 +124,10 @@ export class SettingsModal {
               ${this.qualityTab.renderHtml()}
             </div>
 
+            <div class="settings-tab-panel" id="tab-panel-logs" style="${this.activeTab === 'logs' ? '' : 'display: none;'}">
+              ${this.logsTab.renderHtml()}
+            </div>
+
             <div class="settings-tab-panel" id="tab-panel-about" style="${this.activeTab === 'about' ? '' : 'display: none;'}">
               ${this.aboutTab.renderHtml()}
             </div>
@@ -151,6 +162,8 @@ export class SettingsModal {
         return `<span class="material-symbols-outlined" style="color: var(--accent-primary);">notifications</span><span>${t('settings.tabNotifications')}</span>`;
       case 'quality':
         return `<span class="material-symbols-outlined" style="color: var(--accent-primary);">speed</span><span>${t('settings.tabQuality')}</span>`;
+      case 'logs':
+        return `<span class="material-symbols-outlined" style="color: var(--accent-primary);">description</span><span>${t('settings.tabLogs')}</span>`;
       case 'about':
         return `<span class="material-symbols-outlined" style="color: var(--accent-primary);">info</span><span>${t('settings.tabAbout')}</span>`;
       case 'account':
@@ -174,6 +187,7 @@ export class SettingsModal {
     const closeModal = () => this.close();
     this.modalEl.querySelector('#modal-close')?.addEventListener('click', closeModal);
     this.modalEl.querySelector('#btn-settings-close')?.addEventListener('click', closeModal);
+    enableBackdropClose(this.modalEl, closeModal);
 
     const onEsc = (e: KeyboardEvent) => {
       if (e.key === 'Escape') {
@@ -214,6 +228,7 @@ export class SettingsModal {
     this.keybindsTab.attachEvents(this.modalEl);
     this.notificationsTab.attachEvents(this.modalEl);
     this.qualityTab.attachEvents(this.modalEl);
+    this.logsTab.attachEvents(this.modalEl);
     this.aboutTab.attachEvents(this.modalEl);
   }
 

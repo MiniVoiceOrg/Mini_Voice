@@ -33,3 +33,19 @@ export function getLastError(): string;
 
 /** Returns the capture status: 0=idle, 1=starting, 2=capturing, 3=error */
 export function getStatus(): number;
+
+export interface WindowOwner {
+  /** CGWindowID, matching the numeric part of Electron's `window:<id>:<n>` source id. */
+  windowId: number;
+  pid: number;
+  /** Absolute path to the owning `.app` bundle. */
+  bundlePath: string;
+  appName: string;
+}
+
+/**
+ * Lists visible windows with the application that owns them. Only implemented on
+ * macOS, where Electron leaves `desktopCapturer`'s `appIcon` empty (#455); other
+ * platforms return an empty array.
+ */
+export function listWindowOwners(): WindowOwner[];

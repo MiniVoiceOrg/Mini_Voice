@@ -399,14 +399,20 @@ Quase ninguém tem IP público direto, então os pares precisam descobrir por on
 se alcançam. O Monky usa **servidores STUN** públicos (Google e Cloudflare) para
 cada lado descobrir seu próprio endereço externo.
 
-::: warning Não há servidor TURN
+::: tip TURN é opcional, e desligado por padrão
 STUN só *descobre* o caminho; ele não repassa nada. Quando a rede é restritiva
 demais — NAT simétrico, firewall corporativo, alguns CGNATs de operadora — não
 existe caminho direto e a conexão de mídia falha.
 
-Um servidor TURN resolveria, retransmitindo a mídia. Mas TURN carrega vídeo, e
-custa banda proporcional ao uso — o que reintroduz exatamente o custo que a
-arquitetura P2P evita. Hoje o Monky não tem TURN.
+Um servidor **TURN** resolve isso retransmitindo a mídia. Mas TURN carrega
+vídeo, e custa banda proporcional ao uso — o que reintroduz exatamente o custo
+que a arquitetura P2P evita. Por isso o relay do Monky é **opcional** e vem
+desligado: quem hospeda decide se quer pagar essa banda.
+
+Quando ligado, o servidor sobe um **coturn** ao seu lado e entrega as
+credenciais no login. O ICE continua preferindo a rota direta e só usa o relay
+para os pares que realmente não conseguem se conectar. Detalhes em
+[Relay de mídia (TURN)](/turn).
 :::
 
 Quando uma conexão cai ou trava, o `WebRtcManager` primeiro tenta um **ICE
@@ -558,8 +564,9 @@ Coisas que são consequência direta da arquitetura, não bugs:
 
 - **Mesh não escala.** Ótimo para um punhado de amigos, ruim para dezenas. Sair
   disso exigiria um SFU.
-- **Sem TURN.** Redes muito restritivas podem impedir a conexão de mídia mesmo
-  com o servidor acessível.
+- **TURN desligado por padrão.** Redes muito restritivas podem impedir a
+  conexão de mídia mesmo com o servidor acessível. Há relay opcional, mas ele
+  custa banda do host e só roda em Linux.
 - **Protocolo exige igualdade exata.** Cliente e servidor precisam ter a mesma
   `PROTOCOL_VERSION`; atualizar um lado só quebra a conexão.
 - **Áudio de tela só em Windows e macOS**, por depender de API nativa de cada

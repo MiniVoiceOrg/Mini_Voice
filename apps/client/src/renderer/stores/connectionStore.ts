@@ -1,5 +1,6 @@
 import { ConnectionStatus } from '../core/NetworkClient';
 import { appEvents } from '../core/EventBus';
+import { clientLog } from '../core/ClientLogService';
 
 export interface SavedServer {
   host: string;
@@ -9,6 +10,22 @@ export interface SavedServer {
   password?: string;
   iconUrl?: string;
 }
+
+export interface RailServerNode {
+  type: 'server';
+  host: string;
+  port: number;
+}
+
+export interface RailFolderNode {
+  type: 'folder';
+  id: string;
+  name: string;
+  collapsed: boolean;
+  children: RailServerNode[];
+}
+
+export type RailNode = RailServerNode | RailFolderNode;
 
 export interface CreatedServer {
   id: string;
@@ -24,18 +41,23 @@ export interface CreatedServer {
 }
 
 export class ConnectionStore {
+  private static readonly SAVED_SERVERS_STORAGE_KEY = 'monky_saved_servers';
+  private static readonly RAIL_LAYOUT_STORAGE_KEY = 'monky_rail_layout';
+
   public status: ConnectionStatus = 'DISCONNECTED';
   public clientId: string = '';
   public publicKey: string = '';
   public hasIdentity: boolean = false;
   public lastError: string | null = null;
   public savedServers: SavedServer[] = [];
+  public railLayout: RailNode[] = [];
   public createdServers: CreatedServer[] = [];
   public savedNickname: string = '';
   public savedAvatarBase64: string = '';
 
   constructor() {
     this.loadSavedServers();
+    this.loadRailLayout();
     this.loadCreatedServers();
     this.loadUserProfile();
   }
@@ -71,16 +93,30 @@ export class ConnectionStore {
 
   public loadSavedServers(): void {
     try {
-      const raw = localStorage.getItem('monky_saved_servers');
+      const raw = localStorage.getItem(ConnectionStore.SAVED_SERVERS_STORAGE_KEY);
       if (raw) {
-        this.savedServers = JSON.parse(raw);
+        const parsed = JSON.parse(raw);
+        this.savedServers = Array.isArray(parsed)
+          ? parsed.filter((server): server is SavedServer => (
+            !!server &&
+            typeof server.host === 'string' &&
+            typeof server.port === 'number' &&
+            typeof server.name === 'string' &&
+            typeof server.lastConnected === 'number' &&
+            (server.password === undefined || typeof server.password === 'string') &&
+            (server.iconUrl === undefined || typeof server.iconUrl === 'string')
+          ))
+          : [];
       }
     } catch (e) {
       this.savedServers = [];
     }
+    this.savedServers.sort((a, b) => b.lastConnected - a.lastConnected);
+    this.savedServers = this.savedServers.slice(0, 15);
   }
 
   public addSavedServer(server: SavedServer): void {
+    clientLog.info('STORE', `Saving server: ${server.host}:${server.port}`, { name: server.name });
     const existingIdx = this.savedServers.findIndex(
       (s) => s.host === server.host && s.port === server.port
     );
@@ -101,17 +137,16 @@ export class ConnectionStore {
     this.savedServers.sort((a, b) => b.lastConnected - a.lastConnected);
     // Keep max 15
     this.savedServers = this.savedServers.slice(0, 15);
-    try {
-      localStorage.setItem('monky_saved_servers', JSON.stringify(this.savedServers));
-    } catch (e) {}
+    this.syncRailLayoutWithSavedServers();
+    this.saveSavedServers();
     appEvents.emit('connection.saved_servers_changed');
   }
 
   public removeSavedServer(host: string, port: number): void {
+    clientLog.info('STORE', `Removing saved server: ${host}:${port}`);
     this.savedServers = this.savedServers.filter((s) => !(s.host === host && s.port === port));
-    try {
-      localStorage.setItem('monky_saved_servers', JSON.stringify(this.savedServers));
-    } catch (e) {}
+    this.syncRailLayoutWithSavedServers();
+    this.saveSavedServers();
     appEvents.emit('connection.saved_servers_changed');
   }
 
@@ -126,9 +161,7 @@ export class ConnectionStore {
     if (!srv) return;
     if (meta.name) srv.name = meta.name;
     if (meta.iconUrl !== undefined) srv.iconUrl = meta.iconUrl || undefined;
-    try {
-      localStorage.setItem('monky_saved_servers', JSON.stringify(this.savedServers));
-    } catch (e) {}
+    this.saveSavedServers();
     appEvents.emit('connection.saved_servers_changed');
   }
 
@@ -156,9 +189,166 @@ export class ConnectionStore {
     if (idx >= 0) {
       this.savedServers[idx] = updated;
     }
+    this.replaceServerReference(oldHost, oldPort, updated.host, updated.port);
+    this.syncRailLayoutWithSavedServers();
+    this.saveSavedServers();
+    appEvents.emit('connection.saved_servers_changed');
+  }
+
+  public loadRailLayout(): void {
     try {
-      localStorage.setItem('monky_saved_servers', JSON.stringify(this.savedServers));
+      const raw = localStorage.getItem(ConnectionStore.RAIL_LAYOUT_STORAGE_KEY);
+      if (!raw) {
+        this.railLayout = [];
+      } else {
+        const parsed = JSON.parse(raw);
+        this.railLayout = Array.isArray(parsed)
+          ? parsed
+            .map((node) => this.parseRailNode(node))
+            .filter((node): node is RailNode => node !== null)
+          : [];
+      }
+    } catch (e) {
+      this.railLayout = [];
+    }
+
+    this.syncRailLayoutWithSavedServers();
+  }
+
+  public saveRailLayout(): void {
+    try {
+      localStorage.setItem(ConnectionStore.RAIL_LAYOUT_STORAGE_KEY, JSON.stringify(this.railLayout));
     } catch (e) {}
+  }
+
+  public moveRailNode(fromIndex: number, toIndex: number): void {
+    if (fromIndex < 0 || fromIndex >= this.railLayout.length) return;
+    const boundedTarget = Math.max(0, Math.min(toIndex, this.railLayout.length));
+    const [node] = this.railLayout.splice(fromIndex, 1);
+    if (!node) return;
+    const adjustedTarget = fromIndex < boundedTarget ? boundedTarget - 1 : boundedTarget;
+    this.railLayout.splice(adjustedTarget, 0, node);
+    this.saveRailLayout();
+    appEvents.emit('connection.saved_servers_changed');
+  }
+
+  public createFolder(name: string): string | null {
+    const trimmed = name.trim();
+    if (!trimmed) return null;
+    const id = `folder_${Date.now()}`;
+    this.railLayout.push({
+      type: 'folder',
+      id,
+      name: trimmed,
+      collapsed: false,
+      children: [],
+    });
+    this.saveRailLayout();
+    appEvents.emit('connection.saved_servers_changed');
+    return id;
+  }
+
+  public renameFolder(folderId: string, name: string): void {
+    const folder = this.railLayout.find(
+      (node): node is RailFolderNode => node.type === 'folder' && node.id === folderId
+    );
+    const trimmed = name.trim();
+    if (!folder || !trimmed) return;
+    folder.name = trimmed;
+    this.saveRailLayout();
+    appEvents.emit('connection.saved_servers_changed');
+  }
+
+  public deleteFolder(folderId: string): void {
+    const folderIndex = this.railLayout.findIndex(
+      (node) => node.type === 'folder' && node.id === folderId
+    );
+    if (folderIndex < 0) return;
+    const folder = this.railLayout[folderIndex];
+    if (!folder || folder.type !== 'folder') return;
+    this.railLayout.splice(folderIndex, 1, ...folder.children);
+    this.saveRailLayout();
+    appEvents.emit('connection.saved_servers_changed');
+  }
+
+  public moveServerToFolder(host: string, port: number, folderId: string | null, index?: number): void {
+    const server = this.savedServers.find((item) => item.host === host && item.port === port);
+    if (!server) return;
+
+    const removal = this.removeServerNode(host, port);
+    const node: RailServerNode = removal?.node ?? { type: 'server', host, port };
+
+    if (folderId === null) {
+      let targetIndex = typeof index === 'number' ? index : this.railLayout.length;
+      if (removal?.source === 'root' && removal.index < targetIndex) {
+        targetIndex -= 1;
+      }
+      const boundedIndex = Math.max(0, Math.min(targetIndex, this.railLayout.length));
+      this.railLayout.splice(boundedIndex, 0, node);
+    } else {
+      const folder = this.railLayout.find(
+        (item): item is RailFolderNode => item.type === 'folder' && item.id === folderId
+      );
+      if (!folder) {
+        this.syncRailLayoutWithSavedServers();
+        appEvents.emit('connection.saved_servers_changed');
+        return;
+      }
+      let targetIndex = typeof index === 'number' ? index : folder.children.length;
+      if (
+        removal?.source === 'folder' &&
+        removal.folderId === folderId &&
+        removal.index < targetIndex
+      ) {
+        targetIndex -= 1;
+      }
+      const boundedIndex = Math.max(0, Math.min(targetIndex, folder.children.length));
+      folder.children.splice(boundedIndex, 0, node);
+    }
+
+    this.saveRailLayout();
+    appEvents.emit('connection.saved_servers_changed');
+  }
+
+  public toggleFolderCollapsed(folderId: string): void {
+    const folder = this.railLayout.find(
+      (node): node is RailFolderNode => node.type === 'folder' && node.id === folderId
+    );
+    if (!folder) return;
+    folder.collapsed = !folder.collapsed;
+    this.saveRailLayout();
+    appEvents.emit('connection.saved_servers_changed');
+  }
+
+  public getOrderedServers(): SavedServer[] {
+    const byKey = new Map(this.savedServers.map((server) => [this.serverKey(server.host, server.port), server]));
+    const ordered: SavedServer[] = [];
+
+    for (const node of this.railLayout) {
+      if (node.type === 'server') {
+        const server = byKey.get(this.serverKey(node.host, node.port));
+        if (server) ordered.push(server);
+        continue;
+      }
+
+      for (const child of node.children) {
+        const server = byKey.get(this.serverKey(child.host, child.port));
+        if (server) ordered.push(server);
+      }
+    }
+
+    return ordered;
+  }
+
+  public getFolderIdForServer(host: string, port: number): string | null {
+    const key = this.serverKey(host, port);
+    for (const node of this.railLayout) {
+      if (node.type !== 'folder') continue;
+      if (node.children.some((child) => this.serverKey(child.host, child.port) === key)) {
+        return node.id;
+      }
+    }
+    return null;
   }
 
   public loadCreatedServers(): void {
@@ -222,9 +412,143 @@ export class ConnectionStore {
   }
 
   public setIdentity(identity: { publicKey: string; clientId: string } | null): void {
+    clientLog.info('IDENTITY', `Identity ${identity ? 'set' : 'cleared'}`);
     this.publicKey = identity?.publicKey || '';
     this.clientId = identity?.clientId || '';
     this.hasIdentity = !!identity;
+  }
+
+  private saveSavedServers(): void {
+    try {
+      localStorage.setItem(ConnectionStore.SAVED_SERVERS_STORAGE_KEY, JSON.stringify(this.savedServers));
+    } catch (e) {}
+  }
+
+  private parseRailNode(node: unknown): RailNode | null {
+    if (!node || typeof node !== 'object') return null;
+    const candidate = node as Partial<RailNode>;
+
+    if (candidate.type === 'server' && typeof candidate.host === 'string' && typeof candidate.port === 'number') {
+      return {
+        type: 'server',
+        host: candidate.host,
+        port: candidate.port,
+      };
+    }
+
+    if (
+      candidate.type === 'folder' &&
+      typeof candidate.id === 'string' &&
+      typeof candidate.name === 'string' &&
+      typeof candidate.collapsed === 'boolean' &&
+      Array.isArray(candidate.children)
+    ) {
+      return {
+        type: 'folder',
+        id: candidate.id,
+        name: candidate.name,
+        collapsed: candidate.collapsed,
+        children: candidate.children
+          .map((child) => this.parseRailNode(child))
+          .filter((child): child is RailServerNode => child !== null && child.type === 'server'),
+      };
+    }
+
+    return null;
+  }
+
+  private syncRailLayoutWithSavedServers(persist: boolean = true): void {
+    const savedByKey = new Map(
+      this.savedServers.map((server) => [this.serverKey(server.host, server.port), server])
+    );
+    const seen = new Set<string>();
+    const nextLayout: RailNode[] = [];
+
+    for (const node of this.railLayout) {
+      if (node.type === 'server') {
+        const key = this.serverKey(node.host, node.port);
+        if (!savedByKey.has(key) || seen.has(key)) continue;
+        nextLayout.push({ type: 'server', host: node.host, port: node.port });
+        seen.add(key);
+        continue;
+      }
+
+      const nextChildren: RailServerNode[] = [];
+      for (const child of node.children) {
+        const key = this.serverKey(child.host, child.port);
+        if (!savedByKey.has(key) || seen.has(key)) continue;
+        nextChildren.push({ type: 'server', host: child.host, port: child.port });
+        seen.add(key);
+      }
+
+      nextLayout.push({
+        type: 'folder',
+        id: node.id,
+        name: node.name.trim() || 'Folder',
+        collapsed: node.collapsed,
+        children: nextChildren,
+      });
+    }
+
+    for (const server of this.savedServers) {
+      const key = this.serverKey(server.host, server.port);
+      if (seen.has(key)) continue;
+      nextLayout.push({ type: 'server', host: server.host, port: server.port });
+    }
+
+    this.railLayout = nextLayout;
+    if (persist) this.saveRailLayout();
+  }
+
+  private replaceServerReference(oldHost: string, oldPort: number, newHost: string, newPort: number): void {
+    const oldKey = this.serverKey(oldHost, oldPort);
+    for (const node of this.railLayout) {
+      if (node.type === 'server') {
+        if (this.serverKey(node.host, node.port) !== oldKey) continue;
+        node.host = newHost;
+        node.port = newPort;
+        continue;
+      }
+
+      for (const child of node.children) {
+        if (this.serverKey(child.host, child.port) !== oldKey) continue;
+        child.host = newHost;
+        child.port = newPort;
+      }
+    }
+  }
+
+  private removeServerNode(host: string, port: number): {
+    node: RailServerNode;
+    source: 'root' | 'folder';
+    index: number;
+    folderId?: string;
+  } | null {
+    const key = this.serverKey(host, port);
+
+    for (let i = 0; i < this.railLayout.length; i += 1) {
+      const node = this.railLayout[i];
+      if (node.type === 'server' && this.serverKey(node.host, node.port) === key) {
+        const [removed] = this.railLayout.splice(i, 1);
+        if (!removed || removed.type !== 'server') return null;
+        return { node: removed, source: 'root', index: i };
+      }
+
+      if (node.type !== 'folder') continue;
+      const childIndex = node.children.findIndex(
+        (child) => this.serverKey(child.host, child.port) === key
+      );
+      if (childIndex < 0) continue;
+      const [removed] = node.children.splice(childIndex, 1);
+      if (!removed) return null;
+      return { node: removed, source: 'folder', index: childIndex, folderId: node.id };
+    }
+
+    return null;
+  }
+
+  private serverKey(host: string, port: number): string {
+    return `${host}:${port}`;
   }
 }
 

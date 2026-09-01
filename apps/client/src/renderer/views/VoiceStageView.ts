@@ -13,6 +13,7 @@ import { videoService } from '../core/VideoService';
 import { webRtcManager } from '../core/WebRtcManager';
 import { soundEffects } from '../core/SoundEffects';
 import { getAvatarUrl } from '../utils/avatar';
+import { peerFailureTooltip } from '../utils/peerFailureHint';
 import { showAlert, showConfirm } from './Dialog';
 import { userContextMenu } from './UserContextMenu';
 import { setButtonLoading, isButtonLoading } from '../utils/buttonLoading';
@@ -631,8 +632,6 @@ export class VoiceStageView {
         // Persisted per device, not per person (#363): the same person sharing
         // from two machines gets one slider each.
         settingsStore.setScreenAudioVolume(sessionId, vol);
-        const audioEl = document.querySelector(`audio[data-screen-audio-session="${sessionId}"]`) as HTMLAudioElement | null;
-        if (audioEl) audioEl.volume = vol / 100;
       });
     });
 
@@ -659,18 +658,16 @@ export class VoiceStageView {
         if (!slider) return;
         const sessionId = slider.getAttribute('data-session-id');
         if (!sessionId) return;
-        const audioEl = document.querySelector(`audio[data-screen-audio-session="${sessionId}"]`) as HTMLAudioElement | null;
-
         const icon = btn.querySelector('.material-symbols-outlined');
         if (this.mutedScreenSessionIds.has(sessionId)) {
           this.mutedScreenSessionIds.delete(sessionId);
-          if (audioEl) audioEl.muted = voiceStore.getEffectiveDeafened() ? true : false;
+          webRtcManager.setScreenAudioMuted(sessionId, false);
           if (icon) icon.textContent = 'volume_up';
           btn.title = t('stage.screenAudioVolume');
           wrapper?.classList.remove('screen-audio-muted');
         } else {
           this.mutedScreenSessionIds.add(sessionId);
-          if (audioEl) audioEl.muted = true;
+          webRtcManager.setScreenAudioMuted(sessionId, true);
           if (icon) icon.textContent = 'volume_off';
           btn.title = t('stage.screenAudioMuted');
           wrapper?.classList.add('screen-audio-muted');
@@ -892,6 +889,8 @@ export class VoiceStageView {
     const isSelfDeafened = isLocal ? voiceStore.isDeafened : (p.voiceState?.isDeafened ?? false);
     const isMicMuted = isSelfMuted || isServerMuted || isSelfDeafened || isServerDeafened;
     const isPeerFailed = !isLocal && (p.peerConnectionFailed ?? false);
+    const isConnecting = !isLocal && !isPeerFailed && (p.isConnecting ?? false);
+    const isRelayed = !isLocal && !isPeerFailed && !isConnecting && (p.isRelayed ?? false);
     const avatarSrc = getAvatarUrl(p.user.avatarUrl);
 
     const isVideoTile = tile.kind === 'camera' || tile.kind === 'screen';
@@ -944,7 +943,7 @@ export class VoiceStageView {
             ${isRemoteScreen ? `
               <div class="stage-volume-wrapper">
                 <div class="stage-volume-popup">
-                  <input type="range" class="stage-screen-volume-slider" data-session-id="${sidOf(p)}" min="0" max="100" value="${settingsStore.getScreenAudioVolume(sidOf(p), p.user.clientId)}" />
+                  <input type="range" class="stage-screen-volume-slider" data-session-id="${sidOf(p)}" min="0" max="200" value="${settingsStore.getScreenAudioVolume(sidOf(p), p.user.clientId)}" />
                 </div>
                 <button class="stage-volume-btn" title="${t('stage.screenAudioVolume')}" aria-label="${t('stage.volumeAria')}">
                   <span class="material-symbols-outlined md-18">volume_up</span>
@@ -961,7 +960,7 @@ export class VoiceStageView {
         `}
       ` : `
         <div class="stage-avatar-wrapper">
-          <img class="stage-avatar-img" src="${avatarSrc}">
+          <img class="stage-avatar-img" src="${avatarSrc}" data-fallback="avatar">
           ${!isMini ? `
             <div class="stage-participant-name">${escapeHtml(participantManager.displayName(p))} ${isLocal ? `(${t('common.you')})` : ''}</div>
           ` : ''}
@@ -970,7 +969,9 @@ export class VoiceStageView {
 
       <div class="stage-badges-overlay">
         <span>${label}</span>
-        ${isPeerFailed ? `<span class="material-symbols-outlined md-14 stage-peer-failed-icon" title="${t('stage.peerConnectionFailed')}">link_off</span>` : ''}
+        ${isPeerFailed ? `<span class="material-symbols-outlined md-14 stage-peer-failed-icon" title="${peerFailureTooltip('stage.peerConnectionFailed')}">link_off</span>` : ''}
+        ${isConnecting ? `<span class="material-symbols-outlined md-14 stage-peer-connecting-icon" title="${t('stage.peerConnecting')}">sync</span>` : ''}
+        ${isRelayed ? `<span class="material-symbols-outlined md-14" style="color: var(--warning, #f0b232);" title="${t('stage.peerRelayed')}">swap_horiz</span>` : ''}
         ${isServerDeafened ? `<span class="material-symbols-outlined md-14" style="color: #f0b232;" title="${t('permissions.serverDeafened')}">hearing_disabled</span>` : ''}
         ${isServerMuted ? `<span class="material-symbols-outlined md-14" style="color: #f0b232;" title="${t('permissions.serverMuted')}">admin_panel_settings</span>` : ''}
         ${isMicMuted ? `<span class="material-symbols-outlined md-14" style="color: var(--danger);" title="${t('main.micMuted')}">mic_off</span>` : ''}
@@ -1591,14 +1592,14 @@ export class VoiceStageView {
     const u8 = appEvents.on('local.screen_audio_started', () => this.updateControlsUI());
     const u9 = appEvents.on('local.screen_audio_stopped', () => this.updateControlsUI());
 
-    const u10 = appEvents.on('remote.peer_failed', (data: { sessionId: string }) => {
-      participantManager.setPeerConnectionFailed(data.sessionId, true);
-    });
-    const u11 = appEvents.on('remote.peer_recovered', (data: { sessionId: string }) => {
-      participantManager.setPeerConnectionFailed(data.sessionId, false);
-    });
+    // `remote.peer_failed` / `remote.peer_recovered` are not handled here on
+    // purpose: WebRtcManager writes the flag straight into the participant
+    // manager of the server hosting the call. Doing it from a view would both
+    // lose the warning whenever the stage happens to be unmounted and, while
+    // browsing another server during a call (#400), write it onto the wrong
+    // server's participants (#426).
 
-    this.unbindEvents.push(u1, u2, u3, u4, u5, u6, u7, u8, u9, u10, u11);
+    this.unbindEvents.push(u1, u2, u3, u4, u5, u6, u7, u8, u9);
   }
 
   private unbindListeners(): void {

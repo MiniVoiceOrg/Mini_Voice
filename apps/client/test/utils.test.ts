@@ -262,6 +262,7 @@ function runTests() {
       'sess-1': 75,
       'sess-2': 150,
       'sess-3': -20,
+      'sess-4': 250,
     },
     screenAudioVolumes: {
       'sess-screen': 100,
@@ -272,14 +273,17 @@ function runTests() {
   assert(store3.inputMode === 'voice_activity', 'inputMode inválido é sanitizado para fallback "voice_activity"');
   assert(store3.pttReleaseDelay === 0, 'pttReleaseDelay negativo é sanitizado para mínimo 0');
   assert(store3.getUserVolume('sess-1') === 75, 'Volume de usuário 75% lido corretamente');
-  assert(store3.getUserVolume('sess-2') === 100, 'Volume de usuário > 100% clamped para 100%');
+  assert(store3.getUserVolume('sess-2') === 150, 'Volume de usuário 150% (amplificado) lido corretamente');
   assert(store3.getUserVolume('sess-3') === 0, 'Volume de usuário < 0% clamped para 0%');
+  assert(store3.getUserVolume('sess-4') === 200, 'Volume de usuário > 200% clamped para 200%');
   assert(store3.getScreenAudioVolume('sess-screen') === 100, 'Volume de screen audio 100% lido corretamente');
 
   store3.setUserVolume('sess-test', 80);
   assert(store3.getUserVolume('sess-test') === 80, 'setUserVolume aceita 80%');
-  store3.setUserVolume('sess-test-overflow', 150);
-  assert(store3.getUserVolume('sess-test-overflow') === 100, 'setUserVolume 150% é clamped para 100%');
+  store3.setUserVolume('sess-test-amp', 175);
+  assert(store3.getUserVolume('sess-test-amp') === 175, 'setUserVolume aceita 175% (amplificado)');
+  store3.setUserVolume('sess-test-overflow', 250);
+  assert(store3.getUserVolume('sess-test-overflow') === 200, 'setUserVolume 250% é clamped para 200%');
 
   // --- Seleção de release do atualizador automático (#354) ---
   console.log('\n--- Testando seleção de release do atualizador ---');
@@ -583,6 +587,56 @@ function runTests() {
   assert(extensaoDoAvatar('/avatars/abc.webp?v=2') === 'webp', 'Query string não engole a extensão');
   assert(extensaoDoAvatar('/avatars/sem-extensao') === 'png', 'Sem extensão cai no padrão');
   assert(extensaoDoAvatar(null) === 'png', 'Avatar ausente cai no padrão sem quebrar');
+
+  // Sincronização de Presets de Qualidade de Vídeo e Compartilhamento de Tela (#474)
+  console.log('\n--- Testando sincronização de presets de qualidade de tela (#474) ---');
+  const { videoService } = require('../src/renderer/core/VideoService');
+  const { settingsStore: globalSettingsStore } = require('../src/renderer/stores/settingsStore');
+
+  // Testar ULTRA preset
+  globalSettingsStore.qualityPreset = 'ULTRA';
+  videoService.applyQualityPreset('ULTRA');
+  const ultraProfile = videoService.getProfile();
+  assert(ultraProfile.screenWidth === 1920, 'ULTRA preset define resolução de tela 1920 de largura');
+  assert(ultraProfile.screenHeight === 1080, 'ULTRA preset define resolução de tela 1080 de altura');
+  assert(ultraProfile.screenFps === 60, 'ULTRA preset define 60 fps para tela');
+  assert(ultraProfile.screenBitrateKbps === 8000, 'ULTRA preset define 8000 kbps para tela');
+
+  // Testar GAMING preset
+  globalSettingsStore.qualityPreset = 'GAMING';
+  videoService.applyQualityPreset('GAMING');
+  const gamingProfile = videoService.getProfile();
+  assert(gamingProfile.screenWidth === 1920 && gamingProfile.screenHeight === 1080, 'GAMING preset é 1080p');
+  assert(gamingProfile.screenFps === 60, 'GAMING preset é 60 fps');
+  assert(gamingProfile.screenBitrateKbps === 6000, 'GAMING preset define 6000 kbps');
+
+  // Testar ECONOMIC preset
+  globalSettingsStore.qualityPreset = 'ECONOMIC';
+  videoService.applyQualityPreset('ECONOMIC');
+  const economicProfile = videoService.getProfile();
+  assert(economicProfile.screenWidth === 854 && economicProfile.screenHeight === 480, 'ECONOMIC preset é 480p');
+  assert(economicProfile.screenFps === 15, 'ECONOMIC preset capa em 15 fps');
+  assert(economicProfile.screenBitrateKbps === 900, 'ECONOMIC preset capa bitrate em 900 kbps');
+
+  // Testar CUSTOM preset
+  globalSettingsStore.qualityPreset = 'CUSTOM';
+  globalSettingsStore.customProfile = {
+    name: 'Personalizado',
+    audioBitrateKbps: 48,
+    cameraWidth: 1920,
+    cameraHeight: 1080,
+    cameraFps: 60,
+    cameraBitrateKbps: 4000,
+    screenWidth: 2560,
+    screenHeight: 1440,
+    screenFps: 60,
+    screenBitrateKbps: 48000,
+  };
+  videoService.applyQualityPreset('CUSTOM');
+  const customProfile = videoService.getProfile();
+  assert(customProfile.screenWidth === 2560 && customProfile.screenHeight === 1440, 'CUSTOM preset aceita 1440p personalizado');
+  assert(customProfile.screenFps === 60, 'CUSTOM preset aceita 60 fps');
+  assert(customProfile.screenBitrateKbps === 48000, 'CUSTOM preset aceita 48000 kbps de bitrate');
 
   console.log(`\n=== Relatório dos Testes ===`);
   console.log(`Total: ${passed + failed} | Passaram: ${passed} | Falharam: ${failed}`);

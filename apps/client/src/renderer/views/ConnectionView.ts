@@ -6,12 +6,14 @@ import { networkClient } from '../core/NetworkClient';
 import { openServerSession } from '../core/serverConnection';
 import { getAvatarUrl } from '../utils/avatar';
 import { settingsModal } from './SettingsModal';
+import { settingsStore } from '../stores/settingsStore';
 import { withButtonLoading } from '../utils/buttonLoading';
 import { showAlert, showConfirm } from './Dialog';
 import { pickAndCropImage } from './ImageCropModal';
 import { showIdentityImportDialog } from './IdentityDialogs';
 import { serverMonitorModal } from './ServerMonitorModal';
 import { confirmStopHostedServer } from '../utils/hostedServer';
+import { onboardingWizard } from './OnboardingWizard';
 import logoUrl from '../assets/Logo.png';
 import { getLanguage, t } from '../i18n';
 
@@ -32,6 +34,7 @@ export class ConnectionView {
   private runningCreatedServerId: string | null = null;
   private runningHostedPort: number | null = null;
   private readonly discoveredServers: Map<string, DiscoveredServer> = new Map();
+  private onboardingAutoOpened: boolean = false;
 
   constructor(container: HTMLElement) {
     this.container = container;
@@ -243,6 +246,11 @@ export class ConnectionView {
             <div class="brand-tagline" style="font-size: 12px; color: var(--text-secondary); margin-top: 2px;">${t('connection.tagline')}</div>
           </div>
 
+          <!-- Onboarding help button -->
+          <button class="onboarding-help-btn" id="btn-onboarding">
+            ${t('onboarding.helpButton')}
+          </button>
+
           <div class="nav-tabs" style="margin-bottom: 14px;">
             <button id="tab-join" class="tab-button ${this.activeTab === 'join' ? 'active' : ''}">${t('connection.tabJoin')}</button>
             <button id="tab-host" class="tab-button ${this.activeTab === 'host' ? 'active' : ''}">${t('connection.tabHost')}</button>
@@ -252,7 +260,7 @@ export class ConnectionView {
 
           <!-- Avatar Picker -->
           <div class="avatar-picker" style="margin-bottom: 14px; gap: 12px;">
-            <img id="avatar-preview" class="avatar-preview-img" style="width: 46px; height: 46px;" src="${getAvatarUrl(this.selectedAvatarBase64)}">
+            <img id="avatar-preview" class="avatar-preview-img" style="width: 46px; height: 46px;" src="${getAvatarUrl(this.selectedAvatarBase64)}" data-fallback="avatar">
             <div>
               <button id="btn-select-avatar" class="btn btn-secondary" style="padding: 5px 10px; font-size: 11px;">
                 <span class="material-symbols-outlined md-14" style="margin-right: 4px;">photo_camera</span>
@@ -666,7 +674,7 @@ export class ConnectionView {
           ? `http://${host}:${port}${u.avatarUrl}`
           : u.avatarUrl || getAvatarUrl(null);
         const title = escapeHtml(u.nickname || t('connection.unknownUser'));
-        return `<img class="preview-avatar" src="${raw}" title="${title}" onerror="this.src='${getAvatarUrl(null)}'">`;
+        return `<img class="preview-avatar" src="${raw}" title="${title}" data-fallback="avatar">`;
       })
       .join('');
 
@@ -877,6 +885,33 @@ export class ConnectionView {
     document.getElementById('btn-open-settings')?.addEventListener('click', (e) => {
       withButtonLoading(e.currentTarget as HTMLElement, () => settingsModal.open());
     });
+
+    // Onboarding wizard button
+    document.getElementById('btn-onboarding')?.addEventListener('click', () => {
+      onboardingWizard.open((action) => {
+        if (action === 'join' && this.activeTab !== 'join') {
+          this.activeTab = 'join';
+          this.render();
+        } else if (action === 'host' && this.activeTab !== 'host') {
+          this.activeTab = 'host';
+          this.render();
+        }
+      });
+    });
+
+    // Auto-open onboarding on first launch
+    if (!settingsStore.onboardingCompleted && !onboardingWizard.isOpen && !this.onboardingAutoOpened) {
+      this.onboardingAutoOpened = true;
+      onboardingWizard.open((action) => {
+        if (action === 'join' && this.activeTab !== 'join') {
+          this.activeTab = 'join';
+          this.render();
+        } else if (action === 'host' && this.activeTab !== 'host') {
+          this.activeTab = 'host';
+          this.render();
+        }
+      });
+    }
 
     importIdentityButton?.addEventListener('click', async () => {
       const identity = await showIdentityImportDialog();

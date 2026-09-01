@@ -693,6 +693,98 @@ async function runTests() {
     }
     console.log('✔ Teste 17 passou: Limite conta membros cadastrados, poupa quem já entrou e pode ser desligado');
 
+    // Teste 18: o servidor passou a ditar os servidores ICE que o cliente usa
+    // (#425). Duas garantias importam aqui. A primeira é que o STUN sempre vai
+    // junto, com ou sem relay: se o AUTH_SUCCESS chegasse sem nada, o cliente
+    // cairia na lista embutida dele e a configuração do servidor viraria
+    // decoração. A segunda é que credencial de TURN não vaza para um servidor
+    // com o relay desligado.
+    const turnDir = path.join(testDataDir, 'turn');
+    const turnServer = await MonkyServer.create({
+      port: 3996,
+      dataDir: turnDir,
+      serverName: 'Servidor TURN',
+      password: 'senha-turn',
+    });
+    await turnServer.start();
+
+    try {
+      const wsTurn = new WebSocket('ws://127.0.0.1:3996');
+      const authTurn = await authenticateSocket(wsTurn, 'req-turn-1', 'TurnUser', 'senha-turn');
+
+      const iceServers = authTurn.payload?.iceServers;
+      if (!Array.isArray(iceServers) || iceServers.length === 0) {
+        throw new Error('Teste 18: o AUTH_SUCCESS precisa trazer a lista de servidores ICE');
+      }
+
+      const urls = iceServers.flatMap((entry: { urls: string[] }) => entry.urls);
+      if (!urls.some((url: string) => url.startsWith('stun:'))) {
+        throw new Error('Teste 18: a lista de servidores ICE precisa incluir STUN');
+      }
+      if (urls.some((url: string) => url.startsWith('turn:'))) {
+        throw new Error('Teste 18: um servidor com o relay desligado não pode anunciar TURN');
+      }
+      if (iceServers.some((entry: { credential?: string }) => entry.credential !== undefined)) {
+        throw new Error('Teste 18: não devem existir credenciais sem relay ativo');
+      }
+
+      if (authTurn.payload?.server?.turnEnabled !== false) {
+        throw new Error('Teste 18: o relay precisa nascer desligado');
+      }
+
+      // O cliente desabilita o toggle a partir daqui (#429). Se este campo
+      // faltar, o cliente conclui que o servidor é antigo demais e esconde o
+      // recurso — por isso ele tem que vir sempre, inclusive quando o host
+      // suporta o relay.
+      const availability = authTurn.payload?.server?.turnAvailability;
+      if (!availability || typeof availability.supported !== 'boolean') {
+        throw new Error('Teste 18: o AUTH_SUCCESS precisa informar a disponibilidade do relay');
+      }
+      if (!availability.supported && !availability.reason) {
+        throw new Error('Teste 18: um relay indisponível precisa dizer o motivo');
+      }
+      if (availability.supported && availability.reason !== undefined) {
+        throw new Error('Teste 18: um relay disponível não deve carregar motivo de indisponibilidade');
+      }
+      // Quando falta só o coturn, o cliente precisa saber se o servidor
+      // consegue instalá-lo sozinho: é isso que decide entre habilitar o
+      // toggle e mandar o operador rodar o script na mão (#431).
+      if (availability.reason === 'not-installed' && typeof availability.autoInstallable !== 'boolean') {
+        throw new Error('Teste 18: um coturn ausente precisa dizer se dá para instalar automaticamente');
+      }
+
+      // A instalação do coturn muda a resposta para "este host consegue
+      // relayar?", e o cliente só tinha a resposta do login. Sem devolvê-la no
+      // broadcast, a tela de configurações continuaria oferecendo instalar o
+      // que já está instalado (#438).
+      await withTimeout(new Promise<void>((resolve, reject) => {
+        const handler = (data: RawData) => {
+          const res = JSON.parse(data.toString());
+          if (res.type !== MessageType.SERVER_SETTINGS_UPDATED) return;
+          wsTurn.off('message', handler);
+          const updated = res.payload?.turnAvailability;
+          if (!updated || typeof updated.supported !== 'boolean') {
+            reject(new Error('Teste 18: o SERVER_SETTINGS_UPDATED precisa devolver a disponibilidade do relay'));
+            return;
+          }
+          resolve();
+        };
+        wsTurn.on('message', handler);
+        // Sem `turnEnabled`: ligar o relay tentaria instalar o coturn, o que
+        // depende do host e não cabe num teste automatizado.
+        wsTurn.send(JSON.stringify({
+          type: MessageType.SERVER_UPDATE_SETTINGS,
+          requestId: 'req-turn-2',
+          payload: { name: 'Servidor TURN' },
+        } satisfies ProtocolMessage));
+      }), 5000, 'Teste 18: disponibilidade do relay no broadcast de configurações');
+
+      wsTurn.close();
+    } finally {
+      await turnServer.stop();
+    }
+    console.log('✔ Teste 18 passou: ICE servers chegam ao cliente, com STUN, sem vazar TURN quando desligado, e com a disponibilidade do relay');
+
     console.log('=== Todos os testes do servidor passaram com sucesso! ===');
   } finally {
     await server.stop();

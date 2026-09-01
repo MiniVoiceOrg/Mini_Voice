@@ -1,4 +1,4 @@
-import { ChatMessage, LIMITS, MessageType, Permission } from '@monky/shared';
+import { ChatMessage, EVERYONE_MENTION_TOKENS, LIMITS, MessageType, Permission, hasEveryoneMention } from '@monky/shared';
 import type { AttachmentMeta, StickerEntry, UserSummary } from '@monky/shared';
 import { escapeHtml } from '../utils/html';
 import { appEvents } from '../core/EventBus';
@@ -39,15 +39,21 @@ interface PendingAttachment {
   handle?: UploadHandle;
 }
 
+/** An entry in the @-mention dropup: a member or the channel-wide token (#464). */
+type MentionCandidate =
+  | { kind: 'user'; user: UserSummary }
+  | { kind: 'everyone'; token: string };
+
 export class ChatView {
   private container: HTMLElement;
   private currentChannelId: string | null = null;
   private unbindEvents: Array<() => void> = [];
   /** Tracks whether the feed is following the end of the conversation (#270). */
   private pinnedToBottom = true;
-  // @-mention autocomplete state (#14)
+  // @-mention autocomplete state (#14). The list may also offer the
+  // channel-wide token (#464), which is not a user.
   private mentionActive = false;
-  private mentionMatches: UserSummary[] = [];
+  private mentionMatches: MentionCandidate[] = [];
   private mentionActiveIndex = 0;
   private mentionAtIndex = -1;
   // Files picked for the next message, keyed by a local id (#11).
@@ -453,7 +459,13 @@ export class ChatView {
   }
 
   private isUserMentioned(content: string, currentNickname: string): boolean {
-    if (!content || !currentNickname) return false;
+    if (!content) return false;
+    // `@todos` reaches everyone in the channel, so it highlights the message the
+    // same way a direct mention does (#464).
+    if (serverStore.serverDetails?.allowEveryoneMention !== false && hasEveryoneMention(content)) {
+      return true;
+    }
+    if (!currentNickname) return false;
     const escaped = currentNickname.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
     const regex = new RegExp(`(^|[\\s(])@${escaped}(?=$|[\\s),.!?:;])`, 'i');
     return regex.test(content);
@@ -474,7 +486,7 @@ export class ChatView {
 
     const me = serverStore.currentUser;
     const currentNickname = me?.nickname?.trim();
-    const isMentioned = !m.isSystem && !!currentNickname && this.isUserMentioned(m.content, currentNickname);
+    const isMentioned = !m.isSystem && this.isUserMentioned(m.content, currentNickname ?? '');
 
     const knownNicknames = Array.from(serverStore.knownMembers.values()).map((u) => u.nickname);
     if (currentNickname && !knownNicknames.includes(currentNickname)) {
@@ -499,7 +511,11 @@ export class ChatView {
 
     const textHtml =
       visibleText && visibleText.trim().length > 0
-        ? `<div class="chat-message-text">${renderMarkdown(visibleText, { currentNickname, knownNicknames })}</div>`
+        ? `<div class="chat-message-text">${renderMarkdown(visibleText, {
+            currentNickname,
+            knownNicknames,
+            everyoneMentionEnabled: serverStore.serverDetails?.allowEveryoneMention !== false,
+          })}</div>`
         : '';
     const stickersHtml = this.renderStickers(stickers);
     const attachmentsHtml = this.renderAttachments(otherAttachments, m);
@@ -507,7 +523,7 @@ export class ChatView {
 
     return `
       <div class="${rowClass}" data-user-id="${m.userId}" data-message-id="${m.id}">
-        <img class="chat-author-avatar" src="${avatarSrc}">
+        <img class="chat-author-avatar" src="${avatarSrc}" data-fallback="avatar">
         <div class="chat-message-body">
           <div class="chat-author-header">
             <span class="chat-author-name">${escapeHtml(m.userNickname)}</span>
@@ -851,6 +867,7 @@ export class ChatView {
         charCounter.innerText = `${input.value.length}/${LIMITS.MAX_MESSAGE_LENGTH}`;
       }
       autoResize();
+      this.persistDraft(input.value);
       this.updateMentionDropup(input);
       if (composeLinkTimer) clearTimeout(composeLinkTimer);
       composeLinkTimer = setTimeout(updateComposeLinkPreview, 500);
@@ -860,6 +877,21 @@ export class ChatView {
     input?.addEventListener('paste', () => {
       setTimeout(updateComposeLinkPreview, 100);
     });
+
+    // A restored draft (#478) has to look exactly like it did before the view
+    // was rebuilt. It is assigned here rather than written into the template
+    // because the HTML parser silently eats a newline right after the opening
+    // `<textarea>` tag, which would swallow the first line of a draft that
+    // starts with a line break.
+    const draft = this.currentChannelId ? chatStore.getDraft(this.currentChannelId) : '';
+    if (input && draft.length > 0) {
+      input.value = draft;
+      if (charCounter) {
+        charCounter.innerText = `${input.value.length}/${LIMITS.MAX_MESSAGE_LENGTH}`;
+      }
+      autoResize();
+      updateComposeLinkPreview();
+    }
 
     const handleSend = () => {
       if (!input || !this.currentChannelId || !serverStore.hasPermission(Permission.SEND_MESSAGES)) return;
@@ -882,6 +914,7 @@ export class ChatView {
 
       this.clearPending();
       input.value = '';
+      this.persistDraft('');
       input.style.height = 'auto';
       if (charCounter) {
         charCounter.innerText = `0/${LIMITS.MAX_MESSAGE_LENGTH}`;
@@ -1116,7 +1149,7 @@ export class ChatView {
     this.mentionAtIndex = caret - match[1].length - 1;
 
     const all = serverStore.getMentionableUsers();
-    const matches = (query ? all.filter((u) => u.nickname.toLowerCase().includes(query)) : all)
+    const users = (query ? all.filter((u) => u.nickname.toLowerCase().includes(query)) : all)
       // Prioritize names that start with the query.
       .sort((a, b) => {
         const aStarts = a.nickname.toLowerCase().startsWith(query) ? 0 : 1;
@@ -1124,6 +1157,21 @@ export class ChatView {
         return aStarts - bStarts;
       })
       .slice(0, 8);
+
+    const matches: MentionCandidate[] = users.map((user) => ({ kind: 'user' as const, user }));
+
+    // The channel-wide token leads the list when it matches what is being typed
+    // and the server allows it (#464). Every spelling is accepted on the way in,
+    // so suggesting only the one in the current language is enough.
+    if (serverStore.serverDetails?.allowEveryoneMention !== false) {
+      const suggested = EVERYONE_MENTION_TOKENS.find((token) => token.startsWith(query));
+      const preferred = t('chat.everyoneMentionToken');
+      const token = EVERYONE_MENTION_TOKENS.includes(preferred as typeof EVERYONE_MENTION_TOKENS[number])
+        && preferred.startsWith(query)
+        ? preferred
+        : suggested;
+      if (token) matches.unshift({ kind: 'everyone', token });
+    }
 
     if (matches.length === 0) {
       this.closeMentionDropup();
@@ -1142,11 +1190,22 @@ export class ChatView {
     const el = document.getElementById('mention-dropup');
     if (!el) return;
     el.innerHTML = this.mentionMatches
-      .map((u, i) => {
+      .map((candidate, i) => {
+        const active = i === this.mentionActiveIndex ? 'active' : '';
+        if (candidate.kind === 'everyone') {
+          return `
+            <div class="mention-item ${active}" data-mention-index="${i}">
+              <span class="material-symbols-outlined md-18 mention-everyone-icon">campaign</span>
+              <span class="mention-nick">@${escapeHtml(candidate.token)}</span>
+              <span class="mention-everyone-hint">${escapeHtml(t('chat.everyoneMentionHint'))}</span>
+            </div>
+          `;
+        }
+        const u = candidate.user;
         const online = u.status !== 'DISCONNECTED';
         return `
-          <div class="mention-item ${i === this.mentionActiveIndex ? 'active' : ''}" data-mention-index="${i}">
-            <img class="mention-avatar" src="${getAvatarUrl(u.avatarUrl)}">
+          <div class="mention-item ${active}" data-mention-index="${i}">
+            <img class="mention-avatar" src="${getAvatarUrl(u.avatarUrl)}" data-fallback="avatar">
             <span class="mention-nick">${escapeHtml(u.nickname)}</span>
             <span class="mention-status-dot ${online ? 'online' : 'offline'}"></span>
           </div>
@@ -1174,15 +1233,15 @@ export class ChatView {
 
   private applyMention(index: number): void {
     const input = document.getElementById('chat-message-input') as HTMLTextAreaElement | null;
-    const user = this.mentionMatches[index];
-    if (!input || !user || this.mentionAtIndex < 0) {
+    const candidate = this.mentionMatches[index];
+    if (!input || !candidate || this.mentionAtIndex < 0) {
       this.closeMentionDropup();
       return;
     }
     const caret = input.selectionStart ?? input.value.length;
     const before = input.value.substring(0, this.mentionAtIndex);
     const after = input.value.substring(caret);
-    const insert = `@${user.nickname} `;
+    const insert = candidate.kind === 'everyone' ? `@${candidate.token} ` : `@${candidate.user.nickname} `;
     input.value = `${before}${insert}${after}`;
     const newCaret = before.length + insert.length;
     input.setSelectionRange(newCaret, newCaret);
@@ -1195,6 +1254,17 @@ export class ChatView {
     }
     input.style.height = 'auto';
     input.style.height = `${Math.min(input.scrollHeight, 120)}px`;
+    this.persistDraft(input.value);
+  }
+
+  /**
+   * Keeps the store in sync with the composer so the text is still there after
+   * the view is rebuilt (#478). Called from every place that writes to the
+   * textarea without going through a real `input` event.
+   */
+  private persistDraft(text: string): void {
+    if (!this.currentChannelId) return;
+    chatStore.setDraft(this.currentChannelId, text);
   }
 
   private closeMentionDropup(): void {

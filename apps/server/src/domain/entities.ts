@@ -8,10 +8,21 @@ export interface ServerRecord {
   maxUsers: number;
   ownerUserId?: string | null;
   allowSoundboard?: boolean;
+  /** Whether `@todos` / `@everyone` pings the whole channel (#464). */
+  allowEveryoneMention?: boolean;
   iconPath?: string | null;
   // Attachment storage limits in bytes (#11); null → shared defaults.
   maxAttachmentFileBytes?: number | null;
   maxAttachmentStorageBytes?: number | null;
+  /** Whether the built-in TURN relay should run alongside the server (#425). */
+  turnEnabled?: boolean;
+  /**
+   * Shared secret backing TURN's REST-API credentials (#425).
+   *
+   * Never leaves the server: clients only ever receive values derived from it.
+   * Null until the relay is enabled for the first time.
+   */
+  turnSecret?: string | null;
 }
 
 export interface UserRecord {

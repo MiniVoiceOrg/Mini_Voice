@@ -1,4 +1,5 @@
 import { escapeHtml } from './html';
+import { EVERYONE_MENTION_TOKENS } from '@monky/shared';
 import { codeLanguageLabel, highlightCode, resolveCodeLanguage } from './codeHighlight';
 import { t } from '../i18n';
 
@@ -28,6 +29,8 @@ import { t } from '../i18n';
 export interface MarkdownOptions {
   currentNickname?: string;
   knownNicknames?: string[];
+  /** Highlight `@todos` / `@everyone` as a mention aimed at the reader (#464). */
+  everyoneMentionEnabled?: boolean;
 }
 
 /**
@@ -108,6 +111,12 @@ export function renderMarkdown(raw: string, options?: MarkdownOptions): string {
     s = s.replace(/(^|[^\w_])_([^\s_][^_\n]*?)_(?![\w_])/g, '$1<em>$2</em>');
 
     // Mentions (@nickname)
+    if (options?.everyoneMentionEnabled) {
+      for (const token of EVERYONE_MENTION_TOKENS) {
+        const regex = new RegExp(`(^|[\\s(])@${token}(?=$|[\\s),.!?:;])`, 'gi');
+        s = s.replace(regex, `$1<span class="chat-mention chat-mention-me">@${token}</span>`);
+      }
+    }
     if (options?.knownNicknames && options.knownNicknames.length > 0) {
       const sortedNicks = [...new Set(options.knownNicknames)].sort((a, b) => b.length - a.length);
       for (const nick of sortedNicks) {
