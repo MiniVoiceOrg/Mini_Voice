@@ -109,6 +109,18 @@ Para que o testador valide o PR imediatamente sem atrito, prepare o ambiente e i
 3. **Exibir o Guia de Validação Prática:**
    Forneça ao testador os passos diretos para exercitar a funcionalidade alterada com a aplicação aberta.
 
+4. **Armadilhas do Monky que invalidam o teste:**
+
+   Confira estes quatro pontos **antes** de entregar o roteiro — cada um já fez teste passar ou falhar pelo motivo errado.
+
+   - **Cliente e servidor têm de vir da mesma branch.** `packages/shared/src/validators.ts` compara `protocolVersion` por igualdade exata contra `PROTOCOL_VERSION` (`packages/shared/src/constants.ts`). Se o PR mexeu no protocolo, o app da branch **não conecta** num servidor que já estava no ar. O roteiro deve mandar criar o servidor pelo próprio app da branch, e não reaproveitar um existente.
+   - **Só abre uma instância por máquina.** `apps/client/src/main/main.ts` usa `app.requestSingleInstanceLock()`; o segundo `npm start` apenas foca a janela aberta. Para testar dois participantes, são duas máquinas — ou uma segunda instância com `--user-data-dir` próprio.
+   - **Voz, vídeo e tela são P2P e não se validam sozinho.** PR que toca `apps/client/src/renderer/core/WebRtcManager.ts`, `VideoService.ts`, `core/webrtc/` ou a sinalização do servidor precisa de **duas pessoas conectadas**; abrir o app e olhar a própria tela não exercita o caminho.
+   - **Use `MONKY_HOME` para não sujar os servidores reais.** O registro de servidores do CLI fica em `~/.monky` (`apps/server/src/cli/registry.ts`). Apontando `MONKY_HOME` para uma pasta descartável, o servidor de teste não entra na lista de quem está testando:
+     ```bash
+     MONKY_HOME=$(mktemp -d) npm run dev:server
+     ```
+
 ---
 
 ## Passo 5: Executar Testes Automatizados & Verificações do CI
