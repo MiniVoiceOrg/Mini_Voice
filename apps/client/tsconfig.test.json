@@ -15,6 +15,7 @@
     "src/renderer/core/EventBus.ts",
     "src/renderer/core/ClientLogService.ts",
     "src/renderer/core/VideoService.ts",
+    "src/renderer/core/webrtc/codecPreferences.ts",
     "src/renderer/stores/**/*",
     "test/**/*"
   ]

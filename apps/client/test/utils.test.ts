@@ -637,6 +637,55 @@ function runTests() {
   assert(customProfile.screenFps === 60, 'CUSTOM preset aceita 60 fps');
   assert(customProfile.screenBitrateKbps === 48000, 'CUSTOM preset aceita 48000 kbps de bitrate');
 
+  // Priorização de Codecs de Vídeo WebRTC (AV1 > VP9 > VP8 > H264)
+  console.log('\n--- Testando priorização de codecs de vídeo WebRTC ---');
+  const { sortVideoCodecs } = require('../src/renderer/core/webrtc/codecPreferences');
+
+  const mockCodecs = [
+    { mimeType: 'video/H264', clockRate: 90000 },
+    { mimeType: 'video/rtx', clockRate: 90000 },
+    { mimeType: 'video/VP8', clockRate: 90000 },
+    { mimeType: 'video/AV1', clockRate: 90000 },
+    { mimeType: 'video/VP9', clockRate: 90000 },
+    { mimeType: 'video/ulpfec', clockRate: 90000 },
+  ];
+
+  const sorted = sortVideoCodecs(mockCodecs);
+  const mimeOrder = sorted.map((c: any) => c.mimeType);
+
+  assert(mimeOrder[0] === 'video/AV1', 'AV1 é o codec de maior prioridade');
+  assert(mimeOrder[1] === 'video/VP9', 'VP9 é o segundo codec prioritário');
+  assert(mimeOrder[2] === 'video/VP8', 'VP8 é o terceiro codec prioritário');
+  assert(mimeOrder[3] === 'video/H264', 'H.264 é o quarto codec prioritário');
+  assert(mimeOrder.includes('video/rtx') && mimeOrder.includes('video/ulpfec'), 'Codecs auxiliares são preservados na lista');
+  assert(sorted.length === mockCodecs.length, 'Nenhum codec é perdido na ordenação');
+
+  // Testar subconjunto sem AV1
+  const subset = sortVideoCodecs([
+    { mimeType: 'video/H264' },
+    { mimeType: 'video/VP8' },
+  ]);
+  assert(subset[0].mimeType === 'video/VP8', 'VP8 supera H264 quando AV1 e VP9 não estão presentes');
+  assert(subset[1].mimeType === 'video/H264', 'H264 fica como fallback');
+
+  // Testar preferência personalizada do usuário
+  const prefH264 = sortVideoCodecs(mockCodecs, 'h264');
+  assert(prefH264[0].mimeType === 'video/H264', 'H.264 passa a ser o primeiro quando selecionado pelo usuário');
+  assert(prefH264[1].mimeType === 'video/AV1', 'AV1 permanece como segundo fallback na preferência H.264');
+
+  const prefVp9 = sortVideoCodecs(mockCodecs, 'vp9');
+  assert(prefVp9[0].mimeType === 'video/VP9', 'VP9 passa a ser o primeiro quando selecionado pelo usuário');
+
+  const prefVp8 = sortVideoCodecs(mockCodecs, 'vp8');
+  assert(prefVp8[0].mimeType === 'video/VP8', 'VP8 passa a ser o primeiro quando selecionado pelo usuário');
+
+  // Testar persistência de preferredVideoCodec na SettingsStore
+  const storeCodec = new SettingsStore();
+  assert(storeCodec.preferredVideoCodec === 'auto', 'preferredVideoCodec tem valor padrão "auto"');
+  storeCodec.preferredVideoCodec = 'h264';
+  storeCodec.save();
+  assert(storeCodec.preferredVideoCodec === 'h264', 'preferredVideoCodec foi atualizado e salvo');
+
   console.log(`\n=== Relatório dos Testes ===`);
   console.log(`Total: ${passed + failed} | Passaram: ${passed} | Falharam: ${failed}`);
 
