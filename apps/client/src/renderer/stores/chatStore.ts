@@ -44,6 +44,20 @@ export class ChatStore {
     this.bus.emit('chat.message_added', message);
   }
 
+  /**
+   * Replaces a message already in the feed with its edited/deleted state (#504).
+   * A message the client never loaded is ignored: it will arrive in its final
+   * shape the next time the history is fetched.
+   */
+  public updateMessage(message: ChatMessage): void {
+    const list = this.messages.get(message.channelId);
+    if (!list) return;
+    const index = list.findIndex((m) => m.id === message.id);
+    if (index === -1) return;
+    list[index] = message;
+    this.bus.emit('chat.message_updated', message);
+  }
+
   public getMessages(channelId: string): ChatMessage[] {
     return this.messages.get(channelId) || [];
   }

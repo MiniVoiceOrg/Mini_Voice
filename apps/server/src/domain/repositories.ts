@@ -32,7 +32,12 @@ export interface IChannelRepository {
 
 export interface IMessageRepository {
   create(message: MessageRecord): Promise<void>;
+  findById(messageId: string): Promise<MessageRecord | null>;
   listByChannel(channelId: string, limit: number, beforeTimestamp?: number): Promise<MessageRecord[]>;
+  /** Rewrites the content of a message and stamps it as edited (#504). */
+  updateContent(messageId: string, content: string, editedAt: number): Promise<void>;
+  /** Blanks a message's content and stamps it as deleted, keeping the row (#504). */
+  markDeleted(messageId: string, deletedAt: number): Promise<void>;
   deleteByChannel(channelId: string): Promise<void>;
   countAll(): Promise<number>;
 }

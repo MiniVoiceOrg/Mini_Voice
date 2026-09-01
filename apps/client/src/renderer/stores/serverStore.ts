@@ -217,7 +217,8 @@ export class ServerStore {
     attachmentStorage?: AttachmentStorageInfo,
     maxUsers?: number,
     turnEnabled?: boolean,
-    allowEveryoneMention?: boolean
+    allowEveryoneMention?: boolean,
+    allowMessageEdit?: boolean
   ): void {
     if (this.serverDetails) {
       this.serverDetails.name = name;
@@ -239,6 +240,9 @@ export class ServerStore {
       }
       if (allowEveryoneMention !== undefined) {
         this.serverDetails.allowEveryoneMention = allowEveryoneMention;
+      }
+      if (allowMessageEdit !== undefined) {
+        this.serverDetails.allowMessageEdit = allowMessageEdit;
       }
       this.bus.emit('server.updated');
       this.bus.emit('server.meta_updated', this.serverDetails);

@@ -130,6 +130,154 @@ export class ChatService {
   }
 
   /**
+   * Rewrites a message the caller wrote (#504).
+   *
+   * Only the author may edit, and only while the server allows it: editing
+   * rewrites what other people already read, so it is a server-level decision
+   * rather than a per-user one. System messages and already-deleted messages
+   * are never editable.
+   *
+   * Mentions are deliberately *not* recomputed: pinging someone by editing a
+   * message they already scrolled past would be a notification they cannot
+   * trace back to anything they saw arrive.
+   */
+  public async editMessage(
+    userId: string,
+    channelId: string,
+    messageId: string,
+    content: string
+  ): Promise<{ success: boolean; errorCode?: ProtocolErrorCode; errorMessage?: string; message?: ChatMessage }> {
+    const server = await this.serverRepo.getServer();
+    if (server?.allowMessageEdit === false) {
+      return {
+        success: false,
+        errorCode: ProtocolErrorCode.PERMISSION_DENIED,
+        errorMessage: 'A edição de mensagens está desabilitada neste servidor.',
+      };
+    }
+
+    const existing = await this.messageRepo.findById(messageId);
+    if (!existing || existing.channelId !== channelId) {
+      return {
+        success: false,
+        errorCode: ProtocolErrorCode.BAD_REQUEST,
+        errorMessage: 'Mensagem não encontrada.',
+      };
+    }
+    if (existing.isSystem || existing.deletedAt) {
+      return {
+        success: false,
+        errorCode: ProtocolErrorCode.BAD_REQUEST,
+        errorMessage: 'Essa mensagem não pode ser editada.',
+      };
+    }
+    if (existing.userId !== userId) {
+      return {
+        success: false,
+        errorCode: ProtocolErrorCode.PERMISSION_DENIED,
+        errorMessage: 'Você só pode editar as suas próprias mensagens.',
+      };
+    }
+
+    // An attachment message may end up with an empty caption; a plain text
+    // message may not be emptied by an edit — that is what deleting is for.
+    const attachments = (await this.attachmentService.getForMessages([messageId])).get(messageId) ?? [];
+    const schema = attachments.length > 0 ? attachmentCaptionSchema : messageContentSchema;
+    const parseResult = schema.safeParse(content ?? '');
+    if (!parseResult.success) {
+      return {
+        success: false,
+        errorCode: ProtocolErrorCode.MESSAGE_TOO_LONG,
+        errorMessage: parseResult.error.errors[0]?.message || 'Mensagem inválida',
+      };
+    }
+
+    const editedAt = Date.now();
+    await this.messageRepo.updateContent(messageId, parseResult.data, editedAt);
+
+    const user = await this.userRepo.findById(existing.userId);
+    return {
+      success: true,
+      message: {
+        id: existing.id,
+        channelId: existing.channelId,
+        userId: existing.userId,
+        userNickname: user ? user.nickname : 'Usuário Desconhecido',
+        userAvatarUrl: this.avatarStorage.getPublicUrl(user?.avatarPath),
+        content: parseResult.data,
+        createdAt: existing.createdAt,
+        isSystem: false,
+        attachments: attachments.length > 0 ? attachments : undefined,
+        editedAt,
+        deletedAt: null,
+      },
+    };
+  }
+
+  /**
+   * Deletes a message (#504). The row survives with an empty content and a
+   * `deletedAt` stamp so readers see a "message deleted" placeholder where it
+   * was, instead of the conversation silently reshuffling around a gap.
+   *
+   * `canModerate` is resolved by the caller from the permission layer, so this
+   * service stays unaware of roles: authors delete their own, moderators delete
+   * anyone's.
+   */
+  public async deleteMessage(
+    userId: string,
+    channelId: string,
+    messageId: string,
+    canModerate: boolean
+  ): Promise<{ success: boolean; errorCode?: ProtocolErrorCode; errorMessage?: string; message?: ChatMessage }> {
+    const existing = await this.messageRepo.findById(messageId);
+    if (!existing || existing.channelId !== channelId) {
+      return {
+        success: false,
+        errorCode: ProtocolErrorCode.BAD_REQUEST,
+        errorMessage: 'Mensagem não encontrada.',
+      };
+    }
+    if (existing.isSystem) {
+      return {
+        success: false,
+        errorCode: ProtocolErrorCode.BAD_REQUEST,
+        errorMessage: 'Mensagens do sistema não podem ser apagadas.',
+      };
+    }
+    if (existing.userId !== userId && !canModerate) {
+      return {
+        success: false,
+        errorCode: ProtocolErrorCode.PERMISSION_DENIED,
+        errorMessage: 'Você só pode apagar as suas próprias mensagens.',
+      };
+    }
+
+    // Already deleted: report success so a double click (or two moderators at
+    // once) settles on the same state instead of raising an error.
+    const deletedAt = existing.deletedAt ?? Date.now();
+    if (!existing.deletedAt) {
+      await this.messageRepo.markDeleted(messageId, deletedAt);
+    }
+
+    const user = await this.userRepo.findById(existing.userId);
+    return {
+      success: true,
+      message: {
+        id: existing.id,
+        channelId: existing.channelId,
+        userId: existing.userId,
+        userNickname: user ? user.nickname : 'Usuário Desconhecido',
+        userAvatarUrl: this.avatarStorage.getPublicUrl(user?.avatarPath),
+        content: '',
+        createdAt: existing.createdAt,
+        isSystem: false,
+        editedAt: existing.editedAt ?? null,
+        deletedAt,
+      },
+    };
+  }
+
+  /**
    * Detects @-mentions in a message and persists an unread mention row for every
    * mentioned user except the author (#14). Matching mirrors the client dropup:
    * a case-insensitive substring `@<nickname>` (nicknames may contain spaces, so
@@ -201,17 +349,21 @@ export class ChatService {
 
     return rawMessages.map((m) => {
       const user = userMap.get(m.userId);
-      const attachments = attachmentsByMessage.get(m.id);
+      // A deleted message keeps its row but nothing of its content: its files
+      // must not travel to clients either (#504).
+      const attachments = m.deletedAt ? undefined : attachmentsByMessage.get(m.id);
       return {
         id: m.id,
         channelId: m.channelId,
         userId: m.userId,
         userNickname: user ? user.nickname : 'Usuário Desconhecido',
         userAvatarUrl: this.avatarStorage.getPublicUrl(user?.avatarPath),
-        content: m.content,
+        content: m.deletedAt ? '' : m.content,
         createdAt: m.createdAt,
         isSystem: m.isSystem,
         attachments: attachments && attachments.length > 0 ? attachments : undefined,
+        editedAt: m.editedAt ?? null,
+        deletedAt: m.deletedAt ?? null,
       };
     });
   }

@@ -85,6 +85,15 @@ export interface ChatMessage {
   isSystem?: boolean;
   // Files attached to this message (#11). Omitted/empty for plain text messages.
   attachments?: AttachmentMeta[];
+  /** When the author last edited the message, so the UI can mark it (#504). */
+  editedAt?: number | null;
+  /**
+   * When the message was deleted (#504). A deleted message keeps its row and
+   * arrives with an empty `content` and no attachments: the client draws a
+   * "message deleted" placeholder instead of making the message vanish, which
+   * would silently rewrite the conversation for everyone reading it.
+   */
+  deletedAt?: number | null;
 }
 
 export interface Role {
@@ -133,6 +142,11 @@ export interface ServerDetails {
   allowSoundboard?: boolean;
   /** Whether `@todos` / `@everyone` mentions the whole channel (#464). */
   allowEveryoneMention?: boolean;
+  /**
+   * Whether members may edit their own messages (#504). Deleting is always
+   * allowed: this switch is about rewriting history, not about taking it back.
+   */
+  allowMessageEdit?: boolean;
   iconUrl?: string | null;
   channels: ChannelSummary[];
   /** One entry per live connection: a user signed in from two devices appears twice (#309). */

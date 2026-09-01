@@ -96,6 +96,22 @@ export class ServerGeneralTab {
         </label>
       </div>
 
+      <div style="display: flex; align-items: center; justify-content: space-between; gap: 12px; background: var(--bg-card); border: 1px solid var(--border-color); border-radius: var(--radius-md); padding: 12px 14px; margin-bottom: 16px;">
+        <div>
+          <label for="checkbox-allow-message-edit" style="font-size: 13px; font-weight: 600; color: var(--text-primary); display: flex; align-items: center; gap: 6px; cursor: pointer; margin-bottom: 2px;">
+            <span class="material-symbols-outlined md-18" style="color: var(--accent-primary);">edit_note</span>
+            <span>${t('serverSettings.allowMessageEdit')}</span>
+          </label>
+          <div style="font-size: 11px; color: var(--text-muted);">
+            ${t('serverSettings.allowMessageEditDesc')}
+          </div>
+        </div>
+        <label class="toggle-switch" aria-label="${t('serverSettings.allowMessageEdit')}">
+          <input id="checkbox-allow-message-edit" type="checkbox" ${s.allowMessageEdit !== false ? 'checked' : ''}>
+          <span class="toggle-slider"></span>
+        </label>
+      </div>
+
       <div style="background: var(--bg-card); border: 1px solid var(--border-color); border-radius: var(--radius-md); padding: 14px;">
         <div style="font-size: 13px; font-weight: 700; color: var(--text-primary); margin-bottom: 10px; display: flex; align-items: center; gap: 6px;">
           <span class="material-symbols-outlined md-16" style="color: var(--accent-primary);">info</span>

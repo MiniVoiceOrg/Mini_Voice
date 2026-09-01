@@ -9,6 +9,7 @@ import {
   ChannelUpdatedPayload,
   ChannelsReorderedPayload,
   ChatHistoryPayload,
+  ChatMessageUpdatedPayload,
   ChatMessage,
   MessageType,
   MemberKickedPayload,
@@ -625,6 +626,12 @@ class App {
 
     appEvents.on(`message.${MessageType.CHAT_HISTORY}`, (payload: ChatHistoryPayload) => {
       chatStore.setHistory(payload.channelId, payload.messages);
+    });
+
+    // An existing message was edited or deleted (#504). No sound and no unread
+    // marker: nothing new was said, so nothing should call attention to it.
+    appEvents.on(`message.${MessageType.CHAT_MESSAGE_UPDATED}`, (payload: ChatMessageUpdatedPayload) => {
+      if (payload?.message) chatStore.updateMessage(payload.message);
     });
 
     appEvents.on(`message.${MessageType.VOICE_USER_JOINED}`, (payload: VoiceUserJoinedPayload) => {

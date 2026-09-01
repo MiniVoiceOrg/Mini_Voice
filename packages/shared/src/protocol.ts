@@ -33,6 +33,10 @@ export enum MessageType {
   CHAT_SEND = 'CHAT_SEND',
   CHAT_LOAD_HISTORY = 'CHAT_LOAD_HISTORY',
   CHAT_MENTIONS_READ = 'CHAT_MENTIONS_READ',
+  /** Client -> server: rewrite the content of a message the caller wrote (#504). */
+  CHAT_EDIT = 'CHAT_EDIT',
+  /** Client -> server: delete a message (own, or anyone's with MANAGE_SERVER) (#504). */
+  CHAT_DELETE = 'CHAT_DELETE',
   CHAT_REQUEST_UPLOAD_TOKEN = 'CHAT_REQUEST_UPLOAD_TOKEN',
   CHANNEL_CREATE = 'CHANNEL_CREATE',
   CHANNEL_UPDATE = 'CHANNEL_UPDATE',
@@ -86,6 +90,8 @@ export enum MessageType {
   CHANNELS_REORDERED = 'CHANNELS_REORDERED',
   CHAT_MESSAGE = 'CHAT_MESSAGE',
   CHAT_HISTORY = 'CHAT_HISTORY',
+  /** Server -> clients: an existing message was edited or deleted (#504). */
+  CHAT_MESSAGE_UPDATED = 'CHAT_MESSAGE_UPDATED',
   CHAT_UPLOAD_TOKEN = 'CHAT_UPLOAD_TOKEN',
   VOICE_USER_JOINED = 'VOICE_USER_JOINED',
   VOICE_USER_LEFT = 'VOICE_USER_LEFT',
@@ -221,6 +227,8 @@ export interface ServerUpdateSettingsPayload {
   allowSoundboard?: boolean;
   /** Enables or disables the `@todos` / `@everyone` mention (#464). */
   allowEveryoneMention?: boolean;
+  /** Enables or disables editing of already-sent messages (#504). */
+  allowMessageEdit?: boolean;
   iconBase64?: string | null; // Data URL, pure base64, or null to remove
   // Attachment storage limits in bytes (#11).
   maxAttachmentFileBytes?: number;
@@ -261,6 +269,17 @@ export interface RoleAssignPayload {
 export interface RoleUnassignPayload {
   userId: string;
   roleId: string;
+}
+
+export interface ChatEditPayload {
+  channelId: string;
+  messageId: string;
+  content: string;
+}
+
+export interface ChatDeletePayload {
+  channelId: string;
+  messageId: string;
 }
 
 export interface SoundboardPlayPayload {
@@ -390,6 +409,8 @@ export interface ServerSettingsUpdatedPayload {
   allowSoundboard?: boolean;
   /** Current state of the `@todos` / `@everyone` mention (#464). */
   allowEveryoneMention?: boolean;
+  /** Current state of the message-editing switch (#504). */
+  allowMessageEdit?: boolean;
   iconUrl?: string | null;
   // Current attachment-storage limits + usage, so the settings UI stays in sync (#11).
   attachmentStorage?: AttachmentStorageInfo;
@@ -416,6 +437,11 @@ export interface TurnInstallProgressPayload {
   /** Whole percent, so the client does not have to compute it. */
   percent: number;
   stage: TurnInstallStage;
+}
+
+/** The message in its state after the edit or deletion (#504). */
+export interface ChatMessageUpdatedPayload {
+  message: ChatMessage;
 }
 
 export interface SoundboardPlayedPayload {

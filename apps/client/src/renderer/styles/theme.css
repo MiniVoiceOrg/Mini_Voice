@@ -2003,6 +2003,51 @@ input:focus, textarea:focus, select:focus {
   cursor: text;
 }
 
+/* Marks a message the author rewrote after sending it (#504). */
+.chat-edited-badge {
+  font-size: 10px;
+  color: var(--text-muted);
+  font-style: italic;
+}
+
+/* A deleted message keeps its slot with a placeholder rather than vanishing,
+   so the conversation does not silently reshuffle for whoever is reading (#504). */
+.chat-message-deleted-text {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+  font-style: italic;
+  color: var(--text-muted);
+}
+
+.chat-message-editor {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin-top: 2px;
+}
+
+.chat-message-edit-input {
+  width: 100%;
+  resize: none;
+  overflow: hidden;
+  font-size: 14px;
+  line-height: 1.4;
+  color: var(--text-primary);
+  background: var(--bg-input, var(--bg-card));
+  border: 1px solid var(--accent-primary);
+  border-radius: var(--radius-sm);
+  padding: 6px 8px;
+  user-select: text;
+  -webkit-user-select: text;
+}
+
+.chat-message-edit-hint {
+  font-size: 10px;
+  color: var(--text-muted);
+}
+
 /* The global `* { user-select: none }` also hits the elements that renderMarkdown
    generates inside a message (<p class="md-p">, <strong>, <a>, <code>, <li>, ...),
    which made message text unselectable. Re-enable selection for all of them (#148). */

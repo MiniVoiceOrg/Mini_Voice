@@ -18,10 +18,13 @@ import {
   ChannelsReorderedPayload,
   ChannelUpdatePayload,
   ChannelUpdatedPayload,
+  ChatDeletePayload,
+  ChatEditPayload,
   ChatHistoryPayload,
   ChatLoadHistoryPayload,
   ChatMentionsReadPayload,
   ChatMessage,
+  ChatMessageUpdatedPayload,
   ChatRequestUploadTokenPayload,
   ChatSendPayload,
   ChatUploadTokenPayload,
@@ -271,6 +274,17 @@ export class WebSocketServer {
       case MessageType.CHAT_LOAD_HISTORY:
         if (!(await this.requireChannelAccess(session, (payload as ChatLoadHistoryPayload)?.channelId, requestId))) return;
         await this.handleChatLoadHistory(session, payload as ChatLoadHistoryPayload, requestId);
+        break;
+
+      case MessageType.CHAT_EDIT:
+        if (!(await this.requirePermission(session, Permission.SEND_MESSAGES, requestId))) return;
+        if (!(await this.requireChannelAccess(session, (payload as ChatEditPayload)?.channelId, requestId))) return;
+        await this.handleChatEdit(session, payload as ChatEditPayload, requestId);
+        break;
+
+      case MessageType.CHAT_DELETE:
+        if (!(await this.requireChannelAccess(session, (payload as ChatDeletePayload)?.channelId, requestId))) return;
+        await this.handleChatDelete(session, payload as ChatDeletePayload, requestId);
         break;
 
       case MessageType.CHAT_MENTIONS_READ:
@@ -659,6 +673,79 @@ export class WebSocketServer {
     });
   }
 
+  private async handleChatEdit(
+    session: ClientSession,
+    payload: ChatEditPayload,
+    requestId?: string
+  ): Promise<void> {
+    if (!session.user) return;
+    if (!payload?.messageId || !payload?.channelId) {
+      this.sendError(session.ws, ProtocolErrorCode.BAD_REQUEST, 'Mensagem inválida', requestId);
+      return;
+    }
+
+    const result = await this.chatService.editMessage(
+      session.user.id,
+      payload.channelId,
+      payload.messageId,
+      payload.content
+    );
+    if (!result.success || !result.message) {
+      this.sendError(
+        session.ws,
+        result.errorCode || ProtocolErrorCode.BAD_REQUEST,
+        result.errorMessage || 'Erro ao editar mensagem',
+        requestId
+      );
+      return;
+    }
+
+    await this.broadcastChatMessageUpdated(result.message, requestId);
+  }
+
+  private async handleChatDelete(
+    session: ClientSession,
+    payload: ChatDeletePayload,
+    requestId?: string
+  ): Promise<void> {
+    if (!session.user) return;
+    if (!payload?.messageId || !payload?.channelId) {
+      this.sendError(session.ws, ProtocolErrorCode.BAD_REQUEST, 'Mensagem inválida', requestId);
+      return;
+    }
+
+    // Moderators clean up after anyone; everybody else only after themselves.
+    const canModerate = await this.permissionService.checkPermission(session.user.id, Permission.MANAGE_SERVER);
+
+    const result = await this.chatService.deleteMessage(
+      session.user.id,
+      payload.channelId,
+      payload.messageId,
+      canModerate
+    );
+    if (!result.success || !result.message) {
+      this.sendError(
+        session.ws,
+        result.errorCode || ProtocolErrorCode.BAD_REQUEST,
+        result.errorMessage || 'Erro ao apagar mensagem',
+        requestId
+      );
+      return;
+    }
+
+    await this.broadcastChatMessageUpdated(result.message, requestId);
+  }
+
+  /** Sends the new state of an edited/deleted message to the channel (#504). */
+  private async broadcastChatMessageUpdated(message: ChatMessage, requestId?: string): Promise<void> {
+    const updatedPayload: ChatMessageUpdatedPayload = { message };
+    await this.broadcastToChannel(message.channelId, {
+      type: MessageType.CHAT_MESSAGE_UPDATED,
+      requestId,
+      payload: updatedPayload,
+    });
+  }
+
   private async handleChatLoadHistory(
     session: ClientSession,
     payload: ChatLoadHistoryPayload,
@@ -971,6 +1058,7 @@ export class WebSocketServer {
       hasPassword: result.hasPassword!,
       allowSoundboard: result.allowSoundboard,
       allowEveryoneMention: result.allowEveryoneMention,
+      allowMessageEdit: result.allowMessageEdit,
       iconUrl: result.iconUrl,
       attachmentStorage: result.attachmentStorage,
       maxUsers: result.maxUsers,
