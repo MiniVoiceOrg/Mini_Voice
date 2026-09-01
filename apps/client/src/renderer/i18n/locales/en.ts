@@ -548,6 +548,7 @@ export const en: TranslationMap = {
   'main.serverHostingCall': '{name} — your call is still here',
   'main.callHereTooltip': 'Your voice call is on this server',
   'main.unreadHereTooltip': 'New messages on this server',
+  'main.mentionHereTooltip': 'You were mentioned on this server',
   'main.rightClickVolume': 'Right-click to adjust volume',
   'main.rightClickVolumeShort': 'Right-click to adjust volume',
   'main.micMuted': 'Microphone muted',
