@@ -36,3 +36,26 @@ html:not(.dark) .vp-doc .diagrama .tema-escuro,
 html.dark .vp-doc .diagrama .tema-claro {
   display: none;
 }
+
+/**
+ * Página de arquitetura: coluna larga só para os diagramas (#349).
+ *
+ * A coluna de texto do VitePress tem 688px, e 9 dos 11 diagramas são mais
+ * largos que isso — ou seja, quase todos rolavam. Com `aside: false` no
+ * frontmatter a página libera o espaço do sumário lateral, e aqui o texto
+ * continua em 688px (linha longa cansa de ler) enquanto só o diagrama ocupa
+ * a largura toda.
+ */
+.pagina-arquitetura .content-container {
+  max-width: none;
+}
+
+.pagina-arquitetura .vp-doc > div > * {
+  max-width: 688px;
+  margin-left: auto;
+  margin-right: auto;
+}
+
+.pagina-arquitetura .vp-doc > div > .diagrama {
+  max-width: none;
+}

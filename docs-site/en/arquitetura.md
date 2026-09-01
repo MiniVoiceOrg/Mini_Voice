@@ -1,3 +1,8 @@
+---
+aside: false
+pageClass: pagina-arquitetura
+---
+
 # Architecture
 
 How Monky is built on the inside: the components, how they talk to each other,

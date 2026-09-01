@@ -3,7 +3,10 @@
  * `docs-site/diagramas/src/<lang>/*.mmd`.
  *
  * Rode `node docs-site/diagramas/scripts/gerar.mjs` depois de editar qualquer
- * `.mmd` e commite os SVGs junto. O mermaid-cli nao e dependencia do projeto:
+ * `.mmd` e commite os SVGs junto. Passe um filtro para regerar só o que você
+ * mexeu — `node ... gerar.mjs 04 08` — porque o mermaid roteia as arestas com
+ * variação de sub-pixel entre execuções, e regerar tudo sujaria o diff com
+ * diagramas que não mudaram. O mermaid-cli nao e dependencia do projeto:
  * ele e baixado sob demanda pelo `npx`, porque arrasta o Chromium do puppeteer
  * e so serve para regerar diagrama. Se voce ja tem o binario em algum lugar,
  * aponte `MMDC_BIN` para ele e o npx sai do caminho.
@@ -17,6 +20,7 @@ import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const raiz = resolve(dirname(fileURLToPath(import.meta.url)), '..');
+const filtros = process.argv.slice(2);
 const temas = { claro: 'default', escuro: 'dark' };
 
 /**
@@ -43,7 +47,12 @@ for (const lang of ['pt', 'en']) {
   const saida = join(raiz, lang);
   mkdirSync(saida, { recursive: true });
 
-  for (const arquivo of readdirSync(entrada).filter((f) => f.endsWith('.mmd')).sort()) {
+  const fontes = readdirSync(entrada)
+    .filter((f) => f.endsWith('.mmd'))
+    .filter((f) => filtros.length === 0 || filtros.some((t) => f.includes(t)))
+    .sort();
+
+  for (const arquivo of fontes) {
     const nome = arquivo.replace(/\.mmd$/, '');
     for (const [sufixo, tema] of Object.entries(temas)) {
       const cfg = join(tmp, `${tema}.json`);
@@ -64,4 +73,8 @@ for (const lang of ['pt', 'en']) {
   }
 }
 rmSync(tmp, { recursive: true, force: true });
-console.log(`\n${total} SVGs gerados.`);
+if (total === 0) {
+  console.log(`Nenhum .mmd bate com ${filtros.join(', ')}.`);
+} else {
+  console.log(`\n${total} SVGs gerados${filtros.length ? ` (filtro: ${filtros.join(', ')})` : ''}.`);
+}
