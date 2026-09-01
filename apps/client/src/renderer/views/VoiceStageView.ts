@@ -946,7 +946,7 @@ export class VoiceStageView {
             ${isMini ? '' : `<span>${isScreenTile ? t('stage.loadingScreen') : t('stage.loadingCamera')}</span>`}
           </div>
         ` : ''}
-        ${(isScreenTile && !isLocked && !isMini) ? `
+        ${(isVideoTile && !isLocked && !isMini) ? `
           <div
             class="telemetry-overlay position-${settingsStore.screenShareTelemetryPosition}${settingsStore.screenShareTelemetryEnabled ? '' : ' is-hidden'}"
             data-telemetry-key="${escapeHtml(tile.key)}"
@@ -1072,14 +1072,17 @@ export class VoiceStageView {
   }
 
   /**
-   * Screen tiles currently on the stage. Built the same way as
-   * `buildStageTiles` so the keys match the overlays already in the DOM (#340).
+   * Video tiles currently on the stage — every screen share plus every camera
+   * (#493). Built the same way as `buildStageTiles` so the keys match the
+   * overlays already in the DOM (#340).
    */
-  private getScreenTiles(): StageTile[] {
+  private getTelemetryTiles(): StageTile[] {
     if (!this.currentChannelId) return [];
     const tiles: StageTile[] = [];
     for (const p of participantManager.getInVoiceChannel(this.currentChannelId)) {
       const isLocal = serverStore.isMySession(p.user.sessionId);
+      const isCamOn = isLocal ? voiceStore.isCameraOn : (p.voiceState?.isCameraOn ?? false);
+      if (isCamOn) tiles.push({ p, kind: 'camera', key: `${sidOf(p)}:camera` });
       for (const shareId of this.getShareIds(p, isLocal)) {
         tiles.push({ p, kind: 'screen', key: `${sidOf(p)}:screen:${shareId}`, shareId });
       }
@@ -1087,12 +1090,12 @@ export class VoiceStageView {
     return tiles;
   }
 
-  private hasActiveScreenShares(): boolean {
-    return this.getScreenTiles().length > 0;
+  private hasTelemetryTiles(): boolean {
+    return this.getTelemetryTiles().length > 0;
   }
 
   private syncTelemetryMonitor(): void {
-    if (!this.currentChannelId || !settingsStore.screenShareTelemetryEnabled || !this.hasActiveScreenShares()) {
+    if (!this.currentChannelId || !settingsStore.screenShareTelemetryEnabled || !this.hasTelemetryTiles()) {
       this.stopTelemetryMonitor(false);
       this.applyTelemetryOverlayState();
       return;
@@ -1118,9 +1121,9 @@ export class VoiceStageView {
 
     this.telemetryRefreshInFlight = true;
     try {
-      const screenTiles = this.getScreenTiles();
+      const videoTiles = this.getTelemetryTiles();
 
-      if (screenTiles.length === 0) {
+      if (videoTiles.length === 0) {
         this.telemetrySnapshots.clear();
         this.telemetryByteSamples.clear();
         this.applyTelemetryOverlayState();
@@ -1129,7 +1132,7 @@ export class VoiceStageView {
       }
 
       const nextSnapshots = new Map<string, ScreenTelemetrySnapshot>();
-      await Promise.all(screenTiles.map(async (tile) => {
+      await Promise.all(videoTiles.map(async (tile) => {
         const snapshot = await this.collectTelemetrySnapshot(tile);
         if (snapshot) {
           nextSnapshots.set(tile.key, snapshot);
@@ -1137,7 +1140,7 @@ export class VoiceStageView {
       }));
 
       this.telemetrySnapshots = nextSnapshots;
-      this.pruneTelemetryByteSamples(Array.from(screenTiles, (tile) => tile.key));
+      this.pruneTelemetryByteSamples(Array.from(videoTiles, (tile) => tile.key));
       this.applyTelemetryOverlayState();
     } finally {
       this.telemetryRefreshInFlight = false;
@@ -1147,19 +1150,22 @@ export class VoiceStageView {
   private async collectTelemetrySnapshot(tile: StageTile): Promise<ScreenTelemetrySnapshot | null> {
     const isLocal = serverStore.isMySession(tile.p.user.sessionId);
     return isLocal
-      ? this.collectSenderTelemetry(tile.key, tile.shareId!)
+      ? this.collectSenderTelemetry(tile.key, tile.shareId ?? null)
       : this.collectReceiverTelemetry(tile);
   }
 
   /**
-   * Stats for one local share only (#340). Reading `getStats()` off the
-   * senders that carry this share — instead of the whole peer connection —
-   * keeps a second share's bitrate and resolution out of these numbers.
+   * Stats for one local video source only (#340). Reading `getStats()` off the
+   * senders that carry this source — instead of the whole peer connection —
+   * keeps a second share (or the camera) out of these numbers. A null
+   * `shareId` means the camera tile (#493).
    */
-  private async collectSenderTelemetry(tileKey: string, shareId: string): Promise<ScreenTelemetrySnapshot | null> {
-    const senders = webRtcManager.getScreenSendersForShare(shareId);
-    const localTrack = this.getLocalScreenTrack(shareId);
-    const fallback = this.getLocalScreenFallback(shareId);
+  private async collectSenderTelemetry(tileKey: string, shareId: string | null): Promise<ScreenTelemetrySnapshot | null> {
+    const senders = shareId === null
+      ? webRtcManager.getCameraSenders()
+      : webRtcManager.getScreenSendersForShare(shareId);
+    const localTrack = this.getLocalVideoTrack(shareId);
+    const fallback = this.getLocalVideoFallback(shareId);
 
     if (senders.length === 0) {
       return fallback;
@@ -1229,13 +1235,14 @@ export class VoiceStageView {
   }
 
   /**
-   * Stats for one remote share only (#340). The receiver is matched by the
-   * routed screen track, so a peer sharing two screens (or a screen plus a
-   * camera) reports separate numbers on each tile.
+   * Stats for one remote video source only (#340, #493). The receiver is
+   * matched by the routed track, so a peer sharing two screens (or a screen
+   * plus a camera) reports separate numbers on each tile.
    */
   private async collectReceiverTelemetry(tile: StageTile): Promise<ScreenTelemetrySnapshot | null> {
     const sessionId = sidOf(tile.p);
-    const track = this.getRemoteScreenStream(tile)?.getVideoTracks()[0];
+    const stream = tile.kind === 'camera' ? tile.p.remoteStream : this.getRemoteScreenStream(tile);
+    const track = stream?.getVideoTracks()[0];
     if (!track) return null;
 
     const receiver = webRtcManager.getReceiverForTrack(sessionId, track.id);
@@ -1280,13 +1287,16 @@ export class VoiceStageView {
     }
   }
 
-  /** Local video track backing one screen share (#340). */
-  private getLocalScreenTrack(shareId: string): MediaStreamTrack | null {
-    return videoService.getScreenStream(shareId)?.getVideoTracks()[0] ?? null;
+  /** Local video track backing one screen share, or the camera when null (#340, #493). */
+  private getLocalVideoTrack(shareId: string | null): MediaStreamTrack | null {
+    const stream = shareId === null
+      ? videoService.getCameraStream()
+      : videoService.getScreenStream(shareId);
+    return stream?.getVideoTracks()[0] ?? null;
   }
 
-  private getLocalScreenFallback(shareId: string): ScreenTelemetrySnapshot | null {
-    const track = this.getLocalScreenTrack(shareId);
+  private getLocalVideoFallback(shareId: string | null): ScreenTelemetrySnapshot | null {
+    const track = this.getLocalVideoTrack(shareId);
     if (!track) return null;
 
     const settings = track.getSettings();

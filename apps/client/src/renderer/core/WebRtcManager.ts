@@ -1477,6 +1477,19 @@ export class WebRtcManager {
   }
 
   /**
+   * Every sender publishing the local camera — one per peer. Same reasoning as
+   * `getScreenSendersForShare`: scoping `getStats()` to the camera senders
+   * keeps the screen shares out of the camera tile's numbers (#493).
+   */
+  public getCameraSenders(): RTCRtpSender[] {
+    const senders: RTCRtpSender[] = [];
+    for (const session of this.peers.values()) {
+      if (session.videoSender) senders.push(session.videoSender);
+    }
+    return senders;
+  }
+
+  /**
    * Receiver carrying a specific remote track, so the stage can read one
    * screen share's inbound stats without picking up the peer's other share or
    * their camera (#340).
