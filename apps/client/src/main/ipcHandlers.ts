@@ -13,7 +13,8 @@ import { HostServerOptions, ServerManager } from './serverManager';
 import { mt, setMainLanguage } from './i18n';
 import { fetchLinkPreview } from './linkPreview';
 import { TrayManager, VoiceStatus } from './trayManager';
-import type { PttConfig } from '@monky/shared';
+import type { OverlayBounds, OverlayConfig, OverlaySignalPayload, OverlaySyncState, PttConfig } from '@monky/shared';
+import { OverlayManager } from './overlayManager';
 import {
   HOME_MIN_HEIGHT,
   HOME_MIN_WIDTH,
@@ -185,6 +186,7 @@ async function resolveMacAppIcons(sourceIds: string[]): Promise<Map<string, stri
 export interface SetupIpcOptions {
   setMinimizeToTray?: (enabled: boolean) => void;
   clientLogger?: import('./clientLogger').ClientLogger;
+  overlayManager?: OverlayManager;
 }
 
 /**
@@ -270,6 +272,44 @@ export function setupIpcHandlers(
 ): void {
   const lanDiscovery = new LanDiscovery(mainWindow);
   globalInputHook.init(mainWindow);
+  const overlayManager = options?.overlayManager || new OverlayManager(mainWindow);
+
+  // Overlay (#169)
+  ipcMain.handle('overlay:open', (_event, config: OverlayConfig) => {
+    return { success: overlayManager.open(config) };
+  });
+
+  ipcMain.handle('overlay:close', () => {
+    return { success: overlayManager.close() };
+  });
+
+  ipcMain.handle('overlay:is-open', () => {
+    return overlayManager.isOpen();
+  });
+
+  ipcMain.handle('overlay:get-config', () => {
+    return overlayManager.getConfig();
+  });
+
+  ipcMain.handle('overlay:set-config', (_event, config: Partial<OverlayConfig>) => {
+    overlayManager.setConfig(config);
+  });
+
+  ipcMain.handle('overlay:save-bounds', (_event, bounds: OverlayBounds) => {
+    overlayManager.setConfig({ bounds, position: 'custom' });
+  });
+
+  ipcMain.handle('overlay:reset-bounds', () => {
+    overlayManager.resetBounds();
+  });
+
+  ipcMain.handle('overlay:send-signal', (_event, payload: OverlaySignalPayload) => {
+    overlayManager.sendSignal(payload);
+  });
+
+  ipcMain.handle('overlay:send-sync-state', (_event, state: OverlaySyncState) => {
+    overlayManager.sendSyncState(state);
+  });
 
   ipcMain.handle('tray:update-voice-status', (_, status: VoiceStatus) => {
     trayManager?.updateVoiceStatus(status);

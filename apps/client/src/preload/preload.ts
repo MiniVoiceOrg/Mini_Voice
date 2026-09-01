@@ -12,6 +12,10 @@ import type {
   ImageSelectionResult,
   LinkPreviewData,
   LogEntry,
+  OverlayBounds,
+  OverlayConfig,
+  OverlaySignalPayload,
+  OverlaySyncState,
   PttConfig,
   PttKeyBinding,
   ScreenAudioDiagnostics,
@@ -28,7 +32,7 @@ import type {
   UpdateSimpleResult,
 } from '@monky/shared';
 
-export type { LinkPreviewData } from '@monky/shared';
+export type { LinkPreviewData, OverlayBounds, OverlayConfig, OverlayMode, OverlayLayout, OverlayPosition, OverlayParticipantState, OverlaySyncState } from '@monky/shared';
 
 export interface ElectronApi {
   startLanDiscovery: () => Promise<void>;
@@ -110,6 +114,22 @@ export interface ElectronApi {
   getAutoStart: () => Promise<boolean>;
   setAutoStart: (enabled: boolean) => Promise<void>;
   setMinimizeToTray: (enabled: boolean) => Promise<void>;
+  // Sobreposição de Tela (Overlay) (#169)
+  openOverlay: (config: OverlayConfig) => Promise<{ success: boolean }>;
+  closeOverlay: () => Promise<{ success: boolean }>;
+  isOverlayOpen: () => Promise<boolean>;
+  getOverlayConfig: () => Promise<OverlayConfig | null>;
+  setOverlayConfig: (config: Partial<OverlayConfig>) => Promise<void>;
+  saveOverlayBounds: (bounds: OverlayBounds) => Promise<void>;
+  resetOverlayBounds: () => Promise<void>;
+  sendOverlaySignal: (payload: OverlaySignalPayload) => Promise<void>;
+  sendOverlaySyncState: (state: OverlaySyncState) => Promise<void>;
+  onOverlayStateChanged: (cb: (isOpen: boolean) => void) => () => void;
+  onOverlayConfigUpdated: (cb: (config: OverlayConfig) => void) => () => void;
+  onOverlaySignalReceived: (cb: (signal: string) => void) => () => void;
+  onOverlaySyncStateReceived: (cb: (state: OverlaySyncState) => void) => () => void;
+  onOverlayCloseRequested: (cb: () => void) => () => void;
+
   // Client Logging (#444)
   writeClientLog: (entry: ClientLogEntry) => Promise<void>;
   getClientLogConfig: () => Promise<ClientLogConfig>;
@@ -292,6 +312,52 @@ const api: ElectronApi = {
   getAutoStart: () => ipcRenderer.invoke('app:get-auto-start'),
   setAutoStart: (enabled: boolean) => ipcRenderer.invoke('app:set-auto-start', enabled),
   setMinimizeToTray: (enabled: boolean) => ipcRenderer.invoke('app:set-minimize-to-tray', enabled),
+  // Sobreposição de Tela (Overlay) (#169)
+  openOverlay: (config) => ipcRenderer.invoke('overlay:open', config),
+  closeOverlay: () => ipcRenderer.invoke('overlay:close'),
+  isOverlayOpen: () => ipcRenderer.invoke('overlay:is-open'),
+  getOverlayConfig: () => ipcRenderer.invoke('overlay:get-config'),
+  setOverlayConfig: (config) => ipcRenderer.invoke('overlay:set-config', config),
+  saveOverlayBounds: (bounds) => ipcRenderer.invoke('overlay:save-bounds', bounds),
+  resetOverlayBounds: () => ipcRenderer.invoke('overlay:reset-bounds'),
+  sendOverlaySignal: (payload) => ipcRenderer.invoke('overlay:send-signal', payload),
+  sendOverlaySyncState: (state) => ipcRenderer.invoke('overlay:send-sync-state', state),
+  onOverlayStateChanged: (cb) => {
+    const listener = (_e: Electron.IpcRendererEvent, isOpen: boolean) => cb(isOpen);
+    ipcRenderer.on('overlay:state-changed', listener);
+    return () => {
+      ipcRenderer.removeListener('overlay:state-changed', listener);
+    };
+  },
+  onOverlayConfigUpdated: (cb) => {
+    const listener = (_e: Electron.IpcRendererEvent, config: OverlayConfig) => cb(config);
+    ipcRenderer.on('overlay:config-updated', listener);
+    return () => {
+      ipcRenderer.removeListener('overlay:config-updated', listener);
+    };
+  },
+  onOverlaySignalReceived: (cb) => {
+    const listener = (_e: Electron.IpcRendererEvent, signal: string) => cb(signal);
+    ipcRenderer.on('overlay:signal-received', listener);
+    return () => {
+      ipcRenderer.removeListener('overlay:signal-received', listener);
+    };
+  },
+  onOverlaySyncStateReceived: (cb) => {
+    const listener = (_e: Electron.IpcRendererEvent, state: OverlaySyncState) => cb(state);
+    ipcRenderer.on('overlay:sync-state-received', listener);
+    return () => {
+      ipcRenderer.removeListener('overlay:sync-state-received', listener);
+    };
+  },
+  onOverlayCloseRequested: (cb) => {
+    const listener = () => cb();
+    ipcRenderer.on('overlay:close-requested', listener);
+    return () => {
+      ipcRenderer.removeListener('overlay:close-requested', listener);
+    };
+  },
+
   // Client Logging (#444)
   writeClientLog: (entry) => ipcRenderer.invoke('client-log:write', entry),
   getClientLogConfig: () => ipcRenderer.invoke('client-log:get-config'),

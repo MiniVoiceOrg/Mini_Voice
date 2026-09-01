@@ -50,18 +50,25 @@ import { initI18n, t } from './i18n';
 import { toAbsoluteServerIconUrl } from './utils/avatar';
 import { installImageFallback } from './utils/imageFallback';
 import { clientLog } from './core/ClientLogService';
+import { overlayBridgeService } from './core/OverlayBridgeService';
+import { OverlayStageView } from './views/OverlayStageView';
 
 class App {
   private appContainer: HTMLElement;
-  private connectionView: ConnectionView;
-  private mainView: MainView;
+  private connectionView!: ConnectionView;
+  private mainView!: MainView;
 
   constructor() {
     this.appContainer = document.getElementById('app')!;
-    // Any image that fails to load gets a friendly placeholder instead of the
-    // browser's broken-image glyph (#456). Installed first so it also covers
-    // whatever the very first render paints.
     installImageFallback();
+
+    const isOverlay = window.location.search.includes('overlay=1');
+    if (isOverlay) {
+      initI18n();
+      new OverlayStageView(this.appContainer).init();
+      return;
+    }
+
     // Routes incoming server events to the right state bundle. It must be in
     // place before any connection exists, otherwise the first events would be
     // applied to whatever store happens to be active (#400).
@@ -108,8 +115,11 @@ class App {
     // Initialize and sync quality preset to WebRtcManager and VideoService (#474)
     webRtcManager.setQualityPreset(settingsStore.qualityPreset);
 
+    // Initialize overlay bridge service (#169)
+    overlayBridgeService.init();
+
     // Render connection view initially
-    this.connectionView.render();
+    this.connectionView?.render();
 
     // Load soundboard sounds if configured
     soundboardService.loadSounds().catch(() => {});
