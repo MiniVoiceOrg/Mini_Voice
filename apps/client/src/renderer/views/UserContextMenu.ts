@@ -1,6 +1,6 @@
 import { MessageType, Permission, UserSummary } from '@monky/shared';
 import { escapeHtml } from '../utils/html';
-import { getAvatarUrl } from '../utils/avatar';
+import { avatarFileExtension, getAvatarUrl } from '../utils/avatar';
 import { renderRoleOption } from '../utils/roleOption';
 import { settingsStore } from '../stores/settingsStore';
 import { serverStore } from '../stores/serverStore';
@@ -10,7 +10,7 @@ import { appEvents } from '../core/EventBus';
 import { participantManager, ParticipantViewModel } from '../core/ParticipantManager';
 import { networkClient } from '../core/NetworkClient';
 import { showAlert } from './Dialog';
-import { lightboxModal } from './LightboxModal';
+import { downloadLightboxFile, lightboxModal } from './LightboxModal';
 import { warnIfMoveBlocked } from '../utils/channelAccess';
 import { t } from '../i18n';
 
@@ -311,36 +311,24 @@ export class UserContextMenu {
     slider?.addEventListener('input', () => this.applyVolume(user, parseInt(slider.value, 10)));
     const avatarButton = this.menuEl.querySelector<HTMLButtonElement>('#ctx-view-avatar');
     avatarButton?.addEventListener('click', () => {
-      const avatarImg = avatarButton.querySelector('img');
       const url = getAvatarUrl(user.avatarUrl);
-      // O download tem que sair com a extensão real do arquivo, não com um .png
-      // fixo: o avatar pode ser jpeg ou webp.
-      const extension = (user.avatarUrl || '').split('?')[0].match(/\.([a-z0-9]{1,5})$/i)?.[1] ?? 'png';
       // O menu some ao abrir a foto: deixá-lo por cima do lightbox só atrapalha.
       this.close();
       lightboxModal.open(
         [{
           kind: 'image',
           url,
-          fileName: `${user.nickname}.${extension}`,
+          fileName: `${user.nickname}.${avatarFileExtension(user.avatarUrl)}`,
           // O nome já aparece na legenda pelo nome do arquivo; repetir aqui só
           // duplicaria a informação na barra do visualizador.
           senderName: '',
           timestamp: '',
-          source: avatarImg ?? document.body,
+          // `source` só é lido no ramo de vídeo, para herdar o tempo e o volume
+          // do player embutido; uma imagem não tem o que herdar.
+          source: document.body,
         }],
         0,
-        async (fileUrl, name) => {
-          if (!window.api?.downloadFile) return;
-          const result = await window.api.downloadFile(fileUrl, name);
-          if (!result.success && result.error) {
-            await showAlert({
-              title: t('chat.downloadFailedTitle'),
-              message: t('chat.downloadFailedMessage', { error: result.error }),
-              variant: 'danger',
-            });
-          }
-        }
+        downloadLightboxFile
       );
     });
 
