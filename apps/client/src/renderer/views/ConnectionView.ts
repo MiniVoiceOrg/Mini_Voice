@@ -6,12 +6,14 @@ import { networkClient } from '../core/NetworkClient';
 import { openServerSession } from '../core/serverConnection';
 import { getAvatarUrl } from '../utils/avatar';
 import { settingsModal } from './SettingsModal';
+import { settingsStore } from '../stores/settingsStore';
 import { withButtonLoading } from '../utils/buttonLoading';
 import { showAlert, showConfirm } from './Dialog';
 import { pickAndCropImage } from './ImageCropModal';
 import { showIdentityImportDialog } from './IdentityDialogs';
 import { serverMonitorModal } from './ServerMonitorModal';
 import { confirmStopHostedServer } from '../utils/hostedServer';
+import { onboardingWizard } from './OnboardingWizard';
 import logoUrl from '../assets/Logo.png';
 import { getLanguage, t } from '../i18n';
 
@@ -32,6 +34,7 @@ export class ConnectionView {
   private runningCreatedServerId: string | null = null;
   private runningHostedPort: number | null = null;
   private readonly discoveredServers: Map<string, DiscoveredServer> = new Map();
+  private onboardingAutoOpened: boolean = false;
 
   constructor(container: HTMLElement) {
     this.container = container;
@@ -242,6 +245,11 @@ export class ConnectionView {
             </div>
             <div class="brand-tagline" style="font-size: 12px; color: var(--text-secondary); margin-top: 2px;">${t('connection.tagline')}</div>
           </div>
+
+          <!-- Onboarding help button -->
+          <button class="onboarding-help-btn" id="btn-onboarding">
+            ${t('onboarding.helpButton')}
+          </button>
 
           <div class="nav-tabs" style="margin-bottom: 14px;">
             <button id="tab-join" class="tab-button ${this.activeTab === 'join' ? 'active' : ''}">${t('connection.tabJoin')}</button>
@@ -877,6 +885,33 @@ export class ConnectionView {
     document.getElementById('btn-open-settings')?.addEventListener('click', (e) => {
       withButtonLoading(e.currentTarget as HTMLElement, () => settingsModal.open());
     });
+
+    // Onboarding wizard button
+    document.getElementById('btn-onboarding')?.addEventListener('click', () => {
+      onboardingWizard.open((action) => {
+        if (action === 'join' && this.activeTab !== 'join') {
+          this.activeTab = 'join';
+          this.render();
+        } else if (action === 'host' && this.activeTab !== 'host') {
+          this.activeTab = 'host';
+          this.render();
+        }
+      });
+    });
+
+    // Auto-open onboarding on first launch
+    if (!settingsStore.onboardingCompleted && !onboardingWizard.isOpen && !this.onboardingAutoOpened) {
+      this.onboardingAutoOpened = true;
+      onboardingWizard.open((action) => {
+        if (action === 'join' && this.activeTab !== 'join') {
+          this.activeTab = 'join';
+          this.render();
+        } else if (action === 'host' && this.activeTab !== 'host') {
+          this.activeTab = 'host';
+          this.render();
+        }
+      });
+    }
 
     importIdentityButton?.addEventListener('click', async () => {
       const identity = await showIdentityImportDialog();
