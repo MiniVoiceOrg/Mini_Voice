@@ -333,19 +333,39 @@ export class ServerStore {
     );
   }
 
-  /** Members ordered by role ranking first, then alphabetically (#262). */
+  /**
+   * Whether a member holds ADMINISTRATOR (the owner included, since the owner
+   * is handed every permission bit). Admin comes from the built-in Admin role,
+   * whose position in the drag-and-drop ranking is arbitrary, so it is checked
+   * by permission instead of by position.
+   */
+  public isAdminMember(userId: string): boolean {
+    return hasPermission(this.getUserPermissions(userId), Permission.ADMINISTRATOR);
+  }
+
+  /**
+   * Ranking used inside each member-list group: admins are pinned above
+   * everyone else regardless of role ordering (#489), then the highest role
+   * position decides, and finally the nickname.
+   */
+  private compareMembersForDisplay(a: UserSummary, b: UserSummary): number {
+    const adminDiff = Number(this.isAdminMember(b.id)) - Number(this.isAdminMember(a.id));
+    if (adminDiff !== 0) return adminDiff;
+    const diff = this.getUserHighestRolePosition(b.id) - this.getUserHighestRolePosition(a.id);
+    if (diff !== 0) return diff;
+    return a.nickname.localeCompare(b.nickname);
+  }
+
+  /** Members ordered by admin, then role ranking, then alphabetically (#262, #489). */
   public getMembersInDisplayOrder(): UserSummary[] {
     const members = [...(this.serverDetails?.members ?? [])];
-    return members.sort((a, b) => {
-      const diff = this.getUserHighestRolePosition(b.id) - this.getUserHighestRolePosition(a.id);
-      if (diff !== 0) return diff;
-      return a.nickname.localeCompare(b.nickname);
-    });
+    return members.sort((a, b) => this.compareMembersForDisplay(a, b));
   }
 
   /**
    * Returns all known members (online + offline), sorted with online/voice
-   * users first, then offline, each sub-group sorted by role then name (#401).
+   * users first, then offline, each sub-group sorted by admin, then role, then
+   * name (#401, #489).
    */
   public getAllMembersInDisplayOrder(): UserSummary[] {
     const onlineIds = new Set((this.serverDetails?.members ?? []).map((m) => m.id));
@@ -366,9 +386,7 @@ export class ServerStore {
       const aOnline = onlineIds.has(a.id) ? 0 : 1;
       const bOnline = onlineIds.has(b.id) ? 0 : 1;
       if (aOnline !== bOnline) return aOnline - bOnline;
-      const diff = this.getUserHighestRolePosition(b.id) - this.getUserHighestRolePosition(a.id);
-      if (diff !== 0) return diff;
-      return a.nickname.localeCompare(b.nickname);
+      return this.compareMembersForDisplay(a, b);
     });
   }
 
