@@ -1,4 +1,4 @@
-export const PROTOCOL_VERSION = 4;
+export const PROTOCOL_VERSION = 5;
 
 export const LIMITS = {
   MAX_MESSAGE_LENGTH: 2000,

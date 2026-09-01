@@ -16,7 +16,7 @@ export class SqliteServerRepository implements IServerRepository {
   constructor(private db: IDatabaseDriver) {}
 
   async getServer(): Promise<ServerRecord | null> {
-    const row = this.db.prepare('SELECT id, name, password_hash as passwordHash, created_at as createdAt, max_users as maxUsers, owner_user_id as ownerUserId, allow_soundboard as allowSoundboard, allow_everyone_mention as allowEveryoneMention, icon_path as iconPath, max_attachment_file_bytes as maxAttachmentFileBytes, max_attachment_storage_bytes as maxAttachmentStorageBytes, turn_enabled as turnEnabled, turn_secret as turnSecret FROM server_meta LIMIT 1').get() as any;
+    const row = this.db.prepare('SELECT id, name, password_hash as passwordHash, created_at as createdAt, max_users as maxUsers, owner_user_id as ownerUserId, allow_soundboard as allowSoundboard, allow_everyone_mention as allowEveryoneMention, allow_message_edit as allowMessageEdit, icon_path as iconPath, max_attachment_file_bytes as maxAttachmentFileBytes, max_attachment_storage_bytes as maxAttachmentStorageBytes, turn_enabled as turnEnabled, turn_secret as turnSecret FROM server_meta LIMIT 1').get() as any;
     if (!row) return null;
     return {
       id: row.id,
@@ -27,6 +27,7 @@ export class SqliteServerRepository implements IServerRepository {
       ownerUserId: row.ownerUserId ?? null,
       allowSoundboard: row.allowSoundboard !== undefined ? Boolean(row.allowSoundboard) : true,
       allowEveryoneMention: row.allowEveryoneMention !== undefined ? Boolean(row.allowEveryoneMention) : true,
+      allowMessageEdit: row.allowMessageEdit !== undefined ? Boolean(row.allowMessageEdit) : true,
       iconPath: row.iconPath || null,
       maxAttachmentFileBytes: row.maxAttachmentFileBytes ?? null,
       maxAttachmentStorageBytes: row.maxAttachmentStorageBytes ?? null,
@@ -78,6 +79,10 @@ export class SqliteServerRepository implements IServerRepository {
     if (server.allowEveryoneMention !== undefined) {
       fields.push('allow_everyone_mention = ?');
       values.push(server.allowEveryoneMention ? 1 : 0);
+    }
+    if (server.allowMessageEdit !== undefined) {
+      fields.push('allow_message_edit = ?');
+      values.push(server.allowMessageEdit ? 1 : 0);
     }
     if (server.iconPath !== undefined) {
       fields.push('icon_path = ?');
@@ -350,6 +355,25 @@ interface SqliteMessageRow {
   content: string;
   createdAt: number;
   isSystem: number;
+  editedAt: number | null;
+  deletedAt: number | null;
+}
+
+/** Columns every message read shares, so the three queries cannot drift (#504). */
+const MESSAGE_COLUMNS =
+  'id, channel_id as channelId, user_id as userId, content, created_at as createdAt, is_system as isSystem, edited_at as editedAt, deleted_at as deletedAt';
+
+function toMessageRecord(r: SqliteMessageRow): MessageRecord {
+  return {
+    id: r.id,
+    channelId: r.channelId,
+    userId: r.userId,
+    content: r.content,
+    createdAt: r.createdAt,
+    isSystem: Boolean(r.isSystem),
+    editedAt: r.editedAt ?? null,
+    deletedAt: r.deletedAt ?? null,
+  };
 }
 
 export class SqliteMessageRepository implements IMessageRepository {
@@ -368,34 +392,37 @@ export class SqliteMessageRepository implements IMessageRepository {
     ).run(message.id, message.channelId, message.userId, message.content, message.createdAt, message.isSystem ? 1 : 0);
   }
 
+  async findById(messageId: string): Promise<MessageRecord | null> {
+    const row = this.db.prepare(
+      `SELECT ${MESSAGE_COLUMNS} FROM messages WHERE id = ?`
+    ).get(messageId) as SqliteMessageRow | undefined;
+    return row ? toMessageRecord(row) : null;
+  }
+
   async listByChannel(channelId: string, limit: number, beforeTimestamp?: number): Promise<MessageRecord[]> {
     if (beforeTimestamp) {
       const rows = this.db.prepare(
-        'SELECT id, channel_id as channelId, user_id as userId, content, created_at as createdAt, is_system as isSystem FROM messages WHERE channel_id = ? AND created_at < ? ORDER BY created_at DESC LIMIT ?'
+        `SELECT ${MESSAGE_COLUMNS} FROM messages WHERE channel_id = ? AND created_at < ? ORDER BY created_at DESC LIMIT ?`
       ).all(channelId, beforeTimestamp, limit) as SqliteMessageRow[];
 
-      return rows.reverse().map((r) => ({
-        id: r.id,
-        channelId: r.channelId,
-        userId: r.userId,
-        content: r.content,
-        createdAt: r.createdAt,
-        isSystem: Boolean(r.isSystem),
-      }));
+      return rows.reverse().map(toMessageRecord);
     }
 
     const rows = this.db.prepare(
-      'SELECT id, channel_id as channelId, user_id as userId, content, created_at as createdAt, is_system as isSystem FROM messages WHERE channel_id = ? ORDER BY created_at DESC LIMIT ?'
+      `SELECT ${MESSAGE_COLUMNS} FROM messages WHERE channel_id = ? ORDER BY created_at DESC LIMIT ?`
     ).all(channelId, limit) as SqliteMessageRow[];
 
-    return rows.reverse().map((r) => ({
-      id: r.id,
-      channelId: r.channelId,
-      userId: r.userId,
-      content: r.content,
-      createdAt: r.createdAt,
-      isSystem: Boolean(r.isSystem),
-    }));
+    return rows.reverse().map(toMessageRecord);
+  }
+
+  async updateContent(messageId: string, content: string, editedAt: number): Promise<void> {
+    this.db.prepare('UPDATE messages SET content = ?, edited_at = ? WHERE id = ?').run(content, editedAt, messageId);
+  }
+
+  async markDeleted(messageId: string, deletedAt: number): Promise<void> {
+    // The content goes with the deletion: keeping it would leave the text one
+    // query away from anyone with access to the database file (#504).
+    this.db.prepare("UPDATE messages SET content = '', deleted_at = ? WHERE id = ?").run(deletedAt, messageId);
   }
 
   async deleteByChannel(channelId: string): Promise<void> {

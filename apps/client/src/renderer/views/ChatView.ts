@@ -7,12 +7,13 @@ import { chatStore } from '../stores/chatStore';
 import { serverStore } from '../stores/serverStore';
 import { participantManager } from '../core/ParticipantManager';
 import { userContextMenu } from './UserContextMenu';
+import { contextMenu, ContextMenuItem } from './ContextMenu';
 import { getAvatarUrl } from '../utils/avatar';
 import { renderMarkdown } from '../utils/markdown';
 import { getLanguage, t } from '../i18n';
 import { uploadAttachment, UploadHandle } from '../core/AttachmentUploader';
 import { getAttachmentUrl, formatBytes, fileIconName } from '../utils/attachment';
-import { showAlert } from './Dialog';
+import { showAlert, showConfirm } from './Dialog';
 import { downloadLightboxFile, lightboxModal, LightboxMedia } from './LightboxModal';
 import { linkPreviewService } from '../core/LinkPreviewService';
 import { initializeCustomVideoPlayers } from '../utils/videoPlayer';
@@ -58,6 +59,8 @@ export class ChatView {
   private mentionAtIndex = -1;
   // Files picked for the next message, keyed by a local id (#11).
   private pending: PendingAttachment[] = [];
+  /** Message currently open in the inline editor, if any (#504). */
+  private editingMessageId: string | null = null;
   private uploadSeq = 0;
   /** Emoji/sticker popover anchored to the composer (#356). */
   private emojiPicker: EmojiPicker | null = null;
@@ -168,6 +171,9 @@ export class ChatView {
     // Read before the feed is replaced: new messages only pull the view down when
     // the user is already reading the end of the conversation (#270).
     const shouldScroll = options.forceScroll === true || this.isFeedAtBottom(feed);
+
+    // The feed is rebuilt from scratch, so any open inline editor goes with it.
+    this.editingMessageId = null;
 
     const messages = chatStore.getMessages(this.currentChannelId);
     if (messages.length === 0) {
@@ -292,6 +298,15 @@ export class ChatView {
         const userId = row.getAttribute('data-user-id');
         if (!userId) return;
 
+        // Editing/deleting acts on this specific message, so it takes
+        // precedence over the per-person menu (#504).
+        const messageActions = this.buildMessageMenuItems(row.getAttribute('data-message-id'));
+        if (messageActions.length > 0) {
+          mouseEvent.preventDefault();
+          contextMenu.open(mouseEvent.clientX, mouseEvent.clientY, messageActions);
+          return;
+        }
+
         const targetUser =
           participantManager.getByUserId(userId)?.user ||
           serverStore.serverDetails?.members.find((m) => m.id === userId);
@@ -305,6 +320,173 @@ export class ChatView {
 
     this.bindMediaInteractions(container);
     initializeCustomVideoPlayers(container);
+  }
+
+  /**
+   * The Edit / Delete entries offered for one message (#504).
+   *
+   * Editing belongs to the author alone and only while the server allows it;
+   * deleting is the author's too, plus anyone with MANAGE_SERVER, who needs to
+   * be able to clean up after other people. Deleted and system messages offer
+   * nothing.
+   */
+  private buildMessageMenuItems(messageId: string | null): ContextMenuItem[] {
+    if (!messageId || !this.currentChannelId) return [];
+    const message = chatStore.getMessages(this.currentChannelId).find((m) => m.id === messageId);
+    if (!message || message.isSystem || message.deletedAt) return [];
+
+    const isAuthor = !!serverStore.currentUser && message.userId === serverStore.currentUser.id;
+    const canModerate = serverStore.hasPermission(Permission.MANAGE_SERVER);
+    const editingAllowed = serverStore.serverDetails?.allowMessageEdit !== false;
+
+    const items: ContextMenuItem[] = [];
+    if (isAuthor && editingAllowed) {
+      items.push({
+        label: t('chat.editMessage'),
+        icon: 'edit',
+        onClick: () => this.startEditingMessage(message.id),
+      });
+    }
+    if (isAuthor || canModerate) {
+      items.push({
+        label: t('chat.deleteMessage'),
+        icon: 'delete',
+        danger: true,
+        onClick: () => void this.confirmDeleteMessage(message.id),
+      });
+    }
+    return items;
+  }
+
+  /** Swaps a message's text for an inline editor (#504). */
+  private startEditingMessage(messageId: string): void {
+    if (!this.currentChannelId) return;
+    const row = document.querySelector<HTMLElement>(
+      `#chat-messages-feed .chat-message-row[data-message-id="${CSS.escape(messageId)}"]`
+    );
+    const message = chatStore.getMessages(this.currentChannelId).find((m) => m.id === messageId);
+    if (!row || !message) return;
+
+    // Only one editor at a time, otherwise leaving one open and starting
+    // another would strand the first without a way back.
+    this.cancelMessageEdit();
+
+    const body = row.querySelector('.chat-message-body');
+    const textEl = row.querySelector<HTMLElement>('.chat-message-text');
+    if (!body) return;
+
+    const editor = document.createElement('div');
+    editor.className = 'chat-message-editor';
+    editor.innerHTML = `
+      <textarea class="chat-message-edit-input" rows="1">${escapeHtml(message.content)}</textarea>
+      <div class="chat-message-edit-hint">${t('chat.editHint')}</div>
+    `;
+
+    if (textEl) textEl.style.display = 'none';
+    body.insertBefore(editor, textEl ? textEl.nextSibling : null);
+    this.editingMessageId = messageId;
+
+    const input = editor.querySelector('textarea') as HTMLTextAreaElement;
+    const autoGrow = () => {
+      input.style.height = 'auto';
+      input.style.height = `${input.scrollHeight}px`;
+    };
+    autoGrow();
+    input.focus();
+    input.setSelectionRange(input.value.length, input.value.length);
+
+    input.addEventListener('input', autoGrow);
+    input.addEventListener('keydown', (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        e.preventDefault();
+        this.cancelMessageEdit();
+        return;
+      }
+      // Shift+Enter keeps inserting line breaks, same as the composer.
+      if (e.key === 'Enter' && !e.shiftKey) {
+        e.preventDefault();
+        this.submitMessageEdit(messageId, input.value);
+      }
+    });
+  }
+
+  private submitMessageEdit(messageId: string, content: string): void {
+    const trimmed = content.trim();
+    const original = this.currentChannelId
+      ? chatStore.getMessages(this.currentChannelId).find((m) => m.id === messageId)
+      : undefined;
+
+    // An empty edit is a deletion in disguise; asking for it explicitly keeps
+    // the two actions distinguishable in the UI (#504).
+    if (trimmed.length === 0) {
+      this.cancelMessageEdit();
+      void this.confirmDeleteMessage(messageId);
+      return;
+    }
+
+    if (!original || trimmed === original.content) {
+      this.cancelMessageEdit();
+      return;
+    }
+
+    networkClient.send(MessageType.CHAT_EDIT, {
+      channelId: original.channelId,
+      messageId,
+      content: trimmed,
+    });
+    this.cancelMessageEdit();
+  }
+
+  /** Closes the inline editor and puts the original text back on screen. */
+  private cancelMessageEdit(): void {
+    if (!this.editingMessageId) return;
+    const row = document.querySelector<HTMLElement>(
+      `#chat-messages-feed .chat-message-row[data-message-id="${CSS.escape(this.editingMessageId)}"]`
+    );
+    this.editingMessageId = null;
+    if (!row) return;
+    row.querySelector('.chat-message-editor')?.remove();
+    const textEl = row.querySelector<HTMLElement>('.chat-message-text');
+    if (textEl) textEl.style.display = '';
+  }
+
+  private async confirmDeleteMessage(messageId: string): Promise<void> {
+    if (!this.currentChannelId) return;
+    const message = chatStore.getMessages(this.currentChannelId).find((m) => m.id === messageId);
+    if (!message) return;
+
+    const confirmed = await showConfirm({
+      title: t('chat.deleteMessageTitle'),
+      message: t('chat.deleteMessageConfirm'),
+      confirmLabel: t('chat.deleteMessage'),
+      variant: 'danger',
+    });
+    if (!confirmed) return;
+
+    networkClient.send(MessageType.CHAT_DELETE, {
+      channelId: message.channelId,
+      messageId,
+    });
+  }
+
+  /** Redraws one row in place after an edit or a deletion (#504). */
+  private replaceMessageRow(msg: ChatMessage): void {
+    const feed = document.getElementById('chat-messages-feed');
+    if (!feed) return;
+    const row = feed.querySelector<HTMLElement>(
+      `.chat-message-row[data-message-id="${CSS.escape(msg.id)}"]`
+    );
+    if (!row) return;
+
+    if (this.editingMessageId === msg.id) this.cancelMessageEdit();
+
+    const wrapper = document.createElement('div');
+    wrapper.innerHTML = this.renderMessageRow(msg);
+    const newRow = wrapper.firstElementChild as HTMLElement | null;
+    if (!newRow) return;
+
+    row.replaceWith(newRow);
+    this.bindMessageElementEvents(newRow);
   }
 
   /** Whether the feed is scrolled close enough to the end to count as "at the end" (#270). */
@@ -494,6 +676,27 @@ export class ChatView {
     }
 
     const avatarSrc = getAvatarUrl(m.userAvatarUrl);
+
+    // A deleted message keeps its place in the conversation with a placeholder
+    // instead of vanishing, so nothing silently reshuffles under the reader
+    // (#504). Its text, stickers, attachments and link previews are all gone.
+    if (m.deletedAt) {
+      return `
+        <div class="chat-message-row chat-message-deleted" data-user-id="${m.userId}" data-message-id="${m.id}">
+          <img class="chat-author-avatar" src="${avatarSrc}" data-fallback="avatar">
+          <div class="chat-message-body">
+            <div class="chat-author-header">
+              <span class="chat-author-name">${escapeHtml(m.userNickname)}</span>
+              <span class="chat-timestamp">${time}</span>
+            </div>
+            <div class="chat-message-deleted-text">
+              <span class="material-symbols-outlined md-14">block</span>
+              <span>${t('chat.messageDeleted')}</span>
+            </div>
+          </div>
+        </div>
+      `;
+    }
     // Attachments flagged as stickers are drawn as fixed-size squares instead of
     // going into the regular media grid (#356). A marker only takes effect when
     // it resolves to an image attachment of this message: anything else (a
@@ -528,6 +731,7 @@ export class ChatView {
           <div class="chat-author-header">
             <span class="chat-author-name">${escapeHtml(m.userNickname)}</span>
             <span class="chat-timestamp">${time}</span>
+            ${m.editedAt ? `<span class="chat-edited-badge" title="${escapeHtml(t('chat.editedAtTitle', { time: this.formatDateTime(m.editedAt) }))}">${t('chat.messageEdited')}</span>` : ''}
           </div>
           ${textHtml}
           ${stickersHtml}
@@ -1120,7 +1324,13 @@ export class ChatView {
       }
     });
 
-    this.unbindEvents.push(u1, u2, u3, u4);
+    // Only the affected row is redrawn: rebuilding the whole feed would drop
+    // the reader's scroll position and reload every image (#504).
+    const u5 = appEvents.on('chat.message_updated', (msg: ChatMessage) => {
+      if (msg.channelId === this.currentChannelId) this.replaceMessageRow(msg);
+    });
+
+    this.unbindEvents.push(u1, u2, u3, u4, u5);
   }
 
   private scrollToBottom(): void {

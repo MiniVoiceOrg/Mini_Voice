@@ -10,6 +10,7 @@ export interface ServerRecord {
   allowSoundboard?: boolean;
   /** Whether `@todos` / `@everyone` pings the whole channel (#464). */
   allowEveryoneMention?: boolean;
+  allowMessageEdit?: boolean;
   iconPath?: string | null;
   // Attachment storage limits in bytes (#11); null → shared defaults.
   maxAttachmentFileBytes?: number | null;
@@ -56,6 +57,10 @@ export interface MessageRecord {
   content: string;
   createdAt: number;
   isSystem?: boolean;
+  /** Set when the author rewrote the message (#504). */
+  editedAt?: number | null;
+  /** Set when the message was deleted; its content is blanked at the same time (#504). */
+  deletedAt?: number | null;
 }
 
 export interface MentionRecord {
