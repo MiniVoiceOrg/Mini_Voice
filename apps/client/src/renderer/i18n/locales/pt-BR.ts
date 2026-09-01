@@ -1001,6 +1001,7 @@ export const ptBR = {
   'tutorial.stepOf': 'Passo {current} de {total}',
   'tutorial.tip': 'Dica',
   'tutorial.imagePlaceholder': 'Imagem ilustrativa em breve',
+  'tutorial.expandImage': 'Clique para ampliar',
   'tutorial.copied': 'Copiado!',
 
   // ── Radmin VPN Tutorial ──────────────────────────────────────────────
@@ -1085,6 +1086,9 @@ export const ptBR = {
   'tutorial.portForward.step5.title': 'Conectar no Monky',
   'tutorial.portForward.step5.content': 'Crie o servidor no Monky e compartilhe seu <strong>IP público</strong> e a <strong>porta</strong> com seus amigos. Eles digitam esses dados na aba "Entrar".',
   'tutorial.portForward.step5.tip': 'Se seu IP muda frequentemente, considere usar um serviço de DNS dinâmico (DDNS) como No-IP ou DuckDNS para ter um endereço fixo.',
+  'tutorial.portForward.step6.title': 'Se não funcionar: CGNAT',
+  'tutorial.portForward.step6.content': 'Abriu a porta certa e mesmo assim ninguém entra? Provavelmente seu provedor usa <strong>CGNAT</strong> — comum em internet móvel e em boa parte dos provedores residenciais. Nesse caso o endereço que aparece em "meu IP" é compartilhado com outros clientes, e <strong>não existe porta para abrir</strong>: a regra no seu roteador não tem efeito nenhum.<br><br>As saídas são <strong>usar uma VPN</strong> (volte e escolha essa opção) ou <strong>hospedar numa VPS</strong>.',
+  'tutorial.portForward.step6.tip': 'O <strong>relay de mídia (TURN)</strong> do Monky resolve voz e vídeo entre dois membros atrás de CGNAT, mas ele só roda em servidor <strong>Linux com IP público</strong> — ou seja, numa VPS, não no seu PC de casa.',
 
   // ── VPS Oracle Tutorial ──────────────────────────────────────────────
   'tutorial.vpsOracle.name': 'VPS na Oracle Cloud (Grátis)',
@@ -1113,6 +1117,22 @@ export const ptBR = {
   'tutorial.vpsGeneric.step4.title': 'Criar, rodar e compartilhar',
   'tutorial.vpsGeneric.step4.content': 'Crie o servidor com:<code class="tutorial-cmd">monky create</code>O assistente interativo guia tudo. Compartilhe o <strong>IP público da VM</strong> e a <strong>porta</strong> com seus amigos.',
   'tutorial.vpsGeneric.step4.tip': 'O servidor roda como daemon e volta sozinho após reboot. Use <strong>monky status</strong> e <strong>monky logs</strong> para monitorar.',
+
+  // ── Tutorial: entrar num servidor ──────────────────────────────────────────
+  'tutorial.join.name': 'Entrar num servidor',
+  'tutorial.join.step1.title': 'O que pedir para quem hospeda',
+  'tutorial.join.step1.content': 'Para entrar você precisa de três coisas de quem criou o servidor: o <strong>endereço</strong> (um IP ou domínio), a <strong>porta</strong> (padrão <strong>3000</strong>) e a <strong>senha</strong>, se houver.',
+  'tutorial.join.step1.tip': 'Se te mandaram um convite, ele já traz endereço e porta — você só confirma.',
+  'tutorial.join.step2.title': 'Mesma casa? Nem precisa do IP',
+  'tutorial.join.step2.content': 'Se você e quem hospeda estão no <strong>mesmo Wi-Fi</strong>, clique em <strong>"Procurar"</strong> na aba Entrar. O Monky acha sozinho os servidores da rede local e mostra cada um com um ponto verde — basta clicar em <strong>Entrar</strong>.',
+  'tutorial.join.step2.tip': 'Se nada aparecer, ou o servidor está em outra rede, ou o firewall de quem hospeda está bloqueando a descoberta.',
+  'tutorial.join.step3.title': 'Preencher os dados',
+  'tutorial.join.step3.content': 'Na aba <strong>Entrar</strong>:<br>• <strong>Apelido</strong> — o nome que os outros vão ver<br>• <strong>Endereço</strong> — o IP ou domínio que te passaram<br>• <strong>Porta</strong> — normalmente 3000<br>• <strong>Senha</strong> — deixe vazio se o servidor não tiver',
+  'tutorial.join.step4.title': 'Sua identidade é uma chave, não um cadastro',
+  'tutorial.join.step4.content': 'O Monky não tem conta nem cadastro. Na primeira vez ele gera um <strong>par de chaves</strong> nesta máquina, e é isso que identifica você em qualquer servidor.<br><br>Por isso, entrar com o <strong>mesmo apelido</strong> em outro computador não faz de você a mesma pessoa aos olhos do servidor.',
+  'tutorial.join.step4.tip': 'Para usar a mesma identidade em outra máquina, exporte-a nas configurações e importe no outro computador.',
+  'tutorial.join.step5.title': 'Se não conectar',
+  'tutorial.join.step5.content': 'Os motivos mais comuns, nesta ordem:<br>• <strong>Senha errada</strong> — confirme com quem hospeda<br>• <strong>Versões diferentes</strong> — cliente e servidor precisam ser da mesma versão do Monky<br>• <strong>Servidor desligado</strong>, ou endereço/porta trocados<br>• <strong>Firewall</strong> de quem hospeda bloqueando a porta',
 
   // ── Sobreposição de Tela Flutuante (Overlay) (#169) ───────────────────
   'overlay.openOverlay': 'Sobreposição de tela',

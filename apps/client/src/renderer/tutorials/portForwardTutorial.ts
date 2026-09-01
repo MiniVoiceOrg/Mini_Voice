@@ -28,5 +28,12 @@ export const portForwardTutorial: TutorialDefinition = {
       content: 'tutorial.portForward.step5.content',
       tip: 'tutorial.portForward.step5.tip',
     },
+    // Abrir porta não resolve atrás de CGNAT, e o relay já existe desde a #428.
+    // Sem este passo o tutorial manda tentar e não diz o que fazer quando falha.
+    {
+      title: 'tutorial.portForward.step6.title',
+      content: 'tutorial.portForward.step6.content',
+      tip: 'tutorial.portForward.step6.tip',
+    },
   ],
 };

@@ -3,7 +3,7 @@ import { getAvatarUrl } from '../../../utils/avatar';
 import { serverStore } from '../../../stores/serverStore';
 import { t } from '../../../i18n';
 import { LIMITS } from '@monky/shared';
-import logoUrl from '../../../assets/logo.png';
+import logoUrl from '../../../assets/Logo.png';
 
 export class ServerGeneralTab {
   /**

@@ -8,6 +8,7 @@ import { hamachiTutorial } from '../tutorials/vpn/hamachiTutorial';
 import { zerotierTutorial } from '../tutorials/vpn/zerotierTutorial';
 import { portForwardTutorial } from '../tutorials/portForwardTutorial';
 import { lanTutorial } from '../tutorials/lanTutorial';
+import { joinTutorial } from '../tutorials/joinTutorial';
 import { vpsOracleFreeTutorial, vpsGenericTutorial } from '../tutorials/vpsTutorial';
 
 type WizardScreen = 'welcome' | 'host-method' | 'vpn-select' | 'vps-select';
@@ -349,6 +350,9 @@ export class OnboardingWizard {
     this.modalEl?.querySelector('#onboarding-join')?.addEventListener('click', () => {
       this.markCompleted();
       this.close('join');
+      // Quem foi convidado é o usuário mais comum e era o único que saía daqui
+      // sem orientação nenhuma (#496).
+      tutorialViewer.open(joinTutorial);
     });
     this.modalEl?.querySelector('#onboarding-host')?.addEventListener('click', () => {
       this.screen = 'host-method';

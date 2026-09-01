@@ -83,11 +83,17 @@ export class TutorialViewer {
             ${t(step.title)}
           </h3>
 
-          <!-- Placeholder image -->
-          <div class="tutorial-image-placeholder">
-            <span class="material-symbols-outlined" style="font-size: 32px; color: var(--text-muted);">image</span>
-            <span style="font-size: 11px; color: var(--text-muted);">${t('tutorial.imagePlaceholder')}</span>
-          </div>
+          ${step.image ? `
+            <button class="tutorial-image" id="tutorial-image-expand" title="${t('tutorial.expandImage')}">
+              <img src="${step.image}" alt="${t(step.imageAlt ?? step.title)}" draggable="false">
+              <span class="material-symbols-outlined tutorial-image-zoom">zoom_in</span>
+            </button>
+          ` : `
+            <div class="tutorial-image-placeholder">
+              <span class="material-symbols-outlined" style="font-size: 32px; color: var(--text-muted);">image</span>
+              <span style="font-size: 11px; color: var(--text-muted);">${t('tutorial.imagePlaceholder')}</span>
+            </div>
+          `}
 
           <div class="tutorial-content" style="font-size: 13px; color: var(--text-secondary); line-height: 1.65;">
             ${t(step.content)}
@@ -139,6 +145,14 @@ export class TutorialViewer {
     });
     this.modalEl?.querySelector('#tutorial-finish')?.addEventListener('click', () => this.close());
 
+    const expandBtn = this.modalEl?.querySelector('#tutorial-image-expand');
+    if (expandBtn) {
+      const step = this.definition?.steps[this.currentStep];
+      expandBtn.addEventListener('click', () => {
+        if (step?.image) this.expandImage(step.image, t(step.imageAlt ?? step.title));
+      });
+    }
+
     // Make links inside tutorial content open in the system browser
     this.modalEl?.querySelectorAll('.tutorial-content a').forEach((el) => {
       el.addEventListener('click', (e) => {
@@ -171,6 +185,46 @@ export class TutorialViewer {
       });
       block.appendChild(copyBtn);
     });
+  }
+
+  /**
+   * Opens the step illustration bigger, over the tutorial card.
+   *
+   * Deliberately not the chat's `LightboxModal`: that one is fullscreen and its
+   * API wants a sender and a timestamp, which a tutorial screenshot does not
+   * have. The issue asked for "bigger, it does not need to be fullscreen"
+   * (#496), so this stays a plain overlay — no download, no navigation between
+   * images, closes on Esc or on a click outside the picture.
+   */
+  private expandImage(src: string, alt: string): void {
+    const overlay = document.createElement('div');
+    overlay.className = 'tutorial-image-overlay';
+    overlay.innerHTML = `
+      <figure class="tutorial-image-expanded">
+        <img src="${src}" alt="${alt}" draggable="false">
+      </figure>
+      <button class="tutorial-image-close" title="${t('common.close')}">
+        <span class="material-symbols-outlined">close</span>
+      </button>
+    `;
+
+    const fechar = (): void => {
+      document.removeEventListener('keydown', onKey);
+      overlay.remove();
+    };
+    const onKey = (e: KeyboardEvent): void => {
+      // Esc fecha só a imagem; sem isto ele fecharia o tutorial inteiro atrás.
+      if (e.key === 'Escape') {
+        e.stopPropagation();
+        fechar();
+      }
+    };
+
+    overlay.addEventListener('click', (e) => {
+      if (e.target === overlay || (e.target as HTMLElement).closest('.tutorial-image-close')) fechar();
+    });
+    document.addEventListener('keydown', onKey, true);
+    document.body.appendChild(overlay);
   }
 
   /**

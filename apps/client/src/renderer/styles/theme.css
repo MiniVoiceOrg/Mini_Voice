@@ -6825,6 +6825,96 @@ button:hover .role-option-check:not(.checked) {
   border-radius: var(--radius-md);
 }
 
+/* ── Tutorial illustration (#496) ─────────────────────────────────────────── */
+.tutorial-image {
+  position: relative;
+  display: block;
+  width: 100%;
+  margin: 0 0 14px 0;
+  padding: 0;
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-md);
+  background: var(--bg-tertiary);
+  overflow: hidden;
+  cursor: zoom-in;
+}
+.tutorial-image img {
+  display: block;
+  width: 100%;
+  height: auto;
+}
+.tutorial-image:hover,
+.tutorial-image:focus-visible {
+  border-color: var(--accent-primary);
+}
+.tutorial-image-zoom {
+  position: absolute;
+  right: 8px;
+  bottom: 8px;
+  padding: 4px;
+  font-size: 18px;
+  color: #fff;
+  background: rgba(0, 0, 0, 0.55);
+  border-radius: var(--radius-sm, 4px);
+  opacity: 0;
+  transition: opacity 0.15s ease;
+}
+.tutorial-image:hover .tutorial-image-zoom,
+.tutorial-image:focus-visible .tutorial-image-zoom {
+  opacity: 1;
+}
+
+/* Ampliar: maior, e de propósito não é tela cheia (#496). Fica acima do
+   `.modal-backdrop` (z-index 1000) para cobrir o card do tutorial. */
+.tutorial-image-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 1100;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 40px;
+  background: rgba(0, 0, 0, 0.82);
+  cursor: zoom-out;
+  animation: onboarding-fade-in 0.15s ease;
+}
+.tutorial-image-expanded {
+  margin: 0;
+  max-width: 88vw;
+  max-height: 86vh;
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-md);
+  background: var(--bg-tertiary);
+  box-shadow: 0 24px 64px rgba(0, 0, 0, 0.6);
+  overflow: hidden;
+  cursor: default;
+}
+.tutorial-image-expanded img {
+  display: block;
+  max-width: 88vw;
+  max-height: 86vh;
+  width: auto;
+  height: auto;
+}
+.tutorial-image-close {
+  position: absolute;
+  top: 16px;
+  right: 20px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  color: #fff;
+  background: rgba(255, 255, 255, 0.12);
+  border: none;
+  border-radius: 50%;
+  cursor: pointer;
+}
+.tutorial-image-close:hover {
+  background: rgba(255, 255, 255, 0.22);
+}
+
 /* ── Tutorial clickable links ─────────────────────────────────────────────── */
 .tutorial-content a {
   color: var(--accent-primary);

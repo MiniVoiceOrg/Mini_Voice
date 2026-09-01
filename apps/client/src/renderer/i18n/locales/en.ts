@@ -1000,6 +1000,7 @@ export const en: TranslationMap = {
   'tutorial.stepOf': 'Step {current} of {total}',
   'tutorial.tip': 'Tip',
   'tutorial.imagePlaceholder': 'Illustration coming soon',
+  'tutorial.expandImage': 'Click to enlarge',
   'tutorial.copied': 'Copied!',
 
   // ── Radmin VPN Tutorial ──────────────────────────────────────────────
@@ -1084,6 +1085,9 @@ export const en: TranslationMap = {
   'tutorial.portForward.step5.title': 'Connect in Monky',
   'tutorial.portForward.step5.content': 'Create the server in Monky and share your <strong>public IP</strong> and <strong>port</strong> with your friends. They enter this info in the Join tab.',
   'tutorial.portForward.step5.tip': 'If your IP changes frequently, consider using a dynamic DNS (DDNS) service like No-IP or DuckDNS for a fixed address.',
+  'tutorial.portForward.step6.title': 'If it does not work: CGNAT',
+  'tutorial.portForward.step6.content': 'Opened the right port and still nobody gets in? Your provider probably uses <strong>CGNAT</strong> — common on mobile internet and on many residential providers. The address shown by "my IP" is then shared with other customers, and <strong>there is no port to open</strong>: the rule on your router has no effect at all.<br><br>The ways out are <strong>using a VPN</strong> (go back and pick that option) or <strong>hosting on a VPS</strong>.',
+  'tutorial.portForward.step6.tip': 'Monky\'s <strong>media relay (TURN)</strong> fixes voice and video between two members behind CGNAT, but it only runs on a <strong>Linux server with a public IP</strong> — that is, on a VPS, not on your home PC.',
 
   // ── VPS Oracle Tutorial ──────────────────────────────────────────────
   'tutorial.vpsOracle.name': 'VPS on Oracle Cloud (Free)',
@@ -1112,6 +1116,22 @@ export const en: TranslationMap = {
   'tutorial.vpsGeneric.step4.title': 'Create, run and share',
   'tutorial.vpsGeneric.step4.content': "Create the server with:<code class=\"tutorial-cmd\">monky create</code>The interactive wizard guides everything. Share the VM's <strong>public IP</strong> and <strong>port</strong> with your friends.",
   'tutorial.vpsGeneric.step4.tip': 'The server runs as a daemon and auto-restarts after reboot. Use <strong>monky status</strong> and <strong>monky logs</strong> to monitor.',
+
+  // ── Tutorial: joining a server ─────────────────────────────────────────────
+  'tutorial.join.name': 'Joining a server',
+  'tutorial.join.step1.title': 'What to ask the host for',
+  'tutorial.join.step1.content': 'To join you need three things from whoever created the server: the <strong>address</strong> (an IP or domain), the <strong>port</strong> (default <strong>3000</strong>) and the <strong>password</strong>, if there is one.',
+  'tutorial.join.step1.tip': 'If you were sent an invite, it already carries the address and port — you just confirm.',
+  'tutorial.join.step2.title': 'Same house? You do not even need the IP',
+  'tutorial.join.step2.content': 'If you and the host are on the <strong>same Wi-Fi</strong>, click <strong>"Scan"</strong> on the Join tab. Monky finds servers on the local network by itself and shows each one with a green dot — just click <strong>Join</strong>.',
+  'tutorial.join.step2.tip': 'If nothing shows up, either the server is on another network or the host firewall is blocking discovery.',
+  'tutorial.join.step3.title': 'Filling in the fields',
+  'tutorial.join.step3.content': 'On the <strong>Join</strong> tab:<br>• <strong>Nickname</strong> — the name others will see<br>• <strong>Address</strong> — the IP or domain you were given<br>• <strong>Port</strong> — usually 3000<br>• <strong>Password</strong> — leave it empty if the server has none',
+  'tutorial.join.step4.title': 'Your identity is a key, not an account',
+  'tutorial.join.step4.content': 'Monky has no account and no sign-up. The first time around it generates a <strong>key pair</strong> on this machine, and that is what identifies you on any server.<br><br>So joining with the <strong>same nickname</strong> from another computer does not make you the same person as far as the server is concerned.',
+  'tutorial.join.step4.tip': 'To use the same identity on another machine, export it in the settings and import it on the other computer.',
+  'tutorial.join.step5.title': 'If it does not connect',
+  'tutorial.join.step5.content': 'The most common reasons, in this order:<br>• <strong>Wrong password</strong> — check with the host<br>• <strong>Different versions</strong> — client and server must be the same Monky version<br>• <strong>Server is off</strong>, or the address/port is wrong<br>• <strong>Firewall</strong> on the host side blocking the port',
 
   // ── Floating Transparent Overlay (#169) ──────────────────────────────
   'overlay.openOverlay': 'Floating Overlay',
