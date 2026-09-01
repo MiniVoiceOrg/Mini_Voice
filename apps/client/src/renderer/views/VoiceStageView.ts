@@ -18,6 +18,8 @@ import { showAlert, showConfirm } from './Dialog';
 import { userContextMenu } from './UserContextMenu';
 import { setButtonLoading, isButtonLoading } from '../utils/buttonLoading';
 import { soundboardModal } from './SoundboardModal';
+import { overlayConfigModal } from './OverlayConfigModal';
+import { overlayBridgeService } from '../core/OverlayBridgeService';
 import { t } from '../i18n';
 
 interface ScreenTelemetrySnapshot {
@@ -217,6 +219,9 @@ export class VoiceStageView {
           <button id="stage-btn-screen" class="btn btn-icon ${voiceStore.isScreenSharing ? 'broadcasting-pulse active' : ''}" title="${voiceStore.isScreenSharing ? t('stage.stopScreenShare') : t('main.shareScreen')}">
             <span class="material-symbols-outlined">${voiceStore.isScreenSharing ? 'stop_screen_share' : 'screen_share'}</span>
           </button>
+          <button id="stage-btn-overlay" class="btn btn-icon ${overlayBridgeService.getIsOpen() ? 'broadcasting-pulse active' : ''}" title="${t('overlay.openOverlay')}">
+            <span class="material-symbols-outlined">picture_in_picture_alt</span>
+          </button>
           <button id="stage-btn-soundboard" class="btn btn-icon" title="${t('main.openSoundboard')}">
             <span class="material-symbols-outlined">music_note</span>
           </button>
@@ -224,7 +229,11 @@ export class VoiceStageView {
             <span class="material-symbols-outlined md-18" style="margin-right: 4px;">stop_screen_share</span>
             <span>${t('screenShare.stopSharing')}</span>
           </button>
-          <button id="stage-btn-leave" class="btn btn-danger" style="margin-left: ${voiceStore.isScreenSharing ? '8px' : '12px'}; padding: 0 16px; height: 38px;" title="${t('stage.leaveChannel')}">
+          <button id="stage-btn-stop-overlay" class="btn btn-danger" style="display: ${overlayBridgeService.getIsOpen() ? 'inline-flex' : 'none'}; margin-left: 8px; padding: 0 16px; height: 38px;" title="${t('overlay.closeOverlayBtn')}">
+            <span class="material-symbols-outlined md-18" style="margin-right: 4px;">close</span>
+            <span>${t('overlay.closeOverlayBtn')}</span>
+          </button>
+          <button id="stage-btn-leave" class="btn btn-danger" style="margin-left: 12px; padding: 0 16px; height: 38px;" title="${t('stage.leaveChannel')}">
             <span class="material-symbols-outlined md-18" style="margin-right: 4px;">call_end</span>
             <span>${t('stage.leaveVoice')}</span>
           </button>
@@ -274,15 +283,28 @@ export class VoiceStageView {
       `;
     }
 
+    const btnOverlay = document.getElementById('stage-btn-overlay');
+    if (btnOverlay) {
+      const isOverlayOpen = overlayBridgeService.getIsOpen();
+      btnOverlay.className = `btn btn-icon ${isOverlayOpen ? 'broadcasting-pulse active' : ''}`;
+      btnOverlay.title = t('overlay.openOverlay');
+      btnOverlay.innerHTML = `<span class="material-symbols-outlined">picture_in_picture_alt</span>`;
+    }
+
     const btnStopShare = document.getElementById('stage-btn-stop-share') as HTMLButtonElement | null;
+    const btnStopOverlay = document.getElementById('stage-btn-stop-overlay') as HTMLButtonElement | null;
     const btnLeave = document.getElementById('stage-btn-leave') as HTMLButtonElement | null;
+
     if (btnStopShare) {
       const hasScreenAudio = screenAudioService.getIsCapturing();
       btnStopShare.style.display = voiceStore.isScreenSharing ? 'inline-flex' : 'none';
       btnStopShare.title = hasScreenAudio ? t('stage.stopScreenShareWithAudio') : t('stage.stopScreenShare');
     }
+    if (btnStopOverlay) {
+      btnStopOverlay.style.display = overlayBridgeService.getIsOpen() ? 'inline-flex' : 'none';
+    }
     if (btnLeave) {
-      btnLeave.style.marginLeft = voiceStore.isScreenSharing ? '8px' : '12px';
+      btnLeave.style.marginLeft = '12px';
     }
 
     // Top broadcast banner
@@ -1550,6 +1572,16 @@ export class VoiceStageView {
       }
     });
 
+    const btnOverlay = document.getElementById('stage-btn-overlay');
+    btnOverlay?.addEventListener('click', () => {
+      overlayConfigModal.open();
+    });
+
+    const btnStopOverlay = document.getElementById('stage-btn-stop-overlay');
+    btnStopOverlay?.addEventListener('click', async () => {
+      await overlayBridgeService.close();
+    });
+
     const btnSoundboard = document.getElementById('stage-btn-soundboard');
     btnSoundboard?.addEventListener('click', () => {
       soundboardModal.open();
@@ -1591,6 +1623,7 @@ export class VoiceStageView {
 
     const u8 = appEvents.on('local.screen_audio_started', () => this.updateControlsUI());
     const u9 = appEvents.on('local.screen_audio_stopped', () => this.updateControlsUI());
+    const u10 = appEvents.on('overlay.state_changed', () => this.updateControlsUI());
 
     // `remote.peer_failed` / `remote.peer_recovered` are not handled here on
     // purpose: WebRtcManager writes the flag straight into the participant
@@ -1599,7 +1632,7 @@ export class VoiceStageView {
     // browsing another server during a call (#400), write it onto the wrong
     // server's participants (#426).
 
-    this.unbindEvents.push(u1, u2, u3, u4, u5, u6, u7, u8, u9);
+    this.unbindEvents.push(u1, u2, u3, u4, u5, u6, u7, u8, u9, u10);
   }
 
   private unbindListeners(): void {

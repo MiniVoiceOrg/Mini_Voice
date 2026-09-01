@@ -5,6 +5,7 @@ import { setupUpdater } from './updater';
 import { ServerManager } from './serverManager';
 import { TrayManager } from './trayManager';
 import { ClientLogger } from './clientLogger';
+import { OverlayManager } from './overlayManager';
 import { HOME_MIN_HEIGHT, HOME_MIN_WIDTH } from './windowSizing';
 
 import fs from 'fs';
@@ -12,6 +13,7 @@ import fs from 'fs';
 app.commandLine.appendSwitch('autoplay-policy', 'no-user-gesture-required');
 
 let mainWindow: BrowserWindow | null = null;
+let overlayManager: OverlayManager | null = null;
 let trayManager: TrayManager | null = null;
 const serverManager = new ServerManager();
 let clientLogger: ClientLogger | null = null;
@@ -144,6 +146,12 @@ function createWindow(): void {
     trayManager = new TrayManager(mainWindow, quitApplication);
   }
 
+  if (!overlayManager) {
+    overlayManager = new OverlayManager(mainWindow);
+  } else {
+    overlayManager.setMainWindow(mainWindow);
+  }
+
   let minimizeToTray = true;
 
   clientLogger = new ClientLogger();
@@ -159,6 +167,7 @@ function createWindow(): void {
       minimizeToTray = enabled;
     },
     clientLogger,
+    overlayManager,
   });
   setupUpdater(mainWindow);
 
@@ -168,6 +177,14 @@ function createWindow(): void {
   } else {
     mainWindow.loadFile(path.join(__dirname, '../../dist/index.html'));
   }
+
+  // Atalho de desenvolvimento: F12 ou Ctrl+Shift+I para alternar DevTools
+  mainWindow.webContents.on('before-input-event', (event, input) => {
+    if (input.type === 'keyDown' && (input.key === 'F12' || (input.control && input.shift && input.key.toLowerCase() === 'i'))) {
+      mainWindow?.webContents.toggleDevTools();
+      event.preventDefault();
+    }
+  });
 
   // Minimize to tray on close instead of quitting the application (#149, #256)
   mainWindow.on('close', (event) => {
@@ -279,4 +296,5 @@ app.on('before-quit', (event) => {
   clientLogger?.shutdown();
   shutdownServer();
   trayManager?.destroy();
+  overlayManager?.close();
 });

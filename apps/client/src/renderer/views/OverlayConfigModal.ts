@@ -1,0 +1,387 @@
+import { OverlayConfig, OverlayLayout, OverlayMode, OverlayPosition } from '@monky/shared';
+import { settingsStore } from '../stores/settingsStore';
+import { overlayBridgeService } from '../core/OverlayBridgeService';
+import { t } from '../i18n';
+
+export class OverlayConfigModal {
+  private modalEl: HTMLElement | null = null;
+  private currentMode: OverlayMode = 'cameras-only';
+  private currentLayout: OverlayLayout = 'grid';
+  private currentPosition: OverlayPosition = 'bottom-right';
+  private currentCardOpacity: number = 85;
+  private currentFocusActiveSpeaker: boolean = false;
+  private currentTransparentBackground: boolean = false;
+  private currentAutoOpenOnLeaveStage: boolean = false;
+  private currentMinimalistMode: boolean = false;
+
+  public open(): void {
+    this.close();
+
+    const config = settingsStore.getOverlayConfig();
+    this.currentMode = config.mode;
+    this.currentLayout = config.layout;
+    this.currentPosition = config.position === 'custom' ? 'bottom-right' : config.position;
+    this.currentCardOpacity = Math.round(config.cardOpacity * 100);
+    this.currentFocusActiveSpeaker = config.focusActiveSpeaker;
+    this.currentTransparentBackground = config.transparentBackground;
+    this.currentAutoOpenOnLeaveStage = !!config.autoOpenOnLeaveStage;
+    this.currentMinimalistMode = !!config.minimalistMode;
+
+    const isAlreadyOpen = overlayBridgeService.getIsOpen();
+
+    this.modalEl = document.createElement('div');
+    this.modalEl.className = 'modal-backdrop';
+    this.modalEl.innerHTML = `
+      <div class="modal-card" style="max-width: 520px; width: 100%; display: flex; flex-direction: column; padding: 0; overflow: hidden; border-radius: var(--radius-lg); background-color: var(--bg-panel); border: 1px solid var(--border-color); box-shadow: 0 16px 48px rgba(0, 0, 0, 0.6); animation: modalFadeIn 0.2s ease;">
+        <!-- Header -->
+        <div class="modal-header" style="padding: 16px 20px 14px; border-bottom: 1px solid var(--border-color); display: flex; align-items: center; justify-content: space-between;">
+          <div class="modal-title" style="display: flex; align-items: center; gap: 8px;">
+            <span class="material-symbols-outlined" style="color: var(--accent-primary);">picture_in_picture_alt</span>
+            <span style="font-size: 16px; font-weight: 700; color: var(--text-primary);">${t('overlay.modalTitle')}</span>
+          </div>
+          <button id="modal-close" class="modal-close-btn">&times;</button>
+        </div>
+
+        <!-- Body -->
+        <div style="padding: 20px; max-height: 70vh; overflow-y: auto; display: flex; flex-direction: column; gap: 16px;">
+          <!-- 1. Modo de Exibição -->
+          <div id="overlay-mode-section" style="${this.currentMinimalistMode ? 'opacity: 0.5; pointer-events: none;' : ''}">
+            <label style="display: block; font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px; color: var(--text-muted); margin-bottom: 8px;">
+              ${t('overlay.sectionMode')}
+            </label>
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px;">
+              <div class="overlay-option-card ${this.currentMode === 'cameras-only' ? 'selected' : ''}" id="opt-mode-cameras" data-mode="cameras-only">
+                <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 4px;">
+                  <span class="material-symbols-outlined md-18">videocam</span>
+                  <span style="font-weight: 600; font-size: 13px;">${t('overlay.modeCamerasOnly')}</span>
+                </div>
+                <p style="margin: 0; font-size: 11px; color: var(--text-muted); line-height: 1.4;">${t('overlay.modeCamerasOnlyDesc')}</p>
+              </div>
+
+              <div class="overlay-option-card ${this.currentMode === 'cameras-and-screens' ? 'selected' : ''}" id="opt-mode-both" data-mode="cameras-and-screens">
+                <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 4px;">
+                  <span class="material-symbols-outlined md-18">screen_share</span>
+                  <span style="font-weight: 600; font-size: 13px;">${t('overlay.modeCamerasAndScreens')}</span>
+                </div>
+                <p style="margin: 0; font-size: 11px; color: var(--text-muted); line-height: 1.4;">${t('overlay.modeCamerasAndScreensDesc')}</p>
+              </div>
+            </div>
+
+            <!-- Switch de Foco no Orador Ativo (quando cameras-only) -->
+            <div id="overlay-focus-speaker-row" style="margin-top: 10px; display: ${this.currentMode === 'cameras-only' && !this.currentMinimalistMode ? 'flex' : 'none'}; align-items: center; justify-content: space-between; gap: 12px; background: var(--bg-card); border: 1px solid var(--border-color); border-radius: var(--radius-md); padding: 10px 14px;">
+              <div style="display: flex; align-items: center; gap: 8px;">
+                <span class="material-symbols-outlined md-18" style="color: var(--primary);">record_voice_over</span>
+                <div>
+                  <div style="font-size: 12px; font-weight: 600; color: var(--text-primary);">${t('overlay.focusActiveSpeakerTitle')}</div>
+                  <div style="font-size: 11px; color: var(--text-muted);">${t('overlay.focusActiveSpeakerDesc')}</div>
+                </div>
+              </div>
+              <label class="toggle-switch" aria-label="${t('overlay.focusActiveSpeakerTitle')}">
+                <input type="checkbox" id="overlay-focus-speaker-cb" ${this.currentFocusActiveSpeaker ? 'checked' : ''} />
+                <span class="toggle-slider"></span>
+              </label>
+            </div>
+          </div>
+
+          <!-- 2. Switch Modo Minimalista -->
+          <div style="display: flex; align-items: center; justify-content: space-between; gap: 12px; background: var(--bg-card); border: 1px solid var(--border-color); border-radius: var(--radius-md); padding: 10px 14px;">
+            <div style="display: flex; align-items: center; gap: 8px;">
+              <span class="material-symbols-outlined md-18" style="color: var(--warning);">view_compact</span>
+              <div>
+                <div style="font-size: 12px; font-weight: 600; color: var(--text-primary);">${t('overlay.minimalistModeTitle')}</div>
+                <div style="font-size: 11px; color: var(--text-muted);">${t('overlay.minimalistModeDesc')}</div>
+              </div>
+            </div>
+            <label class="toggle-switch" aria-label="${t('overlay.minimalistModeTitle')}">
+              <input type="checkbox" id="overlay-minimalist-cb" ${this.currentMinimalistMode ? 'checked' : ''} />
+              <span class="toggle-slider"></span>
+            </label>
+          </div>
+
+          <!-- 3. Switch Ativar ao Sair do Palco -->
+          <div style="display: flex; align-items: center; justify-content: space-between; gap: 12px; background: var(--bg-card); border: 1px solid var(--border-color); border-radius: var(--radius-md); padding: 10px 14px;">
+            <div style="display: flex; align-items: center; gap: 8px;">
+              <span class="material-symbols-outlined md-18" style="color: var(--success);">smart_toy</span>
+              <div>
+                <div style="font-size: 12px; font-weight: 600; color: var(--text-primary);">${t('overlay.autoOpenOnLeaveStageTitle')}</div>
+                <div style="font-size: 11px; color: var(--text-muted);">${t('overlay.autoOpenOnLeaveStageDesc')}</div>
+              </div>
+            </div>
+            <label class="toggle-switch" aria-label="${t('overlay.autoOpenOnLeaveStageTitle')}">
+              <input type="checkbox" id="overlay-auto-open-cb" ${this.currentAutoOpenOnLeaveStage ? 'checked' : ''} />
+              <span class="toggle-slider"></span>
+            </label>
+          </div>
+
+          <!-- 4. Disposição dos Cards -->
+          <div>
+            <label style="display: block; font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px; color: var(--text-muted); margin-bottom: 8px;">
+              ${t('overlay.sectionLayout')}
+            </label>
+            <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 8px;">
+              <div class="overlay-option-card ${this.currentLayout === 'grid' ? 'selected' : ''}" id="opt-layout-grid" data-layout="grid" style="text-align: center; align-items: center;">
+                <span class="material-symbols-outlined md-20" style="margin-bottom: 4px;">grid_view</span>
+                <span style="font-size: 12px; font-weight: 600;">${t('overlay.layoutGrid')}</span>
+              </div>
+              <div class="overlay-option-card ${this.currentLayout === 'vertical' ? 'selected' : ''}" id="opt-layout-vertical" data-layout="vertical" style="text-align: center; align-items: center;">
+                <span class="material-symbols-outlined md-20" style="margin-bottom: 4px;">view_agenda</span>
+                <span style="font-size: 12px; font-weight: 600;">${t('overlay.layoutVertical')}</span>
+              </div>
+              <div class="overlay-option-card ${this.currentLayout === 'horizontal' ? 'selected' : ''}" id="opt-layout-horizontal" data-layout="horizontal" style="text-align: center; align-items: center;">
+                <span class="material-symbols-outlined md-20" style="margin-bottom: 4px;">view_column</span>
+                <span style="font-size: 12px; font-weight: 600;">${t('overlay.layoutHorizontal')}</span>
+              </div>
+            </div>
+          </div>
+
+          <!-- 5. Posição na Tela & Redimensionamento -->
+          <div>
+            <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px;">
+              <label style="font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px; color: var(--text-muted); margin: 0;">
+                ${t('overlay.sectionPosition')}
+              </label>
+              <button type="button" id="btn-overlay-reset-size" class="btn btn-secondary btn-sm" style="display: inline-flex; align-items: center; gap: 4px; padding: 3px 8px; font-size: 11px; height: 26px;">
+                <span class="material-symbols-outlined md-14">restart_alt</span>
+                <span>${t('overlay.resetSizeBtn')}</span>
+              </button>
+            </div>
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px;">
+              <button type="button" class="btn overlay-pos-btn ${this.currentPosition === 'top-left' ? 'selected' : ''}" data-pos="top-left">
+                <span class="material-symbols-outlined md-16">north_west</span>
+                <span>${t('overlay.posTopLeft')}</span>
+              </button>
+              <button type="button" class="btn overlay-pos-btn ${this.currentPosition === 'top-right' ? 'selected' : ''}" data-pos="top-right">
+                <span class="material-symbols-outlined md-16">north_east</span>
+                <span>${t('overlay.posTopRight')}</span>
+              </button>
+              <button type="button" class="btn overlay-pos-btn ${this.currentPosition === 'bottom-left' ? 'selected' : ''}" data-pos="bottom-left">
+                <span class="material-symbols-outlined md-16">south_west</span>
+                <span>${t('overlay.posBottomLeft')}</span>
+              </button>
+              <button type="button" class="btn overlay-pos-btn ${this.currentPosition === 'bottom-right' ? 'selected' : ''}" data-pos="bottom-right">
+                <span class="material-symbols-outlined md-16">south_east</span>
+                <span>${t('overlay.posBottomRight')}</span>
+              </button>
+            </div>
+          </div>
+
+          <!-- 6. Switch Fundo Transparente -->
+          <div style="display: flex; align-items: center; justify-content: space-between; gap: 12px; background: var(--bg-card); border: 1px solid var(--border-color); border-radius: var(--radius-md); padding: 10px 14px;">
+            <div style="display: flex; align-items: center; gap: 8px;">
+              <span class="material-symbols-outlined md-18" style="color: var(--primary);">opacity</span>
+              <div>
+                <div style="font-size: 12px; font-weight: 600; color: var(--text-primary);">${t('overlay.transparentBackgroundTitle')}</div>
+                <div style="font-size: 11px; color: var(--text-muted);">${t('overlay.transparentBackgroundDesc')}</div>
+              </div>
+            </div>
+            <label class="toggle-switch" aria-label="${t('overlay.transparentBackgroundTitle')}">
+              <input type="checkbox" id="overlay-transparent-bg-cb" ${this.currentTransparentBackground ? 'checked' : ''} />
+              <span class="toggle-slider"></span>
+            </label>
+          </div>
+
+          <!-- 7. Opacidade dos Cards (visível quando Fundo Transparente desmarcado) -->
+          <div id="overlay-opacity-group" style="${this.currentTransparentBackground ? 'display: none;' : 'display: block;'}">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+              <label style="font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px; color: var(--text-muted); margin: 0;">
+                ${t('overlay.sectionOpacity')}
+              </label>
+              <span id="overlay-opacity-value-label" style="font-size: 12px; font-weight: 700; color: var(--primary);">
+                ${this.currentCardOpacity}%
+              </span>
+            </div>
+            <input type="range" id="overlay-opacity-slider" min="20" max="100" value="${this.currentCardOpacity}" style="width: 100%; accent-color: var(--primary); cursor: pointer;" />
+            <div style="display: flex; justify-content: space-between; font-size: 10px; color: var(--text-muted); margin-top: 4px;">
+              <span>${t('overlay.opacityTranslucent')} (20%)</span>
+              <span>${t('overlay.opacitySolid')} (100%)</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- Footer -->
+        <div class="modal-footer" style="padding: 14px 20px; border-top: 1px solid var(--border-color); display: flex; align-items: center; justify-content: space-between; background: var(--bg-tertiary); gap: 12px;">
+          <div>
+            ${isAlreadyOpen ? `
+              <button type="button" id="btn-overlay-modal-close-window" class="btn btn-danger" style="display: inline-flex; align-items: center; gap: 6px; padding: 0 16px; height: 38px; flex-shrink: 0; white-space: nowrap;">
+                <span class="material-symbols-outlined md-16">close</span>
+                <span>${t('overlay.closeOverlayBtn')}</span>
+              </button>
+            ` : `
+              <button type="button" id="btn-overlay-modal-cancel" class="btn btn-secondary" style="padding: 0 16px; height: 38px; flex-shrink: 0; white-space: nowrap;">
+                ${t('common.cancel')}
+              </button>
+            `}
+          </div>
+          <div style="display: flex; align-items: center; gap: 8px;">
+            ${isAlreadyOpen ? `
+              <button type="button" id="btn-overlay-modal-cancel" class="btn btn-secondary" style="padding: 0 16px; height: 38px; flex-shrink: 0; white-space: nowrap;">
+                ${t('common.cancel')}
+              </button>
+            ` : ''}
+            <button type="button" id="btn-overlay-modal-apply" class="btn btn-primary" style="display: inline-flex; align-items: center; gap: 6px; padding: 0 20px; height: 38px; font-weight: 600; flex-shrink: 0; white-space: nowrap;">
+              <span class="material-symbols-outlined md-16">${isAlreadyOpen ? 'sync' : 'rocket_launch'}</span>
+              <span>${isAlreadyOpen ? t('overlay.applyChangesBtn') : t('overlay.startOverlayBtn')}</span>
+            </button>
+          </div>
+        </div>
+      </div>
+    `;
+
+    document.body.appendChild(this.modalEl);
+    this.attachEvents(isAlreadyOpen);
+  }
+
+  public close(): void {
+    if (this.modalEl) {
+      this.modalEl.remove();
+      this.modalEl = null;
+    }
+  }
+
+  private attachEvents(isAlreadyOpen: boolean): void {
+    if (!this.modalEl) return;
+
+    // Fechar no X, Cancelar ou clique fora no backdrop
+    this.modalEl.querySelector('#modal-close')?.addEventListener('click', () => this.close());
+    this.modalEl.querySelectorAll('#btn-overlay-modal-cancel').forEach((btn) => {
+      btn.addEventListener('click', () => this.close());
+    });
+    this.modalEl.addEventListener('click', (e) => {
+      if (e.target === this.modalEl) this.close();
+    });
+
+    // Seleção de modo
+    const modeCards = this.modalEl.querySelectorAll('.overlay-option-card[data-mode]');
+    const focusWrapper = this.modalEl.querySelector('#overlay-focus-speaker-row') as HTMLElement | null;
+    modeCards.forEach((card) => {
+      card.addEventListener('click', () => {
+        modeCards.forEach((c) => c.classList.remove('selected'));
+        card.classList.add('selected');
+        this.currentMode = card.getAttribute('data-mode') as OverlayMode;
+        if (focusWrapper) {
+          focusWrapper.style.display = this.currentMode === 'cameras-only' && !this.currentMinimalistMode ? 'flex' : 'none';
+        }
+        if (isAlreadyOpen) this.syncLive();
+      });
+    });
+
+    // Toggle foco no orador ativo
+    const chkFocus = this.modalEl.querySelector('#overlay-focus-speaker-cb') as HTMLInputElement | null;
+    chkFocus?.addEventListener('change', () => {
+      this.currentFocusActiveSpeaker = chkFocus.checked;
+      if (isAlreadyOpen) this.syncLive();
+    });
+
+    // Toggle Modo Minimalista
+    const chkMinimalist = this.modalEl.querySelector('#overlay-minimalist-cb') as HTMLInputElement | null;
+    const modeSection = this.modalEl.querySelector('#overlay-mode-section') as HTMLElement | null;
+    chkMinimalist?.addEventListener('change', () => {
+      this.currentMinimalistMode = chkMinimalist.checked;
+      if (modeSection) {
+        modeSection.style.opacity = this.currentMinimalistMode ? '0.5' : '1';
+        modeSection.style.pointerEvents = this.currentMinimalistMode ? 'none' : 'auto';
+      }
+      if (focusWrapper) {
+        focusWrapper.style.display = this.currentMode === 'cameras-only' && !this.currentMinimalistMode ? 'flex' : 'none';
+      }
+      if (isAlreadyOpen) this.syncLive();
+    });
+
+    // Toggle Ativar ao Sair do Palco
+    const chkAutoOpen = this.modalEl.querySelector('#overlay-auto-open-cb') as HTMLInputElement | null;
+    chkAutoOpen?.addEventListener('change', () => {
+      this.currentAutoOpenOnLeaveStage = chkAutoOpen.checked;
+      this.saveCurrentConfig();
+    });
+
+    // Toggle Fundo Transparente
+    const chkTransparentBg = this.modalEl.querySelector('#overlay-transparent-bg-cb') as HTMLInputElement | null;
+    const opacityGroup = this.modalEl.querySelector('#overlay-opacity-group') as HTMLElement | null;
+    chkTransparentBg?.addEventListener('change', () => {
+      this.currentTransparentBackground = chkTransparentBg.checked;
+      if (opacityGroup) {
+        opacityGroup.style.display = this.currentTransparentBackground ? 'none' : 'block';
+      }
+      if (isAlreadyOpen) this.syncLive();
+    });
+
+    // Seleção de layout
+    const layoutCards = this.modalEl.querySelectorAll('.overlay-option-card[data-layout]');
+    layoutCards.forEach((card) => {
+      card.addEventListener('click', () => {
+        layoutCards.forEach((c) => c.classList.remove('selected'));
+        card.classList.add('selected');
+        this.currentLayout = card.getAttribute('data-layout') as OverlayLayout;
+        if (isAlreadyOpen) this.syncLive();
+      });
+    });
+
+    // Seleção de posição
+    const posButtons = this.modalEl.querySelectorAll('.overlay-pos-btn');
+    posButtons.forEach((btn) => {
+      btn.addEventListener('click', () => {
+        posButtons.forEach((b) => b.classList.remove('selected'));
+        btn.classList.add('selected');
+        this.currentPosition = btn.getAttribute('data-pos') as OverlayPosition;
+        if (isAlreadyOpen) this.syncLive();
+      });
+    });
+
+    // Botão Resetar Tamanho Padrão
+    const btnResetSize = this.modalEl.querySelector('#btn-overlay-reset-size');
+    btnResetSize?.addEventListener('click', () => {
+      if (window.api?.resetOverlayBounds) {
+        window.api.resetOverlayBounds().catch(() => {});
+      }
+      settingsStore.setOverlayConfig({ bounds: undefined });
+      if (isAlreadyOpen) this.syncLive();
+    });
+
+    // Slider de opacidade
+    const opacitySlider = this.modalEl.querySelector('#overlay-opacity-slider') as HTMLInputElement | null;
+    const opacityLabel = this.modalEl.querySelector('#overlay-opacity-value-label');
+    opacitySlider?.addEventListener('input', () => {
+      this.currentCardOpacity = parseInt(opacitySlider.value, 10);
+      if (opacityLabel) opacityLabel.textContent = `${this.currentCardOpacity}%`;
+      if (isAlreadyOpen) this.syncLive();
+    });
+
+    // Botão Fechar Janela de Overlay
+    const btnCloseWindow = this.modalEl.querySelector('#btn-overlay-modal-close-window');
+    btnCloseWindow?.addEventListener('click', async () => {
+      await overlayBridgeService.close();
+      this.close();
+    });
+
+    // Botão Ativar / Aplicar
+    const btnApply = this.modalEl.querySelector('#btn-overlay-modal-apply');
+    btnApply?.addEventListener('click', async () => {
+      this.saveCurrentConfig();
+      await overlayBridgeService.open(settingsStore.getOverlayConfig());
+      this.close();
+    });
+  }
+
+  private saveCurrentConfig(): void {
+    settingsStore.setOverlayConfig({
+      mode: this.currentMode,
+      layout: this.currentLayout,
+      position: this.currentPosition,
+      cardOpacity: this.currentCardOpacity / 100,
+      focusActiveSpeaker: this.currentFocusActiveSpeaker,
+      transparentBackground: this.currentTransparentBackground,
+      autoOpenOnLeaveStage: this.currentAutoOpenOnLeaveStage,
+      minimalistMode: this.currentMinimalistMode,
+    });
+  }
+
+  private syncLive(): void {
+    this.saveCurrentConfig();
+    if (window.api?.setOverlayConfig) {
+      window.api.setOverlayConfig(settingsStore.getOverlayConfig()).catch(() => {});
+    }
+    overlayBridgeService.syncState();
+  }
+}
+
+export const overlayConfigModal = new OverlayConfigModal();

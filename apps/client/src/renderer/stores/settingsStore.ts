@@ -1,4 +1,14 @@
-import { QualityPresetType, QualityProfile, DEFAULT_CUSTOM_PROFILE, PttKeyBinding } from '@monky/shared';
+import {
+  QualityPresetType,
+  QualityProfile,
+  DEFAULT_CUSTOM_PROFILE,
+  PttKeyBinding,
+  OverlayMode,
+  OverlayLayout,
+  OverlayPosition,
+  OverlayBounds,
+  OverlayConfig,
+} from '@monky/shared';
 import { appEvents } from '../core/EventBus';
 
 /**
@@ -68,6 +78,17 @@ export class SettingsStore {
   public chatSoundServerOverrides: Record<string, ChatSoundMode> = {};
   public chatSoundChannelOverrides: Record<string, ChatSoundMode> = {};
   public onboardingCompleted: boolean = false;
+
+  // Sobreposição de Tela Flutuante (Overlay) (#169)
+  public overlayMode: OverlayMode = 'cameras-only';
+  public overlayLayout: OverlayLayout = 'grid';
+  public overlayPosition: OverlayPosition = 'bottom-right';
+  public overlayCardOpacity: number = 85; // 20 - 100%
+  public overlayFocusActiveSpeaker: boolean = false;
+  public overlayTransparentBackground: boolean = false;
+  public overlayAutoOpenOnLeaveStage: boolean = false;
+  public overlayMinimalistMode: boolean = false;
+  public overlaySavedBounds: OverlayBounds | null = null;
 
   constructor() {
     this.load();
@@ -164,8 +185,81 @@ export class SettingsStore {
         if (typeof this.onboardingCompleted !== 'boolean') {
           this.onboardingCompleted = false;
         }
+
+        if (!['cameras-only', 'cameras-and-screens'].includes(this.overlayMode)) {
+          this.overlayMode = 'cameras-only';
+        }
+        if (!['grid', 'vertical', 'horizontal'].includes(this.overlayLayout)) {
+          this.overlayLayout = 'grid';
+        }
+        if (!['top-left', 'top-right', 'bottom-left', 'bottom-right', 'custom'].includes(this.overlayPosition)) {
+          this.overlayPosition = 'bottom-right';
+        }
+        if (typeof this.overlayCardOpacity !== 'number' || isNaN(this.overlayCardOpacity)) {
+          this.overlayCardOpacity = 85;
+        } else {
+          this.overlayCardOpacity = Math.max(20, Math.min(100, Math.round(this.overlayCardOpacity)));
+        }
+        if (typeof this.overlayFocusActiveSpeaker !== 'boolean') {
+          this.overlayFocusActiveSpeaker = false;
+        }
+        if (typeof this.overlayTransparentBackground !== 'boolean') {
+          this.overlayTransparentBackground = false;
+        }
+        if (typeof this.overlayAutoOpenOnLeaveStage !== 'boolean') {
+          this.overlayAutoOpenOnLeaveStage = false;
+        }
+        if (typeof this.overlayMinimalistMode !== 'boolean') {
+          this.overlayMinimalistMode = false;
+        }
+        if (
+          this.overlaySavedBounds &&
+          (typeof this.overlaySavedBounds.width !== 'number' || typeof this.overlaySavedBounds.height !== 'number')
+        ) {
+          this.overlaySavedBounds = null;
+        }
       }
     } catch (e) {}
+  }
+
+  public getOverlayConfig(): OverlayConfig {
+    return {
+      mode: this.overlayMode,
+      layout: this.overlayLayout,
+      position: this.overlayPosition,
+      cardOpacity: this.overlayCardOpacity / 100,
+      focusActiveSpeaker: this.overlayFocusActiveSpeaker,
+      transparentBackground: this.overlayTransparentBackground,
+      autoOpenOnLeaveStage: this.overlayAutoOpenOnLeaveStage,
+      minimalistMode: this.overlayMinimalistMode,
+      bounds: this.overlaySavedBounds || undefined,
+    };
+  }
+
+  public setOverlayConfig(config: Partial<OverlayConfig>): void {
+    if (config.mode) this.overlayMode = config.mode;
+    if (config.layout) this.overlayLayout = config.layout;
+    if (config.position) this.overlayPosition = config.position;
+    if (typeof config.cardOpacity === 'number') {
+      this.overlayCardOpacity = Math.max(20, Math.min(100, Math.round(config.cardOpacity * 100)));
+    }
+    if (typeof config.focusActiveSpeaker === 'boolean') {
+      this.overlayFocusActiveSpeaker = config.focusActiveSpeaker;
+    }
+    if (typeof config.transparentBackground === 'boolean') {
+      this.overlayTransparentBackground = config.transparentBackground;
+    }
+    if (typeof config.autoOpenOnLeaveStage === 'boolean') {
+      this.overlayAutoOpenOnLeaveStage = config.autoOpenOnLeaveStage;
+    }
+    if (typeof config.minimalistMode === 'boolean') {
+      this.overlayMinimalistMode = config.minimalistMode;
+    }
+    if (config.bounds) {
+      this.overlaySavedBounds = config.bounds;
+    }
+    this.save();
+    appEvents.emit('overlay_settings.updated', this.getOverlayConfig());
   }
 
   /**
@@ -302,6 +396,15 @@ export class SettingsStore {
         chatSoundServerOverrides: this.chatSoundServerOverrides,
         chatSoundChannelOverrides: this.chatSoundChannelOverrides,
         onboardingCompleted: this.onboardingCompleted,
+        overlayMode: this.overlayMode,
+        overlayLayout: this.overlayLayout,
+        overlayPosition: this.overlayPosition,
+        overlayCardOpacity: this.overlayCardOpacity,
+        overlayFocusActiveSpeaker: this.overlayFocusActiveSpeaker,
+        overlayTransparentBackground: this.overlayTransparentBackground,
+        overlayAutoOpenOnLeaveStage: this.overlayAutoOpenOnLeaveStage,
+        overlayMinimalistMode: this.overlayMinimalistMode,
+        overlaySavedBounds: this.overlaySavedBounds,
       }));
       appEvents.emit('settings.updated');
     } catch (e) {}

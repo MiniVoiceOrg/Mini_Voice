@@ -216,6 +216,57 @@ export interface BackupCryptoResult {
   error?: string;
 }
 
+export interface OverlayBounds {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+}
+
+export type OverlayMode = 'cameras-only' | 'cameras-and-screens';
+export type OverlayLayout = 'grid' | 'vertical' | 'horizontal';
+export type OverlayPosition = 'top-left' | 'top-right' | 'bottom-left' | 'bottom-right' | 'custom';
+
+export interface OverlayConfig {
+  mode: OverlayMode;
+  layout: OverlayLayout;
+  position: OverlayPosition;
+  cardOpacity: number; // 0.2 a 1.0
+  focusActiveSpeaker: boolean;
+  transparentBackground: boolean;
+  autoOpenOnLeaveStage?: boolean;
+  minimalistMode?: boolean;
+  bounds?: OverlayBounds;
+}
+
+export interface OverlayParticipantState {
+  sessionId: string;
+  userId: string;
+  displayName: string;
+  avatarUrl: string | null;
+  isSpeaking: boolean;
+  isMuted: boolean;
+  isDeafened: boolean;
+  isCameraOn: boolean;
+  screenShareIds: string[];
+  isLocal: boolean;
+  videoSlotIndex?: number;
+  screenSlotIndexes?: Record<string, number>;
+}
+
+export interface OverlaySyncState {
+  channelId: string | null;
+  channelName: string;
+  participants: OverlayParticipantState[];
+  activeSpeakerSessionId: string | null;
+  config: OverlayConfig;
+}
+
+export interface OverlaySignalPayload {
+  target: 'main' | 'overlay';
+  signal: string; // JSON com Offer/Answer/Candidate
+}
+
 /**
  * Mapeamento de Canais Bidirecionais (Invoke / Handle)
  */
@@ -226,6 +277,17 @@ export interface IpcInvokeChannels {
   'window:toggle-maximize': { args: []; returnType: void };
   'window:set-in-server': { args: [inServer: boolean]; returnType: void };
   'window:close': { args: []; returnType: void };
+
+  // Sobreposição de Tela (Overlay) (#169)
+  'overlay:open': { args: [config: OverlayConfig]; returnType: { success: boolean } };
+  'overlay:close': { args: []; returnType: { success: boolean } };
+  'overlay:is-open': { args: []; returnType: boolean };
+  'overlay:get-config': { args: []; returnType: OverlayConfig | null };
+  'overlay:set-config': { args: [config: Partial<OverlayConfig>]; returnType: void };
+  'overlay:save-bounds': { args: [bounds: OverlayBounds]; returnType: void };
+  'overlay:reset-bounds': { args: []; returnType: void };
+  'overlay:send-signal': { args: [payload: OverlaySignalPayload]; returnType: void };
+  'overlay:send-sync-state': { args: [state: OverlaySyncState]; returnType: void };
 
   // Sistema / App
   'app:set-language': { args: [language: string]; returnType: void };
@@ -349,6 +411,13 @@ export interface IpcEvents {
   'updater:error': [message: string];
   'server-host:log': [entry: LogEntry];
   'server-host:status-changed': [status: { isRunning: boolean; port: number | null; serverId: string | null }];
+
+  // Eventos de Sobreposição (Overlay) (#169)
+  'overlay:state-changed': [isOpen: boolean];
+  'overlay:config-updated': [config: OverlayConfig];
+  'overlay:signal-received': [signal: string];
+  'overlay:sync-state-received': [state: OverlaySyncState];
+  'overlay:close-requested': [];
 }
 
 export type IpcInvokeChannel = keyof IpcInvokeChannels;

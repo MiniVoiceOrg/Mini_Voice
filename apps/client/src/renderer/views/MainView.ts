@@ -56,6 +56,14 @@ export class MainView {
   // (#473).
   private userCardObserver: ResizeObserver | null = null;
 
+  public setActiveContentView(view: 'chat' | 'stage'): void {
+    const changed = this.activeContentView !== view;
+    this.activeContentView = view;
+    if (changed) {
+      appEvents.emit('stage.visibility_changed', view === 'stage');
+    }
+  }
+
   constructor(container: HTMLElement) {
     this.container = container;
   }
@@ -209,7 +217,7 @@ export class MainView {
     if (this.activeContentView === 'stage' && this.callIsHere()) {
       this.voiceStageView.setChannel(voiceStore.currentVoiceChannelId);
     } else if (serverStore.activeTextChannelId) {
-      this.activeContentView = 'chat';
+      this.setActiveContentView('chat');
       this.chatView.setChannel(serverStore.activeTextChannelId);
     }
 
@@ -421,7 +429,7 @@ export class MainView {
   private openVoiceStage(watchSessionId?: string): void {
     const channelId = voiceStore.currentVoiceChannelId;
     if (!channelId) return;
-    this.activeContentView = 'stage';
+    this.setActiveContentView('stage');
     this.voiceStageView?.setChannel(channelId);
     if (watchSessionId) this.voiceStageView?.watchScreenShare(watchSessionId);
     this.renderChannels();
@@ -500,7 +508,7 @@ export class MainView {
   private activateTextChannel(channelId: string): void {
     this.clearTextChannelDragHover();
     serverStore.setActiveTextChannel(channelId);
-    this.activeContentView = 'chat';
+    this.setActiveContentView('chat');
     this.chatView?.setChannel(channelId);
     this.renderChannels();
     this.updateScreenShareNotice();
@@ -756,7 +764,7 @@ export class MainView {
           item.classList.add('joining');
           try {
             await this.handleJoinVoiceChannel(channelId);
-            this.activeContentView = 'stage';
+            this.setActiveContentView('stage');
             this.voiceStageView?.setChannel(channelId);
             this.updateScreenShareNotice();
           } finally {
@@ -1023,7 +1031,7 @@ export class MainView {
   private async handleJoinVoiceChannel(channelId: string, silent: boolean = false): Promise<void> {
     if (voiceStore.currentVoiceChannelId === channelId) {
       // Already in this channel, just switch view to stage
-      this.activeContentView = 'stage';
+      this.setActiveContentView('stage');
       this.voiceStageView?.setChannel(channelId);
       this.updateScreenShareNotice();
       return;
@@ -1086,7 +1094,7 @@ export class MainView {
     // Reset the stored voice channel so handleJoinVoiceChannel performs a full
     // (re)join instead of early-returning, then reconnect the mesh.
     voiceStore.setChannel(null);
-    this.activeContentView = 'stage';
+    this.setActiveContentView('stage');
     await this.handleJoinVoiceChannel(channelId, true);
     this.voiceStageView?.setChannel(channelId);
     this.renderChannels();
@@ -1121,7 +1129,7 @@ export class MainView {
       audioProcessor.stopMicrophone();
       voiceStore.reset();
       this.voiceStageView?.setChannel(null);
-      this.activeContentView = 'chat';
+      this.setActiveContentView('chat');
     }
 
     networkClient.send(MessageType.CHANNEL_DELETE, { channelId });
