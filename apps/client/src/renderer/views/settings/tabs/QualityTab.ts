@@ -44,6 +44,25 @@ export class QualityTab {
           ${t('settings.qualityInstantApply')}
         </small>
       </div>
+
+      <!-- Preferred Video Codec -->
+      <div class="form-group" style="border-top: 1px solid var(--border-color); padding-top: 14px; margin-top: 14px;">
+        <label style="display: flex; align-items: center; gap: 6px;" for="select-video-codec">
+          <span class="material-symbols-outlined md-16" style="color: var(--accent-primary);">movie</span>
+          ${t('settings.videoCodecSection')}
+          <span class="material-symbols-outlined md-16" style="color: var(--text-muted); cursor: help;" title="${t('settings.videoCodecHelp')}">help</span>
+        </label>
+        <select id="select-video-codec">
+          <option value="auto" ${settingsStore.preferredVideoCodec === 'auto' ? 'selected' : ''}>${t('settings.codecAuto')}</option>
+          <option value="av1" ${settingsStore.preferredVideoCodec === 'av1' ? 'selected' : ''}>${t('settings.codecAv1')}</option>
+          <option value="vp9" ${settingsStore.preferredVideoCodec === 'vp9' ? 'selected' : ''}>${t('settings.codecVp9')}</option>
+          <option value="vp8" ${settingsStore.preferredVideoCodec === 'vp8' ? 'selected' : ''}>${t('settings.codecVp8')}</option>
+          <option value="h264" ${settingsStore.preferredVideoCodec === 'h264' ? 'selected' : ''}>${t('settings.codecH264')}</option>
+        </select>
+        <small style="display: block; margin-top: 6px; color: var(--text-muted); font-size: 11px;">
+          ${t('settings.videoCodecDesc')}
+        </small>
+      </div>
     `;
   }
 
@@ -191,6 +210,14 @@ export class QualityTab {
           this.attachCustomProfileListeners(container);
         }
       }
+    });
+
+    const selectCodec = container.querySelector<HTMLSelectElement>('#select-video-codec');
+    selectCodec?.addEventListener('change', () => {
+      const val = selectCodec.value as any;
+      settingsStore.preferredVideoCodec = val;
+      settingsStore.save();
+      void webRtcManager.reapplyCodecPreferences();
     });
 
     if (settingsStore.qualityPreset === 'CUSTOM') {

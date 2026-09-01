@@ -1018,6 +1018,7 @@ export class VoiceStageView {
     }
 
     const lines = [
+      `Codec: ${snapshot.codec || '--'}`,
       `FPS: ${this.formatTelemetryNumber(snapshot.fps, 0)}`,
       `Res: ${this.formatResolution(snapshot.width, snapshot.height)}`,
       `Bitrate: ${this.formatTelemetryNumber(snapshot.bitrateKbps, 0, ' kbps')}`,
@@ -1026,13 +1027,11 @@ export class VoiceStageView {
     if (settingsStore.screenShareTelemetryMode === 'complete') {
       if (snapshot.kind === 'sender') {
         lines.push(
-          `Codec: ${snapshot.codec || '--'}`,
           `Frames enc: ${this.formatTelemetryNumber(snapshot.framesEncoded, 0)}`,
           `Keyframes: ${this.formatTelemetryNumber(snapshot.keyFramesEncoded, 0)}`
         );
       } else {
         lines.push(
-          `Codec: ${snapshot.codec || '--'}`,
           `Loss: ${this.formatTelemetryNumber(snapshot.packetLossPct, 1, '%')}`,
           `Jitter: ${this.formatTelemetryNumber(snapshot.jitterMs, 1, ' ms')}`,
           `Frames dec: ${this.formatTelemetryNumber(snapshot.framesDecoded, 0)}`,
@@ -1312,12 +1311,23 @@ export class VoiceStageView {
   }
 
   private getCodecName(stats: RTCStatsReport, codecId?: string): string | null {
-    if (!codecId) return null;
-    const codecReport = stats.get(codecId) as any;
-    const mimeType = typeof codecReport?.mimeType === 'string' ? codecReport.mimeType : '';
-    if (!mimeType) return null;
-    const parts = mimeType.split('/');
-    return parts[parts.length - 1] || mimeType;
+    if (codecId) {
+      const codecReport = stats.get(codecId) as any;
+      const mimeType = typeof codecReport?.mimeType === 'string' ? codecReport.mimeType : '';
+      if (mimeType) {
+        const parts = mimeType.split('/');
+        return parts[parts.length - 1] || mimeType;
+      }
+    }
+    // Fallback: search for codec report in stats
+    let fallbackCodec: string | null = null;
+    stats.forEach((report: any) => {
+      if (!fallbackCodec && report.type === 'codec' && typeof report.mimeType === 'string' && report.mimeType.toLowerCase().startsWith('video/')) {
+        const parts = report.mimeType.split('/');
+        fallbackCodec = parts[parts.length - 1] || report.mimeType;
+      }
+    });
+    return fallbackCodec;
   }
 
   private computeBitrateKbps(key: string, bytes: number): number | null {

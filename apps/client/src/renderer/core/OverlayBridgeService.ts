@@ -10,6 +10,7 @@ import { settingsStore } from '../stores/settingsStore';
 import { voiceStore } from '../stores/voiceStore';
 import { videoService } from './VideoService';
 import { getAvatarUrl } from '../utils/avatar';
+import { applyVideoCodecPreferences } from './webrtc/codecPreferences';
 
 const MAX_VIDEO_SLOTS = 8;
 
@@ -245,6 +246,7 @@ export class OverlayBridgeService {
         });
         this.videoSenders.push(transceiver.sender);
       }
+      applyVideoCodecPreferences(this.localPeerConnection);
     } catch (e) {
       console.warn('[OverlayBridge] Falha ao inicializar RTCPeerConnection:', e);
     }
@@ -258,6 +260,7 @@ export class OverlayBridgeService {
     if (!this.localPeerConnection) return;
 
     try {
+      applyVideoCodecPreferences(this.localPeerConnection);
       const offer = await this.localPeerConnection.createOffer({
         offerToReceiveVideo: false,
         offerToReceiveAudio: false,

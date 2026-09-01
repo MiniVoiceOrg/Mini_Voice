@@ -27,6 +27,7 @@ const CHAT_SOUND_MODES: ChatSoundMode[] = ['inherit', 'all', 'mentions', 'none']
 
 export class SettingsStore {
   public qualityPreset: QualityPresetType = 'NORMAL';
+  public preferredVideoCodec: 'auto' | 'av1' | 'vp9' | 'vp8' | 'h264' = 'auto';
   public customProfile: QualityProfile = { ...DEFAULT_CUSTOM_PROFILE };
   public inputMode: 'voice_activity' | 'push_to_talk' = 'voice_activity'; // #186
   public pttKey: PttKeyBinding = { code: 'KeyV', display: 'V', keyType: 'keyboard', keyCode: 47 };
@@ -129,6 +130,9 @@ export class SettingsStore {
         }
         if (!['simple', 'complete'].includes(this.screenShareTelemetryMode)) {
           this.screenShareTelemetryMode = 'simple';
+        }
+        if (!['auto', 'av1', 'vp9', 'vp8', 'h264'].includes(this.preferredVideoCodec)) {
+          this.preferredVideoCodec = 'auto';
         }
         if (!this.customProfile || typeof this.customProfile !== 'object' || !this.customProfile.audioBitrateKbps) {
           this.customProfile = { ...DEFAULT_CUSTOM_PROFILE };
@@ -361,6 +365,7 @@ export class SettingsStore {
     try {
       localStorage.setItem('monky_settings', JSON.stringify({
         qualityPreset: this.qualityPreset,
+        preferredVideoCodec: this.preferredVideoCodec,
         vadSensitivity: this.vadSensitivity,
         selectedMicrophoneId: this.selectedMicrophoneId,
         selectedSpeakerId: this.selectedSpeakerId,

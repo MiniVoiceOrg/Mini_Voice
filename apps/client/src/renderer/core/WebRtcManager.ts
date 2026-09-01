@@ -18,6 +18,7 @@ import { videoService } from './VideoService';
 import { RemoteMediaRouter } from './webrtc/RemoteMediaRouter';
 import { RemoteVadMonitor } from './webrtc/RemoteVadMonitor';
 import { RtcDiagnosticsCollector } from './webrtc/RtcDiagnosticsCollector';
+import { applyVideoCodecPreferences } from './webrtc/codecPreferences';
 
 export interface PeerSession {
   peerSessionId: string;
@@ -783,6 +784,8 @@ export class WebRtcManager {
       session.screenAudioSender = pc.addTrack(this.localScreenAudioTrack, this.screenAudioStream);
     }
 
+    applyVideoCodecPreferences(pc);
+
     // ICE Candidate handler
     pc.onicecandidate = (event) => {
       if (event.candidate) {
@@ -990,6 +993,7 @@ export class WebRtcManager {
     if (session.pc.connectionState === 'closed') return;
     try {
       session.makingOffer = true;
+      applyVideoCodecPreferences(session.pc);
       const offer = await session.pc.createOffer({
         offerToReceiveAudio: true,
         offerToReceiveVideo: true,
@@ -1129,6 +1133,8 @@ export class WebRtcManager {
         } else if (cameraTrack) {
           session.videoSender = session.pc.addTrack(cameraTrack, new MediaStream([cameraTrack]));
         }
+
+        applyVideoCodecPreferences(session.pc);
 
         const answer = await session.pc.createAnswer();
         await session.pc.setLocalDescription(answer);
@@ -1487,6 +1493,19 @@ export class WebRtcManager {
 
   public applyUserVolumes(): void {
     this.mediaRouter.applyUserVolumes();
+  }
+
+  public async reapplyCodecPreferences(): Promise<void> {
+    for (const session of this.peers.values()) {
+      try {
+        applyVideoCodecPreferences(session.pc);
+        if (session.pc.signalingState === 'stable' && (this.localCameraTrack || this.localScreenTracks.size > 0)) {
+          await this.sendOffer(session);
+        }
+      } catch (err) {
+        console.warn(`[WebRTC] Error reapplying codec preferences for ${session.peerSessionId}:`, err);
+      }
+    }
   }
 
   public removePeer(peerSessionId: string): void {
