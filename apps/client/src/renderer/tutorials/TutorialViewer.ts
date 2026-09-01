@@ -1,5 +1,6 @@
 import type { TutorialDefinition } from './TutorialDefinition';
-import { t } from '../i18n';
+import { getLanguage, t } from '../i18n';
+import type { TutorialStep } from './TutorialDefinition';
 import { enableBackdropClose } from '../utils/modal';
 
 /**
@@ -37,6 +38,17 @@ export class TutorialViewer {
     this.definition = null;
   }
 
+  /**
+   * A imagem do passo no idioma atual. Uma string vale para todos os idiomas
+   * (captura de produto de terceiro); um mapa escolhe pelo idioma e cai no
+   * português quando falta, igual ao `t()` (#496).
+   */
+  private static imageFor(step: TutorialStep): string | undefined {
+    if (!step.image) return undefined;
+    if (typeof step.image === 'string') return step.image;
+    return step.image[getLanguage()] ?? step.image['pt-BR'];
+  }
+
   /* ─── rendering ─────────────────────────────────────────────────────── */
 
   private render(): void {
@@ -48,6 +60,7 @@ export class TutorialViewer {
     const isFirst = this.currentStep === 0;
     const isLast = this.currentStep === total - 1;
     const progressPct = ((this.currentStep + 1) / total) * 100;
+    const imagem = TutorialViewer.imageFor(step);
 
     if (!this.modalEl) {
       this.modalEl = document.createElement('div');
@@ -83,9 +96,9 @@ export class TutorialViewer {
             ${t(step.title)}
           </h3>
 
-          ${step.image ? `
+          ${imagem ? `
             <button class="tutorial-image" id="tutorial-image-expand" title="${t('tutorial.expandImage')}">
-              <img src="${step.image}" alt="${t(step.imageAlt ?? step.title)}" draggable="false">
+              <img src="${imagem}" alt="${t(step.imageAlt ?? step.title)}" draggable="false">
               <span class="material-symbols-outlined tutorial-image-zoom">zoom_in</span>
             </button>
           ` : `
@@ -149,7 +162,8 @@ export class TutorialViewer {
     if (expandBtn) {
       const step = this.definition?.steps[this.currentStep];
       expandBtn.addEventListener('click', () => {
-        if (step?.image) this.expandImage(step.image, t(step.imageAlt ?? step.title));
+        const src = step && TutorialViewer.imageFor(step);
+        if (src && step) this.expandImage(src, t(step.imageAlt ?? step.title));
       });
     }
 

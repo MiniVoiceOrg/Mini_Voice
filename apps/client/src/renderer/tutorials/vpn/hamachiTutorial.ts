@@ -1,3 +1,5 @@
+import hospedarPt from '../../assets/tutorials/hospedar.pt.png';
+import hospedarEn from '../../assets/tutorials/hospedar.en.png';
 import type { TutorialDefinition } from '../TutorialDefinition';
 
 export const hamachiTutorial: TutorialDefinition = {
@@ -21,6 +23,7 @@ export const hamachiTutorial: TutorialDefinition = {
     {
       title: 'tutorial.hamachi.step4.title',
       content: 'tutorial.hamachi.step4.content',
+      image: { 'pt-BR': hospedarPt, en: hospedarEn },
       tip: 'tutorial.hamachi.step4.tip',
     },
   ],

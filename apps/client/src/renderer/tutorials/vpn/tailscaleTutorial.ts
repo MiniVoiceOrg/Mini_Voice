@@ -1,3 +1,5 @@
+import hospedarPt from '../../assets/tutorials/hospedar.pt.png';
+import hospedarEn from '../../assets/tutorials/hospedar.en.png';
 import type { TutorialDefinition } from '../TutorialDefinition';
 
 export const tailscaleTutorial: TutorialDefinition = {
@@ -21,6 +23,7 @@ export const tailscaleTutorial: TutorialDefinition = {
     {
       title: 'tutorial.tailscale.step4.title',
       content: 'tutorial.tailscale.step4.content',
+      image: { 'pt-BR': hospedarPt, en: hospedarEn },
       tip: 'tutorial.tailscale.step4.tip',
     },
   ],

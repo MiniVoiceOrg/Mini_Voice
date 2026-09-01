@@ -1,3 +1,5 @@
+import hospedarPt from '../../assets/tutorials/hospedar.pt.png';
+import hospedarEn from '../../assets/tutorials/hospedar.en.png';
 import type { TutorialDefinition } from '../TutorialDefinition';
 
 export const radminTutorial: TutorialDefinition = {
@@ -25,6 +27,7 @@ export const radminTutorial: TutorialDefinition = {
     {
       title: 'tutorial.radmin.step5.title',
       content: 'tutorial.radmin.step5.content',
+      image: { 'pt-BR': hospedarPt, en: hospedarEn },
       tip: 'tutorial.radmin.step5.tip',
     },
   ],

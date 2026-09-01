@@ -1,3 +1,5 @@
+import hospedarPt from '../assets/tutorials/hospedar.pt.png';
+import hospedarEn from '../assets/tutorials/hospedar.en.png';
 import type { TutorialDefinition } from './TutorialDefinition';
 
 export const portForwardTutorial: TutorialDefinition = {
@@ -26,6 +28,7 @@ export const portForwardTutorial: TutorialDefinition = {
     {
       title: 'tutorial.portForward.step5.title',
       content: 'tutorial.portForward.step5.content',
+      image: { 'pt-BR': hospedarPt, en: hospedarEn },
       tip: 'tutorial.portForward.step5.tip',
     },
     // Abrir porta não resolve atrás de CGNAT, e o relay já existe desde a #428.

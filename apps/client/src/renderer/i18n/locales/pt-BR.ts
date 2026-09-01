@@ -1124,7 +1124,7 @@ export const ptBR = {
   'tutorial.join.step1.content': 'Para entrar você precisa de três coisas de quem criou o servidor: o <strong>endereço</strong> (um IP ou domínio), a <strong>porta</strong> (padrão <strong>3000</strong>) e a <strong>senha</strong>, se houver.',
   'tutorial.join.step1.tip': 'Se te mandaram um convite, ele já traz endereço e porta — você só confirma.',
   'tutorial.join.step2.title': 'Mesma casa? Nem precisa do IP',
-  'tutorial.join.step2.content': 'Se você e quem hospeda estão no <strong>mesmo Wi-Fi</strong>, clique em <strong>"Procurar"</strong> na aba Entrar. O Monky acha sozinho os servidores da rede local e mostra cada um com um ponto verde — basta clicar em <strong>Entrar</strong>.',
+  'tutorial.join.step2.content': 'Se você e quem hospeda estão no <strong>mesmo Wi-Fi</strong>, clique em <strong>"Buscar"</strong> na aba Entrar. O Monky acha sozinho os servidores da rede local e mostra cada um com um ponto verde — basta clicar em <strong>Entrar</strong>.',
   'tutorial.join.step2.tip': 'Se nada aparecer, ou o servidor está em outra rede, ou o firewall de quem hospeda está bloqueando a descoberta.',
   'tutorial.join.step3.title': 'Preencher os dados',
   'tutorial.join.step3.content': 'Na aba <strong>Entrar</strong>:<br>• <strong>Apelido</strong> — o nome que os outros vão ver<br>• <strong>Endereço</strong> — o IP ou domínio que te passaram<br>• <strong>Porta</strong> — normalmente 3000<br>• <strong>Senha</strong> — deixe vazio se o servidor não tiver',

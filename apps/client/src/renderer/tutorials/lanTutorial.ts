@@ -1,3 +1,5 @@
+import hospedarPt from '../assets/tutorials/hospedar.pt.png';
+import hospedarEn from '../assets/tutorials/hospedar.en.png';
 import type { TutorialDefinition } from './TutorialDefinition';
 
 export const lanTutorial: TutorialDefinition = {
@@ -22,6 +24,7 @@ export const lanTutorial: TutorialDefinition = {
     {
       title: 'tutorial.lan.step4.title',
       content: 'tutorial.lan.step4.content',
+      image: { 'pt-BR': hospedarPt, en: hospedarEn },
     },
   ],
 };

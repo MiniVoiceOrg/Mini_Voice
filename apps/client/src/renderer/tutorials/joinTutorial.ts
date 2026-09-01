@@ -1,4 +1,8 @@
 import type { TutorialDefinition } from './TutorialDefinition';
+import lanPt from '../assets/tutorials/entrar-lan.pt.png';
+import lanEn from '../assets/tutorials/entrar-lan.en.png';
+import camposPt from '../assets/tutorials/entrar-campos.pt.png';
+import camposEn from '../assets/tutorials/entrar-campos.en.png';
 
 /**
  * Guia de quem foi convidado.
@@ -21,10 +25,12 @@ export const joinTutorial: TutorialDefinition = {
       title: 'tutorial.join.step2.title',
       content: 'tutorial.join.step2.content',
       tip: 'tutorial.join.step2.tip',
+      image: { 'pt-BR': lanPt, en: lanEn },
     },
     {
       title: 'tutorial.join.step3.title',
       content: 'tutorial.join.step3.content',
+      image: { 'pt-BR': camposPt, en: camposEn },
     },
     {
       title: 'tutorial.join.step4.title',
