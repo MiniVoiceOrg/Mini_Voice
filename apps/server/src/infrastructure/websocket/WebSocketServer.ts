@@ -43,6 +43,8 @@ import {
   ServerSettingsUpdatedPayload,
   ServerUpdateSettingsPayload,
   SoundboardPlayPayload,
+  SoundboardStopPayload,
+  SoundboardStoppedPayload,
   SoundboardPlayedPayload,
   UserChangeNicknamePayload,
   UserJoinedPayload,
@@ -362,6 +364,11 @@ export class WebSocketServer {
         if (!(await this.requirePermission(session, Permission.SPEAK, requestId))) return;
         if (!(await this.requireChannelAccess(session, (payload as SoundboardPlayPayload)?.channelId, requestId))) return;
         await this.handleSoundboardPlay(session, payload as SoundboardPlayPayload, requestId);
+        break;
+
+      case MessageType.SOUNDBOARD_STOP:
+        if (!(await this.requireChannelAccess(session, (payload as SoundboardStopPayload)?.channelId, requestId))) return;
+        this.handleSoundboardStop(session, payload as SoundboardStopPayload, requestId);
         break;
 
       case MessageType.ADMIN_MUTE_USER:
@@ -995,6 +1002,36 @@ export class WebSocketServer {
         result.hasPassword ? 'Ativa' : 'Sem Senha'
       }, Soundboard: ${result.allowSoundboard ? 'Habilitado' : 'Desabilitado'})`
     );
+  }
+
+  /**
+   * Relays "stop my sound" to the channel (#499). No permission gate beyond
+   * channel access: the payload carries no audio and the server only ever
+   * silences the sound of the very session that asked, so the worst a caller
+   * can do is cut their own playback short.
+   */
+  private handleSoundboardStop(
+    session: ClientSession,
+    payload: SoundboardStopPayload,
+    requestId?: string
+  ): void {
+    if (!session.user) return;
+    if (!payload || !payload.channelId) {
+      this.sendError(session.ws, ProtocolErrorCode.BAD_REQUEST, 'Canal inválido', requestId);
+      return;
+    }
+
+    const stoppedPayload: SoundboardStoppedPayload = {
+      channelId: payload.channelId,
+      userId: session.user.id,
+    };
+
+    for (const p of this.signalingService.getParticipantsInChannel(payload.channelId)) {
+      const sock = this.sessionSockets.get(p.sessionId);
+      if (sock && sock.readyState === WebSocket.OPEN) {
+        this.send(sock, { type: MessageType.SOUNDBOARD_STOPPED, requestId, payload: stoppedPayload });
+      }
+    }
   }
 
   private async handleSoundboardPlay(

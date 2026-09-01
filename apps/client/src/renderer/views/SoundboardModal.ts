@@ -339,9 +339,18 @@ export class SoundboardModal {
             const shortcut = shortcuts[s.name];
 
             return `
-              <div class="sb-sound-row ${isPlaying ? 'is-playing' : ''}" style="display: flex; align-items: center; justify-content: space-between; padding: 6px 12px; background: var(--bg-card); border: 1px solid ${isPlaying ? 'var(--accent-primary)' : 'var(--border-color)'}; border-radius: var(--radius-sm); gap: 10px; transition: all 0.15s ease;">
-                <!-- Play sound button -->
-                <button type="button" class="sb-sound-btn sb-sound-list-btn" data-filepath="${escapeHtml(s.filePath)}" data-soundname="${escapeHtml(s.name)}" title="Tocar ${escapeHtml(s.name)} (${(s.sizeBytes / 1024).toFixed(0)} KB)" style="flex: 1; display: flex; align-items: center; gap: 10px; background: transparent; border: none; color: var(--text-primary); cursor: pointer; text-align: left; outline: none; min-width: 0; padding: 2px 0;">
+              <div
+                class="sb-sound-row sb-sound-btn sb-sound-list-btn ${isPlaying ? 'is-playing' : ''}"
+                role="button"
+                tabindex="0"
+                data-filepath="${escapeHtml(s.filePath)}"
+                data-soundname="${escapeHtml(s.name)}"
+                title="Tocar ${escapeHtml(s.name)} (${(s.sizeBytes / 1024).toFixed(0)} KB)"
+                style="display: flex; align-items: center; justify-content: space-between; padding: 6px 12px; background: var(--bg-card); border: 1px solid ${isPlaying ? 'var(--accent-primary)' : 'var(--border-color)'}; border-radius: var(--radius-sm); gap: 10px; cursor: pointer; color: var(--text-primary); text-align: left; outline: none;"
+              >
+                <!-- The row itself plays the sound (#499); the shortcut controls
+                     below stop the click from reaching it. -->
+                <div style="flex: 1; display: flex; align-items: center; gap: 10px; min-width: 0; padding: 2px 0;">
                   <div style="width: 28px; height: 28px; border-radius: 50%; background: ${isPlaying ? 'var(--accent-primary)' : 'rgba(255,255,255,0.06)'}; display: flex; align-items: center; justify-content: center; flex-shrink: 0;">
                     <span class="material-symbols-outlined sb-sound-icon" style="color: ${isPlaying ? '#ffffff' : 'var(--accent-primary)'}; font-size: 18px;">${isPlaying ? 'volume_up' : 'play_arrow'}</span>
                   </div>
@@ -351,7 +360,7 @@ export class SoundboardModal {
                   <span style="font-size: 11px; color: var(--text-muted); margin-right: 8px;">
                     ${(s.sizeBytes / 1024).toFixed(0)} KB
                   </span>
-                </button>
+                </div>
 
                 <!-- Shortcut Badge or Add Shortcut Button -->
                 <div style="display: flex; align-items: center; flex-shrink: 0;">
@@ -625,7 +634,7 @@ export class SoundboardModal {
       if (stopBtn) {
         const userId = stopBtn.getAttribute('data-userid');
         if (userId) {
-          soundboardService.stopSound(userId);
+          soundboardService.stopSoundFromUi(userId);
           const itemEl = playersContainer.querySelector(`[data-userid="${userId}"]`);
           if (itemEl) {
             itemEl.remove();
@@ -647,14 +656,26 @@ export class SoundboardModal {
   private attachSoundClickEvents(): void {
     if (!this.modalEl) return;
     
-    // Play sound click
+    // Play sound click. In list mode the target is the whole row, which is a
+    // <div role="button"> rather than a real button (it wraps the shortcut
+    // controls, and nesting buttons is invalid), so Enter/Space are wired by
+    // hand to keep it reachable from the keyboard (#499).
     const buttons = this.modalEl.querySelectorAll('.sb-sound-btn');
     buttons.forEach((btn) => {
-      btn.addEventListener('click', async () => {
+      const play = async () => {
         const filePath = btn.getAttribute('data-filepath');
         if (!filePath) return;
         await soundboardService.playSound(filePath);
-      });
+      };
+      btn.addEventListener('click', play);
+      if (btn.tagName !== 'BUTTON') {
+        btn.addEventListener('keydown', (e) => {
+          const key = (e as KeyboardEvent).key;
+          if (key !== 'Enter' && key !== ' ') return;
+          e.preventDefault();
+          void play();
+        });
+      }
     });
 
     // Add / edit shortcut click

@@ -59,6 +59,12 @@ export enum MessageType {
   PING = 'PING',
   USER_LOGOUT = 'USER_LOGOUT',
   SOUNDBOARD_PLAY = 'SOUNDBOARD_PLAY',
+  /**
+   * Client -> server, when the person who triggered a sound stops it. The audio
+   * is broadcast once and then played by each listener on their own, so a stop
+   * has to travel the same way or only the sender would fall silent (#499).
+   */
+  SOUNDBOARD_STOP = 'SOUNDBOARD_STOP',
   SERVER_GET_INVITE_INFO = 'SERVER_GET_INVITE_INFO',
 
   // Server -> Client
@@ -91,6 +97,8 @@ export enum MessageType {
   VOICE_USER_LEFT = 'VOICE_USER_LEFT',
   VOICE_STATE_CHANGED = 'VOICE_STATE_CHANGED',
   SOUNDBOARD_PLAYED = 'SOUNDBOARD_PLAYED',
+  /** Server -> clients in the channel: drop this user's ongoing sound (#499). */
+  SOUNDBOARD_STOPPED = 'SOUNDBOARD_STOPPED',
   SERVER_ERROR = 'SERVER_ERROR',
   PONG = 'PONG',
 }
@@ -270,6 +278,10 @@ export interface SoundboardPlayPayload {
   mimeType?: string;
 }
 
+export interface SoundboardStopPayload {
+  channelId: string;
+}
+
 export interface VoiceJoinPayload {
   channelId: string;
   isMuted?: boolean;
@@ -425,6 +437,11 @@ export interface SoundboardPlayedPayload {
   soundName: string;
   audioBase64: string;
   mimeType?: string;
+}
+
+export interface SoundboardStoppedPayload {
+  channelId: string;
+  userId: string;
 }
 
 export interface ServerShutdownPayload {

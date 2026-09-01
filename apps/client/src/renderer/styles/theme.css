@@ -6540,9 +6540,18 @@ button:hover .role-option-check:not(.checked) {
   transition: all 0.15s ease;
 }
 
+/* The whole row is the play target (#499), so it lifts on hover like the grid
+   card does instead of only tinting. */
 .sb-sound-row:hover {
   background: var(--bg-card-hover) !important;
   border-color: var(--border-focus) !important;
+  transform: translateY(-2px);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.25);
+}
+
+.sb-sound-row:focus-visible {
+  border-color: var(--accent-primary) !important;
+  box-shadow: 0 0 0 2px rgba(88, 101, 242, 0.35);
 }
 
 .sb-sound-row.is-playing {
