@@ -1,6 +1,6 @@
 import { MessageType, Permission, UserSummary } from '@monky/shared';
 import { escapeHtml } from '../utils/html';
-import { getAvatarUrl } from '../utils/avatar';
+import { avatarFileExtension, getAvatarUrl } from '../utils/avatar';
 import { renderRoleOption } from '../utils/roleOption';
 import { settingsStore } from '../stores/settingsStore';
 import { serverStore } from '../stores/serverStore';
@@ -10,6 +10,7 @@ import { appEvents } from '../core/EventBus';
 import { participantManager, ParticipantViewModel } from '../core/ParticipantManager';
 import { networkClient } from '../core/NetworkClient';
 import { showAlert } from './Dialog';
+import { downloadLightboxFile, lightboxModal } from './LightboxModal';
 import { warnIfMoveBlocked } from '../utils/channelAccess';
 import { t } from '../i18n';
 
@@ -38,6 +39,8 @@ export class UserContextMenu {
     const volumeSessionId = this.resolveVolumeTarget(user);
     const currentVol = settingsStore.getUserVolume(volumeSessionId, user.clientId);
     const avatarSrc = getAvatarUrl(user.avatarUrl);
+    // Sem foto o que se abriria é o logo padrão, então o olho não aparece (#406).
+    const hasAvatar = !!user.avatarUrl;
     // Voice moderation addresses a connection, not a person: prefer the exact
     // session the menu was opened from, else any session of theirs in voice (#309).
     const targetState = this.resolveVoiceTarget(user)?.voiceState;
@@ -65,7 +68,14 @@ export class UserContextMenu {
     this.menuEl.className = 'user-context-menu';
     this.menuEl.innerHTML = `
       <div class="context-menu-header">
-        <img class="context-menu-avatar" src="${avatarSrc}" alt="" data-fallback="avatar">
+        ${hasAvatar ? `
+          <button type="button" id="ctx-view-avatar" class="context-menu-avatar-button" title="${t('userMenu.viewAvatar')}" aria-label="${t('userMenu.viewAvatar')}">
+            <img class="context-menu-avatar" src="${avatarSrc}" alt="" data-fallback="avatar">
+            <span class="context-menu-avatar-overlay">
+              <span class="material-symbols-outlined md-18">visibility</span>
+            </span>
+          </button>
+        ` : `<img class="context-menu-avatar" src="${avatarSrc}" alt="" data-fallback="avatar">`}
         <div class="context-menu-user-info">
           <span class="context-menu-nickname">${escapeHtml(user.nickname)}</span>
           <span class="context-menu-subtext">${t('userMenu.audioSettings')}</span>
@@ -299,6 +309,29 @@ export class UserContextMenu {
 
     const slider = this.menuEl.querySelector('#ctx-volume-slider') as HTMLInputElement | null;
     slider?.addEventListener('input', () => this.applyVolume(user, parseInt(slider.value, 10)));
+    const avatarButton = this.menuEl.querySelector<HTMLButtonElement>('#ctx-view-avatar');
+    avatarButton?.addEventListener('click', () => {
+      const url = getAvatarUrl(user.avatarUrl);
+      // O menu some ao abrir a foto: deixá-lo por cima do lightbox só atrapalha.
+      this.close();
+      lightboxModal.open(
+        [{
+          kind: 'image',
+          url,
+          fileName: `${user.nickname}.${avatarFileExtension(user.avatarUrl)}`,
+          // O nome já aparece na legenda pelo nome do arquivo; repetir aqui só
+          // duplicaria a informação na barra do visualizador.
+          senderName: '',
+          timestamp: '',
+          // `source` só é lido no ramo de vídeo, para herdar o tempo e o volume
+          // do player embutido; uma imagem não tem o que herdar.
+          source: document.body,
+        }],
+        0,
+        downloadLightboxFile
+      );
+    });
+
     this.menuEl.querySelector('#ctx-vol-0')?.addEventListener('click', () => this.applyVolume(user, 0));
     this.menuEl.querySelector('#ctx-vol-100')?.addEventListener('click', () => this.applyVolume(user, 100));
     this.menuEl.querySelector('#ctx-vol-200')?.addEventListener('click', () => this.applyVolume(user, 200));

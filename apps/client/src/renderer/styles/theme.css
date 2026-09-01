@@ -5648,6 +5648,45 @@ body > .reconnect-overlay {
   flex-shrink: 0;
 }
 
+/* Botão que envolve o avatar no menu de contexto: o olho só aparece no hover,
+   para não competir com o nome e o volume, que são o motivo principal do menu (#406). */
+.context-menu-avatar-button {
+  position: relative;
+  width: 34px;
+  height: 34px;
+  padding: 0;
+  border: none;
+  background: none;
+  border-radius: 50%;
+  flex-shrink: 0;
+  cursor: pointer;
+  display: block;
+}
+
+.context-menu-avatar-button:focus-visible {
+  outline: 2px solid var(--accent-primary);
+  outline-offset: 2px;
+}
+
+.context-menu-avatar-overlay {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  background: rgba(0, 0, 0, 0.55);
+  color: #fff;
+  opacity: 0;
+  transition: opacity 0.12s ease;
+  pointer-events: none;
+}
+
+.context-menu-avatar-button:hover .context-menu-avatar-overlay,
+.context-menu-avatar-button:focus-visible .context-menu-avatar-overlay {
+  opacity: 1;
+}
+
 .context-menu-user-info {
   display: flex;
   flex-direction: column;

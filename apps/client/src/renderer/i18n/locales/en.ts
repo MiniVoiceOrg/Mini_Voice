@@ -64,6 +64,7 @@ export const en: TranslationMap = {
 
   // ── User context menu (UserContextMenu.ts) ───────────────────────────────
   'userMenu.audioSettings': 'Audio settings',
+  'userMenu.viewAvatar': 'View profile picture',
   'userMenu.voiceVolume': 'Voice volume',
   'userMenu.muteUserTitle': 'Mute this user',
   'userMenu.volumeMuted': '0% (Muted)',

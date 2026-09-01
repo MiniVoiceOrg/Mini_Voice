@@ -33,3 +33,13 @@ export function toAbsoluteServerIconUrl(
   const cleanHost = host.trim().replace(/^wss?:\/\//, '').replace(/^https?:\/\//, '');
   return `http://${cleanHost}:${port}${iconUrl}`;
 }
+
+/**
+ * Extensão real do arquivo de avatar, para salvar a foto ampliada com o nome
+ * certo. O servidor aceita png, jpeg e webp, então um `.png` fixo entregaria um
+ * arquivo com a extensão errada (#406). A query string é descartada antes da
+ * busca, e `png` fica como último recurso quando a URL não diz nada.
+ */
+export function avatarFileExtension(avatarUrl?: string | null): string {
+  return (avatarUrl || '').split('?')[0].match(/\.([a-z0-9]{1,5})$/i)?.[1] ?? 'png';
+}

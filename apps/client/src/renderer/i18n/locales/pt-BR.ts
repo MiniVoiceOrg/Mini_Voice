@@ -65,6 +65,7 @@ export const ptBR = {
 
   // ── Menu de contexto do usuário (UserContextMenu.ts) ─────────────────────
   'userMenu.audioSettings': 'Configurações de Áudio',
+  'userMenu.viewAvatar': 'Ver foto de perfil',
   'userMenu.voiceVolume': 'Volume de Voz',
   'userMenu.muteUserTitle': 'Mutar áudio deste usuário',
   'userMenu.volumeMuted': '0% (Mudo)',

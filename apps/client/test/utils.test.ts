@@ -7,6 +7,7 @@
 import { escapeHtml } from '../src/renderer/utils/html';
 import { renderMarkdown } from '../src/renderer/utils/markdown';
 import { formatBytes, fileIconName } from '../src/renderer/utils/attachment';
+import { avatarFileExtension } from '../src/renderer/utils/avatar';
 import { EventBus } from '../src/renderer/core/EventBus';
 import { normalizeSearchString, matchesSearch } from '../src/renderer/utils/search';
 import { compareVersions, feedUrlForTag, isNewer, pickBestRelease } from '../src/main/updateVersions';
@@ -577,6 +578,14 @@ function runTests() {
   assert(conexao.createdServers[0].name === 'Nome Novo', 'Nome vazio não apaga o que já estava lá');
   conexao.updateSavedServerMeta('192.168.0.1', 3000, { name: 'Inexistente' });
   assert(conexao.savedServers.length === 2, 'Servidor que não está na lista não cria entrada nova');
+
+  // Extensão do avatar ao salvar a foto ampliada (#406)
+  console.log('\n--- Testando extensão do avatar (#406) ---');
+  assert(avatarFileExtension('/avatars/abc.png') === 'png', 'PNG é reconhecido');
+  assert(avatarFileExtension('/avatars/abc.jpeg') === 'jpeg', 'JPEG não vira png no download');
+  assert(avatarFileExtension('/avatars/abc.webp?v=2') === 'webp', 'Query string não engole a extensão');
+  assert(avatarFileExtension('/avatars/sem-extensao') === 'png', 'Sem extensão cai no padrão');
+  assert(avatarFileExtension(null) === 'png', 'Avatar ausente cai no padrão sem quebrar');
 
   // Sincronização de Presets de Qualidade de Vídeo e Compartilhamento de Tela (#474)
   console.log('\n--- Testando sincronização de presets de qualidade de tela (#474) ---');

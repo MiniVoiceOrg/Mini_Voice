@@ -13,7 +13,7 @@ import { getLanguage, t } from '../i18n';
 import { uploadAttachment, UploadHandle } from '../core/AttachmentUploader';
 import { getAttachmentUrl, formatBytes, fileIconName } from '../utils/attachment';
 import { showAlert } from './Dialog';
-import { lightboxModal, LightboxMedia } from './LightboxModal';
+import { downloadLightboxFile, lightboxModal, LightboxMedia } from './LightboxModal';
 import { linkPreviewService } from '../core/LinkPreviewService';
 import { initializeCustomVideoPlayers } from '../utils/videoPlayer';
 import { EmojiPicker } from './EmojiPicker';
@@ -1525,15 +1525,7 @@ export class ChatView {
   }
 
   private async downloadAttachment(url: string, fileName: string): Promise<void> {
-    if (!window.api?.downloadFile) return;
-    const result = await window.api.downloadFile(url, fileName);
-    if (!result.success && result.error) {
-      await showAlert({
-        title: t('chat.downloadFailedTitle'),
-        message: t('chat.downloadFailedMessage', { error: result.error }),
-        variant: 'danger',
-      });
-    }
+    await downloadLightboxFile(url, fileName);
   }
 
   private unbindListeners(): void {
