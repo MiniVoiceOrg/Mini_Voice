@@ -67,6 +67,7 @@ export class SettingsStore {
   // A missing entry (or 'inherit') means "use the level above".
   public chatSoundServerOverrides: Record<string, ChatSoundMode> = {};
   public chatSoundChannelOverrides: Record<string, ChatSoundMode> = {};
+  public onboardingCompleted: boolean = false;
 
   constructor() {
     this.load();
@@ -160,6 +161,9 @@ export class SettingsStore {
         }
         this.chatSoundServerOverrides = this.sanitizeModeMap(this.chatSoundServerOverrides);
         this.chatSoundChannelOverrides = this.sanitizeModeMap(this.chatSoundChannelOverrides);
+        if (typeof this.onboardingCompleted !== 'boolean') {
+          this.onboardingCompleted = false;
+        }
       }
     } catch (e) {}
   }
@@ -297,6 +301,7 @@ export class SettingsStore {
         askShutdownOnLastLeave: this.askShutdownOnLastLeave,
         chatSoundServerOverrides: this.chatSoundServerOverrides,
         chatSoundChannelOverrides: this.chatSoundChannelOverrides,
+        onboardingCompleted: this.onboardingCompleted,
       }));
       appEvents.emit('settings.updated');
     } catch (e) {}

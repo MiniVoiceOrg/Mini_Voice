@@ -6644,3 +6644,213 @@ button:hover .role-option-check:not(.checked) {
 .toggle-switch-sm input:checked + .toggle-slider::before {
   transform: translateX(12px);
 }
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   Onboarding Wizard & Tutorial Viewer (#494)
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+/* ── Help button on the connection screen ─────────────────────────────────── */
+.onboarding-help-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  width: 100%;
+  padding: 8px 14px;
+  margin-bottom: 14px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--accent-primary);
+  background: rgba(88, 101, 242, 0.08);
+  border: 1px dashed rgba(88, 101, 242, 0.35);
+  border-radius: var(--radius-md);
+  cursor: pointer;
+  transition: background 0.15s, border-color 0.15s;
+}
+.onboarding-help-btn:hover {
+  background: rgba(88, 101, 242, 0.15);
+  border-color: rgba(88, 101, 242, 0.55);
+}
+
+/* ── Wizard card ──────────────────────────────────────────────────────────── */
+.onboarding-card {
+  animation: onboarding-fade-in 0.2s ease;
+}
+@keyframes onboarding-fade-in {
+  from { opacity: 0; transform: translateY(8px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+/* ── Step dots ────────────────────────────────────────────────────────────── */
+.onboarding-step-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--bg-tertiary);
+  transition: background 0.2s;
+}
+.onboarding-step-dot.active {
+  background: var(--accent-primary);
+}
+.onboarding-step-dot.completed {
+  background: var(--success, #43b581);
+}
+
+/* ── Option cards (clickable rows) ────────────────────────────────────────── */
+.onboarding-option-card {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 14px 16px;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-md);
+  cursor: pointer;
+  transition: background 0.15s, border-color 0.15s, transform 0.1s;
+  text-align: left;
+  width: 100%;
+  color: inherit;
+  font: inherit;
+}
+.onboarding-option-card:hover {
+  background: var(--bg-tertiary);
+  border-color: var(--accent-primary);
+  transform: translateX(2px);
+}
+.onboarding-option-icon {
+  font-size: 24px;
+  color: var(--accent-primary);
+  flex-shrink: 0;
+}
+.onboarding-option-text {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+  flex: 1;
+}
+.onboarding-option-title {
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--text-primary);
+}
+.onboarding-option-desc {
+  font-size: 12px;
+  color: var(--text-secondary);
+}
+.onboarding-option-arrow {
+  color: var(--text-muted);
+  font-size: 20px;
+  flex-shrink: 0;
+}
+
+/* ── Difficulty badges ────────────────────────────────────────────────────── */
+.onboarding-badge {
+  font-size: 11px;
+  font-weight: 600;
+  padding: 2px 8px;
+  border-radius: 10px;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+.onboarding-badge.easy {
+  color: var(--success, #43b581);
+  background: rgba(67, 181, 129, 0.12);
+}
+.onboarding-badge.medium {
+  color: var(--warning, #faa61a);
+  background: rgba(250, 166, 26, 0.12);
+}
+.onboarding-badge.advanced {
+  color: var(--text-secondary);
+  background: rgba(255, 255, 255, 0.06);
+}
+
+/* ── Tutorial viewer card ─────────────────────────────────────────────────── */
+.onboarding-tutorial-card {
+  animation: onboarding-fade-in 0.2s ease;
+}
+
+/* ── Tutorial image placeholder ───────────────────────────────────────────── */
+.tutorial-image-placeholder {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  width: 100%;
+  height: 140px;
+  margin-bottom: 14px;
+  background: var(--bg-tertiary);
+  border: 2px dashed var(--border-color);
+  border-radius: var(--radius-md);
+}
+
+/* ── Tutorial clickable links ─────────────────────────────────────────────── */
+.tutorial-content a {
+  color: var(--accent-primary);
+  text-decoration: underline;
+  cursor: pointer;
+}
+.tutorial-content a:hover {
+  color: var(--accent-primary-hover, #7983f5);
+}
+
+/* ── Terminal-style command blocks ─────────────────────────────────────────── */
+.tutorial-cmd {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 10px 0;
+  padding: 12px 16px;
+  background: #0d1117;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 8px;
+  font-family: 'Cascadia Code', 'Fira Code', 'Consolas', 'Courier New', monospace;
+  font-size: 13px;
+  color: #e6edf3;
+  line-height: 1.6;
+  white-space: nowrap;
+  word-break: normal;
+  position: relative;
+  overflow-x: auto;
+}
+.tutorial-cmd::before {
+  content: '$ ';
+  color: #7ee787;
+  font-weight: 700;
+  flex-shrink: 0;
+  user-select: none;
+}
+.tutorial-cmd-copy {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  flex-shrink: 0;
+  padding: 4px 6px;
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 5px;
+  color: #8b949e;
+  cursor: pointer;
+  font-size: 14px;
+  line-height: 1;
+  transition: background 0.15s, color 0.15s;
+  display: flex;
+  align-items: center;
+}
+.tutorial-cmd-copy:hover {
+  background: rgba(255, 255, 255, 0.12);
+  color: #e6edf3;
+}
+.tutorial-cmd-copy.copied {
+  color: #7ee787;
+  opacity: 1;
+}
+
+/* ── Terminal syntax highlighting ─────────────────────────────────────────── */
+.tutorial-cmd .sh-cmd   { color: #7ee787; font-weight: 600; }  /* commands: green */
+.tutorial-cmd .sh-flag  { color: #79c0ff; }                     /* flags: cyan */
+.tutorial-cmd .sh-url   { color: #ffa657; }                     /* urls: orange */
+.tutorial-cmd .sh-pipe  { color: #d2a8ff; font-weight: 700; }   /* pipes: purple */
+.tutorial-cmd .sh-sudo  { color: #ff7b72; font-weight: 600; }   /* sudo: red */
