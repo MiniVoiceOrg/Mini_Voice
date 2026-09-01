@@ -143,6 +143,30 @@ export default withMermaid(defineConfig({
     },
   },
 
+  /**
+   * Hoje nenhuma página tem bloco mermaid: os diagramas da arquitetura são SVGs
+   * gerados fora do site (`docs-site/diagramas/`). O padrão `useMaxWidth: true`
+   * encolhia todo diagrama mais largo que a coluna de texto do VitePress
+   * (~624px) até o texto ficar ilegível, que é o que a #349 relatava.
+   *
+   * A configuração fica para um bloco mermaid escrito amanhã não nascer com o
+   * mesmo defeito. O `theme` fica de fora de propósito: o plugin troca sozinho
+   * para o tema escuro quando a página está no escuro, e fixar um valor aqui
+   * quebraria isso.
+   */
+  mermaid: {
+    // O componente do plugin substitui os padrões dele pelo que vier daqui,
+    // então estes dois precisam ser repetidos.
+    startOnLoad: false,
+    securityLevel: 'loose',
+    themeVariables: {
+      fontSize: '16px',
+      fontFamily: 'Inter, ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif',
+    },
+    flowchart: { useMaxWidth: false, htmlLabels: true, nodeSpacing: 45, rankSpacing: 55, padding: 12 },
+    sequence: { useMaxWidth: false },
+  },
+
   themeConfig: {
     logo: '/logo.png',
     socialLinks: [

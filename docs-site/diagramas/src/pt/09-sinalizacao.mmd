@@ -1,0 +1,22 @@
+sequenceDiagram
+    participant A as Ana
+    participant S as Servidor
+    participant B as Bruno
+
+    A->>S: VOICE_JOIN
+    S-->>B: VOICE_USER_JOINED (Ana entrou)
+
+    Note over A,B: a partir daqui o servidor só repassa
+    A->>S: RTC_SIGNAL (offer)
+    S->>B: RTC_SIGNAL (offer, de Ana)
+    B->>S: RTC_SIGNAL (answer)
+    S->>A: RTC_SIGNAL (answer, de Bruno)
+
+    loop enquanto o ICE descobre caminhos
+        A->>S: RTC_SIGNAL (candidate)
+        S->>B: RTC_SIGNAL (candidate)
+        B->>S: RTC_SIGNAL (candidate)
+        S->>A: RTC_SIGNAL (candidate)
+    end
+
+    A-->>B: mídia direta, P2P

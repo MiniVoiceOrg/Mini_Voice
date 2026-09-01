@@ -1,0 +1,19 @@
+sequenceDiagram
+    participant A as Ana (cliente)
+    participant S as Servidor
+    participant B as Bruno (par)
+
+    Note over A,S: a rede de Ana cai
+    A--xS: WebSocket fecha
+    Note over S: guarda a sessão por 20 s<br/>em vez de anunciar a saída
+    S-->>B: (ninguém é avisado ainda)
+
+    loop 1s · 2s · 3s · 5s
+        A->>S: tenta reconectar
+    end
+
+    A->>S: AUTH_CONNECT + desafio de novo
+    S->>A: estado do servidor recarregado do zero
+    Note over A: derruba TODAS as conexões P2P<br/>e refaz a partir da lista nova
+    A->>S: VOICE_JOIN (reingressa no canal)
+    A-->>B: nova conexão P2P

@@ -1,0 +1,18 @@
+flowchart TB
+    subgraph CP["Control plane — goes through the server"]
+        direction LR
+        S[("Monky server<br/>WebSocket + SQLite")]
+    end
+
+    subgraph MP["Media plane — never touches the server"]
+        direction LR
+        A2["Ana"] <-->|"voice · video · screen"| B2["Bruno"]
+        B2 <-->|"voice · video · screen"| C2["Carla"]
+        A2 <-->|"voice · video · screen"| C2
+    end
+
+    A["Ana"] <-->|"login, channels, chat,<br/>signaling"| S
+    B["Bruno"] <--> S
+    C["Carla"] <--> S
+
+    CP -.->|"the server only introduces<br/>the peers to each other"| MP

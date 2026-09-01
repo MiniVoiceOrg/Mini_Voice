@@ -1,3 +1,8 @@
+---
+aside: false
+pageClass: pagina-arquitetura
+---
+
 # Arquitetura
 
 Como o Monky é construído por dentro: os componentes, como eles conversam e por
@@ -12,26 +17,12 @@ em [`docs/especificacao-tecnica.md`](https://github.com/MonkyOrg/Monky/blob/main
 Tudo no Monky parte de uma separação: **o que o servidor controla** e **o que
 trafega direto entre as pessoas**.
 
-```mermaid
-flowchart TB
-    subgraph CP["Plano de controle — passa pelo servidor"]
-        direction LR
-        S[("Servidor Monky<br/>WebSocket + SQLite")]
-    end
+<div class="diagrama">
 
-    subgraph MP["Plano de mídia — nunca passa pelo servidor"]
-        direction LR
-        A2["Ana"] <-->|"voz · vídeo · tela"| B2["Bruno"]
-        B2 <-->|"voz · vídeo · tela"| C2["Carla"]
-        A2 <-->|"voz · vídeo · tela"| C2
-    end
+![A ideia central: dois planos separados](./diagramas/pt/01-a-ideia-central-dois-planos-separados.claro.svg){.tema-claro}
+![A ideia central: dois planos separados](./diagramas/pt/01-a-ideia-central-dois-planos-separados.escuro.svg){.tema-escuro}
 
-    A["Ana"] <-->|"login, canais, chat,<br/>sinalização"| S
-    B["Bruno"] <--> S
-    C["Carla"] <--> S
-
-    CP -.->|"o servidor só apresenta<br/>os pares uns aos outros"| MP
-```
+</div>
 
 O servidor cuida de login, canais, chat, cargos e **sinalização**. Ele apresenta
 os participantes uns aos outros e sai da frente: voz, vídeo e tela trafegam
@@ -63,17 +54,12 @@ importam os **mesmos** tipos e os **mesmos** validadores.
 
 O Electron separa o app em três contextos, e o Monky respeita essa separação:
 
-```mermaid
-flowchart LR
-    subgraph Electron["App Electron"]
-        M["<b>Main</b><br/>src/main/<br/><br/>janela, bandeja,<br/>auto-update,<br/>módulo nativo,<br/>servidor local"]
-        P["<b>Preload</b><br/>src/preload/<br/><br/>a ponte<br/>window.api"]
-        R["<b>Renderer</b><br/>src/renderer/<br/><br/>toda a interface,<br/>WebRTC,<br/>WebSocket"]
-    end
+<div class="diagrama">
 
-    M <-->|IPC| P
-    P <-->|contextBridge| R
-```
+![Três processos](./diagramas/pt/02-tres-processos.claro.svg){.tema-claro}
+![Três processos](./diagramas/pt/02-tres-processos.escuro.svg){.tema-escuro}
+
+</div>
 
 O renderer roda com `contextIsolation: true` e `nodeIntegration: false`: a
 interface **não tem acesso ao Node**. Tudo que precisa do sistema operacional —
@@ -89,13 +75,12 @@ e se re-renderizam.
 O estado fica em *stores* singleton que emitem eventos num barramento
 (`appEvents`), e as telas se inscrevem no que lhes interessa:
 
-```mermaid
-flowchart LR
-    N["NetworkClient<br/>(WebSocket)"] -->|evento do servidor| ST["Stores<br/>serverStore, voiceStore,<br/>chatStore, connectionStore,<br/>settingsStore"]
-    ST -->|appEvents.emit| EB(["EventBus"])
-    EB -->|appEvents.on| V["Views<br/>MainView, ChatView,<br/>VoiceStageView…"]
-    V -->|ação do usuário| N
-```
+<div class="diagrama">
+
+![A interface não usa framework](./diagramas/pt/03-a-interface-nao-usa-framework.claro.svg){.tema-claro}
+![A interface não usa framework](./diagramas/pt/03-a-interface-nao-usa-framework.escuro.svg){.tema-escuro}
+
+</div>
 
 ### Os serviços
 
@@ -120,26 +105,12 @@ Cada responsabilidade grande do cliente vive em uma classe própria, em
 Não há banco local, mas também não é tudo `localStorage`: o cliente guarda em
 **dois lugares com garantias diferentes**, e a diferença importa.
 
-```mermaid
-flowchart TB
-    subgraph LS["localStorage — o renderer lê e escreve"]
-        direction TB
-        L1["<b>monky_settings</b><br/>qualidade, dispositivos,<br/>volumes, atalhos, soundboard"]
-        L2["<b>monky_nickname</b> · <b>monky_avatar</b><br/>sua identidade visual"]
-        L3["<b>monky_saved_servers</b> · <b>monky_created_servers</b><br/>servidores salvos e criados"]
-        L4["<b>monky_device_id</b> · <b>monky_language</b><br/>este aparelho e o idioma"]
-    end
+<div class="diagrama">
 
-    subgraph UD["userData em disco — só o processo main alcança"]
-        direction TB
-        D1["<b>identity.json</b><br/>seu par de chaves,<br/>cifrado com safeStorage"]
-        D2["<b>server-data/</b><br/>o banco do servidor,<br/>quando você hospeda pelo app"]
-    end
+![O que fica salvo na sua máquina](./diagramas/pt/04-o-que-fica-salvo-na-sua-maquina.claro.svg){.tema-claro}
+![O que fica salvo na sua máquina](./diagramas/pt/04-o-que-fica-salvo-na-sua-maquina.escuro.svg){.tema-escuro}
 
-    R["Renderer"] --> LS
-    R -->|window.api| M["Main"]
-    M --> UD
-```
+</div>
 
 | Chave | Conteúdo |
 |---|---|
@@ -164,18 +135,12 @@ dos dois casos aconteceu.
 O mesmo código de servidor sobe de três maneiras, e a diferença não é técnica —
 é de quem cuida dele:
 
-```mermaid
-flowchart TB
-    CODE["<b>apps/server</b><br/>WebSocket + SQLite<br/>o mesmo código nos três casos"]
+<div class="diagrama">
 
-    CODE --> A["<b>Pelo app</b><br/>o Electron importa o servidor<br/>e roda dentro do próprio processo"]
-    CODE --> B["<b>Pelo Monky CLI</b><br/>daemon do PM2, registro<br/>em ~/.monky/servers.json"]
-    CODE --> C["<b>Em VPS</b><br/>o mesmo CLI, numa máquina<br/>que fica sempre ligada"]
+![As três formas de rodar](./diagramas/pt/05-as-tres-formas-de-rodar.claro.svg){.tema-claro}
+![As três formas de rodar](./diagramas/pt/05-as-tres-formas-de-rodar.escuro.svg){.tema-escuro}
 
-    A --> A1["morre quando você fecha o app<br/>e depende do seu IP em casa"]
-    B --> B1["sobrevive ao logout e volta<br/>depois de um reboot"]
-    C --> C1["endereço estável para<br/>quem entra de fora"]
-```
+</div>
 
 Hospedar **pelo app** é o caminho de dois cliques, e é por isso que o cliente
 importa `@monky/server` diretamente: não há processo separado nem porta de
@@ -191,17 +156,12 @@ Não há container de injeção de dependência: a montagem é explícita, feita
 em `MonkyServer.create()`. Você consegue ler o arquivo e ver exatamente o que
 depende do quê.
 
-```mermaid
-flowchart TB
-    WS["<b>infrastructure/websocket</b><br/>WebSocketServer — recebe o frame,<br/>identifica o tipo e roteia"]
-    SV["<b>application/services</b><br/>AuthService · ChatService · ChannelService<br/>RoleService · PermissionService<br/>SignalingService · UserService · AttachmentService"]
-    RP["<b>infrastructure/database</b><br/>Repositórios + SQLite"]
-    SEC["<b>infrastructure/security</b><br/>RateLimiter · armazenamento de<br/>avatares e anexos · hash de senha"]
+<div class="diagrama">
 
-    WS --> SV
-    SV --> RP
-    SV --> SEC
-```
+![Camadas](./diagramas/pt/06-camadas.claro.svg){.tema-claro}
+![Camadas](./diagramas/pt/06-camadas.escuro.svg){.tema-escuro}
+
+</div>
 
 Além do WebSocket, o servidor expõe algumas rotas HTTP: `/health`, `/preview` e
 `/invite-info` (informações públicas para a tela de convite), `/avatars/*` e o
@@ -243,19 +203,12 @@ for respeitado.
 O login é por desafio-resposta com criptografia de chave pública. Você não tem
 conta nem cadastro: sua identidade **é** o seu par de chaves.
 
-```mermaid
-sequenceDiagram
-    participant C as Cliente
-    participant S as Servidor
+<div class="diagrama">
 
-    C->>S: AUTH_CONNECT<br/>(chave pública, nickname, versão do protocolo, senha do servidor?)
-    Note over S: valida a versão do protocolo,<br/>a senha do servidor e o nickname
-    S->>C: AUTH_CHALLENGE (nonce aleatório)
-    Note over C: assina o nonce com<br/>a chave privada
-    C->>S: AUTH_CHALLENGE_RESPONSE (assinatura)
-    Note over S: confere a assinatura<br/>contra a chave pública
-    S->>C: estado do servidor: canais, membros, cargos, histórico
-```
+![Autenticação: o servidor nunca vê uma senha sua](./diagramas/pt/07-autenticacao-o-servidor-nunca-ve-uma-sen.claro.svg){.tema-claro}
+![Autenticação: o servidor nunca vê uma senha sua](./diagramas/pt/07-autenticacao-o-servidor-nunca-ve-uma-sen.escuro.svg){.tema-escuro}
+
+</div>
 
 O `clientId` é derivado da própria chave pública, então ele não pode ser
 falsificado: quem não tem a chave privada não consegue assinar o desafio.
@@ -327,27 +280,12 @@ não a extensão. Renomear um executável para `.png` não engana a checagem.
 
 Cada participante abre uma conexão direta com **cada** um dos outros.
 
-```mermaid
-flowchart TB
-    subgraph N3["3 pessoas — 3 conexões"]
-        A1((Ana)) --- B1((Bruno))
-        B1 --- C1((Carla))
-        A1 --- C1
-    end
+<div class="diagrama">
 
-    subgraph N5["5 pessoas — 10 conexões"]
-        A((Ana)) --- B((Bruno))
-        A --- C((Carla))
-        A --- D((Davi))
-        A --- E((Elis))
-        B --- C
-        B --- D
-        B --- E
-        C --- D
-        C --- E
-        D --- E
-    end
-```
+![Topologia: mesh completo](./diagramas/pt/08-topologia-mesh-completo.claro.svg){.tema-claro}
+![Topologia: mesh completo](./diagramas/pt/08-topologia-mesh-completo.escuro.svg){.tema-escuro}
+
+</div>
 
 Com **N** participantes, cada pessoa mantém **N−1** conexões e o canal tem
 **N(N−1)/2** no total. Quem compartilha tela envia o mesmo vídeo N−1 vezes,
@@ -368,30 +306,12 @@ O servidor só entrega envelopes. Ele reescreve o remetente (para ninguém forja
 identidade) e recusa a entrega se os dois pares não estiverem no mesmo canal de
 voz.
 
-```mermaid
-sequenceDiagram
-    participant A as Ana
-    participant S as Servidor
-    participant B as Bruno
+<div class="diagrama">
 
-    A->>S: VOICE_JOIN
-    S-->>B: VOICE_USER_JOINED (Ana entrou)
+![Sinalização](./diagramas/pt/09-sinalizacao.claro.svg){.tema-claro}
+![Sinalização](./diagramas/pt/09-sinalizacao.escuro.svg){.tema-escuro}
 
-    Note over A,B: a partir daqui o servidor só repassa
-    A->>S: RTC_SIGNAL (offer)
-    S->>B: RTC_SIGNAL (offer, de Ana)
-    B->>S: RTC_SIGNAL (answer)
-    S->>A: RTC_SIGNAL (answer, de Bruno)
-
-    loop enquanto o ICE descobre caminhos
-        A->>S: RTC_SIGNAL (candidate)
-        S->>B: RTC_SIGNAL (candidate)
-        B->>S: RTC_SIGNAL (candidate)
-        S->>A: RTC_SIGNAL (candidate)
-    end
-
-    A-->>B: mídia direta, P2P
-```
+</div>
 
 ### Atravessando o NAT
 
@@ -421,15 +341,12 @@ refaz a conexão do zero com aquele par.
 
 ### Áudio
 
-```mermaid
-flowchart LR
-    MIC["Microfone<br/>getUserMedia"] --> AC["AudioContext<br/>48 kHz"]
-    AC --> RN["RNNoise<br/>(opcional)"]
-    RN --> DEST["Stream de saída"]
-    AC --> AN["Analyser<br/>detecção de fala"]
-    DEST --> PC["Para os pares"]
-    AN -->|a cada 50 ms| UI["Indicador de<br/>quem está falando"]
-```
+<div class="diagrama">
+
+![Áudio](./diagramas/pt/10-audio.claro.svg){.tema-claro}
+![Áudio](./diagramas/pt/10-audio.escuro.svg){.tema-escuro}
+
+</div>
 
 A captura já pede cancelamento de eco e ganho automático ao navegador. A
 supressão de ruído tem um detalhe: quando você liga o **RNNoise** do Monky, a
@@ -505,27 +422,12 @@ Quando o WebSocket cai, o cliente tenta voltar sozinho, com esperas crescentes
 segundos** antes de anunciar a saída, então uma queda rápida de Wi-Fi não
 expulsa ninguém da lista.
 
-```mermaid
-sequenceDiagram
-    participant A as Ana (cliente)
-    participant S as Servidor
-    participant B as Bruno (par)
+<div class="diagrama">
 
-    Note over A,S: a rede de Ana cai
-    A--xS: WebSocket fecha
-    Note over S: guarda a sessão por 20 s<br/>em vez de anunciar a saída
-    S-->>B: (ninguém é avisado ainda)
+![Reconexão](./diagramas/pt/11-reconexao.claro.svg){.tema-claro}
+![Reconexão](./diagramas/pt/11-reconexao.escuro.svg){.tema-escuro}
 
-    loop 1s · 2s · 3s · 5s
-        A->>S: tenta reconectar
-    end
-
-    A->>S: AUTH_CONNECT + desafio de novo
-    S->>A: estado do servidor recarregado do zero
-    Note over A: derruba TODAS as conexões P2P<br/>e refaz a partir da lista nova
-    A->>S: VOICE_JOIN (reingressa no canal)
-    A-->>B: nova conexão P2P
-```
+</div>
 
 Repare no passo mais contraintuitivo: ao voltar, o cliente **derruba todas as
 conexões P2P e recomeça**, mesmo as que pareciam vivas. Parece drástico, mas é o

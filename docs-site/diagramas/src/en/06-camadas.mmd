@@ -1,0 +1,9 @@
+flowchart TB
+    WS["<b>infrastructure/websocket</b><br/>WebSocketServer — receives the frame,<br/>identifies the type and routes it"]
+    SV["<b>application/services</b><br/>AuthService · ChatService · ChannelService<br/>RoleService · PermissionService<br/>SignalingService · UserService · AttachmentService"]
+    RP["<b>infrastructure/database</b><br/>Repositories + SQLite"]
+    SEC["<b>infrastructure/security</b><br/>RateLimiter · avatar and attachment<br/>storage · password hashing"]
+
+    WS --> SV
+    SV --> RP
+    SV --> SEC
