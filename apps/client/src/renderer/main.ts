@@ -635,6 +635,14 @@ class App {
     });
 
     appEvents.on(`message.${MessageType.VOICE_USER_JOINED}`, (payload: VoiceUserJoinedPayload) => {
+      // Read before the state is overwritten: an admin move announces the
+      // arrival once itself and once more when the moved client re-joins, so
+      // the room would hear the join sound twice (#500). A repeated
+      // announcement for a session already listed in this channel is that
+      // second copy — the mesh still reconnects, only the cue is skipped.
+      const alreadyInChannel =
+        participantManager.get(payload.sessionId)?.voiceState?.channelId === payload.channelId;
+
       participantManager.updateVoiceState(payload.voiceState);
 
       // If we are also in this voice channel and not the joining session, connect P2P Mesh
@@ -645,7 +653,7 @@ class App {
       ) {
         webRtcManager.connectToPeer(payload.sessionId, false);
         // Let everyone already in the channel hear that someone joined (#54), unless deafened (#251).
-        if (!voiceStore.getEffectiveDeafened()) {
+        if (!alreadyInChannel && !voiceStore.getEffectiveDeafened()) {
           soundEffects.play('join_voice');
         }
       }
