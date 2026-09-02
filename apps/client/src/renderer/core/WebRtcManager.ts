@@ -136,6 +136,8 @@ export class WebRtcManager {
   private currentPreset: QualityPresetType = settingsStore.qualityPreset;
   private currentSessionId: string = '';
   private isDeafened: boolean = false;
+  private isMigratingVoiceMode: boolean = false;
+  private migrationDebounceTimer: any = null;
 
   /**
    * ICE servers used for every peer connection.
@@ -273,24 +275,42 @@ export class WebRtcManager {
       this.mediaRouter.applyUserVolumes();
     });
 
-    appEvents.on('server.meta_updated', async () => {
-      const isSfu = this.voiceServerStore.serverDetails?.voiceMode === 'sfu';
-      const channelId = voiceStore.currentVoiceChannelId;
-      if (!channelId) return;
-
-      const currentlyRunningSfu = this.sfuEngine.isReady() || this.sfuEngine.isChannelConnected();
-      const targetIsSfu = isSfu && !this.isContingencyP2p;
-
-      if (currentlyRunningSfu === targetIsSfu) {
-        return;
+    appEvents.on('server.meta_updated', () => {
+      if (this.migrationDebounceTimer) {
+        clearTimeout(this.migrationDebounceTimer);
       }
+      this.migrationDebounceTimer = setTimeout(() => {
+        this.migrationDebounceTimer = null;
+        void this.handleVoiceModeUpdate();
+      }, 100);
+    });
+  }
 
-      const fromMode = currentlyRunningSfu ? 'SFU' : 'P2P';
-      const toMode = targetIsSfu ? 'SFU' : 'P2P';
+  private async handleVoiceModeUpdate(): Promise<void> {
+    const channelId = voiceStore.currentVoiceChannelId;
+    if (!channelId) return;
 
-      console.log(`[WebRTC] Dynamic voice mode transition requested: ${fromMode} -> ${toMode}. Migrating active call...`);
-      clientLog.info('WEBRTC', `Dynamic voice mode transition requested: ${fromMode} -> ${toMode}`);
+    const isSfu = this.voiceServerStore.serverDetails?.voiceMode === 'sfu';
+    const currentlyRunningSfu = this.sfuEngine.isReady() || this.sfuEngine.isChannelConnected();
+    const targetIsSfu = isSfu && !this.isContingencyP2p;
 
+    if (currentlyRunningSfu === targetIsSfu) {
+      return;
+    }
+
+    if (this.isMigratingVoiceMode) {
+      console.log('[WebRTC] Voice mode migration already in flight, skipping duplicate call.');
+      return;
+    }
+
+    this.isMigratingVoiceMode = true;
+    const fromMode = currentlyRunningSfu ? 'SFU' : 'P2P';
+    const toMode = targetIsSfu ? 'SFU' : 'P2P';
+
+    console.log(`[WebRTC] Dynamic voice mode transition starting: ${fromMode} -> ${toMode}. Migrating active call...`);
+    clientLog.info('WEBRTC', `Dynamic voice mode transition starting: ${fromMode} -> ${toMode}`);
+
+    try {
       // 1. Cleanly tear down previous session connections and media router elements
       this.closeAllPeers();
 
@@ -303,7 +323,10 @@ export class WebRtcManager {
         }
       }
 
-      // 3. Re-initialize in the new target mode
+      // 3. Pause briefly so both server and remote peers complete their teardown before new handshakes
+      await new Promise((resolve) => setTimeout(resolve, 150));
+
+      // 4. Re-initialize in the new target mode
       this.isContingencyP2p = false;
       if (targetIsSfu) {
         await this.initSfuForCurrentChannel();
@@ -311,9 +334,14 @@ export class WebRtcManager {
         this.connectToAllParticipants();
       }
 
-      // 4. Notify UI of the mode switch
+      // 5. Notify UI of the mode switch
       appEvents.emit('voice.mode_switched', { mode: targetIsSfu ? 'sfu' : 'p2p' });
-    });
+      console.log(`[WebRTC] Dynamic voice mode transition completed: ${fromMode} -> ${toMode}`);
+    } catch (err) {
+      console.error('[WebRTC] Error during dynamic voice mode migration:', err);
+    } finally {
+      this.isMigratingVoiceMode = false;
+    }
   }
 
   public isSfuMode(): boolean {

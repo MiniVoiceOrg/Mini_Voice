@@ -91,7 +91,7 @@ export class SfuClientEngine {
       // 2. Load device
       this.device = new mediasoupClient.Device();
       await this.device.load({ routerRtpCapabilities: routerCapsResp.rtpCapabilities as any });
-      console.log(`[SFU Client] Mediasoup Device loaded! Can produce audio: ${this.device.canProduce('audio')}, video: ${this.device.canProduce('video')}`);
+      console.log(`[SFU Client] Mediasoup Device loaded! Can produce audio: ${this.canProduceKind('audio')}, video: ${this.canProduceKind('video')}`);
 
       // 3. Create send transport
       console.log(`[SFU Client] Requesting createSendTransport from server...`);
@@ -275,9 +275,18 @@ export class SfuClientEngine {
     });
   }
 
+  public canProduceKind(kind: 'audio' | 'video'): boolean {
+    if (!this.device || !this.device.loaded) return false;
+    try {
+      return this.device.canProduce(kind);
+    } catch {
+      return false;
+    }
+  }
+
   public async produceMic(track: MediaStreamTrack): Promise<mediasoupTypes.Producer | null> {
-    if (!this.sendTransport || !this.device?.canProduce('audio')) {
-      console.warn(`[SFU Client] Cannot produce mic: sendTransport=${!!this.sendTransport}, canProduceAudio=${this.device?.canProduce('audio')}`);
+    if (!this.sendTransport || !this.canProduceKind('audio')) {
+      console.warn(`[SFU Client] Cannot produce mic: sendTransport=${!!this.sendTransport}, canProduceAudio=${this.canProduceKind('audio')}`);
       return null;
     }
     try {
@@ -306,8 +315,8 @@ export class SfuClientEngine {
   }
 
   public async produceCamera(track: MediaStreamTrack): Promise<mediasoupTypes.Producer | null> {
-    if (!this.sendTransport || !this.device?.canProduce('video')) {
-      console.warn(`[SFU Client] Cannot produce camera: sendTransport=${!!this.sendTransport}, canProduceVideo=${this.device?.canProduce('video')}`);
+    if (!this.sendTransport || !this.canProduceKind('video')) {
+      console.warn(`[SFU Client] Cannot produce camera: sendTransport=${!!this.sendTransport}, canProduceVideo=${this.canProduceKind('video')}`);
       return null;
     }
     try {
@@ -332,7 +341,7 @@ export class SfuClientEngine {
   }
 
   public async produceScreenVideo(track: MediaStreamTrack, shareId: string): Promise<mediasoupTypes.Producer | null> {
-    if (!this.sendTransport || !this.device?.canProduce('video')) return null;
+    if (!this.sendTransport || !this.canProduceKind('video')) return null;
     const key = `screen_video:${shareId}`;
     try {
       this.closeProducer(key);
@@ -355,7 +364,7 @@ export class SfuClientEngine {
   }
 
   public async produceScreenAudio(track: MediaStreamTrack, shareId: string): Promise<mediasoupTypes.Producer | null> {
-    if (!this.sendTransport || !this.device?.canProduce('audio')) return null;
+    if (!this.sendTransport || !this.canProduceKind('audio')) return null;
     const key = `screen_audio:${shareId}`;
     try {
       this.closeProducer(key);
