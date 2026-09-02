@@ -32,3 +32,26 @@ O perfil **Personalizado** abre listas com os valores mais usados — proporçã
 lista tem a opção **Personalizado...**, que libera o campo numérico livre para
 quem quiser um valor fora da lista. Trocar a proporção mantém a resolução mais
 próxima da que você já usava.
+
+### Compartilhando a tela enquanto joga
+
+Codificar vídeo custa caro, e o codec escolhido decide se esse custo cai na CPU
+ou na GPU. AV1 e VP9 comprimem melhor, mas quase nenhum PC tem encoder de
+hardware para eles — a 1080p60 o trabalho vai todo para a CPU e o jogo perde
+FPS. H.264 tem aceleração por hardware em praticamente toda placa de vídeo
+(NVENC, QuickSync, AMF).
+
+Por isso, no perfil **Gaming** o codec **Automático** coloca o H.264 na frente.
+Se você usa outro perfil e sente o jogo travando ao compartilhar, escolha
+**H.264 / AVC** em *Codec de Vídeo Preferido*.
+
+No Windows, o Monky também captura a tela pela API **Windows Graphics Capture**,
+que compõe na GPU e não entrega quadros quando nada muda na tela. Ela precisa do
+Windows 10 1809 ou mais novo, e não funciona dentro de sessões de Área de
+Trabalho Remota — nesses casos o Monky volta sozinho para o método antigo. Para
+forçar o método antigo, inicie o app com a variável `MONKY_DISABLE_WGC=1`.
+
+Uma última dica que vale para qualquer programa de captura: compartilhar **a
+janela do jogo** costuma custar menos que compartilhar o monitor inteiro, e
+jogar em *fullscreen sem bordas* evita as trocas de modo que fazem o jogo
+engasgar.

@@ -219,7 +219,8 @@ export class ServerStore {
     turnEnabled?: boolean,
     allowEveryoneMention?: boolean,
     allowMessageEdit?: boolean,
-    voiceMode?: VoiceMode
+    voiceMode?: VoiceMode,
+    showRoleBadgesToEveryone?: boolean
   ): void {
     if (this.serverDetails) {
       this.serverDetails.name = name;
@@ -247,6 +248,9 @@ export class ServerStore {
       }
       if (voiceMode !== undefined) {
         this.serverDetails.voiceMode = voiceMode;
+      }
+      if (showRoleBadgesToEveryone !== undefined) {
+        this.serverDetails.showRoleBadgesToEveryone = showRoleBadgesToEveryone;
       }
       this.bus.emit('server.updated');
       this.bus.emit('server.meta_updated', this.serverDetails);

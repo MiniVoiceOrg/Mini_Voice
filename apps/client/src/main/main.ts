@@ -12,6 +12,29 @@ import fs from 'fs';
 
 app.commandLine.appendSwitch('autoplay-policy', 'no-user-gesture-required');
 
+/**
+ * Makes full-screen sharing use Windows Graphics Capture instead of the legacy
+ * DXGI/GDI capturer (#526).
+ *
+ * Chromium ships `AllowWgcWindowCapturer` enabled but `AllowWgcScreenCapturer`
+ * disabled, so sharing a single window was already cheap while sharing a whole
+ * monitor fell back to Desktop Duplication — which fights a full-screen game for
+ * the GPU and cost roughly half the frame rate while playing. WGC composites on
+ * the GPU and, with the zero-Hz mode, stops producing frames entirely when the
+ * screen is not changing.
+ *
+ * WGC needs Windows 10 1809+; Chromium checks that itself and silently falls
+ * back to the old capturer when unavailable. Set `MONKY_DISABLE_WGC=1` to force
+ * the legacy path if a machine misbehaves (e.g. capturing inside an RDP
+ * session, which WGC does not support).
+ */
+if (process.platform === 'win32' && process.env.MONKY_DISABLE_WGC !== '1') {
+  app.commandLine.appendSwitch(
+    'enable-features',
+    'AllowWgcScreenCapturer,AllowWgcScreenZeroHz,AllowWgcWindowCapturer,AllowWgcWindowZeroHz'
+  );
+}
+
 let mainWindow: BrowserWindow | null = null;
 let overlayManager: OverlayManager | null = null;
 let trayManager: TrayManager | null = null;

@@ -85,6 +85,7 @@ export interface ElectronApi {
   maximize: () => Promise<void>;
   toggleMaximize: () => Promise<void>;
   setWindowInServer: (inServer: boolean) => Promise<void>;
+  fitHomeWindowToContent: (contentHeight: number) => Promise<void>;
   close: () => Promise<void>;
   getAppVersion: () => Promise<string>;
   checkForUpdates: () => Promise<UpdateCheckResult>;
@@ -236,6 +237,7 @@ const api: ElectronApi = {
   maximize: () => ipcRenderer.invoke('window:maximize'),
   toggleMaximize: () => ipcRenderer.invoke('window:toggle-maximize'),
   setWindowInServer: (inServer) => ipcRenderer.invoke('window:set-in-server', inServer),
+  fitHomeWindowToContent: (contentHeight) => ipcRenderer.invoke('window:fit-home-content', contentHeight),
   close: () => ipcRenderer.invoke('window:close'),
   getAppVersion: () => ipcRenderer.invoke('app:get-version'),
   checkForUpdates: () => ipcRenderer.invoke('updater:check'),

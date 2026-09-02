@@ -280,6 +280,7 @@ export interface IpcInvokeChannels {
   'window:maximize': { args: []; returnType: void };
   'window:toggle-maximize': { args: []; returnType: void };
   'window:set-in-server': { args: [inServer: boolean]; returnType: void };
+  'window:fit-home-content': { args: [contentHeight: number]; returnType: void };
   'window:close': { args: []; returnType: void };
 
   // Sobreposição de Tela (Overlay) (#169)

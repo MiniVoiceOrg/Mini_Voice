@@ -183,6 +183,11 @@ export interface ServerDetails {
    */
   allowMessageEdit?: boolean;
   /**
+   * Whether role badges in the member list are visible to everyone (#530).
+   * When false, each badge is only rendered for members holding that role.
+   */
+  showRoleBadgesToEveryone?: boolean;
+  /**
    * Voice and video topology mode (#515).
    * - 'p2p': Direct full-mesh WebRTC connections between participants.
    * - 'sfu': Centralized Selective Forwarding Unit media routing via the server.

@@ -65,6 +65,7 @@ export async function showConfig(ctx: CliContext): Promise<void> {
   console.log(`ownerNickname: ${owner?.nickname ?? '-'}`);
   console.log(`allowSoundboard: ${formatBool(server.allowSoundboard !== false)}`);
   console.log(`allowEveryoneMention: ${formatBool(server.allowEveryoneMention !== false)}`);
+  console.log(`showRoleBadgesToEveryone: ${formatBool(server.showRoleBadgesToEveryone !== false)}`);
   console.log(`voiceMode: ${server.voiceMode || 'p2p'}${voiceModeStatusSuffix(server.voiceMode || 'p2p')}`);
   console.log(`turn: ${formatBool(Boolean(server.turnEnabled))}${turnStatusSuffix()}`);
   console.log(`iconPath: ${server.iconPath ?? '-'}`);
@@ -112,6 +113,7 @@ export async function setConfig(
     maxUsers: String(server.maxUsers),
     allowSoundboard: String(server.allowSoundboard !== false),
     allowEveryoneMention: String(server.allowEveryoneMention !== false),
+    showRoleBadgesToEveryone: String(server.showRoleBadgesToEveryone !== false),
     voiceMode: server.voiceMode || 'p2p',
     maxAttachmentFileBytes: String(server.maxAttachmentFileBytes ?? ''),
     maxAttachmentStorageBytes: String(server.maxAttachmentStorageBytes ?? ''),
@@ -136,6 +138,7 @@ export async function setConfig(
         break;
       case 'allowSoundboard':
       case 'allowEveryoneMention':
+      case 'showRoleBadgesToEveryone':
       case 'autoUpdate':
       case 'turn':
         nextValue = await askChoice(t('config.askBoolean'), ['true', 'false']);
@@ -237,6 +240,9 @@ export async function setConfig(
       break;
     case 'allowEveryoneMention':
       await ctx.serverRepo.updateServer({ allowEveryoneMention: parseBoolean(nextValue) });
+      break;
+    case 'showRoleBadgesToEveryone':
+      await ctx.serverRepo.updateServer({ showRoleBadgesToEveryone: parseBoolean(nextValue) });
       break;
     case 'voiceMode': {
       const mode = nextValue.toLowerCase().trim() === 'sfu' ? 'sfu' : 'p2p';
