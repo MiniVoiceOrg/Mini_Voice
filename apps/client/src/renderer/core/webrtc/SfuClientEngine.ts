@@ -538,6 +538,25 @@ export class SfuClientEngine {
     return this.isConnected;
   }
 
+  public getCameraSender(): RTCRtpSender | null {
+    const producer = this.producers.get('camera');
+    return (producer as any)?.rtpSender ?? null;
+  }
+
+  public getScreenSender(shareId: string): RTCRtpSender | null {
+    const producer = this.producers.get(`screen_video:${shareId}`);
+    return (producer as any)?.rtpSender ?? null;
+  }
+
+  public getReceiverForTrack(trackId: string): RTCRtpReceiver | null {
+    for (const consumer of this.consumers.values()) {
+      if (consumer.track.id === trackId) {
+        return (consumer as any)?.rtpReceiver ?? null;
+      }
+    }
+    return null;
+  }
+
   public async getPing(): Promise<number | null> {
     const transport = this.sendTransport || this.recvTransport;
     if (!transport) return null;

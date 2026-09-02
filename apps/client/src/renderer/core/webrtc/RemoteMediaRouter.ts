@@ -167,7 +167,9 @@ export class RemoteMediaRouter {
     }
   }
 
-  // ── Screen video routing (unchanged) ──
+  // ── Screen video routing ──
+
+  private sfuRemoteScreenStreams: Map<string, Map<string, MediaStream>> = new Map();
 
   public routeScreenVideoTrack(
     peerSessionId: string,
@@ -175,19 +177,29 @@ export class RemoteMediaRouter {
     shareId: string,
     session: PeerSession | undefined
   ): void {
-    if (!session) return;
-
     // If it was provisionally added to the camera stream (meta arrived late),
     // move it out so it doesn't render as the camera.
-    if (session.remoteStream.getTrackById(track.id)) {
+    if (session && session.remoteStream.getTrackById(track.id)) {
       session.remoteStream.removeTrack(track);
       this.getVoiceParticipants().setRemoteStream(peerSessionId, session.remoteStream);
     }
 
-    let screenStream = session.remoteScreenStreams.get(shareId);
+    let streamsMap: Map<string, MediaStream>;
+    if (session) {
+      streamsMap = session.remoteScreenStreams;
+    } else {
+      let sfuMap = this.sfuRemoteScreenStreams.get(peerSessionId);
+      if (!sfuMap) {
+        sfuMap = new Map();
+        this.sfuRemoteScreenStreams.set(peerSessionId, sfuMap);
+      }
+      streamsMap = sfuMap;
+    }
+
+    let screenStream = streamsMap.get(shareId);
     if (!screenStream) {
       screenStream = new MediaStream();
-      session.remoteScreenStreams.set(shareId, screenStream);
+      streamsMap.set(shareId, screenStream);
     }
 
     // Replace any previous screen video track for this share with this one.
@@ -221,7 +233,7 @@ export class RemoteMediaRouter {
     track.onended = () => {
       try { track.stop(); } catch {}
       screenStream!.removeTrack(track);
-      session.remoteScreenStreams.delete(shareId);
+      streamsMap.delete(shareId);
       this.getVoiceParticipants().removeRemoteScreenStream(peerSessionId, shareId);
     };
   }
@@ -436,6 +448,19 @@ export class RemoteMediaRouter {
 
     this.cleanupScreenAudio(peerSessionId);
 
+    const sfuScreens = this.sfuRemoteScreenStreams.get(peerSessionId);
+    if (sfuScreens) {
+      for (const [shareId, stream] of sfuScreens.entries()) {
+        stream.getTracks().forEach((track) => {
+          try {
+            track.stop();
+          } catch {}
+        });
+        this.getVoiceParticipants().removeRemoteScreenStream(peerSessionId, shareId);
+      }
+      this.sfuRemoteScreenStreams.delete(peerSessionId);
+    }
+
     if (session) {
       // Explicitly stop all remote voice/camera tracks to free WebRTC decoding buffers
       session.remoteStream.getTracks().forEach((track) => {
@@ -475,6 +500,18 @@ export class RemoteMediaRouter {
       screenAudioEl.remove();
     }
     this.screenAudioElements.clear();
+
+    for (const [peerSessionId, sfuScreens] of this.sfuRemoteScreenStreams.entries()) {
+      for (const [shareId, stream] of sfuScreens.entries()) {
+        stream.getTracks().forEach((track) => {
+          try {
+            track.stop();
+          } catch {}
+        });
+        this.getVoiceParticipants().removeRemoteScreenStream(peerSessionId, shareId);
+      }
+    }
+    this.sfuRemoteScreenStreams.clear();
 
     // Cleanup all amplification pipelines
     for (const pipeline of this.amplificationPipelines.values()) {

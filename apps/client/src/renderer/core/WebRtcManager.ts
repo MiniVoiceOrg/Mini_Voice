@@ -276,16 +276,37 @@ export class WebRtcManager {
     appEvents.on('server.meta_updated', async () => {
       const isSfu = this.voiceServerStore.serverDetails?.voiceMode === 'sfu';
       const channelId = voiceStore.currentVoiceChannelId;
-      if (channelId) {
-        if (isSfu && !this.sfuEngine.isReady()) {
-          this.isContingencyP2p = false;
-          this.closeAllPeers();
-          await this.initSfuForCurrentChannel();
-        } else if (!isSfu && this.sfuEngine.isReady()) {
-          this.sfuEngine.leave();
-          this.connectToAllParticipants();
+      if (!channelId) return;
+
+      const currentMode = this.isSfuMode() ? 'sfu' : 'p2p';
+      const targetMode = isSfu ? 'sfu' : 'p2p';
+      if (currentMode === targetMode) return;
+
+      console.log(`[WebRTC] Voice mode dynamically switched from ${currentMode.toUpperCase()} to ${targetMode.toUpperCase()}. Migrating active call...`);
+      clientLog.info('WEBRTC', `Voice mode dynamically switched from ${currentMode.toUpperCase()} to ${targetMode.toUpperCase()}`);
+
+      // 1. Cleanly tear down previous session connections and media router elements
+      this.closeAllPeers();
+
+      // 2. Clear remote participant media streams so views do not retain closed tracks
+      const participants = this.voiceParticipants.getInVoiceChannel(channelId);
+      for (const p of participants) {
+        const sid = p.user.sessionId || p.user.id;
+        if (sid && sid !== this.currentSessionId) {
+          this.voiceParticipants.setRemoteStream(sid, new MediaStream());
         }
       }
+
+      // 3. Re-initialize in the new target mode
+      this.isContingencyP2p = false;
+      if (targetMode === 'sfu') {
+        await this.initSfuForCurrentChannel();
+      } else {
+        this.connectToAllParticipants();
+      }
+
+      // 4. Notify UI of the mode switch
+      appEvents.emit('voice.mode_switched', { mode: targetMode });
     });
   }
 
@@ -1671,6 +1692,10 @@ export class WebRtcManager {
    * share separately instead of merging both into the connection's totals.
    */
   public getScreenSendersForShare(shareId: string): RTCRtpSender[] {
+    if (this.isSfuMode()) {
+      const sender = this.sfuEngine.getScreenSender(shareId);
+      return sender ? [sender] : [];
+    }
     const senders: RTCRtpSender[] = [];
     for (const session of this.peers.values()) {
       const sender = session.screenVideoSenders.get(shareId);
@@ -1685,6 +1710,10 @@ export class WebRtcManager {
    * keeps the screen shares out of the camera tile's numbers (#493).
    */
   public getCameraSenders(): RTCRtpSender[] {
+    if (this.isSfuMode()) {
+      const sender = this.sfuEngine.getCameraSender();
+      return sender ? [sender] : [];
+    }
     const senders: RTCRtpSender[] = [];
     for (const session of this.peers.values()) {
       if (session.videoSender) senders.push(session.videoSender);
@@ -1698,6 +1727,9 @@ export class WebRtcManager {
    * their camera (#340).
    */
   public getReceiverForTrack(peerSessionId: string, trackId: string): RTCRtpReceiver | null {
+    if (this.isSfuMode()) {
+      return this.sfuEngine.getReceiverForTrack(trackId);
+    }
     const session = this.peers.get(peerSessionId);
     if (!session) return null;
     return session.pc.getReceivers().find((receiver) => receiver.track?.id === trackId) ?? null;

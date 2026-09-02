@@ -192,17 +192,19 @@ export class VoiceStageView {
               </div>
             </div>
 
-            ${
-              webRtcManager.isSfuMode()
-                ? `<div class="header-status-badge sfu-mode-badge" style="background-color: rgba(88, 101, 242, 0.15); color: var(--accent-primary); display: flex; align-items: center; gap: 6px;" title="${t('stage.sfuModeTooltip')}">
-                     <span class="material-symbols-outlined md-14">hub</span>
-                     <span>${t('stage.connectedSfu')}</span>
-                   </div>`
-                : `<div class="header-status-badge p2p-mode-badge" style="background-color: rgba(35, 165, 90, 0.15); color: var(--success); display: flex; align-items: center; gap: 6px;" title="${t('stage.p2pModeTooltip')}">
-                     <span class="material-symbols-outlined md-14">wifi_tethering</span>
-                     <span>${t('stage.connectedMesh')}</span>
-                   </div>`
-            }
+            <div id="stage-header-mode-badge-wrapper">
+              ${
+                webRtcManager.isSfuMode()
+                  ? `<div class="header-status-badge sfu-mode-badge" style="background-color: rgba(88, 101, 242, 0.15); color: var(--accent-primary); display: flex; align-items: center; gap: 6px;" title="${t('stage.sfuModeTooltip')}">
+                       <span class="material-symbols-outlined md-14">hub</span>
+                       <span>${t('stage.connectedSfu')}</span>
+                     </div>`
+                  : `<div class="header-status-badge p2p-mode-badge" style="background-color: rgba(35, 165, 90, 0.15); color: var(--success); display: flex; align-items: center; gap: 6px;" title="${t('stage.p2pModeTooltip')}">
+                       <span class="material-symbols-outlined md-14">wifi_tethering</span>
+                       <span>${t('stage.connectedMesh')}</span>
+                     </div>`
+              }
+            </div>
           </div>
         </div>
 
@@ -1654,6 +1656,14 @@ export class VoiceStageView {
     const u9 = appEvents.on('local.screen_audio_stopped', () => this.updateControlsUI());
     const u10 = appEvents.on('overlay.state_changed', () => this.updateControlsUI());
 
+    const u11 = appEvents.on('voice.mode_switched', () => {
+      this.updateHeaderModeBadge();
+      this.renderParticipants();
+    });
+    const u12 = appEvents.on('server.meta_updated', () => {
+      this.updateHeaderModeBadge();
+    });
+
     // `remote.peer_failed` / `remote.peer_recovered` are not handled here on
     // purpose: WebRtcManager writes the flag straight into the participant
     // manager of the server hosting the call. Doing it from a view would both
@@ -1661,7 +1671,21 @@ export class VoiceStageView {
     // browsing another server during a call (#400), write it onto the wrong
     // server's participants (#426).
 
-    this.unbindEvents.push(u1, u2, u3, u4, u5, u6, u7, u8, u9, u10);
+    this.unbindEvents.push(u1, u2, u3, u4, u5, u6, u7, u8, u9, u10, u11, u12);
+  }
+
+  private updateHeaderModeBadge(): void {
+    const wrapper = document.getElementById('stage-header-mode-badge-wrapper');
+    if (!wrapper) return;
+    wrapper.innerHTML = webRtcManager.isSfuMode()
+      ? `<div class="header-status-badge sfu-mode-badge" style="background-color: rgba(88, 101, 242, 0.15); color: var(--accent-primary); display: flex; align-items: center; gap: 6px;" title="${t('stage.sfuModeTooltip')}">
+           <span class="material-symbols-outlined md-14">hub</span>
+           <span>${t('stage.connectedSfu')}</span>
+         </div>`
+      : `<div class="header-status-badge p2p-mode-badge" style="background-color: rgba(35, 165, 90, 0.15); color: var(--success); display: flex; align-items: center; gap: 6px;" title="${t('stage.p2pModeTooltip')}">
+           <span class="material-symbols-outlined md-14">wifi_tethering</span>
+           <span>${t('stage.connectedMesh')}</span>
+         </div>`;
   }
 
   private unbindListeners(): void {
