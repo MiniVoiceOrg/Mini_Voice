@@ -3,6 +3,7 @@ import path from 'path';
 import { execSync } from 'child_process';
 import { ANSI, color } from '../constants';
 import { GlobalArgs } from '../context';
+import { resolveInterpreter } from '../health';
 import { t } from '../i18n/index';
 import {
   AUTO_UPDATE_CRON,
@@ -504,6 +505,7 @@ export async function enableAutoUpdate(dataDir: string, schedule?: AutoUpdateSch
     runSync('pm2', ['delete', name], { stdio: 'ignore' });
   }
 
+  const interpreter = resolveInterpreter();
   const result = runSync(
     'pm2',
     [
@@ -511,8 +513,11 @@ export async function enableAutoUpdate(dataDir: string, schedule?: AutoUpdateSch
       scriptPath,
       '--name',
       processName,
-      '--interpreter',
-      'node',
+      // Same reason as the server's ecosystem file: a bare `node` is resolved
+      // from the PM2 daemon's environment, which keeps the Node it was started
+      // with. After a Node upgrade that path can be gone, and PM2 then fails to
+      // spawn while still reporting the process as online (#522).
+      ...(interpreter ? ['--interpreter', interpreter] : []),
     ],
     { stdio: 'inherit' }
   );

@@ -4,6 +4,7 @@ import { ANSI, color } from './constants';
 import { t } from './i18n/index';
 import { commandSucceeds, runSync } from './process';
 import { canonicalDataDir, LEGACY_PM2_PROCESS_NAME, serverIdFor } from './registry';
+import { resolveInterpreter } from './health';
 
 export const PM2_PROCESS_PREFIX = 'monky-server';
 export const UPDATER_PROCESS_PREFIX = 'monky-updater';
@@ -41,6 +42,10 @@ export interface Pm2Process {
     restart_time?: number;
     pm_cwd?: string;
     args?: string[] | string;
+    /** Node version PM2 actually spawned the process with (#522). */
+    node_version?: string;
+    /** Interpreter PM2 has registered for the process (#522). */
+    exec_interpreter?: string;
   };
 }
 
@@ -62,6 +67,15 @@ export function findPm2Process(processName: string): Pm2Process | null {
 
 export function isMonkyServerRunning(processName: string): boolean {
   return findPm2Process(processName)?.pm2_env?.status === 'online';
+}
+
+/**
+ * Drops a process from PM2's list so the next start builds it from scratch.
+ *
+ * Log files under `~/.pm2/logs` survive this: only the process entry goes.
+ */
+export function deletePm2Process(processName: string): void {
+  runSync('pm2', ['delete', processName], { stdio: 'ignore' });
 }
 
 /**
@@ -154,14 +168,37 @@ export interface EcosystemOptions {
   serverName: string;
 }
 
+/**
+ * Escapes a value for embedding in a single-quoted JavaScript string literal.
+ *
+ * Paths reach the generated ecosystem verbatim, and on Windows they carry
+ * backslashes that would otherwise be read as escape sequences.
+ */
+function forSingleQuotes(value: string): string {
+  return value.replace(/\\/g, '\\\\').replace(/'/g, "\\'");
+}
+
 export function generateEcosystem(options: EcosystemOptions): string {
-  const entryPath = getServerEntryPath().replace(/\\/g, '\\\\');
-  const resolvedDataDir = canonicalDataDir(options.dataDir).replace(/\\/g, '\\\\');
-  const serverName = options.serverName.replace(/\\/g, '\\\\').replace(/"/g, '\\"');
+  const entryPath = forSingleQuotes(getServerEntryPath());
+  const resolvedDataDir = forSingleQuotes(canonicalDataDir(options.dataDir));
+  // Server names are free text, so this has to survive both the double quotes
+  // that delimit it inside `args` and the single quotes around `args` itself.
+  const serverName = forSingleQuotes(options.serverName.replace(/\\/g, '\\\\').replace(/"/g, '\\"'));
+  // Pinning the interpreter to the Node running this CLI, instead of letting
+  // PM2 resolve `node` from the daemon's environment. The daemon is a
+  // long-lived process that keeps the Node it was started with: upgrading Node
+  // and removing the old build left it unable to spawn anything at all, which
+  // PM2 still reported as `online` with no pid, so the port was closed while
+  // `monky status` claimed the server was up (#522). It also kept the server on
+  // an old Node even when the spawn worked — fatal now that mediasoup requires
+  // Node 22+. The file is rewritten on every start/restart, so this re-pins
+  // itself whenever the operator switches versions.
+  const interpreter = resolveInterpreter();
+  const interpreterLine = interpreter ? `\n    interpreter: '${forSingleQuotes(interpreter)}',` : '';
   return `module.exports = {
   apps: [{
     name: '${getPm2ProcessName(options.dataDir)}',
-    script: '${entryPath}',
+    script: '${entryPath}',${interpreterLine}
     args: '--data "${resolvedDataDir}" --port ${options.port} --name "${serverName}"',
     cwd: '${resolvedDataDir}',
     autorestart: true,

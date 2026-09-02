@@ -16,6 +16,12 @@ export const LIMITS = {
   MIN_PORT: 1024,
   MAX_PORT: 65535,
   DEFAULT_PORT: 3000,
+  // Lowest Node.js major the server runs on, because mediasoup requires it
+  // (#515). The published CLI declares the same floor in its `engines` field,
+  // but npm only *warns* on a mismatch, so the runtime has to be able to check
+  // it too: PM2 spawns the server with the daemon's Node, which can be older
+  // than the one the operator installed (#522).
+  MIN_NODE_MAJOR: 22,
   // Default UDP media port range for SFU (Selective Forwarding Unit) (#515)
   SFU_DEFAULT_MIN_PORT: 40000,
   // Stops one below the coturn relay range (49152-65535). The two allocate UDP
