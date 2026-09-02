@@ -1,8 +1,8 @@
 import * as mediasoup from 'mediasoup';
-import type { RtpCodecCapability } from 'mediasoup/node/lib/types.js';
+import type { RouterRtpCodecCapability } from 'mediasoup/node/lib/types.js';
 import { LIMITS } from '@monky/shared';
 
-const MEDIA_CODECS: RtpCodecCapability[] = [
+const MEDIA_CODECS: RouterRtpCodecCapability[] = [
   {
     kind: 'audio',
     mimeType: 'audio/opus',
