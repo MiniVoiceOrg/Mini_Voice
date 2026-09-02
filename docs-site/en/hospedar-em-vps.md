@@ -35,7 +35,7 @@ full command reference lives in [Monky CLI](/en/cli).
 | `3000` (or the chosen one) | TCP | Login, chat, channels and signalling | Yes, in the VPS firewall |
 | `41234` | UDP | Local network discovery | No, on a VPS |
 | High dynamic | UDP | P2P voice, video and screen | Usually works through STUN |
-| `40000-49151` | UDP | WebRTC media in SFU mode (mediasoup) | Only with SFU mode enabled |
+| `40000-49151` | UDP and TCP | WebRTC media in SFU mode (mediasoup) | Only with SFU mode enabled |
 | `3478` | TCP and UDP | TURN relay, if you enable it | Only with the relay on |
 | `49152-65535` | UDP | Media forwarded by the relay | Only with the relay on |
 
@@ -43,6 +43,49 @@ When two members are behind CGNAT they may fail to connect directly. Monky ships
 an **optional TURN relay** (off by default) that forwards that pair's media
 through the server — see [Media relay (TURN)](/en/turn). Without
 it, the way out for very restricted networks is still a VPN.
+
+### Opening the SFU mode ports
+
+In SFU mode media no longer goes straight between people: it comes into the
+server through that range. Because it is UDP traffic arriving without anyone
+having asked for it first, the `RELATED,ESTABLISHED` rule most distributions
+ship **does not cover it** — the range has to be opened explicitly, and the same
+goes for TCP, which is the way in for anyone on a network that blocks UDP.
+
+```bash
+# Open the SFU media range
+sudo iptables -I INPUT -p udp --dport 40000:49151 -j ACCEPT
+sudo iptables -I INPUT -p tcp --dport 40000:49151 -j ACCEPT
+
+# Persist (survives a reboot)
+sudo netfilter-persistent save
+```
+
+::: tip If you use `ufw` instead of `iptables`
+```bash
+sudo ufw allow 40000:49151/udp
+sudo ufw allow 40000:49151/tcp
+```
+:::
+
+::: warning The provider's firewall is a separate one
+Oracle Cloud, AWS, Azure, GCP and Hetzner have a firewall outside the machine
+that `iptables` cannot reach. The range has to be allowed in the web panel too,
+the same way described in
+[Media relay (TURN)](/en/turn#opening-ports-on-linux) — the examples there are
+for the relay ports, but the path through the panel is the same.
+:::
+
+To check it is in effect, join a voice channel and watch the media arrive:
+
+```bash
+sudo tcpdump -n -i any udp portrange 40000-49151 -c 20
+```
+
+`In` packets from outside the machine mean the range is open. Only `Out`
+traffic, or nothing at all, means something upstream is blocking it — look for a
+`REJECT` rule in the `INPUT` chain above the ones you just inserted
+(`sudo iptables -L INPUT -n -v --line-numbers` shows the order).
 
 ## Maintenance
 

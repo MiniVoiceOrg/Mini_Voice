@@ -548,9 +548,9 @@ O CLI calcula e exibe automaticamente uma **estimativa de capacidade** baseada n
 
 | Porta | Protocolo | Função |
 |---|---|---|
-| `40000-49151` | UDP | Portas de mídia WebRTC do worker mediasoup |
+| `40000-49151` | UDP e TCP | Portas de mídia WebRTC do worker mediasoup |
 
-As portas UDP `40000-49151` devem estar abertas no firewall do servidor (Oracle Cloud, AWS Security Group, iptables/ufw).
+O range precisa estar aberto no firewall do servidor (Oracle Cloud, AWS Security Group, iptables/ufw) — em UDP e também em TCP, que é o caminho de quem está numa rede que bloqueia UDP. Os comandos prontos e como conferir estão em [Abrindo as portas do Modo SFU](/hospedar-em-vps#abrindo-as-portas-do-modo-sfu).
 
 ---
 
