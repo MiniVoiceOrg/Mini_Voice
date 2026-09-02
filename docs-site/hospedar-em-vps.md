@@ -4,7 +4,7 @@ Para manter o servidor no ar 24/7, rode só o servidor em uma máquina Linux —
 sem interface gráfica e sem clonar o repositório. Todo o trabalho é feito pelo
 **Monky CLI**, que é distribuído pronto em cada release.
 
-Requer **Node.js 20 ou superior** (a CI usa 22).
+Requer **Node.js 22 ou superior** (exigência do mediasoup; a CI também usa 22).
 
 ## Passo a passo
 
@@ -12,7 +12,7 @@ Requer **Node.js 20 ou superior** (a CI usa 22).
 # 1. Instale o CLI a partir da release
 #    O comando pronto, já com a versão mais recente, está na página de download:
 #    https://monkyorg.github.io/Monky/download
-npm install -g https://github.com/MonkyOrg/Monky/releases/download/vX.Y.Z/monky-cli-X.Y.Z.tgz
+npm install -g --allow-scripts=mediasoup https://github.com/MonkyOrg/Monky/releases/download/vX.Y.Z/monky-cli-X.Y.Z.tgz
 
 # 2. Crie o servidor (interativo)
 monky create
@@ -35,7 +35,7 @@ referência completa dos comandos está em [Monky CLI](/cli).
 | `3000` (ou escolhida) | TCP | Login, chat, canais e sinalização | Sim, no firewall da VPS |
 | `41234` | UDP | Descoberta na rede local | Não, numa VPS |
 | Altas dinâmicas | UDP | Voz, vídeo e tela P2P | Normalmente funciona via STUN |
-| `40000-49999` | UDP | Mídia WebRTC no Modo SFU (mediasoup) | Só com o modo SFU ativado |
+| `40000-49151` | UDP | Mídia WebRTC no Modo SFU (mediasoup) | Só com o modo SFU ativado |
 | `3478` | TCP e UDP | Relay TURN, se você ligar | Só com o relay ligado |
 | `49152-65535` | UDP | Mídia repassada pelo relay | Só com o relay ligado |
 

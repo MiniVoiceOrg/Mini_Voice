@@ -75,6 +75,27 @@ export const en: CliTranslationMap = {
   'create.cancelled': 'Creation cancelled.',
   'create.startNow': 'Start the server now?',
 
+  // ── SFU preflight ──────────────────────────────────────────────────────
+  'sfu.preflightTitle': 'SFU environment check:',
+  'sfu.preflightOk': 'Environment ready for SFU mode.',
+  'sfu.preflightNodeVersion': 'Node.js {found} is running — mediasoup requires {required} or newer.',
+  'sfu.preflightMediasoupUnresolved': 'The mediasoup package was not found in this installation.',
+  'sfu.preflightWorkerMissing': 'mediasoup worker binary missing at {path}.',
+  'sfu.preflightHintNode': 'Upgrade Node.js to {required}+ and reinstall the CLI.',
+  'sfu.preflightHintWorker': 'npm blocked mediasoup\'s postinstall. Reinstall the CLI with --allow-scripts=mediasoup.',
+  'sfu.preflightHintReinstall': 'Reinstall the Monky CLI.',
+  'sfu.preflightConsequence': 'The server still starts, but calls fall back to P2P.',
+  'sfu.portOverlap':
+    "The SFU UDP range ({minPort}-{maxPort}) overlaps coturn's relay range ({turnMinPort}-{turnMaxPort}). The two would compete for the same ports.",
+  'sfu.portBindFailed':
+    'Port {port}/UDP could not be reserved, so the range {minPort}-{maxPort} is unusable. Open that range (UDP) in the firewall and check that no other process holds it.',
+  'capacity.askUpload': 'How much upload bandwidth does the server have (Mbps)?',
+  'capacity.summary':
+    'With {cores} CPU cores, {ram} GB of RAM and ~{upload} Mbps of upload, SFU mode supports up to ~{screen} people watching a 1080p60 screen share or ~{voice} people in voice channels.',
+  'capacity.sourceMeasured': 'CPU and RAM read from this machine; upload provided by you. An estimate, not a guarantee.',
+  'capacity.sourceAssumedUpload':
+    'CPU and RAM read from this machine; upload assumed to be {upload} Mbps as no answer was given. An estimate, not a guarantee.',
+
   // ── Config ─────────────────────────────────────────────────────────────
   'config.title': 'Server configuration',
   'config.whichKey': 'Which setting do you want to change?',
@@ -107,6 +128,13 @@ export const en: CliTranslationMap = {
   'config.turnRestartNeeded': 'Server is running. Run "monky restart" to apply the relay change.',
   'config.turnPortOk': '✔ TURN port (3478) is accessible. Make sure the 49152-65535/UDP range is also open in the firewall.',
   'config.turnUnavailable': 'unavailable: {reason}',
+  'config.sfuUnavailable': 'inactive: {reason}',
+  'config.sfuPortOk': '✔ The SFU UDP range can be reserved on this machine. Make sure it is also open in the VPS firewall.',
+  'config.voiceModeRestartNeeded':
+    '⚠ The running server picked its voice mode at startup. Run "monky restart" to apply the change.',
+  'config.turnDisabledBySfu': 'TURN turned off automatically: in SFU mode the server itself is the relay.',
+  'config.turnBlockedBySfu':
+    'TURN cannot be enabled in SFU mode — the SFU already is the relay. Switch back to p2p mode before enabling TURN.',
   'config.noLimit': 'no limit',
   'config.updated': 'Setting "{key}" updated successfully.',
   'config.unsupportedKey': 'Unsupported key: {key}',

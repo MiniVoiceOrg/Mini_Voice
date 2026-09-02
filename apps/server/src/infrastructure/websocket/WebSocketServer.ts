@@ -93,7 +93,8 @@ import { UserService } from '../../application/services/UserService';
 import { IServerRepository } from '../../domain/repositories';
 import { scanServerNetworkInterfaces } from '../discovery/ServerIpScanner';
 import { CoturnManager } from '../turn/CoturnManager';
-import { SfuManager } from '../sfu/SfuManager';
+import { describeSfuPortProblem, SfuManager } from '../sfu/SfuManager';
+import { checkSfuPreflight, formatSfuPreflightForLog } from '../sfu/SfuPreflight';
 import { Logger } from '../logger/Logger';
 
 interface ClientSession {
@@ -164,7 +165,16 @@ export class WebSocketServer {
       if (server?.voiceMode === 'sfu') {
         const ok = await this.sfuManager.init();
         if (!ok) {
-          Logger.warn('SFU', `SFU failed to initialize on startup: ${this.sfuManager.getLastError()}. Operating in P2P contingency.`);
+          // Silently downgrading a mode the operator deliberately configured
+          // is an error, not a warning — the preflight names the part of the
+          // environment that is missing instead of only echoing the throw.
+          const preflight = checkSfuPreflight();
+          const diagnosis = preflight.ok ? '' : ` ${formatSfuPreflightForLog(preflight)}`;
+          Logger.error(
+            'SFU',
+            `voiceMode is "sfu" but the SFU worker failed to start: ${this.sfuManager.getLastError()}.${diagnosis} ` +
+              'Voice and video are running in P2P contingency.'
+          );
         }
       }
     } catch (e: any) {
@@ -408,34 +418,42 @@ export class WebSocketServer {
         break;
 
       case MessageType.SFU_GET_ROUTER_RTP_CAPABILITIES:
+        if (!(await this.requireSfuMode(session, requestId))) return;
         await this.handleSfuGetRouterRtpCapabilities(session, payload as SfuGetRouterRtpCapabilitiesPayload, requestId);
         break;
 
       case MessageType.SFU_CREATE_WEBRTC_TRANSPORT:
+        if (!(await this.requireSfuMode(session, requestId))) return;
         await this.handleSfuCreateWebRtcTransport(session, payload as SfuCreateWebRtcTransportPayload, requestId);
         break;
 
       case MessageType.SFU_CONNECT_WEBRTC_TRANSPORT:
+        if (!(await this.requireSfuMode(session, requestId))) return;
         await this.handleSfuConnectWebRtcTransport(session, payload as SfuConnectWebRtcTransportPayload, requestId);
         break;
 
       case MessageType.SFU_PRODUCE:
+        if (!(await this.requireSfuMode(session, requestId))) return;
         await this.handleSfuProduce(session, payload as SfuProducePayload, requestId);
         break;
 
       case MessageType.SFU_CONSUME:
+        if (!(await this.requireSfuMode(session, requestId))) return;
         await this.handleSfuConsume(session, payload as SfuConsumePayload, requestId);
         break;
 
       case MessageType.SFU_PRODUCER_CLOSED:
+        if (!(await this.requireSfuMode(session, requestId))) return;
         this.handleSfuProducerClosed(session, payload as SfuProducerClosedPayload);
         break;
 
       case MessageType.SFU_GET_PRODUCERS:
+        if (!(await this.requireSfuMode(session, requestId))) return;
         await this.handleSfuGetProducers(session, payload as SfuGetProducersPayload, requestId);
         break;
 
       case MessageType.SFU_CONSUMER_SET_PAUSED:
+        if (!(await this.requireSfuMode(session, requestId))) return;
         await this.handleSfuConsumerSetPaused(session, payload as SfuConsumerSetPausedPayload);
         break;
 
@@ -704,10 +722,13 @@ export class WebSocketServer {
   private async buildIceServersFor(userId: string, session: ClientSession) {
     try {
       const server = await this.serverRepo.getServer();
+      // In SFU mode the server is already the relay, so handing out TURN
+      // credentials would advertise a second one that nothing uses (#515).
+      const secret = server?.voiceMode === 'sfu' ? null : server?.turnSecret ?? null;
       return this.coturnManager.buildIceServers(
         userId,
         session.requestHost ?? null,
-        server?.turnSecret ?? null
+        secret
       );
     } catch (error) {
       Logger.warn('NETWORK', 'Failed to build the ICE server list; sending STUN only.', error);
@@ -1102,11 +1123,45 @@ export class WebSocketServer {
     // itself when it is missing rather than sending the operator to a terminal
     // (#431). Only a relay that truly cannot run is rejected, so the toggle
     // never shows "on" while nothing is actually relaying (#425).
-    if (payload.turnEnabled === true) {
+    //
+    // A save that enters SFU is exempt: the relay flag rides along because the
+    // desktop submits the whole form, but `resolveTurnSfuExclusion` is about to
+    // discard it. Acting on it here would install coturn (a multi-minute
+    // apt-get) only to switch it off moments later — or, on a host that cannot
+    // run a relay at all, refuse the SFU switch outright (#515).
+    if (payload.turnEnabled === true && payload.voiceMode !== 'sfu') {
       const blocked = await this.ensureRelayCanRun(session);
       if (blocked) {
         this.sendError(session.ws, ProtocolErrorCode.TURN_UNAVAILABLE, blocked, requestId);
         return;
+      }
+    }
+
+    // Same contract for the SFU: a mode the host cannot serve is refused up
+    // front, because accepting it would only surface later as a call that
+    // quietly fell back to P2P (#515).
+    //
+    // Only an actual switch is probed. The desktop submits the current voice
+    // mode on every save, so probing on `payload.voiceMode === 'sfu'` alone
+    // would bind UDP ports on every rename or password change — and a worker
+    // already serving a call legitimately holds ports in this range, so the
+    // probe would report the admin's own SFU as a blocked firewall. Comparing
+    // against the stored mode is what excludes that case; the worker's own
+    // state is not a substitute, since creating it binds no RTC port and so
+    // proves nothing about the range.
+    if (payload.voiceMode === 'sfu') {
+      const current = await this.serverRepo.getServer();
+      if (current?.voiceMode !== 'sfu') {
+        const portProblem = await this.sfuManager.checkPortAvailability();
+        if (portProblem) {
+          this.sendError(
+            session.ws,
+            ProtocolErrorCode.SFU_UNAVAILABLE,
+            describeSfuPortProblem(portProblem),
+            requestId
+          );
+          return;
+        }
       }
     }
 
@@ -1124,10 +1179,19 @@ export class WebSocketServer {
     if (payload.voiceMode === 'sfu') {
       const ok = await this.sfuManager.init();
       if (!ok) {
-        Logger.warn('SFU', `SFU initialization failed on mode change: ${this.sfuManager.getLastError()}. Emitting contingency fallback.`);
+        // The admin is watching this switch right now, so the reason travels
+        // to the client instead of staying in the server log.
+        const preflight = checkSfuPreflight();
+        const diagnosis = preflight.ok ? '' : ` ${formatSfuPreflightForLog(preflight)}`;
+        Logger.error(
+          'SFU',
+          `SFU initialization failed on mode change: ${this.sfuManager.getLastError()}.${diagnosis} Emitting contingency fallback.`
+        );
+        const reason =
+          `${this.sfuManager.getLastError() || 'SFU worker failed to initialize'}${diagnosis}`.trim();
         this.broadcast({
           type: MessageType.SFU_CONTINGENCY_FALLBACK,
-          payload: { reason: this.sfuManager.getLastError() || 'SFU worker failed to initialize' } satisfies SfuContingencyFallbackPayload,
+          payload: { reason } satisfies SfuContingencyFallbackPayload,
         });
       }
     } else if (payload.voiceMode === 'p2p') {
@@ -1146,7 +1210,9 @@ export class WebSocketServer {
       }
     }
 
-    if (payload.turnEnabled !== undefined) {
+    if (payload.turnEnabled !== undefined || payload.voiceMode !== undefined) {
+      // Also runs on a plain mode change: switching to SFU forces the relay off
+      // in AuthService, and coturn has to actually stop (#515).
       await this.applyTurnState(Boolean(result.turnEnabled));
     }
 
@@ -2120,6 +2186,30 @@ export class WebSocketServer {
    * access" would confirm that a private channel with that id exists, which is
    * exactly what hiding it is meant to prevent (#384).
    */
+  /**
+   * Refuses SFU traffic on a server that is not in SFU mode (#515).
+   *
+   * Sits at dispatch because two of these handlers are self-sufficient:
+   * `SFU_GET_ROUTER_RTP_CAPABILITIES` and `SFU_CREATE_WEBRTC_TRANSPORT` both
+   * boot the mediasoup worker on demand, and the latter goes further and
+   * allocates a UDP/TCP port pair per call. Without this any authenticated
+   * member could spawn a worker — and burn ports — on a server the operator
+   * deliberately left in P2P. Guarding only the handshake entry point would
+   * miss the shorter and more expensive path.
+   */
+  private async requireSfuMode(session: ClientSession, requestId?: string): Promise<boolean> {
+    const server = await this.serverRepo.getServer();
+    if (server?.voiceMode === 'sfu') return true;
+
+    this.sendError(
+      session.ws,
+      ProtocolErrorCode.SFU_UNAVAILABLE,
+      'Este servidor não está no modo SFU.',
+      requestId
+    );
+    return false;
+  }
+
   private async requireChannelAccess(
     session: ClientSession,
     channelId: string | undefined,

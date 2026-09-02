@@ -165,7 +165,14 @@ export class ServerGeneralTab {
       cardCleanups.push(() => card.removeEventListener('click', listener));
     });
 
-    const cleanupCapacity = attachCapacityEstimatorEvents(root, 'general');
+    // Specs come from the machine running the server, which is usually not this
+    // one — an admin configuring a VPS from their desktop was being shown their
+    // own hardware (#515).
+    const cleanupCapacity = attachCapacityEstimatorEvents(
+      root,
+      'general',
+      serverStore.serverDetails?.hostSpecs ?? null
+    );
 
     return () => {
       if (toggle && group) toggle.removeEventListener('change', sync);

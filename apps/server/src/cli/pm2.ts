@@ -1,8 +1,8 @@
 import fs from 'fs';
 import path from 'path';
-import { execSync, spawnSync } from 'child_process';
 import { ANSI, color } from './constants';
 import { t } from './i18n/index';
+import { commandSucceeds, runSync } from './process';
 import { canonicalDataDir, LEGACY_PM2_PROCESS_NAME, serverIdFor } from './registry';
 
 export const PM2_PROCESS_PREFIX = 'monky-server';
@@ -28,12 +28,7 @@ export function getUpdaterProcessName(dataDir: string): string {
 }
 
 export function isPm2Available(): boolean {
-  try {
-    execSync('pm2 --version', { stdio: 'ignore' });
-    return true;
-  } catch {
-    return false;
-  }
+  return commandSucceeds('pm2', ['--version']);
 }
 
 export interface Pm2Process {
@@ -52,7 +47,7 @@ export interface Pm2Process {
 export function listPm2Processes(): Pm2Process[] {
   if (!isPm2Available()) return [];
   try {
-    const listResult = spawnSync('pm2', ['jlist'], { encoding: 'utf8', shell: true });
+    const listResult = runSync('pm2', ['jlist'], { encoding: 'utf8' });
     if (listResult.status !== 0) return [];
     const parsed = JSON.parse(listResult.stdout);
     return Array.isArray(parsed) ? parsed : [];
@@ -120,9 +115,8 @@ export function findLegacyProcessFor(dataDir: string): Pm2Process | null {
 export function ensurePm2(): void {
   if (!isPm2Available()) {
     console.log(color(t('pm2.notFound'), ANSI.yellow));
-    try {
-      execSync('npm install -g pm2', { stdio: 'inherit' });
-    } catch {
+    const result = runSync('npm', ['install', '-g', 'pm2'], { stdio: 'inherit' });
+    if (result.error || result.status !== 0) {
       throw new Error(t('pm2.installFailed'));
     }
   }

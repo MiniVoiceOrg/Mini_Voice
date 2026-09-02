@@ -20,9 +20,11 @@ import {
 } from '../context';
 import { DecryptedIdentity, decryptIdentityExport } from '../identity';
 import { t } from '../i18n/index';
-import { parseOption, parseMemberLimit, parsePositiveInt, printVoiceModeComparisonTable } from '../formatters';
+import { describeSfuPortProblem, parseOption, parseMemberLimit, parsePositiveInt, printSfuPreflight, printVoiceModeComparisonTable } from '../formatters';
+import { estimateHostCapacity, printCapacityEstimate } from '../capacity';
 import { hasServerDatabase, registerServer } from '../registry';
 import { setConfig } from './config';
+import { checkSfuPreflight } from '../../infrastructure/sfu/SfuPreflight';
 import { startServerCommand } from './serverLifecycle';
 
 export async function findUserByPublicIdentity(ctx: CliContext, identity: DecryptedIdentity): Promise<UserRecord | null> {
@@ -186,11 +188,20 @@ export async function createCommand(globalArgs: GlobalArgs, args: string[]): Pro
   }
 
   if (voiceMode === 'sfu') {
-    const { CapacityEstimator } = await import('../../domain/services/CapacityEstimator');
-    const estimate = CapacityEstimator.estimate();
-    console.log();
-    console.log(color(t('create.sfuCapacityTitle'), ANSI.bold));
-    console.log(color(estimate.summaryText, ANSI.cyan));
+    const { SfuManager } = await import('../../infrastructure/sfu/SfuManager');
+    const portProblem = await new SfuManager().checkPortAvailability();
+    if (portProblem) {
+      // A warning rather than a hard stop: the server does not exist yet, so
+      // the operator can still open the range before starting it (#515).
+      console.log();
+      console.log(color('⚠ ' + describeSfuPortProblem(portProblem), ANSI.yellow));
+    } else {
+      console.log(color(t('config.sfuPortOk'), ANSI.green));
+    }
+
+    const report = await estimateHostCapacity();
+    printCapacityEstimate(report);
+    printSfuPreflight(checkSfuPreflight());
   }
 
   console.log();
@@ -214,7 +225,7 @@ export async function createCommand(globalArgs: GlobalArgs, args: string[]): Pro
     await setConfig(ctx, 'name', serverName);
     await setConfig(ctx, 'password', serverPassword);
     await setConfig(ctx, 'maxUsers', String(maxUsers));
-    await setConfig(ctx, 'voiceMode', voiceMode);
+    await setConfig(ctx, 'voiceMode', voiceMode, { skipSfuDiagnostics: true });
   });
 
   const config = readLocalConfig(dataDir);

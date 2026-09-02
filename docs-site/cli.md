@@ -12,7 +12,7 @@ usa esse registro para saber a qual servidor cada comando se aplica.
 
 ## Instalação
 
-Requer **Node.js 20 ou superior**.
+Requer **Node.js 22 ou superior** (exigência do mediasoup, usado no modo SFU).
 
 ```bash
 curl -fsSL https://monkyorg.github.io/install.sh | bash
@@ -31,8 +31,13 @@ Baixe o `.tgz` da versão desejada em
 [Releases](https://github.com/MonkyOrg/Monky/releases) e instale com:
 
 ```bash
-npm install -g https://github.com/MonkyOrg/Monky/releases/download/vX.Y.Z/monky-cli-X.Y.Z.tgz
+npm install -g --allow-scripts=mediasoup https://github.com/MonkyOrg/Monky/releases/download/vX.Y.Z/monky-cli-X.Y.Z.tgz
 ```
+
+O `--allow-scripts=mediasoup` libera o `postinstall` do mediasoup, que compila o
+worker do SFU. A partir do npm 12 os scripts de instalação são bloqueados por
+padrão, e sem esse binário o servidor sobe mas as chamadas caem para P2P. Em
+versões de npm anteriores à 11.16 o parâmetro é desnecessário e pode ser omitido.
 
 </details>
 
@@ -462,9 +467,9 @@ O CLI calcula e exibe automaticamente uma **estimativa de capacidade** baseada n
 
 | Porta | Protocolo | Função |
 |---|---|---|
-| `40000-49999` | UDP | Portas de mídia WebRTC do worker mediasoup |
+| `40000-49151` | UDP | Portas de mídia WebRTC do worker mediasoup |
 
-As portas UDP `40000-49999` devem estar abertas no firewall do servidor (Oracle Cloud, AWS Security Group, iptables/ufw).
+As portas UDP `40000-49151` devem estar abertas no firewall do servidor (Oracle Cloud, AWS Security Group, iptables/ufw).
 
 ---
 

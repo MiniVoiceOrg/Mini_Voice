@@ -1,5 +1,4 @@
 import fs from 'fs';
-import { spawnSync } from 'child_process';
 import { ANSI, color } from '../constants';
 import { GlobalArgs } from '../context';
 import {
@@ -9,6 +8,7 @@ import {
   isPm2Available,
   LEGACY_PM2_PROCESS_NAME,
 } from '../pm2';
+import { runSync } from '../process';
 import { unregisterServer } from '../registry';
 import { resolveTargetServer } from '../target';
 import { ask, confirm } from '../prompts';
@@ -60,9 +60,9 @@ export async function destroyCommand(globalArgs: GlobalArgs): Promise<void> {
       names.push(LEGACY_PM2_PROCESS_NAME);
     }
     for (const name of names) {
-      spawnSync('pm2', ['delete', name], { stdio: 'ignore', shell: true });
+      runSync('pm2', ['delete', name], { stdio: 'ignore' });
     }
-    spawnSync('pm2', ['save'], { stdio: 'ignore', shell: true });
+    runSync('pm2', ['save'], { stdio: 'ignore' });
   }
 
   await fs.promises.rm(dataDir, { recursive: true, force: true });

@@ -75,6 +75,27 @@ export const ptBR = {
   'create.cancelled': 'Criação cancelada.',
   'create.startNow': 'Deseja iniciar o servidor agora?',
 
+  // ── Preflight do SFU ───────────────────────────────────────────────────
+  'sfu.preflightTitle': 'Verificação do ambiente SFU:',
+  'sfu.preflightOk': 'Ambiente pronto para o modo SFU.',
+  'sfu.preflightNodeVersion': 'Node.js {found} em uso — o mediasoup exige a versão {required} ou superior.',
+  'sfu.preflightMediasoupUnresolved': 'O pacote mediasoup não foi encontrado nesta instalação.',
+  'sfu.preflightWorkerMissing': 'Binário do worker do mediasoup ausente em {path}.',
+  'sfu.preflightHintNode': 'Atualize o Node.js para {required}+ e reinstale o CLI.',
+  'sfu.preflightHintWorker': 'O postinstall do mediasoup foi bloqueado pelo npm. Reinstale o CLI com --allow-scripts=mediasoup.',
+  'sfu.preflightHintReinstall': 'Reinstale o Monky CLI.',
+  'sfu.preflightConsequence': 'O servidor sobe mesmo assim, mas as chamadas caem para P2P.',
+  'sfu.portOverlap':
+    'O range UDP do SFU ({minPort}-{maxPort}) invade o range de relay do coturn ({turnMinPort}-{turnMaxPort}). Os dois disputariam as mesmas portas.',
+  'sfu.portBindFailed':
+    'A porta {port}/UDP não pôde ser reservada, então o range {minPort}-{maxPort} não está utilizável. Libere esse range (UDP) no firewall e confira se nenhum outro processo o ocupa.',
+  'capacity.askUpload': 'Qual o upload disponível no servidor (Mbps)?',
+  'capacity.summary':
+    'Com {cores} cores de CPU, {ram} GB de RAM e ~{upload} Mbps de upload, o modo SFU suporta até ~{screen} pessoas assistindo tela em 1080p60 ou ~{voice} pessoas em canais de voz.',
+  'capacity.sourceMeasured': 'CPU e RAM lidos desta máquina; upload informado por você. Estimativa, não garantia.',
+  'capacity.sourceAssumedUpload':
+    'CPU e RAM lidos desta máquina; upload assumido em {upload} Mbps por falta de resposta. Estimativa, não garantia.',
+
   // ── Config ─────────────────────────────────────────────────────────────
   'config.title': 'Configuração do servidor',
   'config.whichKey': 'Qual configuração deseja alterar?',
@@ -107,6 +128,13 @@ export const ptBR = {
   'config.turnRestartNeeded': 'O servidor está rodando. Rode "monky restart" para aplicar a mudança do relay.',
   'config.turnPortOk': '✔ Porta TURN (3478) acessível. Certifique-se de que o range 49152-65535/UDP também está aberto no firewall.',
   'config.turnUnavailable': 'indisponível: {reason}',
+  'config.sfuUnavailable': 'inativo: {reason}',
+  'config.sfuPortOk': '✔ Range UDP do SFU reservável nesta máquina. Confirme que ele também está aberto no firewall da VPS.',
+  'config.voiceModeRestartNeeded':
+    '⚠ O servidor em execução escolheu o modo de voz na inicialização. Rode "monky restart" para aplicar a mudança.',
+  'config.turnDisabledBySfu': 'TURN desligado automaticamente: no modo SFU o próprio servidor já faz o relay.',
+  'config.turnBlockedBySfu':
+    'O TURN não pode ser ativado no modo SFU — o próprio SFU já é o relay. Volte para o modo p2p antes de ligar o TURN.',
   'config.noLimit': 'sem limite',
   'config.updated': 'Configuração "{key}" atualizada com sucesso.',
   'config.unsupportedKey': 'Chave não suportada: {key}',

@@ -24,6 +24,13 @@ export enum ProtocolErrorCode {
    * client can explain what to do instead of showing a generic message (#429).
    */
   TURN_UNAVAILABLE = 'TURN_UNAVAILABLE',
+  /**
+   * The SFU cannot carry media on this host — typically a UDP range that is
+   * blocked or already taken. Same intent as TURN_UNAVAILABLE: the switch is
+   * refused with an actionable reason instead of being accepted and silently
+   * degrading to P2P (#515).
+   */
+  SFU_UNAVAILABLE = 'SFU_UNAVAILABLE',
 }
 
 export enum MessageType {

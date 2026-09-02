@@ -1,6 +1,6 @@
 import fs from 'fs';
 import path from 'path';
-import { execSync, spawnSync } from 'child_process';
+import { execSync } from 'child_process';
 import { ANSI, color } from '../constants';
 import { GlobalArgs } from '../context';
 import { t } from '../i18n/index';
@@ -14,6 +14,7 @@ import {
   LEGACY_UPDATER_PROCESS_NAME,
 } from '../pm2';
 import { confirm } from '../prompts';
+import { runSync } from '../process';
 import { restartServerCommand } from './serverLifecycle';
 
 export const GITHUB_RELEASES_URL =
@@ -262,6 +263,55 @@ export async function checkForUpdate(
   };
 }
 
+/**
+ * The only dependency in the CLI tree that ships an install script.
+ *
+ * mediasoup builds its worker binary in `postinstall`; without it the SFU
+ * cannot start and voice silently degrades to P2P.
+ */
+export const SCRIPTED_DEPENDENCY = 'mediasoup';
+
+/**
+ * Whether this npm understands `--allow-scripts`.
+ *
+ * npm 11.16 started warning that dependency install scripts will be blocked
+ * and npm 12 blocks them outright. Older versions treat the flag as unknown
+ * config, so it is only passed where it actually means something.
+ */
+export function npmSupportsAllowScripts(npmVersion: string): boolean {
+  const [major = 0, minor = 0] = String(npmVersion)
+    .trim()
+    .split('.')
+    .map((part) => Number.parseInt(part, 10) || 0);
+  if (major >= 12) return true;
+  return major === 11 && minor >= 16;
+}
+
+function detectNpmVersion(): string | null {
+  try {
+    const result = runSync('npm', ['-v'], { encoding: 'utf8' });
+    if (result.status !== 0 || !result.stdout) return null;
+    return result.stdout.trim();
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Arguments for the global install, allowing mediasoup's script when needed.
+ *
+ * A dependency cannot authorise its own scripts — only the invoking install
+ * can — so every entry point that installs the CLI has to opt in explicitly.
+ */
+export function buildInstallArgs(tgzUrl: string, npmVersion: string | null): string[] {
+  const args = ['install', '-g'];
+  if (npmVersion && npmSupportsAllowScripts(npmVersion)) {
+    args.push(`--allow-scripts=${SCRIPTED_DEPENDENCY}`);
+  }
+  args.push(tgzUrl);
+  return args;
+}
+
 export async function performUpdate(
   options: { beta?: boolean; targetVersion?: string; tgzUrl?: string } = {}
 ): Promise<boolean> {
@@ -280,7 +330,8 @@ export async function performUpdate(
   }
 
   console.log(color(t('update.installing', { url: tgzUrl }), ANSI.cyan));
-  const installResult = spawnSync('npm', ['install', '-g', tgzUrl], { stdio: 'inherit', shell: true });
+  const installArgs = buildInstallArgs(tgzUrl, detectNpmVersion());
+  const installResult = runSync('npm', installArgs, { stdio: 'inherit' });
   if (installResult.status !== 0) {
     console.log(color(t('update.installFailed'), ANSI.red));
     return false;
@@ -450,10 +501,10 @@ export async function enableAutoUpdate(dataDir: string, schedule?: AutoUpdateSch
 
   const processName = getUpdaterProcessName(dataDir);
   for (const name of [processName, LEGACY_UPDATER_PROCESS_NAME]) {
-    spawnSync('pm2', ['delete', name], { stdio: 'ignore', shell: true });
+    runSync('pm2', ['delete', name], { stdio: 'ignore' });
   }
 
-  const result = spawnSync(
+  const result = runSync(
     'pm2',
     [
       'start',
@@ -463,14 +514,14 @@ export async function enableAutoUpdate(dataDir: string, schedule?: AutoUpdateSch
       '--interpreter',
       'node',
     ],
-    { stdio: 'inherit', shell: true }
+    { stdio: 'inherit' }
   );
 
   if (result.status !== 0) {
     throw new Error(t('update.autoUpdateFailed'));
   }
 
-  spawnSync('pm2', ['save'], { stdio: 'ignore', shell: true });
+  runSync('pm2', ['save'], { stdio: 'ignore' });
 
   const schedType = schedule?.type || 'daily';
   const schedVal = schedule?.value ?? '04:00';
@@ -492,8 +543,8 @@ export async function disableAutoUpdate(dataDir: string): Promise<void> {
   }
 
   for (const name of [getUpdaterProcessName(dataDir), LEGACY_UPDATER_PROCESS_NAME]) {
-    spawnSync('pm2', ['delete', name], { stdio: 'ignore', shell: true });
+    runSync('pm2', ['delete', name], { stdio: 'ignore' });
   }
-  spawnSync('pm2', ['save'], { stdio: 'ignore', shell: true });
+  runSync('pm2', ['save'], { stdio: 'ignore' });
   console.log(color(t('update.autoUpdateDisabled'), ANSI.green));
 }

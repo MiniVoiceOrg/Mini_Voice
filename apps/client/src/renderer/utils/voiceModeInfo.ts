@@ -1,4 +1,4 @@
-import { CapacityEstimator, CapacityEstimate } from '@monky/shared';
+import { CapacityEstimator, CapacityEstimate, HostSpecs } from '@monky/shared';
 import { t } from '../i18n';
 
 export function renderWhatPassesWhereTableHtml(): string {
@@ -100,7 +100,18 @@ export function renderCapacityEstimatorHtml(prefix = 'general'): string {
   `;
 }
 
-export function attachCapacityEstimatorEvents(root: HTMLElement, prefix = 'general'): () => void {
+/**
+ * @param hostSpecs CPU and RAM reported by the server that will run the SFU.
+ *   Falls back to `navigator` only when the server did not send them, which
+ *   describes the local machine and is therefore right just while hosting
+ *   locally — and even then RAM is capped at 8 GB by the Device Memory
+ *   spec, so the reading is flagged as approximate (#515).
+ */
+export function attachCapacityEstimatorEvents(
+  root: HTMLElement,
+  prefix = 'general',
+  hostSpecs?: HostSpecs | null
+): () => void {
   const select = root.querySelector(`#${prefix}-select-capacity-upload`) as HTMLSelectElement | null;
   const resultContainer = root.querySelector(`#${prefix}-capacity-result`) as HTMLElement | null;
   const summaryContainer = root.querySelector(`#${prefix}-capacity-summary`) as HTMLElement | null;
@@ -109,8 +120,13 @@ export function attachCapacityEstimatorEvents(root: HTMLElement, prefix = 'gener
     return () => {};
   }
 
-  const cores = typeof navigator !== 'undefined' && navigator.hardwareConcurrency ? navigator.hardwareConcurrency : 4;
-  const ramGb = typeof navigator !== 'undefined' && (navigator as any).deviceMemory ? (navigator as any).deviceMemory : 8;
+  const fromServer = Boolean(hostSpecs);
+  const cores =
+    hostSpecs?.cpuCores ??
+    (typeof navigator !== 'undefined' && navigator.hardwareConcurrency ? navigator.hardwareConcurrency : 4);
+  const ramGb =
+    hostSpecs?.ramTotalGb ??
+    (typeof navigator !== 'undefined' && (navigator as any).deviceMemory ? (navigator as any).deviceMemory : 8);
 
   const update = () => {
     const uploadMbps = parseInt(select.value, 10) || 100;
@@ -142,7 +158,16 @@ export function attachCapacityEstimatorEvents(root: HTMLElement, prefix = 'gener
           ${t('capacity.specs', { cores: String(cores), ram: String(ramGb) })}
         </span>
       </div>
-      <div>${est.summaryText}</div>
+      <div>${t('capacity.summary', {
+        cores: String(cores),
+        ram: String(ramGb),
+        upload: String(uploadMbps),
+        screen: String(est.maxScreenShareParticipants),
+        voice: String(est.maxAudioParticipants),
+      })}</div>
+      <div style="margin-top: 4px; font-style: italic;">
+        ${fromServer ? t('capacity.sourceServer') : t('capacity.sourceLocalApprox')}
+      </div>
     `;
   };
 

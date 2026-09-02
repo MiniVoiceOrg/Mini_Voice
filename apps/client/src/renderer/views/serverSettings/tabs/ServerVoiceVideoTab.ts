@@ -13,6 +13,13 @@ import { t } from '../../../i18n';
  * — switching the relay on is what triggers the installation (#431).
  */
 function turnBlockedReason(): string | null {
+  // Checked before host support: in SFU mode the server already forwards every
+  // stream, so a second relay is pointless no matter what the host can run.
+  // The server refuses the combination too, and a toggle that reports success
+  // while being rejected would be worse than one that is visibly off (#515).
+  if (serverStore.serverDetails?.voiceMode === 'sfu') {
+    return t('serverSettings.turnBlockedBySfu');
+  }
   const availability = serverStore.serverDetails?.turnAvailability;
   if (!availability) return t('serverSettings.turnUnknownSupport');
   if (availability.supported) return null;

@@ -162,6 +162,12 @@ export interface VoiceParticipantState {
   screenShareIds?: string[];
 }
 
+/** CPU and RAM of the machine hosting the server, as measured by the server. */
+export interface HostSpecs {
+  cpuCores: number;
+  ramTotalGb: number;
+}
+
 export interface ServerDetails {
   id: string;
   name: string;
@@ -182,6 +188,16 @@ export interface ServerDetails {
    * - 'sfu': Centralized Selective Forwarding Unit media routing via the server.
    */
   voiceMode?: VoiceMode;
+  /**
+   * CPU and RAM of the machine actually running the server (#515).
+   *
+   * The capacity estimator used to read `navigator.hardwareConcurrency` and
+   * `navigator.deviceMemory` in the renderer, which describes the admin's
+   * desktop — not the VPS being administered — and is capped at 8 GB by the
+   * Device Memory spec, so it reported "8 GB" for every host. Optional because
+   * an older server simply will not send it.
+   */
+  hostSpecs?: HostSpecs;
   iconUrl?: string | null;
   channels: ChannelSummary[];
   /** One entry per live connection: a user signed in from two devices appears twice (#309). */
