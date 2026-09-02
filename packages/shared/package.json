@@ -7,7 +7,7 @@
   "scripts": {
     "build": "tsc",
     "dev": "tsc --watch",
-    "test": "node --import tsx/esm test/validators.test.ts 2>nul || node dist/test/validators.test.js 2>nul || tsc && node -e \"require('./test/validators.test.ts')\" 2>nul || tsc test/validators.test.ts --outDir dist/test && node dist/test/test/validators.test.js",
+    "test": "tsc -p tsconfig.test.json && node dist-test/test/validators.test.js",
     "clean": "rimraf dist"
   },
   "dependencies": {

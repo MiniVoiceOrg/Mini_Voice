@@ -302,8 +302,9 @@ export class MainView {
     const update = async () => {
       const pingEl = document.getElementById('sidebar-voice-ping');
       if (!pingEl) return;
+      const isSfu = webRtcManager.isSfuMode();
       const participants = participantManager.getInVoiceChannel(voiceStore.currentVoiceChannelId || '');
-      if (participants.length <= 1) {
+      if (participants.length <= 1 && !isSfu) {
         pingEl.textContent = '0 ms';
         return;
       }
@@ -1078,12 +1079,16 @@ export class MainView {
       isDeafened: voiceStore.isDeafened,
     });
 
-    // Connect to all peers already in this voice channel
-    const peersInChannel = participantManager.getInVoiceChannel(channelId);
-    for (const peer of peersInChannel) {
-      const peerSessionId = peer.user.sessionId || peer.user.id;
-      if (!serverStore.isMySession(peer.user.sessionId)) {
-        await webRtcManager.connectToPeer(peerSessionId, true);
+    if (webRtcManager.isSfuMode()) {
+      await webRtcManager.initSfuForCurrentChannel();
+    } else {
+      // Connect to all peers already in this voice channel
+      const peersInChannel = participantManager.getInVoiceChannel(channelId);
+      for (const peer of peersInChannel) {
+        const peerSessionId = peer.user.sessionId || peer.user.id;
+        if (!serverStore.isMySession(peer.user.sessionId)) {
+          await webRtcManager.connectToPeer(peerSessionId, true);
+        }
       }
     }
   }
@@ -1517,7 +1522,7 @@ export class MainView {
     });
 
     const u7 = appEvents.on(`message.${MessageType.SERVER_SETTINGS_UPDATED}`, (payload: any) => {
-      serverStore.updateServerMeta(payload.name, payload.hasPassword, payload.allowSoundboard, payload.iconUrl, payload.attachmentStorage, payload.maxUsers, payload.turnEnabled, payload.allowEveryoneMention, payload.allowMessageEdit);
+      serverStore.updateServerMeta(payload.name, payload.hasPassword, payload.allowSoundboard, payload.iconUrl, payload.attachmentStorage, payload.maxUsers, payload.turnEnabled, payload.allowEveryoneMention, payload.allowMessageEdit, payload.voiceMode);
       serverStore.setTurnAvailability(payload.turnAvailability);
       // The store above is the one of whichever server sent this. Everything
       // below writes to the screen and to the saved-server list, so it may only

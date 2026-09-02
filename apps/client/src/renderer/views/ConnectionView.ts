@@ -16,6 +16,11 @@ import { confirmStopHostedServer } from '../utils/hostedServer';
 import { onboardingWizard } from './OnboardingWizard';
 import logoUrl from '../assets/Logo.png';
 import { getLanguage, t } from '../i18n';
+import {
+  renderWhatPassesWhereTableHtml,
+  renderCapacityEstimatorHtml,
+  attachCapacityEstimatorEvents,
+} from '../utils/voiceModeInfo';
 
 interface DiscoveredServer {
   host: string;
@@ -435,6 +440,37 @@ export class ConnectionView {
                 <input id="host-max-users" type="number" min="1" step="1" value="20">
               </div>
 
+              <div class="form-group" style="margin-top: 12px; background: var(--bg-card); border: 1px solid var(--border-color); border-radius: var(--radius-md); padding: 14px;">
+                <div style="font-size: 13px; font-weight: 600; color: var(--text-primary); margin-bottom: 4px; display: flex; align-items: center; gap: 6px;">
+                  <span class="material-symbols-outlined md-18" style="color: var(--accent-primary);">hub</span>
+                  <span>${t('serverSettings.voiceModeLabel')}</span>
+                </div>
+                <div style="font-size: 11px; color: var(--text-muted); margin-bottom: 12px;">
+                  ${t('serverSettings.voiceModeDesc')}
+                </div>
+
+                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 10px;" id="host-voice-mode-cards">
+                  <div class="voice-mode-card selected" data-mode="p2p" style="padding: 10px 12px; border: 1.5px solid var(--accent-primary); background: rgba(88, 101, 242, 0.1); border-radius: var(--radius-md); cursor: pointer; transition: all 0.15s ease;">
+                    <div style="display: flex; align-items: center; gap: 6px; margin-bottom: 4px;">
+                      <span class="material-symbols-outlined md-16" style="color: var(--accent-primary);">wifi_tethering</span>
+                      <span style="font-size: 12px; font-weight: 600; color: var(--text-primary);">${t('serverSettings.voiceModeP2pTitle')}</span>
+                    </div>
+                    <div style="font-size: 10px; color: var(--text-muted); line-height: 1.3;">${t('serverSettings.voiceModeP2pDesc')}</div>
+                  </div>
+                  <div class="voice-mode-card" data-mode="sfu" style="padding: 10px 12px; border: 1.5px solid var(--border-color); background: var(--bg-card-secondary); border-radius: var(--radius-md); cursor: pointer; transition: all 0.15s ease;">
+                    <div style="display: flex; align-items: center; gap: 6px; margin-bottom: 4px;">
+                      <span class="material-symbols-outlined md-16" style="color: var(--text-muted);">hub</span>
+                      <span style="font-size: 12px; font-weight: 600; color: var(--text-primary);">${t('serverSettings.voiceModeSfuTitle')}</span>
+                    </div>
+                    <div style="font-size: 10px; color: var(--text-muted); line-height: 1.3;">${t('serverSettings.voiceModeSfuDesc')}</div>
+                  </div>
+                </div>
+                <input type="hidden" id="input-host-voice-mode" value="p2p" />
+
+                ${renderWhatPassesWhereTableHtml()}
+                ${renderCapacityEstimatorHtml('host')}
+              </div>
+
               <button type="submit" id="btn-submit-host" class="btn btn-primary" style="width: 100%; margin-top: 8px;">
                 <span class="material-symbols-outlined md-18" style="margin-right: 6px;">add_circle</span>
                 ${t('connection.createAndStart')}
@@ -489,6 +525,7 @@ export class ConnectionView {
         initialVoiceChannel: server.voiceChannel,
         serverId: server.id,
         maxUsers: server.maxUsers,
+        voiceMode: server.voiceMode,
       });
 
       if (!hostRes.success) {
@@ -942,6 +979,26 @@ export class ConnectionView {
       }
     });
 
+    const hostVoiceCards = document.querySelectorAll('#host-voice-mode-cards .voice-mode-card');
+    const hiddenHostVoiceMode = document.getElementById('input-host-voice-mode') as HTMLInputElement | null;
+    hostVoiceCards.forEach((card) => {
+      card.addEventListener('click', () => {
+        const mode = (card as HTMLElement).dataset.mode;
+        if (!mode) return;
+        if (hiddenHostVoiceMode) hiddenHostVoiceMode.value = mode;
+        hostVoiceCards.forEach((c) => {
+          const isSelected = (c as HTMLElement).dataset.mode === mode;
+          c.classList.toggle('selected', isSelected);
+          (c as HTMLElement).style.borderColor = isSelected ? 'var(--accent-primary)' : 'var(--border-color)';
+          (c as HTMLElement).style.background = isSelected ? 'rgba(88, 101, 242, 0.1)' : 'var(--bg-card-secondary)';
+          const icon = c.querySelector('.material-symbols-outlined') as HTMLElement | null;
+          if (icon) icon.style.color = isSelected ? 'var(--accent-primary)' : 'var(--text-muted)';
+        });
+      });
+    });
+
+    attachCapacityEstimatorEvents(this.container, 'host');
+
     startCreatedButtons.forEach((btn) => {
       btn.addEventListener('click', async (e) => {
         e.preventDefault();
@@ -1158,6 +1215,10 @@ export class ConnectionView {
           server.textChannel === initialText &&
           server.voiceChannel === initialVoice
         );
+        const voiceModeInput = (document.getElementById('input-host-voice-mode') as HTMLInputElement | null) ||
+          (document.querySelector('input[name="host-voice-mode"]:checked') as HTMLInputElement | null);
+        const voiceMode = (voiceModeInput?.value as 'p2p' | 'sfu') || 'p2p';
+
         const createdServer: CreatedServer = {
           id: existingServer?.id || this.createCreatedServerId(),
           name: serverName,
@@ -1168,6 +1229,7 @@ export class ConnectionView {
           createdAt: existingServer?.createdAt || now,
           lastStarted: now,
           maxUsers,
+          voiceMode,
         };
 
         await this.startHostedServer(createdServer, nickname);

@@ -1,5 +1,34 @@
 export type ChannelType = 'VOICE' | 'TEXT';
 
+export type VoiceMode = 'p2p' | 'sfu';
+
+export interface SfuTransportOptions {
+  id: string;
+  iceParameters: any;
+  iceCandidates: any[];
+  dtlsParameters: any;
+  sctpParameters?: any;
+}
+
+export interface SfuProducerData {
+  id: string;
+  kind: 'audio' | 'video';
+  rtpParameters: any;
+  type?: string;
+  paused?: boolean;
+  appData: Record<string, any>;
+}
+
+export interface SfuConsumerData {
+  id: string;
+  producerId: string;
+  kind: 'audio' | 'video';
+  rtpParameters: any;
+  type?: string;
+  producerAppData: Record<string, any>;
+  producerSessionId: string;
+}
+
 export type UserStatus = 'ONLINE' | 'IDLE' | 'VOICE' | 'DISCONNECTED';
 
 export interface UserSummary {
@@ -147,6 +176,12 @@ export interface ServerDetails {
    * allowed: this switch is about rewriting history, not about taking it back.
    */
   allowMessageEdit?: boolean;
+  /**
+   * Voice and video topology mode (#515).
+   * - 'p2p': Direct full-mesh WebRTC connections between participants.
+   * - 'sfu': Centralized Selective Forwarding Unit media routing via the server.
+   */
+  voiceMode?: VoiceMode;
   iconUrl?: string | null;
   channels: ChannelSummary[];
   /** One entry per live connection: a user signed in from two devices appears twice (#309). */

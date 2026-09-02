@@ -25,7 +25,7 @@ How it works in practice:
 
 1. **One person hosts** from the app or on a VPS, with no account, email or cloud in between.
 2. **Friends join** by entering the server IP and port.
-3. **The conversation is direct:** voice, video and screen sharing travel P2P via WebRTC; the server handles login, channels, chat and signalling. When two members are behind CGNAT and cannot connect, a Linux host can enable an [optional TURN relay](https://monkyorg.github.io/Monky/en/cli#media-relay-turn).
+3. **The conversation is direct or centralized:** by default, voice, video and screen sharing travel P2P via WebRTC (direct mesh); for larger groups or demanding 1080p 60fps streams, the host can enable **SFU mode** (Selective Forwarding Unit with `mediasoup`). When two members are behind CGNAT and cannot connect in P2P mode, a Linux host can enable an [optional TURN relay](https://monkyorg.github.io/Monky/en/cli#media-relay-turn).
 
 Everything of yours stays with you: history and users in the host's SQLite (`server.db`); nickname, avatar and preferences on your PC.
 
@@ -52,33 +52,38 @@ Full usage and hosting manual at **[monkyorg.github.io/Monky/en](https://monkyor
 
 ## 🏗️ How it works inside
 
-Monky separates **what the server controls** from **what travels between people**:
+Monky separates **what the server controls** from **what travels between people**, supporting two media topologies:
 
 ```mermaid
 flowchart TB
-    subgraph MP["Media plane — P2P, never touches the server"]
+    subgraph P2P["P2P Mesh Mode (Default)"]
         direction LR
-        A2["Ana"] <-->|"voice · video · screen"| B2["Bruno"]
-        B2 <-->|"voice · video · screen"| C2["Carla"]
-        A2 <-->|"voice · video · screen"| C2
+        A1["Ana"] <-->|"Direct WebRTC"| B1["Bruno"]
+        B1 <-->|"Direct WebRTC"| C1["Carla"]
+        A1 <-->|"Direct WebRTC"| C1
+    end
+
+    subgraph SFU["SFU Mode (Centralized)"]
+        direction LR
+        A2["Ana"] <-->|"1 stream (1080p60)"| MS[("mediasoup<br/>Worker")]
+        B2["Bruno"] <-->|"1 stream"| MS
+        C2["Carla"] <-->|"1 stream"| MS
     end
 
     S[("Monky server<br/>WebSocket + SQLite")]
-    A["Ana"] <-->|"login, channels, chat, signaling"| S
+    A["Ana"] <-->|"login, chat, signaling"| S
     B["Bruno"] <--> S
     C["Carla"] <--> S
 
-    S -.->|"introduces the peers<br/>to each other"| MP
+    S -.->|"Signaling"| P2P
+    S -.->|"Routing"| SFU
 ```
 
-The server handles login, channels, chat, roles and signaling — then steps aside.
-Voice, video and screen go **straight from one person to another** over WebRTC, in
-a mesh. Two consequences: the server's bandwidth barely matters (a cheap VPS is
-enough) and **not even the host can listen in on the conversation**.
+- **P2P Mesh (Default):** The server only signals; audio, video and screen go directly between users. No media bandwidth is consumed on the host.
+- **Centralized SFU (mediasoup):** The server routes WebRTC streams. Screen sharing at 1080p60 sends only 1 stream, saving CPU and upload. Includes automatic fallback to P2P if the SFU process experiences downtime.
 
-The full detail — protocol, public-key authentication, database, permissions,
-media plane, quality profiles and known limits — lives in
-**[Architecture](https://monkyorg.github.io/Monky/en/arquitetura)**.
+The full detail — protocol, public-key authentication, database, permissions, media plane topologies, quality profiles and limits — lives in **[Architecture](https://monkyorg.github.io/Monky/en/arquitetura)**.
+
 
 ## 🗳️ Roadmap & Voting
 

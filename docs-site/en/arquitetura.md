@@ -276,7 +276,9 @@ its extension. Renaming an executable to `.png` does not fool the check.
 
 ## The media plane
 
-### Topology: full mesh
+Monky supports **two voice and media topologies**: default **P2P Mesh** and **SFU (Selective Forwarding Unit)** powered by `mediasoup`.
+
+### Topology 1: Full Mesh (Default)
 
 Each participant opens a direct connection to **every** other one.
 
@@ -287,17 +289,22 @@ Each participant opens a direct connection to **every** other one.
 
 </div>
 
-With **N** participants, each person keeps **N−1** connections and the channel has
-**N(N−1)/2** in total. Whoever shares a screen sends the same video N−1 times,
-once per peer.
+With **N** participants, each person keeps **N−1** connections and the channel has **N(N−1)/2** in total. Whoever shares a screen sends the same video N−1 times, once per peer.
 
-::: tip Why mesh, and where it hurts
-Mesh needs no media server: you can host Monky on a cheap VPS precisely because it
-never carries video. The price is the **uplink of whoever is transmitting**, which
-grows linearly with the number of listeners.
+::: tip When to use P2P Mesh
+Excellent for small friend groups and lightweight/free VPS instances with low CPU or bandwidth, since the server does not relay audio or video packets.
+:::
 
-For the group of friends Monky serves, that is excellent. For dozens of people you
-would need an SFU — and then the server would be carrying media again.
+### Topology 2: SFU (Selective Forwarding Unit)
+
+In SFU mode, each client opens only **2 WebRTC Transports** with the host server:
+- **`sendTransport`:** Transmits local audio and video tracks (microphone, camera, screen and system audio).
+- **`recvTransport`:** Receives forwarded tracks from all other participants routed through the `mediasoup` worker.
+
+The broadcaster encodes and sends 1080p60 screen streams **only once**, drastically reducing upstream bandwidth and local CPU load.
+
+::: tip Resilience & Automatic Fallback
+If the SFU process encounters errors or unexpected downtime, clients display a toast notification and trigger an **automatic P2P contingency fallback**, maintaining the voice call uninterrupted.
 :::
 
 ### Signaling

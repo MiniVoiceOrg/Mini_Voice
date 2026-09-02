@@ -276,7 +276,9 @@ não a extensão. Renomear um executável para `.png` não engana a checagem.
 
 ## O plano de mídia
 
-### Topologia: mesh completo
+O Monky suporta **dois modos de voz e mídia**: o modo padrão **P2P Mesh** e o modo **SFU (Selective Forwarding Unit)** baseado em `mediasoup`.
+
+### Topologia 1: P2P Mesh (Padrão)
 
 Cada participante abre uma conexão direta com **cada** um dos outros.
 
@@ -287,17 +289,22 @@ Cada participante abre uma conexão direta com **cada** um dos outros.
 
 </div>
 
-Com **N** participantes, cada pessoa mantém **N−1** conexões e o canal tem
-**N(N−1)/2** no total. Quem compartilha tela envia o mesmo vídeo N−1 vezes,
-uma para cada par.
+Com **N** participantes, cada pessoa mantém **N−1** conexões e o canal tem **N(N−1)/2** no total. Quem compartilha tela envia o mesmo vídeo N−1 vezes, uma para cada par.
 
-::: tip Por que mesh, e onde isso dói
-Mesh não precisa de servidor de mídia: dá para hospedar o Monky num VPS baratinho
-porque ele nunca carrega vídeo. O preço é o **upload de quem transmite**, que
-cresce de forma linear com o número de ouvintes.
+::: tip Quando usar P2P Mesh
+Excelente para grupos pequenos de amigos e servidores em VPSs econômicos (como instâncias gratuitas com pouca CPU/banda), pois o servidor não carrega pacotes de áudio/vídeo.
+:::
 
-Para o grupo de amigos que o Monky atende, isso é excelente. Para dezenas de
-pessoas, seria preciso um SFU — e aí o servidor voltaria a carregar mídia.
+### Topologia 2: SFU (Selective Forwarding Unit)
+
+No modo SFU, cada cliente abre apenas **2 WebRTC Transports** com o servidor:
+- **`sendTransport`:** Envia as trilhas locais (microfone, webcam, tela e áudio do sistema).
+- **`recvTransport`:** Recebe as trilhas de todos os outros participantes roteadas pelo worker `mediasoup`.
+
+Quem transmite envia seu fluxo em 1080p60 **uma única vez**, economizando drasticamente o upload e a CPU do usuário.
+
+::: tip Resiliência & Fallback Automático
+Se o processo SFU sofrer qualquer falha ou indisponibilidade, o cliente emite uma notificação em tela e entra em **contingência automática P2P**, restabelecendo a comunicação entre os membros sem derrubar a chamada.
 :::
 
 ### Sinalização

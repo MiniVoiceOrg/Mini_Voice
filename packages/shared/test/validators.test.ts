@@ -38,8 +38,10 @@ console.assert(QUALITY_PRESETS.GAMING.name === 'Gaming Mode', 'Preset Gaming Mod
 console.log('✔ Presets de Qualidade verificados');
 
 // Test Protocol Version
-console.assert(PROTOCOL_VERSION === 5, 'Versão do protocolo deve ser 5');
-console.log('✔ Versão do protocolo verificada');
+console.assert(PROTOCOL_VERSION === 6, 'Versão do protocolo deve ser 6');
+console.assert(LIMITS.SFU_DEFAULT_MIN_PORT === 40000, 'Porta mínima padrão SFU');
+console.assert(LIMITS.SFU_DEFAULT_MAX_PORT === 49999, 'Porta máxima padrão SFU');
+console.log('✔ Versão do protocolo e limites SFU verificados');
 
 console.assert(hasPermission(DEFAULT_PERMISSIONS, Permission.SPEAK) === true, 'Cargo padrão deve poder falar');
 console.assert(hasPermission(DEFAULT_PERMISSIONS, Permission.MANAGE_SERVER) === false, 'Cargo padrão não administra servidor');

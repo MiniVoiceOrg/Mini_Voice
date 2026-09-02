@@ -20,6 +20,8 @@ import { compareVersions, pickNewestRelease } from './cli/commands/update';
 import { generateEcosystem, getPm2ProcessName } from './cli/pm2';
 import { parseOption } from './cli/formatters';
 import { listServers, registerServer, serverIdFor, unregisterServer } from './cli/registry';
+import { CapacityEstimator } from './domain/services/CapacityEstimator';
+import { SfuManager } from './infrastructure/sfu/SfuManager';
 
 function withTimeout<T>(promise: Promise<T>, ms: number, label: string): Promise<T> {
   return Promise.race([
@@ -785,6 +787,73 @@ async function runTests() {
     }
     console.log('✔ Teste 18 passou: ICE servers chegam ao cliente, com STUN, sem vazar TURN quando desligado, e com a disponibilidade do relay');
 
+    // ── Teste 19: Estimador de Capacidade e SFU (Selective Forwarding Unit) (#515) ──
+    const est1vCpu = CapacityEstimator.estimate(50, 1, 1);
+    if (est1vCpu.maxAudioParticipants < 30 || est1vCpu.maxScreenShareParticipants < 5) {
+      throw new Error('Teste 19: Estimativa de capacidade para 1 vCPU / 1 GB RAM incorreta');
+    }
+
+    const estAmpere = CapacityEstimator.estimate(1000, 4, 24);
+    if (estAmpere.maxAudioParticipants < 100 || estAmpere.maxScreenShareParticipants < 100) {
+      throw new Error('Teste 19: Estimativa de capacidade para 4 vCPU / 24 GB RAM incorreta');
+    }
+
+    const sfuManager = new SfuManager();
+    const routerCaps = await sfuManager.getRouterRtpCapabilities('channel-test-1');
+    if (!routerCaps || !Array.isArray(routerCaps.codecs) || routerCaps.codecs.length === 0) {
+      throw new Error('Teste 19: SfuManager deve fornecer RTP Capabilities com codecs suportados');
+    }
+    const hasOpus = routerCaps.codecs.some((c: any) => c.mimeType?.toLowerCase() === 'audio/opus');
+    if (!hasOpus) {
+      throw new Error('Teste 19: RTP Capabilities deve incluir codec audio/opus');
+    }
+    sfuManager.closeChannel('channel-test-1');
+    sfuManager.close();
+
+    // Teste de persistência e sinalização do voiceMode em servidor SFU
+    const sfuDir = path.join(testDataDir, 'sfu-mode-test');
+    const sfuServer = await MonkyServer.create({
+      port: 3004,
+      dataDir: sfuDir,
+      serverName: 'Servidor SFU',
+      initialVoiceChannel: 'Geral',
+      initialTextChannel: 'geral',
+      voiceMode: 'sfu',
+    });
+
+    try {
+      await sfuServer.start();
+      const wsSfu = new WebSocket('ws://localhost:3004');
+      const authResSfu = await authenticateSocket(wsSfu, 'req-sfu-1', 'SfuUser', '');
+      if (authResSfu.payload?.server?.voiceMode !== 'sfu') {
+        throw new Error('Teste 19: Servidor configurado com SFU deve retornar voiceMode: "sfu" no login');
+      }
+
+      await withTimeout(new Promise<void>((resolve, reject) => {
+        const handler = (data: RawData) => {
+          const res = JSON.parse(data.toString());
+          if (res.type !== MessageType.SERVER_SETTINGS_UPDATED) return;
+          wsSfu.off('message', handler);
+          if (res.payload?.voiceMode !== 'p2p') {
+            reject(new Error('Teste 19: SERVER_SETTINGS_UPDATED deve refletir alteração para voiceMode: "p2p"'));
+            return;
+          }
+          resolve();
+        };
+        wsSfu.on('message', handler);
+        wsSfu.send(JSON.stringify({
+          type: MessageType.SERVER_UPDATE_SETTINGS,
+          requestId: 'req-sfu-update',
+          payload: { voiceMode: 'p2p' },
+        } satisfies ProtocolMessage));
+      }), 5000, 'Teste 19: atualização dinâmica de voiceMode no servidor');
+
+      wsSfu.close();
+    } finally {
+      await sfuServer.stop();
+    }
+    console.log('✔ Teste 19 passou: Estimador de capacidade, SfuManager e ciclo de vida de voiceMode validados');
+
     console.log('=== Todos os testes do servidor passaram com sucesso! ===');
   } finally {
     await server.stop();
@@ -794,7 +863,11 @@ async function runTests() {
   }
 }
 
-runTests().catch((err) => {
-  console.error('Falha nos testes:', err);
-  process.exit(1);
-});
+runTests()
+  .then(() => {
+    process.exit(0);
+  })
+  .catch((err) => {
+    console.error('Falha nos testes:', err);
+    process.exit(1);
+  });

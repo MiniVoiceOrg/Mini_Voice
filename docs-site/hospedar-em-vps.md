@@ -35,6 +35,7 @@ referência completa dos comandos está em [Monky CLI](/cli).
 | `3000` (ou escolhida) | TCP | Login, chat, canais e sinalização | Sim, no firewall da VPS |
 | `41234` | UDP | Descoberta na rede local | Não, numa VPS |
 | Altas dinâmicas | UDP | Voz, vídeo e tela P2P | Normalmente funciona via STUN |
+| `40000-49999` | UDP | Mídia WebRTC no Modo SFU (mediasoup) | Só com o modo SFU ativado |
 | `3478` | TCP e UDP | Relay TURN, se você ligar | Só com o relay ligado |
 | `49152-65535` | UDP | Mídia repassada pelo relay | Só com o relay ligado |
 

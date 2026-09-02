@@ -8,7 +8,7 @@ import {
   DEFAULT_OWNER_NICKNAME,
   DEFAULT_SERVER_NAME,
 } from '../constants';
-import { ask, confirm, promptPassword } from '../prompts';
+import { ask, askChoice, confirm, promptPassword } from '../prompts';
 import {
   CliContext,
   GlobalArgs,
@@ -20,7 +20,7 @@ import {
 } from '../context';
 import { DecryptedIdentity, decryptIdentityExport } from '../identity';
 import { t } from '../i18n/index';
-import { parseOption, parseMemberLimit, parsePositiveInt } from '../formatters';
+import { parseOption, parseMemberLimit, parsePositiveInt, printVoiceModeComparisonTable } from '../formatters';
 import { hasServerDatabase, registerServer } from '../registry';
 import { setConfig } from './config';
 import { startServerCommand } from './serverLifecycle';
@@ -176,11 +176,29 @@ export async function createCommand(globalArgs: GlobalArgs, args: string[]): Pro
   const port = parsePositiveInt('port', portValue);
   const maxUsers = await askMemberLimit(args);
 
+  const rawVoiceMode = parseOption(args, '--voice-mode');
+  let voiceMode: 'p2p' | 'sfu';
+  if (rawVoiceMode === 'sfu' || rawVoiceMode === 'p2p') {
+    voiceMode = rawVoiceMode;
+  } else {
+    printVoiceModeComparisonTable();
+    voiceMode = (await askChoice(t('create.voiceModeChoice'), ['p2p', 'sfu'])) as 'p2p' | 'sfu';
+  }
+
+  if (voiceMode === 'sfu') {
+    const { CapacityEstimator } = await import('../../domain/services/CapacityEstimator');
+    const estimate = CapacityEstimator.estimate();
+    console.log();
+    console.log(color(t('create.sfuCapacityTitle'), ANSI.bold));
+    console.log(color(estimate.summaryText, ANSI.cyan));
+  }
+
   console.log();
   console.log(color(t('create.summary'), ANSI.bold));
   console.log(`dataDir: ${dataDir}`);
   console.log(`serverName: ${serverName}`);
   console.log(`port: ${port}`);
+  console.log(`voiceMode: ${voiceMode}`);
   console.log(`serverPassword: ${serverPassword ? t('create.passwordSet') : t('create.noPassword')}`);
   console.log(`${t('create.memberLimit')}: ${maxUsers > LIMITS.MAX_USERS_UNLIMITED ? maxUsers : t('create.noLimit')}`);
   console.log(`identity: ${identityCode.slice(0, Math.min(identityCode.length, 40))}${identityCode.length > 40 ? '...' : ''}`);
@@ -196,6 +214,7 @@ export async function createCommand(globalArgs: GlobalArgs, args: string[]): Pro
     await setConfig(ctx, 'name', serverName);
     await setConfig(ctx, 'password', serverPassword);
     await setConfig(ctx, 'maxUsers', String(maxUsers));
+    await setConfig(ctx, 'voiceMode', voiceMode);
   });
 
   const config = readLocalConfig(dataDir);

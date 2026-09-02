@@ -64,6 +64,22 @@ import {
   VoiceUserLeftPayload,
   WebRtcSignalPayload,
   RtcDiagnosticsReportPayload,
+  SfuGetRouterRtpCapabilitiesPayload,
+  SfuRouterRtpCapabilitiesPayload,
+  SfuCreateWebRtcTransportPayload,
+  SfuWebRtcTransportCreatedPayload,
+  SfuConnectWebRtcTransportPayload,
+  SfuProducePayload,
+  SfuProducedPayload,
+  SfuConsumePayload,
+  SfuConsumedPayload,
+  SfuProducerClosedPayload,
+  SfuConsumerClosedPayload,
+  SfuConsumerSetPausedPayload,
+  SfuNewProducerPayload,
+  SfuGetProducersPayload,
+  SfuProducersListPayload,
+  SfuContingencyFallbackPayload,
   canAccessChannel,
 } from '@monky/shared';
 import { AuthService } from '../../application/services/AuthService';
@@ -77,6 +93,7 @@ import { UserService } from '../../application/services/UserService';
 import { IServerRepository } from '../../domain/repositories';
 import { scanServerNetworkInterfaces } from '../discovery/ServerIpScanner';
 import { CoturnManager } from '../turn/CoturnManager';
+import { SfuManager } from '../sfu/SfuManager';
 import { Logger } from '../logger/Logger';
 
 interface ClientSession {
@@ -132,11 +149,27 @@ export class WebSocketServer {
     private attachmentService: AttachmentService,
     private permissionService: PermissionService,
     private roleService: RoleService,
-    private coturnManager: CoturnManager
+    private coturnManager: CoturnManager,
+    private sfuManager: SfuManager = new SfuManager()
   ) {
     this.wss = new WSServer({ server: this.server });
     this.setupWss();
     this.startHeartbeat();
+    void this.initSfuIfConfigured();
+  }
+
+  private async initSfuIfConfigured(): Promise<void> {
+    try {
+      const server = await this.serverRepo.getServer();
+      if (server?.voiceMode === 'sfu') {
+        const ok = await this.sfuManager.init();
+        if (!ok) {
+          Logger.warn('SFU', `SFU failed to initialize on startup: ${this.sfuManager.getLastError()}. Operating in P2P contingency.`);
+        }
+      }
+    } catch (e: any) {
+      Logger.warn('SFU', `Error checking SFU configuration on startup: ${e?.message}`);
+    }
   }
 
   /** Live connections keyed by sessionId — one person may hold several (#309). */
@@ -372,6 +405,38 @@ export class WebSocketServer {
 
       case MessageType.RTC_DIAGNOSTICS_REPORT:
         this.handleRtcDiagnosticsReport(session, payload as RtcDiagnosticsReportPayload);
+        break;
+
+      case MessageType.SFU_GET_ROUTER_RTP_CAPABILITIES:
+        await this.handleSfuGetRouterRtpCapabilities(session, payload as SfuGetRouterRtpCapabilitiesPayload, requestId);
+        break;
+
+      case MessageType.SFU_CREATE_WEBRTC_TRANSPORT:
+        await this.handleSfuCreateWebRtcTransport(session, payload as SfuCreateWebRtcTransportPayload, requestId);
+        break;
+
+      case MessageType.SFU_CONNECT_WEBRTC_TRANSPORT:
+        await this.handleSfuConnectWebRtcTransport(session, payload as SfuConnectWebRtcTransportPayload, requestId);
+        break;
+
+      case MessageType.SFU_PRODUCE:
+        await this.handleSfuProduce(session, payload as SfuProducePayload, requestId);
+        break;
+
+      case MessageType.SFU_CONSUME:
+        await this.handleSfuConsume(session, payload as SfuConsumePayload, requestId);
+        break;
+
+      case MessageType.SFU_PRODUCER_CLOSED:
+        this.handleSfuProducerClosed(session, payload as SfuProducerClosedPayload);
+        break;
+
+      case MessageType.SFU_GET_PRODUCERS:
+        await this.handleSfuGetProducers(session, payload as SfuGetProducersPayload, requestId);
+        break;
+
+      case MessageType.SFU_CONSUMER_SET_PAUSED:
+        await this.handleSfuConsumerSetPaused(session, payload as SfuConsumerSetPausedPayload);
         break;
 
       case MessageType.SOUNDBOARD_PLAY:
@@ -1056,6 +1121,31 @@ export class WebSocketServer {
       return;
     }
 
+    if (payload.voiceMode === 'sfu') {
+      const ok = await this.sfuManager.init();
+      if (!ok) {
+        Logger.warn('SFU', `SFU initialization failed on mode change: ${this.sfuManager.getLastError()}. Emitting contingency fallback.`);
+        this.broadcast({
+          type: MessageType.SFU_CONTINGENCY_FALLBACK,
+          payload: { reason: this.sfuManager.getLastError() || 'SFU worker failed to initialize' } satisfies SfuContingencyFallbackPayload,
+        });
+      }
+    } else if (payload.voiceMode === 'p2p') {
+      // When switching to P2P, cleanly terminate any active SFU channels and evict call participants
+      this.sfuManager.close();
+      const evictedStates = this.signalingService.clearAllVoiceStates();
+      for (const vs of evictedStates) {
+        this.broadcast({
+          type: MessageType.VOICE_USER_LEFT,
+          payload: {
+            channelId: vs.channelId,
+            userId: vs.userId,
+            sessionId: vs.sessionId,
+          },
+        });
+      }
+    }
+
     if (payload.turnEnabled !== undefined) {
       await this.applyTurnState(Boolean(result.turnEnabled));
     }
@@ -1066,14 +1156,11 @@ export class WebSocketServer {
       allowSoundboard: result.allowSoundboard,
       allowEveryoneMention: result.allowEveryoneMention,
       allowMessageEdit: result.allowMessageEdit,
+      voiceMode: result.voiceMode,
       iconUrl: result.iconUrl,
       attachmentStorage: result.attachmentStorage,
       maxUsers: result.maxUsers,
       turnEnabled: result.turnEnabled,
-      // Installing coturn changes the answer to "can this host relay?", and the
-      // clients still hold the one from login. Sending it back is what keeps
-      // the settings screen from offering to install what is already there
-      // (#438).
       turnAvailability: CoturnManager.describeAvailability(),
     };
 
@@ -1088,7 +1175,7 @@ export class WebSocketServer {
       'INFO',
       `Configurações do servidor atualizadas (Nome: ${result.name}, Senha: ${
         result.hasPassword ? 'Ativa' : 'Sem Senha'
-      }, Soundboard: ${result.allowSoundboard ? 'Habilitado' : 'Desabilitado'})`
+      }, Modo de Voz: ${result.voiceMode ?? 'p2p'}, Soundboard: ${result.allowSoundboard ? 'Habilitado' : 'Desabilitado'})`
     );
   }
 
@@ -1301,6 +1388,222 @@ export class WebSocketServer {
         payload,
       });
     }
+  }
+
+  // SFU Handlers (#515)
+  private async handleSfuGetRouterRtpCapabilities(
+    session: ClientSession,
+    payload: SfuGetRouterRtpCapabilitiesPayload,
+    requestId?: string
+  ): Promise<void> {
+    if (!session.user || !session.sessionId) return;
+    try {
+      console.log(`[SFU Server:WS] User ${session.user.nickname} (${session.sessionId}) requested router capabilities for channel ${payload.channelId}`);
+      if (!this.sfuManager.isReady()) {
+        await this.sfuManager.init();
+      }
+      const rtpCapabilities = await this.sfuManager.getRouterRtpCapabilities(payload.channelId);
+      this.send(session.ws, {
+        type: MessageType.SFU_ROUTER_RTP_CAPABILITIES,
+        requestId,
+        payload: {
+          channelId: payload.channelId,
+          rtpCapabilities,
+        } satisfies SfuRouterRtpCapabilitiesPayload,
+      });
+    } catch (err: any) {
+      console.error(`[SFU Server:WS] Error getting router capabilities for ${session.user.nickname}:`, err);
+      this.sendError(session.ws, ProtocolErrorCode.INTERNAL_ERROR, err?.message || 'Erro ao obter capacidades do roteador SFU', requestId);
+    }
+  }
+
+  private async handleSfuCreateWebRtcTransport(
+    session: ClientSession,
+    payload: SfuCreateWebRtcTransportPayload,
+    requestId?: string
+  ): Promise<void> {
+    if (!session.user || !session.sessionId) return;
+    try {
+      if (!this.sfuManager.isReady()) {
+        await this.sfuManager.init();
+      }
+      console.log(`[SFU Server:WS] User ${session.user.nickname} (${session.sessionId}) creating ${payload.direction} transport for channel ${payload.channelId}`);
+      const transportOptions = await this.sfuManager.createWebRtcTransport(
+        session.sessionId,
+        payload.channelId,
+        payload.direction
+      );
+      this.send(session.ws, {
+        type: MessageType.SFU_WEBRTC_TRANSPORT_CREATED,
+        requestId,
+        payload: {
+          channelId: payload.channelId,
+          direction: payload.direction,
+          transportOptions,
+        } satisfies SfuWebRtcTransportCreatedPayload,
+      });
+    } catch (err: any) {
+      console.error(`[SFU Server:WS] Error creating transport for ${session.user.nickname}:`, err);
+      this.sendError(session.ws, ProtocolErrorCode.INTERNAL_ERROR, err?.message || 'Erro ao criar transporte SFU', requestId);
+    }
+  }
+
+  private async handleSfuConnectWebRtcTransport(
+    session: ClientSession,
+    payload: SfuConnectWebRtcTransportPayload,
+    requestId?: string
+  ): Promise<void> {
+    if (!session.user || !session.sessionId) return;
+    try {
+      console.log(`[SFU Server:WS] User ${session.user.nickname} (${session.sessionId}) connecting transport ${payload.transportId}`);
+      await this.sfuManager.connectWebRtcTransport(payload.transportId, payload.dtlsParameters);
+      this.send(session.ws, {
+        type: MessageType.SFU_WEBRTC_TRANSPORT_CONNECTED,
+        requestId,
+        payload: {
+          channelId: payload.channelId,
+          transportId: payload.transportId,
+        },
+      });
+    } catch (err: any) {
+      console.error(`[SFU Server:WS] Error connecting transport ${payload.transportId} for ${session.user.nickname}:`, err);
+      this.sendError(session.ws, ProtocolErrorCode.INTERNAL_ERROR, err?.message || 'Erro ao conectar transporte SFU', requestId);
+    }
+  }
+
+  private async handleSfuProduce(
+    session: ClientSession,
+    payload: SfuProducePayload,
+    requestId?: string
+  ): Promise<void> {
+    if (!session.user || !session.sessionId) return;
+    try {
+      console.log(`[SFU Server:WS] User ${session.user.nickname} (${session.sessionId}) producing ${payload.kind} (${payload.appData?.mediaType}) in channel ${payload.channelId}`);
+      const { id } = await this.sfuManager.produce(
+        session.sessionId,
+        payload.channelId,
+        payload.transportId,
+        payload.kind,
+        payload.rtpParameters,
+        payload.appData || {}
+      );
+
+      this.send(session.ws, {
+        type: MessageType.SFU_PRODUCED,
+        requestId,
+        payload: {
+          channelId: payload.channelId,
+          id,
+        } satisfies SfuProducedPayload,
+      });
+
+      // Notify other participants in the channel about the new producer
+      const newProducerPayload: SfuNewProducerPayload = {
+        channelId: payload.channelId,
+        producerId: id,
+        producerSessionId: session.sessionId,
+        kind: payload.kind,
+        appData: payload.appData || {},
+      };
+
+      const participants = this.signalingService.getParticipantsInChannel(payload.channelId);
+      console.log(`[SFU Server:WS] Broadcasting SFU_NEW_PRODUCER to ${participants.length - 1} other participants in channel ${payload.channelId}`);
+      for (const p of participants) {
+        if (p.sessionId === session.sessionId) continue;
+        const sock = this.sessionSockets.get(p.sessionId);
+        if (sock && sock.readyState === WebSocket.OPEN) {
+          this.send(sock, {
+            type: MessageType.SFU_NEW_PRODUCER,
+            payload: newProducerPayload,
+          });
+        }
+      }
+    } catch (err: any) {
+      console.error(`[SFU Server:WS] Error producing for ${session.user.nickname}:`, err);
+      this.sendError(session.ws, ProtocolErrorCode.INTERNAL_ERROR, err?.message || 'Erro ao produzir mídia no SFU', requestId);
+    }
+  }
+
+  private async handleSfuConsume(
+    session: ClientSession,
+    payload: SfuConsumePayload,
+    requestId?: string
+  ): Promise<void> {
+    if (!session.user || !session.sessionId) return;
+    try {
+      console.log(`[SFU Server:WS] User ${session.user.nickname} (${session.sessionId}) consuming producer ${payload.producerId}`);
+      const consumed = await this.sfuManager.consume(
+        session.sessionId,
+        payload.channelId,
+        payload.transportId,
+        payload.producerId,
+        payload.rtpCapabilities
+      );
+
+      this.send(session.ws, {
+        type: MessageType.SFU_CONSUMED,
+        requestId,
+        payload: {
+          channelId: payload.channelId,
+          ...consumed,
+        } satisfies SfuConsumedPayload,
+      });
+    } catch (err: any) {
+      console.error(`[SFU Server:WS] Error consuming producer ${payload.producerId} for ${session.user.nickname}:`, err);
+      this.sendError(session.ws, ProtocolErrorCode.INTERNAL_ERROR, err?.message || 'Erro ao consumir mídia no SFU', requestId);
+    }
+  }
+
+  private handleSfuProducerClosed(
+    session: ClientSession,
+    payload: SfuProducerClosedPayload
+  ): void {
+    if (!session.user || !session.sessionId) return;
+    console.log(`[SFU Server:WS] User ${session.user.nickname} closed producer ${payload.producerId}`);
+    this.sfuManager.closeProducer(payload.producerId);
+    void this.broadcastToChannel(payload.channelId, {
+      type: MessageType.SFU_PRODUCER_CLOSED,
+      payload,
+    });
+  }
+
+  private async handleSfuGetProducers(
+    session: ClientSession,
+    payload: SfuGetProducersPayload,
+    requestId?: string
+  ): Promise<void> {
+    if (!session.user || !session.sessionId) return;
+    try {
+      const channelProducers = this.sfuManager.getProducersInChannel(payload.channelId);
+      console.log(`[SFU Server:WS] User ${session.user.nickname} requested producers list for channel ${payload.channelId} (found ${channelProducers.length})`);
+      const producers: SfuNewProducerPayload[] = channelProducers.map((p) => ({
+        channelId: payload.channelId,
+        producerId: p.producerId,
+        producerSessionId: p.producerSessionId,
+        kind: p.kind,
+        appData: p.appData,
+      }));
+
+      this.send(session.ws, {
+        type: MessageType.SFU_PRODUCERS_LIST,
+        requestId,
+        payload: {
+          channelId: payload.channelId,
+          producers,
+        } satisfies SfuProducersListPayload,
+      });
+    } catch (err: any) {
+      console.error(`[SFU Server:WS] Error listing producers for ${session.user.nickname}:`, err);
+      this.sendError(session.ws, ProtocolErrorCode.INTERNAL_ERROR, err?.message || 'Erro ao listar produtores SFU', requestId);
+    }
+  }
+
+  private async handleSfuConsumerSetPaused(
+    session: ClientSession,
+    payload: SfuConsumerSetPausedPayload
+  ): Promise<void> {
+    if (!session.user || !session.sessionId) return;
+    await this.sfuManager.setConsumerPaused(payload.consumerId, payload.paused);
   }
 
   private handleRtcDiagnosticsReport(
@@ -1684,6 +1987,16 @@ export class WebSocketServer {
     const previousVoice = this.signalingService.leaveVoiceChannel(sessionId);
     if (!previousVoice) return;
 
+    if (this.sfuManager) {
+      const { closedProducerIds } = this.sfuManager.closeSession(sessionId);
+      for (const producerId of closedProducerIds) {
+        this.broadcast({
+          type: MessageType.SFU_PRODUCER_CLOSED,
+          payload: { channelId: previousVoice.channelId, producerId } satisfies SfuProducerClosedPayload,
+        });
+      }
+    }
+
     const leavePayload: VoiceUserLeftPayload = {
       channelId: previousVoice.channelId,
       userId: user.id,
@@ -1989,6 +2302,7 @@ export class WebSocketServer {
       }
     }, LIMITS.SHUTDOWN_GRACE_MS);
     forceClose.unref?.();
+    this.sfuManager?.close();
     this.wss.close();
   }
 }

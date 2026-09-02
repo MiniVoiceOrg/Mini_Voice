@@ -135,6 +135,7 @@ It then prints a summary, asks for confirmation and offers to start the server.
 | `--port <n>` | Server port | `3000` |
 | `--password <password>` | Server password (empty = no password) | asked |
 | `--max-users <n>` | Registered member limit (`0` = no limit) | asked |
+| `--voice-mode <p2p|sfu>` | Voice and media mode (`p2p` or `sfu`) | `p2p` |
 
 The identity password is never accepted as an option: it is always typed
 hidden in the terminal.
@@ -370,11 +371,13 @@ monky config set <key> [value]     # change it directly
 | `allowEveryoneMention` | Allows `@everyone`/`@todos` in chat (`true`/`false`) | `true` |
 | `maxAttachmentFileBytes` | Maximum size per attachment, in bytes | no limit |
 | `maxAttachmentStorageBytes` | Total attachment storage, in bytes | no limit |
+| `voiceMode` | Voice mode: `p2p` (direct mesh) or `sfu` (Selective Forwarding Unit) | `p2p` |
 | `autoUpdate` | Enables the daily automatic update (`true`/`false`) | `false` |
 | `turn` | Enables the TURN media relay (`true`/`false`). Linux only, requires coturn installed | `false` |
 
 Changing `port` with the server running offers to restart right away.
 Changing `turn` requires a manual `monky restart`.
+Changing `voiceMode` applies dynamically and notifies all connected clients.
 
 ### Examples
 
@@ -435,6 +438,30 @@ monky status    # should show ✔ accessible
 monky config set turn false
 monky restart
 ```
+
+---
+
+## SFU Mode (Selective Forwarding Unit)
+
+By default, Monky operates in **P2P Mesh**: each participant broadcasts audio and video directly to all other peers. However, streaming 1080p 60fps screen share to 20 users would require ~120 Mbps continuous upstream bandwidth from the host.
+
+**SFU mode** centralizes media forwarding via `mediasoup`. The broadcaster uploads streams **once** to the host server, which forwards them to subscribers.
+
+### Enabling via CLI
+
+```bash
+monky config set voiceMode sfu
+```
+
+The CLI automatically computes and displays a **capacity estimate** based on available CPU cores, RAM, and upload speed.
+
+### Required ports for SFU
+
+| Port | Protocol | Purpose |
+|---|---|---|
+| `40000-49999` | UDP | mediasoup worker WebRTC media ports |
+
+Ensure UDP ports `40000-49999` are open in your server firewall (Oracle Cloud Security List, AWS Security Group, iptables/ufw).
 
 ---
 

@@ -162,6 +162,12 @@ export class SignalingService {
     return obj;
   }
 
+  public clearAllVoiceStates(): VoiceParticipantState[] {
+    const list = Array.from(this.voiceStates.values());
+    this.voiceStates.clear();
+    return list;
+  }
+
   public validateSignalRouting(signal: WebRtcSignalPayload): boolean {
     const fromState = this.voiceStates.get(signal.fromSessionId);
     const targetState = this.voiceStates.get(signal.targetSessionId);

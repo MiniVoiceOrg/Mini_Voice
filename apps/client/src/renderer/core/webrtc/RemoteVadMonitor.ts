@@ -11,21 +11,27 @@ export class RemoteVadMonitor {
   constructor(private getVoiceParticipants: () => ParticipantManager) {}
 
   public setupRemoteVad(peerSessionId: string, getSession: () => PeerSession | undefined): void {
+    this.setupRemoteReceiverVad(peerSessionId, () => {
+      const session = getSession();
+      if (!session || !session.pc || session.pc.connectionState === 'closed') {
+        return null;
+      }
+      return session.pc.getReceivers().find((r) => r.track?.kind === 'audio');
+    });
+  }
+
+  public setupRemoteReceiverVad(
+    peerSessionId: string,
+    getReceiver: () => RTCRtpReceiver | null | undefined
+  ): void {
     this.cleanupRemoteVad(peerSessionId);
     let isSpeaking = false;
     let silenceCounter = 0;
 
     const interval = setInterval(async () => {
-      const session = getSession();
-      if (!session || !session.pc || session.pc.connectionState === 'closed') {
-        return;
-      }
       try {
-        // Use the audio receiver's getStats() instead of pc.getStats() to avoid
-        // fetching the full stats report (video, ICE, codec, etc.), which creates
-        // thousands of short-lived objects per second and pressures the GC (#411).
-        const audioReceiver = session.pc.getReceivers().find((r) => r.track?.kind === 'audio');
-        if (!audioReceiver) return;
+        const audioReceiver = getReceiver();
+        if (!audioReceiver || audioReceiver.track?.readyState === 'ended') return;
 
         const stats = await audioReceiver.getStats();
         let audioLevel: number | undefined;

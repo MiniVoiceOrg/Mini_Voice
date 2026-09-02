@@ -16,7 +16,7 @@ export class SqliteServerRepository implements IServerRepository {
   constructor(private db: IDatabaseDriver) {}
 
   async getServer(): Promise<ServerRecord | null> {
-    const row = this.db.prepare('SELECT id, name, password_hash as passwordHash, created_at as createdAt, max_users as maxUsers, owner_user_id as ownerUserId, allow_soundboard as allowSoundboard, allow_everyone_mention as allowEveryoneMention, allow_message_edit as allowMessageEdit, icon_path as iconPath, max_attachment_file_bytes as maxAttachmentFileBytes, max_attachment_storage_bytes as maxAttachmentStorageBytes, turn_enabled as turnEnabled, turn_secret as turnSecret FROM server_meta LIMIT 1').get() as any;
+    const row = this.db.prepare('SELECT id, name, password_hash as passwordHash, created_at as createdAt, max_users as maxUsers, owner_user_id as ownerUserId, allow_soundboard as allowSoundboard, allow_everyone_mention as allowEveryoneMention, allow_message_edit as allowMessageEdit, voice_mode as voiceMode, icon_path as iconPath, max_attachment_file_bytes as maxAttachmentFileBytes, max_attachment_storage_bytes as maxAttachmentStorageBytes, turn_enabled as turnEnabled, turn_secret as turnSecret FROM server_meta LIMIT 1').get() as any;
     if (!row) return null;
     return {
       id: row.id,
@@ -28,6 +28,7 @@ export class SqliteServerRepository implements IServerRepository {
       allowSoundboard: row.allowSoundboard !== undefined ? Boolean(row.allowSoundboard) : true,
       allowEveryoneMention: row.allowEveryoneMention !== undefined ? Boolean(row.allowEveryoneMention) : true,
       allowMessageEdit: row.allowMessageEdit !== undefined ? Boolean(row.allowMessageEdit) : true,
+      voiceMode: (row.voiceMode as any) || 'p2p',
       iconPath: row.iconPath || null,
       maxAttachmentFileBytes: row.maxAttachmentFileBytes ?? null,
       maxAttachmentStorageBytes: row.maxAttachmentStorageBytes ?? null,
@@ -38,7 +39,7 @@ export class SqliteServerRepository implements IServerRepository {
 
   async createServer(server: ServerRecord): Promise<void> {
     this.db.prepare(
-      'INSERT INTO server_meta (id, name, password_hash, created_at, max_users, owner_user_id, allow_soundboard, allow_everyone_mention, icon_path) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)'
+      'INSERT INTO server_meta (id, name, password_hash, created_at, max_users, owner_user_id, allow_soundboard, allow_everyone_mention, voice_mode, icon_path) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)'
     ).run(
       server.id,
       server.name,
@@ -48,6 +49,7 @@ export class SqliteServerRepository implements IServerRepository {
       server.ownerUserId ?? null,
       server.allowSoundboard !== false ? 1 : 0,
       server.allowEveryoneMention !== false ? 1 : 0,
+      server.voiceMode || 'p2p',
       server.iconPath || null
     );
   }
@@ -83,6 +85,10 @@ export class SqliteServerRepository implements IServerRepository {
     if (server.allowMessageEdit !== undefined) {
       fields.push('allow_message_edit = ?');
       values.push(server.allowMessageEdit ? 1 : 0);
+    }
+    if (server.voiceMode !== undefined) {
+      fields.push('voice_mode = ?');
+      values.push(server.voiceMode);
     }
     if (server.iconPath !== undefined) {
       fields.push('icon_path = ?');

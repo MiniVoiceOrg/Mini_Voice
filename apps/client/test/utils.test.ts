@@ -686,6 +686,45 @@ function runTests() {
   storeCodec.save();
   assert(storeCodec.preferredVideoCodec === 'h264', 'preferredVideoCodec foi atualizado e salvo');
 
+  // Testar ServerStore com VoiceMode
+  console.log('\n--- Testando ServerStore com voiceMode ---');
+  const { createServerStore } = require('../src/renderer/stores/serverStore');
+  const sStore = createServerStore();
+  sStore.setServerDetails({
+    id: 'test-srv-sfu',
+    name: 'Servidor SFU',
+    createdAt: Date.now(),
+    channels: [],
+    members: [],
+    voiceMode: 'sfu',
+  }, { id: 'u1', nickname: 'TestUser', status: 'ONLINE' });
+  assert(sStore.serverDetails?.voiceMode === 'sfu', 'ServerStore armazena voiceMode: "sfu"');
+  sStore.updateServerMeta('Servidor P2P', false, true, undefined, undefined, undefined, undefined, true, true, 'p2p');
+  assert(sStore.serverDetails?.voiceMode === 'p2p', 'updateServerMeta atualiza voiceMode para "p2p"');
+
+  // Testar SfuClientEngine
+  console.log('\n--- Testando SfuClientEngine ---');
+  const { SfuClientEngine } = require('../src/renderer/core/webrtc/SfuClientEngine');
+  const mockSignalClient = {
+    sendRequest: async (type: string, payload: any) => ({ success: true }),
+    send: (type: string, payload: any) => {},
+    on: () => () => {},
+  };
+  let fallbackCalled = false;
+  const sfuEngine = new SfuClientEngine(mockSignalClient as any, {
+    onConsumerTrack: () => {},
+    onConsumerClosed: () => {},
+    onFallbackToP2p: () => { fallbackCalled = true; },
+  });
+  assert(typeof sfuEngine.join === 'function', 'SfuClientEngine possui método join');
+  assert(typeof sfuEngine.produceMic === 'function', 'SfuClientEngine possui método produceMic');
+  assert(typeof sfuEngine.produceCamera === 'function', 'SfuClientEngine possui método produceCamera');
+  assert(typeof sfuEngine.produceScreenVideo === 'function', 'SfuClientEngine possui método produceScreenVideo');
+  assert(typeof sfuEngine.produceScreenAudio === 'function', 'SfuClientEngine possui método produceScreenAudio');
+  assert(sfuEngine.isReady() === false, 'SfuClientEngine nasce com isReady() === false antes do join');
+  sfuEngine.leave();
+  assert(sfuEngine.isReady() === false, 'SfuClientEngine.leave() limpa o estado com segurança');
+
   console.log(`\n=== Relatório dos Testes ===`);
   console.log(`Total: ${passed + failed} | Passaram: ${passed} | Falharam: ${failed}`);
 

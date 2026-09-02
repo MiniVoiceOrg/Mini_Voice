@@ -81,9 +81,13 @@ export async function rejoinCallOnSession(sessionKey: string, channelId: string)
     isDeafened: voiceStore.isDeafened,
   });
 
-  for (const peer of session.participants.getInVoiceChannel(channelId)) {
-    if (session.serverStore.isMySession(peer.user.sessionId)) continue;
-    await webRtcManager.connectToPeer(peer.user.sessionId || peer.user.id, true);
+  if (webRtcManager.isSfuMode()) {
+    await webRtcManager.initSfuForCurrentChannel();
+  } else {
+    for (const peer of session.participants.getInVoiceChannel(channelId)) {
+      if (session.serverStore.isMySession(peer.user.sessionId)) continue;
+      await webRtcManager.connectToPeer(peer.user.sessionId || peer.user.id, true);
+    }
   }
 }
 

@@ -1,4 +1,4 @@
-import { AttachmentStorageInfo, ChannelSummary, DEFAULT_PERMISSIONS, Permission, Role, ServerDetails, TurnAvailability, UserRoleSummary, UserSummary, hasPermission } from '@monky/shared';
+import { AttachmentStorageInfo, ChannelSummary, DEFAULT_PERMISSIONS, Permission, Role, ServerDetails, TurnAvailability, UserRoleSummary, UserSummary, VoiceMode, hasPermission } from '@monky/shared';
 import { appEvents, EventBus } from '../core/EventBus';
 import { createActiveProxy } from '../core/activeProxy';
 import { clientLog } from '../core/ClientLogService';
@@ -218,7 +218,8 @@ export class ServerStore {
     maxUsers?: number,
     turnEnabled?: boolean,
     allowEveryoneMention?: boolean,
-    allowMessageEdit?: boolean
+    allowMessageEdit?: boolean,
+    voiceMode?: VoiceMode
   ): void {
     if (this.serverDetails) {
       this.serverDetails.name = name;
@@ -243,6 +244,9 @@ export class ServerStore {
       }
       if (allowMessageEdit !== undefined) {
         this.serverDetails.allowMessageEdit = allowMessageEdit;
+      }
+      if (voiceMode !== undefined) {
+        this.serverDetails.voiceMode = voiceMode;
       }
       this.bus.emit('server.updated');
       this.bus.emit('server.meta_updated', this.serverDetails);

@@ -130,6 +130,8 @@ export const roleAssignmentSchema = z.object({
   roleId: z.string().min(1, 'Cargo inválido'),
 });
 
+export const voiceModeSchema = z.enum(['p2p', 'sfu']);
+
 export function isValidNickname(nickname: string): boolean {
   return nicknameSchema.safeParse(nickname).success;
 }

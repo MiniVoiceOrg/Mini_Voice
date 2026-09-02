@@ -135,6 +135,14 @@ class App {
 
     // Start checking for app updates (non-blocking)
     updateService.init();
+
+    // Debug helper to check voice engine status in console
+    (window as any).debugVoice = () => {
+      const status = webRtcManager.getVoiceStatus();
+      console.log('%c🎙️ [Monky Voice Status]', 'color: #5865f2; font-weight: bold; font-size: 14px;');
+      console.table(status);
+      return status;
+    };
   }
 
   private showIdentityOnboarding(): Promise<void> {
@@ -660,18 +668,27 @@ class App {
     });
 
     appEvents.on(`message.${MessageType.VOICE_USER_LEFT}`, (payload: VoiceUserLeftPayload) => {
-      // Play a leave sound for everyone still in the same voice channel (#54), unless deafened (#251).
-      if (
-        this.eventOwnsCall() &&
-        voiceStore.currentVoiceChannelId === payload.channelId &&
-        !serverStore.isMySession(payload.sessionId)
-      ) {
-        if (!voiceStore.getEffectiveDeafened()) {
-          soundEffects.play('leave_voice');
+      const isMySession = serverStore.isMySession(payload.sessionId);
+      if (this.eventOwnsCall()) {
+        if (isMySession) {
+          audioProcessor.stopMicrophone();
+          videoService.stopCamera();
+          videoService.stopScreenShare();
+          webRtcManager.clearLocalScreenTracks();
+          webRtcManager.closeAllPeers();
+          voiceStore.reset();
+          if (!voiceStore.getEffectiveDeafened()) {
+            soundEffects.play('leave_voice');
+          }
+          if (isForegroundEvent()) this.mainView.render();
+        } else {
+          if (voiceStore.currentVoiceChannelId === payload.channelId && !voiceStore.getEffectiveDeafened()) {
+            soundEffects.play('leave_voice');
+          }
+          webRtcManager.removePeer(payload.sessionId);
         }
       }
       participantManager.removeVoiceState(payload.sessionId);
-      if (this.eventOwnsCall()) webRtcManager.removePeer(payload.sessionId);
     });
 
     appEvents.on(`message.${MessageType.VOICE_STATE_CHANGED}`, (payload: VoiceStateChangedPayload) => {
@@ -795,6 +812,15 @@ class App {
       showAlert({
         title: t('app.serverShutdownTitle'),
         message: data?.reason || t('app.serverShutdownMessage'),
+        variant: 'warning',
+      });
+    });
+
+    // SFU contingency fallback alert (#515)
+    appEvents.on('sfu.contingency_fallback', (data: { reason?: string }) => {
+      showAlert({
+        title: t('sfu.contingencyTitle'),
+        message: t('sfu.contingencyMessage', { reason: data?.reason || t('sfu.unknownError') }),
         variant: 'warning',
       });
     });
