@@ -343,6 +343,11 @@ export class ServerSettingsModal {
         payload.iconBase64 = this.pendingIconBase64;
       }
 
+      const inputVoiceMode = this.modalEl?.querySelector('input[name="server-voice-mode"]:checked') as HTMLInputElement | null;
+      if (inputVoiceMode) {
+        payload.voiceMode = inputVoiceMode.value as 'p2p' | 'sfu';
+      }
+
       // Attachment storage limits
       const inputFileMb = this.modalEl?.querySelector('#input-attach-file-mb') as HTMLInputElement | null;
       const inputTotalMb = this.modalEl?.querySelector('#input-attach-total-mb') as HTMLInputElement | null;

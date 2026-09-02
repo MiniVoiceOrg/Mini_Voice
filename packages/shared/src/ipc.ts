@@ -161,6 +161,10 @@ export interface HostServerOptions {
    * very first boot, when the database is seeded; restarts ignore it.
    */
   maxUsers?: number;
+  /**
+   * Voice mode ('p2p' | 'sfu') chosen when the server was created (#515).
+   */
+  voiceMode?: 'p2p' | 'sfu';
 }
 
 /**

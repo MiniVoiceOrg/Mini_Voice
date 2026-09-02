@@ -25,7 +25,7 @@ How it works in practice:
 
 1. **One person hosts** from the app or on a VPS, with no account, email or cloud in between.
 2. **Friends join** by entering the server IP and port.
-3. **The conversation is direct:** voice, video and screen sharing travel P2P via WebRTC; the server handles login, channels, chat and signalling. When two members are behind CGNAT and cannot connect, a Linux host can enable an [optional TURN relay](https://monkyorg.github.io/Monky/en/cli#media-relay-turn).
+3. **The conversation is direct or centralized:** by default, voice, video and screen sharing travel P2P via WebRTC (direct mesh); for larger groups or demanding 1080p 60fps streams, the host can enable **SFU mode** (Selective Forwarding Unit with `mediasoup`). When two members are behind CGNAT and cannot connect in P2P mode, a Linux host can enable an [optional TURN relay](https://monkyorg.github.io/Monky/en/cli#media-relay-turn).
 
 Everything of yours stays with you: history and users in the host's SQLite (`server.db`); nickname, avatar and preferences on your PC.
 

@@ -435,6 +435,21 @@ export class ConnectionView {
                 <input id="host-max-users" type="number" min="1" step="1" value="20">
               </div>
 
+              <div class="form-group" style="margin-top: 10px;">
+                <label style="margin-bottom: 2px;">${t('connection.voiceModeLabel')}</label>
+                <div style="font-size: 11px; color: var(--text-muted); margin-bottom: 8px;">${t('connection.voiceModeDesc')}</div>
+                <div style="display: flex; gap: 8px;">
+                  <label style="flex: 1; display: flex; align-items: center; gap: 6px; padding: 8px 10px; border: 1px solid var(--border-color); background: var(--bg-tertiary); border-radius: var(--radius-sm); cursor: pointer; font-size: 12px;">
+                    <input type="radio" name="host-voice-mode" value="p2p" checked>
+                    <span>P2P Mesh</span>
+                  </label>
+                  <label style="flex: 1; display: flex; align-items: center; gap: 6px; padding: 8px 10px; border: 1px solid var(--border-color); background: var(--bg-tertiary); border-radius: var(--radius-sm); cursor: pointer; font-size: 12px;">
+                    <input type="radio" name="host-voice-mode" value="sfu">
+                    <span>SFU (Centralizado)</span>
+                  </label>
+                </div>
+              </div>
+
               <button type="submit" id="btn-submit-host" class="btn btn-primary" style="width: 100%; margin-top: 8px;">
                 <span class="material-symbols-outlined md-18" style="margin-right: 6px;">add_circle</span>
                 ${t('connection.createAndStart')}
@@ -489,6 +504,7 @@ export class ConnectionView {
         initialVoiceChannel: server.voiceChannel,
         serverId: server.id,
         maxUsers: server.maxUsers,
+        voiceMode: server.voiceMode,
       });
 
       if (!hostRes.success) {
@@ -1158,6 +1174,9 @@ export class ConnectionView {
           server.textChannel === initialText &&
           server.voiceChannel === initialVoice
         );
+        const voiceModeInput = document.querySelector('input[name="host-voice-mode"]:checked') as HTMLInputElement | null;
+        const voiceMode = (voiceModeInput?.value as 'p2p' | 'sfu') || 'p2p';
+
         const createdServer: CreatedServer = {
           id: existingServer?.id || this.createCreatedServerId(),
           name: serverName,
@@ -1168,6 +1187,7 @@ export class ConnectionView {
           createdAt: existingServer?.createdAt || now,
           lastStarted: now,
           maxUsers,
+          voiceMode,
         };
 
         await this.startHostedServer(createdServer, nickname);

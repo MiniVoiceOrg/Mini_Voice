@@ -112,6 +112,41 @@ export class ServerGeneralTab {
         </label>
       </div>
 
+      <div style="background: var(--bg-card); border: 1px solid var(--border-color); border-radius: var(--radius-md); padding: 14px; margin-bottom: 16px;">
+        <div style="font-size: 13px; font-weight: 600; color: var(--text-primary); margin-bottom: 4px; display: flex; align-items: center; gap: 6px;">
+          <span class="material-symbols-outlined md-18" style="color: var(--accent-primary);">hub</span>
+          <span>${t('serverSettings.voiceModeLabel')}</span>
+        </div>
+        <div style="font-size: 11px; color: var(--text-muted); margin-bottom: 12px;">
+          ${t('serverSettings.voiceModeDesc')}
+        </div>
+
+        <div style="display: flex; gap: 12px; margin-bottom: 12px;">
+          <label style="flex: 1; display: flex; align-items: flex-start; gap: 8px; padding: 10px 12px; border: 1px solid ${(s.voiceMode || 'p2p') === 'p2p' ? 'var(--accent-primary)' : 'var(--border-color)'}; background: ${(s.voiceMode || 'p2p') === 'p2p' ? 'rgba(88, 101, 242, 0.08)' : 'var(--bg-card-secondary)'}; border-radius: var(--radius-md); cursor: pointer;">
+            <input type="radio" name="server-voice-mode" value="p2p" ${(s.voiceMode || 'p2p') === 'p2p' ? 'checked' : ''} style="margin-top: 2px;">
+            <div>
+              <div style="font-size: 12px; font-weight: 600; color: var(--text-primary);">${t('serverSettings.voiceModeP2pTitle')}</div>
+              <div style="font-size: 11px; color: var(--text-muted);">${t('serverSettings.voiceModeP2pDesc')}</div>
+            </div>
+          </label>
+          <label style="flex: 1; display: flex; align-items: flex-start; gap: 8px; padding: 10px 12px; border: 1px solid ${s.voiceMode === 'sfu' ? 'var(--accent-primary)' : 'var(--border-color)'}; background: ${s.voiceMode === 'sfu' ? 'rgba(88, 101, 242, 0.08)' : 'var(--bg-card-secondary)'}; border-radius: var(--radius-md); cursor: pointer;">
+            <input type="radio" name="server-voice-mode" value="sfu" ${s.voiceMode === 'sfu' ? 'checked' : ''} style="margin-top: 2px;">
+            <div>
+              <div style="font-size: 12px; font-weight: 600; color: var(--text-primary);">${t('serverSettings.voiceModeSfuTitle')}</div>
+              <div style="font-size: 11px; color: var(--text-muted);">${t('serverSettings.voiceModeSfuDesc')}</div>
+            </div>
+          </label>
+        </div>
+
+        <details style="font-size: 11px; color: var(--text-muted); cursor: pointer;">
+          <summary style="font-weight: 600; color: var(--text-secondary); margin-bottom: 6px;">${t('serverSettings.whatPassesWhereTitle')}</summary>
+          <div style="margin-top: 6px; padding: 8px; background: var(--bg-tertiary); border-radius: var(--radius-sm); line-height: 1.5;">
+            <div>• <strong>P2P Mesh:</strong> ${t('serverSettings.whatPassesWhereP2p')}</div>
+            <div>• <strong>SFU:</strong> ${t('serverSettings.whatPassesWhereSfu')}</div>
+          </div>
+        </details>
+      </div>
+
       <div style="background: var(--bg-card); border: 1px solid var(--border-color); border-radius: var(--radius-md); padding: 14px;">
         <div style="font-size: 13px; font-weight: 700; color: var(--text-primary); margin-bottom: 10px; display: flex; align-items: center; gap: 6px;">
           <span class="material-symbols-outlined md-16" style="color: var(--accent-primary);">info</span>

@@ -1158,4 +1158,23 @@ export const ptBR = {
   'overlay.minimalistModeTitle': 'Modo Minimalista',
   'overlay.minimalistModeDesc': 'Exibe apenas a lista compacta com avatar, nome e status (sem transmissão de vídeo).',
   'overlay.resetSizeBtn': 'Restaurar Tamanho Padrão',
+
+  // ── SFU / Voice Mode ───────────────────────────────────────────────────
+  'stage.connectedSfu': 'SFU',
+  'stage.sfuModeTooltip': 'Conexão roteada via servidor SFU centralizado (mediasoup)',
+  'stage.p2pModeTooltip': 'Conexão direta P2P Mesh ponto a ponto entre participantes',
+  'sfu.contingencyTitle': 'Contingência P2P Ativada',
+  'sfu.contingencyMessage': 'O servidor SFU encontrou uma instabilidade ({reason}). A chamada foi automaticamente alternada para o modo P2P Mesh.',
+  'sfu.unknownError': 'Falha na conexão com o SFU',
+  'serverSettings.voiceModeLabel': 'Modo de Voz e Vídeo',
+  'serverSettings.voiceModeDesc': 'Escolha a arquitetura de transmissão de áudio, vídeo e compartilhamento de tela.',
+  'serverSettings.voiceModeP2pTitle': 'P2P Mesh (Direto)',
+  'serverSettings.voiceModeP2pDesc': 'Os clientes transmitem diretamente entre si. Ideal para chamadas pequenas e conexões residenciais.',
+  'serverSettings.voiceModeSfuTitle': 'SFU Centralizado (mediasoup)',
+  'serverSettings.voiceModeSfuDesc': 'O servidor recebe e redistribui os fluxos de mídia. Ideal para chamadas com mais pessoas e transmissões pesadas.',
+  'serverSettings.whatPassesWhereTitle': 'O que passa por onde?',
+  'serverSettings.whatPassesWhereP2p': 'Áudio e vídeo vão de usuário para usuário (conexão direta). O servidor apenas troca mensagens de sinalização.',
+  'serverSettings.whatPassesWhereSfu': 'Cada usuário envia 1 stream de áudio/vídeo para o servidor, e o servidor repassa para todos os ouvintes.',
+  'connection.voiceModeLabel': 'Modo de Transmissão de Voz',
+  'connection.voiceModeDesc': 'P2P Mesh (ponto a ponto) ou SFU (roteamento centralizado no servidor).',
 } as const;

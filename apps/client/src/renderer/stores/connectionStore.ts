@@ -1,6 +1,7 @@
 import { ConnectionStatus } from '../core/NetworkClient';
 import { appEvents } from '../core/EventBus';
 import { clientLog } from '../core/ClientLogService';
+import { VoiceMode } from '@monky/shared';
 
 export interface SavedServer {
   host: string;
@@ -38,6 +39,8 @@ export interface CreatedServer {
   lastStarted: number;
   /** Member cap picked on creation; 0/undefined means no limit (#403). */
   maxUsers?: number;
+  /** Voice mode ('p2p' | 'sfu') picked on creation (#515). */
+  voiceMode?: VoiceMode;
 }
 
 export class ConnectionStore {

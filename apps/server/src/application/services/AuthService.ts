@@ -9,6 +9,7 @@ import {
   ProtocolErrorCode,
   ServerDetails,
   UserSummary,
+  VoiceMode,
   authChallengeResponseSchema,
   authConnectSchema,
   canAccessChannel,
@@ -335,6 +336,7 @@ export class AuthService {
       allowSoundboard: server.allowSoundboard !== false,
       allowEveryoneMention: server.allowEveryoneMention !== false,
       allowMessageEdit: server.allowMessageEdit !== false,
+      voiceMode: server.voiceMode || 'p2p',
       turnEnabled: Boolean(server.turnEnabled),
       iconUrl: this.avatarStorage.getPublicUrl(server.iconPath),
       channels: visibleChannels.map((c) => ({
@@ -398,6 +400,7 @@ export class AuthService {
     allowSoundboard?: boolean;
     allowEveryoneMention?: boolean;
     allowMessageEdit?: boolean;
+    voiceMode?: VoiceMode;
     iconBase64?: string | null;
     maxAttachmentFileBytes?: number;
     maxAttachmentStorageBytes?: number;
@@ -410,6 +413,7 @@ export class AuthService {
     allowSoundboard?: boolean;
     allowEveryoneMention?: boolean;
     allowMessageEdit?: boolean;
+    voiceMode?: VoiceMode;
     iconUrl?: string | null;
     attachmentStorage?: AttachmentStorageInfo;
     maxUsers?: number;
@@ -479,6 +483,9 @@ export class AuthService {
     if (payload.allowMessageEdit !== undefined) {
       updates.allowMessageEdit = Boolean(payload.allowMessageEdit);
     }
+    if (payload.voiceMode !== undefined) {
+      updates.voiceMode = payload.voiceMode === 'sfu' ? 'sfu' : 'p2p';
+    }
 
     if (payload.turnEnabled !== undefined) {
       updates.turnEnabled = Boolean(payload.turnEnabled);
@@ -527,6 +534,7 @@ export class AuthService {
       allowSoundboard: updatedServer?.allowSoundboard !== false,
       allowEveryoneMention: updatedServer?.allowEveryoneMention !== false,
       allowMessageEdit: updatedServer?.allowMessageEdit !== false,
+      voiceMode: updatedServer?.voiceMode || 'p2p',
       iconUrl: this.avatarStorage.getPublicUrl(updatedServer?.iconPath),
       attachmentStorage: await this.attachmentService.getStorageInfo(),
       maxUsers: updatedServer?.maxUsers ?? server.maxUsers,

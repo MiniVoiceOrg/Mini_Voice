@@ -1,4 +1,4 @@
-import { ChannelType, UserStatus } from '@monky/shared';
+import { ChannelType, UserStatus, VoiceMode } from '@monky/shared';
 
 export interface ServerRecord {
   id: string;
@@ -11,6 +11,8 @@ export interface ServerRecord {
   /** Whether `@todos` / `@everyone` pings the whole channel (#464). */
   allowEveryoneMention?: boolean;
   allowMessageEdit?: boolean;
+  /** Voice mode ('p2p' | 'sfu') (#515). */
+  voiceMode?: VoiceMode;
   iconPath?: string | null;
   // Attachment storage limits in bytes (#11); null → shared defaults.
   maxAttachmentFileBytes?: number | null;

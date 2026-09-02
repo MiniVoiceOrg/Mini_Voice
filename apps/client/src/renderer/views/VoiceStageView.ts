@@ -192,10 +192,17 @@ export class VoiceStageView {
               </div>
             </div>
 
-            <div class="header-status-badge" style="background-color: rgba(35, 165, 90, 0.15); color: var(--success); display: flex; align-items: center; gap: 6px;">
-              <span class="material-symbols-outlined md-14">wifi_tethering</span>
-              <span>${t('stage.connectedMesh')}</span>
-            </div>
+            ${
+              webRtcManager.isSfuMode()
+                ? `<div class="header-status-badge sfu-mode-badge" style="background-color: rgba(88, 101, 242, 0.15); color: var(--accent-primary); display: flex; align-items: center; gap: 6px;" title="${t('stage.sfuModeTooltip')}">
+                     <span class="material-symbols-outlined md-14">hub</span>
+                     <span>${t('stage.connectedSfu')}</span>
+                   </div>`
+                : `<div class="header-status-badge p2p-mode-badge" style="background-color: rgba(35, 165, 90, 0.15); color: var(--success); display: flex; align-items: center; gap: 6px;" title="${t('stage.p2pModeTooltip')}">
+                     <span class="material-symbols-outlined md-14">wifi_tethering</span>
+                     <span>${t('stage.connectedMesh')}</span>
+                   </div>`
+            }
           </div>
         </div>
 

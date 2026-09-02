@@ -52,6 +52,7 @@ export async function showConfig(ctx: CliContext): Promise<void> {
   console.log(`ownerNickname: ${owner?.nickname ?? '-'}`);
   console.log(`allowSoundboard: ${formatBool(server.allowSoundboard !== false)}`);
   console.log(`allowEveryoneMention: ${formatBool(server.allowEveryoneMention !== false)}`);
+  console.log(`voiceMode: ${server.voiceMode || 'p2p'}`);
   console.log(`turn: ${formatBool(Boolean(server.turnEnabled))}${turnStatusSuffix()}`);
   console.log(`iconPath: ${server.iconPath ?? '-'}`);
   console.log(`maxAttachmentFileBytes: ${server.maxAttachmentFileBytes ?? '-'}`);
@@ -85,6 +86,7 @@ export async function setConfig(ctx: CliContext, key: string, value?: string): P
     maxUsers: String(server.maxUsers),
     allowSoundboard: String(server.allowSoundboard !== false),
     allowEveryoneMention: String(server.allowEveryoneMention !== false),
+    voiceMode: server.voiceMode || 'p2p',
     maxAttachmentFileBytes: String(server.maxAttachmentFileBytes ?? ''),
     maxAttachmentStorageBytes: String(server.maxAttachmentStorageBytes ?? ''),
     autoUpdate: String(isAutoUpdateEnabled(ctx.dataDir)),
@@ -107,16 +109,13 @@ export async function setConfig(ctx: CliContext, key: string, value?: string): P
         nextValue = await ask(t('config.askIcon'));
         break;
       case 'allowSoundboard':
-        nextValue = await askChoice(t('config.askSoundboard'), ['true', 'false']);
-        break;
       case 'allowEveryoneMention':
-        nextValue = await askChoice(t('config.askEveryoneMention'), ['true', 'false']);
-        break;
-      case 'turn':
-        nextValue = await askChoice(t('config.askTurn'), ['true', 'false']);
-        break;
       case 'autoUpdate':
-        nextValue = await askChoice(t('config.askAutoUpdate'), ['true', 'false']);
+      case 'turn':
+        nextValue = await askChoice(t('config.askBoolean'), ['true', 'false']);
+        break;
+      case 'voiceMode':
+        nextValue = await askChoice(t('config.askVoiceMode'), ['p2p', 'sfu']);
         break;
       case 'maxUsers':
         nextValue = await ask(t('config.askMaxUsers'), currentValues.maxUsers);
@@ -212,6 +211,16 @@ export async function setConfig(ctx: CliContext, key: string, value?: string): P
     case 'allowEveryoneMention':
       await ctx.serverRepo.updateServer({ allowEveryoneMention: parseBoolean(nextValue) });
       break;
+    case 'voiceMode': {
+      const mode = nextValue.toLowerCase().trim() === 'sfu' ? 'sfu' : 'p2p';
+      await ctx.serverRepo.updateServer({ voiceMode: mode });
+      if (mode === 'sfu') {
+        const { CapacityEstimator } = await import('../../domain/services/CapacityEstimator');
+        const estimate = CapacityEstimator.estimate();
+        console.log(color(estimate.summaryText, ANSI.cyan));
+      }
+      break;
+    }
     case 'turn': {
       const enabled = parseBoolean(nextValue);
       if (enabled && !CoturnManager.isInstalled()) {

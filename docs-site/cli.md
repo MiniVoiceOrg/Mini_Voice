@@ -136,6 +136,7 @@ Ao final, exibe um resumo, pede confirmação e oferece iniciar o servidor.
 | `--port <n>` | Porta do servidor | `3000` |
 | `--password <senha>` | Senha do servidor (vazio = sem senha) | perguntado |
 | `--max-users <n>` | Limite de membros cadastrados (`0` = sem limite) | perguntado |
+| `--voice-mode <p2p\|sfu>` | Modo de voz e mídia (`p2p` ou `sfu`) | `p2p` |
 
 A senha da identidade nunca é aceita por opção: ela é sempre digitada de forma
 oculta no terminal.
@@ -372,17 +373,20 @@ monky config set <chave> [valor]    # altera direto
 | `allowEveryoneMention` | Permite `@todos`/`@everyone` no chat (`true`/`false`) | `true` |
 | `maxAttachmentFileBytes` | Tamanho máximo por anexo, em bytes | sem limite |
 | `maxAttachmentStorageBytes` | Espaço total para anexos, em bytes | sem limite |
+| `voiceMode` | Modo de voz: `p2p` (mesh direto) ou `sfu` (Selective Forwarding Unit) | `p2p` |
 | `autoUpdate` | Liga a atualização automática diária (`true`/`false`) | `false` |
 | `turn` | Liga o relay de mídia TURN (`true`/`false`). Só em Linux, exige o coturn instalado | `false` |
 
 Alterar `port` com o servidor no ar oferece reiniciar na hora para aplicar.
 Alterar `turn` exige um `monky restart` manual.
+Alterar `voiceMode` aplica dinamicamente e notifica todos os clientes conectados.
 
 ### Exemplos
 
 ```bash
 monky config
 monky config set name "Servidor dos Amigos"
+monky config set voiceMode sfu      # ativa modo SFU com estimativa de capacidade
 monky config set password           # digitada de forma oculta
 monky config set password clear     # remove a senha
 monky config set maxUsers 50
@@ -437,6 +441,30 @@ monky status    # deve mostrar ✔ acessível
 monky config set turn false
 monky restart
 ```
+
+---
+
+## Modo SFU (Selective Forwarding Unit)
+
+Por padrão, o Monky opera em **P2P Mesh**: cada pessoa transmite seus streams diretamente para todos os participantes do canal. No entanto, se um anfitrião for compartilhar tela em 1080p 60fps para 20 pessoas, precisaria de ~120 Mbps de upload contínuo.
+
+O modo **SFU** centraliza o encaminhamento de mídia via `mediasoup`. Quem compartilha envia **uma única vez** para o servidor, e o servidor replica o fluxo para os ouvintes/espectadores.
+
+### Ativando via CLI
+
+```bash
+monky config set voiceMode sfu
+```
+
+O CLI calcula e exibe automaticamente uma **estimativa de capacidade** baseada na quantidade de cores da CPU, memória RAM do servidor e banda de upload.
+
+### Portas necessárias para SFU
+
+| Porta | Protocolo | Função |
+|---|---|---|
+| `40000-49999` | UDP | Portas de mídia WebRTC do worker mediasoup |
+
+As portas UDP `40000-49999` devem estar abertas no firewall do servidor (Oracle Cloud, AWS Security Group, iptables/ufw).
 
 ---
 

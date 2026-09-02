@@ -1,4 +1,4 @@
-export const PROTOCOL_VERSION = 5;
+export const PROTOCOL_VERSION = 6;
 
 export const LIMITS = {
   MAX_MESSAGE_LENGTH: 2000,
@@ -16,6 +16,9 @@ export const LIMITS = {
   MIN_PORT: 1024,
   MAX_PORT: 65535,
   DEFAULT_PORT: 3000,
+  // Default UDP media port range for SFU (Selective Forwarding Unit) (#515)
+  SFU_DEFAULT_MIN_PORT: 40000,
+  SFU_DEFAULT_MAX_PORT: 49999,
   MAX_HISTORY_MESSAGES_INITIAL: 100,
   RATE_LIMIT_MAX_MESSAGES: 10,
   RATE_LIMIT_WINDOW_MS: 5000,

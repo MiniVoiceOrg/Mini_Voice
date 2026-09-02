@@ -1,4 +1,4 @@
-import { AttachmentStorageInfo, ChannelSummary, ChannelType, ChatMessage, Role, ServerDetails, TurnAvailability, TurnInstallStage, UserRoleSummary, UserSummary, VoiceParticipantState, WebRtcSignalPayload } from './models.js';
+import { AttachmentStorageInfo, ChannelSummary, ChannelType, ChatMessage, Role, ServerDetails, TurnAvailability, TurnInstallStage, UserRoleSummary, UserSummary, VoiceMode, VoiceParticipantState, WebRtcSignalPayload } from './models.js';
 
 export enum ProtocolErrorCode {
   AUTH_INVALID_PASSWORD = 'AUTH_INVALID_PASSWORD',
@@ -70,6 +70,23 @@ export enum MessageType {
    */
   SOUNDBOARD_STOP = 'SOUNDBOARD_STOP',
   SERVER_GET_INVITE_INFO = 'SERVER_GET_INVITE_INFO',
+
+  // SFU Client <-> Server Messages (#515)
+  SFU_GET_ROUTER_RTP_CAPABILITIES = 'SFU_GET_ROUTER_RTP_CAPABILITIES',
+  SFU_ROUTER_RTP_CAPABILITIES = 'SFU_ROUTER_RTP_CAPABILITIES',
+  SFU_CREATE_WEBRTC_TRANSPORT = 'SFU_CREATE_WEBRTC_TRANSPORT',
+  SFU_WEBRTC_TRANSPORT_CREATED = 'SFU_WEBRTC_TRANSPORT_CREATED',
+  SFU_CONNECT_WEBRTC_TRANSPORT = 'SFU_CONNECT_WEBRTC_TRANSPORT',
+  SFU_WEBRTC_TRANSPORT_CONNECTED = 'SFU_WEBRTC_TRANSPORT_CONNECTED',
+  SFU_PRODUCE = 'SFU_PRODUCE',
+  SFU_PRODUCED = 'SFU_PRODUCED',
+  SFU_CONSUME = 'SFU_CONSUME',
+  SFU_CONSUMED = 'SFU_CONSUMED',
+  SFU_PRODUCER_CLOSED = 'SFU_PRODUCER_CLOSED',
+  SFU_CONSUMER_CLOSED = 'SFU_CONSUMER_CLOSED',
+  SFU_CONSUMER_SET_PAUSED = 'SFU_CONSUMER_SET_PAUSED',
+  SFU_NEW_PRODUCER = 'SFU_NEW_PRODUCER',
+  SFU_CONTINGENCY_FALLBACK = 'SFU_CONTINGENCY_FALLBACK',
 
   // Server -> Client
   AUTH_CHALLENGE = 'AUTH_CHALLENGE',
@@ -244,6 +261,8 @@ export interface ServerUpdateSettingsPayload {
   // Membership cap counted in registered members, or LIMITS.MAX_USERS_UNLIMITED
   // to remove the cap entirely (#403).
   maxUsers?: number;
+  /** Voice topology mode: 'p2p' (mesh) or 'sfu' (selective forwarding unit) (#515). */
+  voiceMode?: VoiceMode;
   /** Turn the host's TURN relay on or off (#425). Linux-only; see CoturnManager. */
   turnEnabled?: boolean;
 }
@@ -423,6 +442,8 @@ export interface ServerSettingsUpdatedPayload {
   allowEveryoneMention?: boolean;
   /** Current state of the message-editing switch (#504). */
   allowMessageEdit?: boolean;
+  /** Current state of the voice/video topology mode ('p2p' | 'sfu') (#515). */
+  voiceMode?: VoiceMode;
   iconUrl?: string | null;
   // Current attachment-storage limits + usage, so the settings UI stays in sync (#11).
   attachmentStorage?: AttachmentStorageInfo;
@@ -548,4 +569,95 @@ export interface ServerInviteInfoPayload {
   serverName: string;
   publicIp?: string | null;
   networkInterfaces: ServerNetworkInterface[];
+}
+
+// SFU Payloads (#515)
+export interface SfuGetRouterRtpCapabilitiesPayload {
+  channelId: string;
+}
+
+export interface SfuRouterRtpCapabilitiesPayload {
+  channelId: string;
+  rtpCapabilities: any;
+}
+
+export interface SfuCreateWebRtcTransportPayload {
+  channelId: string;
+  direction: 'send' | 'recv';
+}
+
+export interface SfuWebRtcTransportCreatedPayload {
+  channelId: string;
+  direction: 'send' | 'recv';
+  transportOptions: {
+    id: string;
+    iceParameters: any;
+    iceCandidates: any[];
+    dtlsParameters: any;
+    sctpParameters?: any;
+  };
+}
+
+export interface SfuConnectWebRtcTransportPayload {
+  channelId: string;
+  transportId: string;
+  dtlsParameters: any;
+}
+
+export interface SfuProducePayload {
+  channelId: string;
+  transportId: string;
+  kind: 'audio' | 'video';
+  rtpParameters: any;
+  appData?: Record<string, any>;
+}
+
+export interface SfuProducedPayload {
+  channelId: string;
+  id: string;
+}
+
+export interface SfuConsumePayload {
+  channelId: string;
+  transportId: string;
+  producerId: string;
+  rtpCapabilities: any;
+}
+
+export interface SfuConsumedPayload {
+  channelId: string;
+  id: string;
+  producerId: string;
+  kind: 'audio' | 'video';
+  rtpParameters: any;
+  producerSessionId: string;
+  appData: Record<string, any>;
+}
+
+export interface SfuProducerClosedPayload {
+  channelId: string;
+  producerId: string;
+}
+
+export interface SfuConsumerClosedPayload {
+  channelId: string;
+  consumerId: string;
+}
+
+export interface SfuConsumerSetPausedPayload {
+  channelId: string;
+  consumerId: string;
+  paused: boolean;
+}
+
+export interface SfuNewProducerPayload {
+  channelId: string;
+  producerId: string;
+  producerSessionId: string;
+  kind: 'audio' | 'video';
+  appData: Record<string, any>;
+}
+
+export interface SfuContingencyFallbackPayload {
+  reason: string;
 }

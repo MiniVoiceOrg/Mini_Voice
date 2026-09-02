@@ -19,6 +19,7 @@ import { RemoteMediaRouter } from './webrtc/RemoteMediaRouter';
 import { RemoteVadMonitor } from './webrtc/RemoteVadMonitor';
 import { RtcDiagnosticsCollector } from './webrtc/RtcDiagnosticsCollector';
 import { applyVideoCodecPreferences } from './webrtc/codecPreferences';
+import { SfuClientEngine, SfuConsumerTrackEvent } from './webrtc/SfuClientEngine';
 
 export interface PeerSession {
   peerSessionId: string;
@@ -92,6 +93,8 @@ export class WebRtcManager {
   private mediaRouter: RemoteMediaRouter;
   private vadMonitor: RemoteVadMonitor;
   private diagnosticsCollector: RtcDiagnosticsCollector;
+  private sfuEngine: SfuClientEngine;
+  private isContingencyP2p: boolean = false;
 
   private screenAudioStreamIds: Set<string> = new Set();
   private screenVideoStreamIds: Set<string> = new Set();
@@ -194,6 +197,11 @@ export class WebRtcManager {
     this.mediaRouter = new RemoteMediaRouter(() => this.voiceParticipants);
     this.vadMonitor = new RemoteVadMonitor(() => this.voiceParticipants);
     this.diagnosticsCollector = new RtcDiagnosticsCollector();
+    this.sfuEngine = new SfuClientEngine(this.signalClient, {
+      onConsumerTrack: (event) => this.handleSfuConsumerTrack(event),
+      onConsumerClosed: (sessionId, mediaType, shareId) => this.handleSfuConsumerClosed(sessionId, mediaType, shareId),
+      onFallbackToP2p: (reason) => this.handleSfuFallbackToP2p(reason),
+    });
     this.setupSignalListeners();
   }
 
@@ -260,6 +268,123 @@ export class WebRtcManager {
     appEvents.on('participants.updated', () => {
       this.mediaRouter.applyUserVolumes();
     });
+
+    appEvents.on('server.meta_updated', async () => {
+      const isSfu = this.voiceServerStore.serverDetails?.voiceMode === 'sfu';
+      const channelId = voiceStore.currentVoiceChannelId;
+      if (channelId) {
+        if (isSfu && !this.sfuEngine.isReady()) {
+          this.isContingencyP2p = false;
+          this.closeAllPeers();
+          await this.initSfuForCurrentChannel();
+        } else if (!isSfu && this.sfuEngine.isReady()) {
+          this.sfuEngine.leave();
+          this.connectToAllParticipants();
+        }
+      }
+    });
+  }
+
+  public isSfuMode(): boolean {
+    return this.voiceServerStore.serverDetails?.voiceMode === 'sfu' && !this.isContingencyP2p;
+  }
+
+  public async initSfuForCurrentChannel(): Promise<void> {
+    const channelId = voiceStore.currentVoiceChannelId;
+    if (!channelId || !this.isSfuMode()) return;
+
+    const ok = await this.sfuEngine.join(channelId);
+    if (!ok) {
+      this.handleSfuFallbackToP2p('Falha ao conectar no SFU do canal');
+      return;
+    }
+
+    if (this.localAudioTrack) {
+      await this.sfuEngine.produceMic(this.localAudioTrack);
+    }
+    if (this.localCameraTrack) {
+      await this.sfuEngine.produceCamera(this.localCameraTrack);
+    }
+    for (const [shareId, track] of this.localScreenTracks.entries()) {
+      await this.sfuEngine.produceScreenVideo(track, shareId);
+    }
+    if (this.localScreenAudioTrack) {
+      await this.sfuEngine.produceScreenAudio(this.localScreenAudioTrack, 'default');
+    }
+  }
+
+  public connectToAllParticipants(): void {
+    const channelId = voiceStore.currentVoiceChannelId;
+    if (!channelId) return;
+    const participants = this.voiceParticipants.getInVoiceChannel(channelId);
+    for (const p of participants) {
+      const sid = p.user.sessionId || p.user.id;
+      if (sid && sid !== this.currentSessionId) {
+        const isInitiator = this.currentSessionId.localeCompare(sid) > 0;
+        void this.connectToPeer(sid, isInitiator);
+      }
+    }
+  }
+
+  private handleSfuConsumerTrack(event: SfuConsumerTrackEvent): void {
+    const { producerSessionId, mediaType, track, shareId, rtpReceiver } = event;
+
+    if (this.isOwnOtherDevice(producerSessionId) && mediaType === 'mic') {
+      console.log(`[SFU] Dropping microphone from our own other device (${producerSessionId})`);
+      return;
+    }
+
+    if (mediaType === 'mic') {
+      const stream = new MediaStream([track]);
+      this.mediaRouter.ensureVoiceAudioElement(producerSessionId, stream);
+      this.vadMonitor.setupRemoteReceiverVad(producerSessionId, () => rtpReceiver);
+    } else if (mediaType === 'camera') {
+      const stream = new MediaStream([track]);
+      this.voiceParticipants.setRemoteStream(producerSessionId, stream);
+
+      const videoEl = document.getElementById(`video-${producerSessionId}-camera`) as HTMLVideoElement;
+      if (videoEl) {
+        videoEl.muted = true;
+        videoEl.srcObject = stream;
+        videoEl.play().catch(() => {});
+      }
+      const miniVideoEl = document.getElementById(`video-mini-${producerSessionId}-camera`) as HTMLVideoElement;
+      if (miniVideoEl) {
+        miniVideoEl.muted = true;
+        miniVideoEl.srcObject = stream;
+        miniVideoEl.play().catch(() => {});
+      }
+    } else if (mediaType === 'screen_video') {
+      this.routeScreenVideoTrack(producerSessionId, track, shareId || 'default');
+    } else if (mediaType === 'screen_audio') {
+      this.routeScreenAudioTrack(producerSessionId, track);
+    }
+  }
+
+  private handleSfuConsumerClosed(producerSessionId: string, mediaType: string, shareId?: string): void {
+    if (mediaType === 'camera') {
+      const current = this.voiceParticipants.get(producerSessionId)?.remoteStream;
+      if (current) {
+        current.getVideoTracks().forEach((t: MediaStreamTrack) => {
+          try { t.stop(); } catch {}
+          current.removeTrack(t);
+        });
+      }
+    } else if (mediaType === 'screen_video') {
+      this.voiceParticipants.removeRemoteScreenStream(producerSessionId, shareId || 'default');
+    } else if (mediaType === 'screen_audio') {
+      this.mediaRouter.cleanupPeerMedia(producerSessionId);
+    }
+  }
+
+  private handleSfuFallbackToP2p(reason: string): void {
+    if (this.isContingencyP2p) return;
+    this.isContingencyP2p = true;
+    this.sfuEngine.leave();
+    clientLog.warn('SFU', `Falling back to P2P mesh: ${reason}`);
+    appEvents.emit('sfu.contingency_fallback', { reason });
+
+    this.connectToAllParticipants();
   }
 
   /**
@@ -701,6 +826,9 @@ export class WebRtcManager {
   }
 
   public async connectToPeer(peerSessionId: string, isInitiator: boolean): Promise<void> {
+    if (this.isSfuMode()) {
+      return;
+    }
     clientLog.info('WEBRTC', `Connecting to peer ${peerSessionId} (initiator: ${isInitiator})`, {
       iceServersCount: this.rtcConfig.iceServers?.length ?? 0,
     });
@@ -1189,6 +1317,14 @@ export class WebRtcManager {
 
   public async setLocalAudioTrack(track: MediaStreamTrack | null): Promise<void> {
     this.localAudioTrack = track;
+    if (this.isSfuMode()) {
+      if (track) {
+        await this.sfuEngine.produceMic(track);
+      } else {
+        this.sfuEngine.closeProducer('mic');
+      }
+      return;
+    }
     for (const session of this.peers.values()) {
       try {
         const transceivers = session.pc.getTransceivers();
@@ -1218,6 +1354,14 @@ export class WebRtcManager {
 
   public async setLocalCameraTrack(track: MediaStreamTrack | null): Promise<void> {
     this.localCameraTrack = track;
+    if (this.isSfuMode()) {
+      if (track) {
+        await this.sfuEngine.produceCamera(track);
+      } else {
+        this.sfuEngine.closeProducer('camera');
+      }
+      return;
+    }
     // Camera rides the primary video sender only; screen share has its own
     // dedicated sender so both can be sent at once (#26).
     await this.updateVideoTrackAcrossPeers(track);
@@ -1238,6 +1382,11 @@ export class WebRtcManager {
     const shareId = stream.id;
     this.localScreenTracks.set(shareId, track);
     this.localScreenStreams.set(shareId, stream);
+
+    if (this.isSfuMode()) {
+      await this.sfuEngine.produceScreenVideo(track, shareId);
+      return;
+    }
 
     // Announce stream ID to all peers BEFORE adding the track.
     for (const session of this.peers.values()) {
@@ -1277,6 +1426,11 @@ export class WebRtcManager {
   public async removeLocalScreenTrack(shareId: string): Promise<void> {
     this.localScreenTracks.delete(shareId);
     this.localScreenStreams.delete(shareId);
+
+    if (this.isSfuMode()) {
+      this.sfuEngine.closeProducer(`screen_video:${shareId}`);
+      return;
+    }
 
     for (const session of this.peers.values()) {
       const sender = session.screenVideoSenders.get(shareId);
@@ -1319,6 +1473,15 @@ export class WebRtcManager {
    */
   public async setLocalScreenAudioTrack(track: MediaStreamTrack | null): Promise<void> {
     this.localScreenAudioTrack = track;
+
+    if (this.isSfuMode()) {
+      if (track) {
+        await this.sfuEngine.produceScreenAudio(track, 'default');
+      } else {
+        this.sfuEngine.closeProducer('screen_audio:default');
+      }
+      return;
+    }
 
     if (track) {
       // Wrap in a dedicated MediaStream so receivers can identify it.
@@ -1559,6 +1722,8 @@ export class WebRtcManager {
   }
 
   public closeAllPeers(): void {
+    this.sfuEngine.leave();
+    this.isContingencyP2p = false;
     const peerCount = this.peers.size;
     clientLog.info('WEBRTC', `Closing all peers (${peerCount} active)`);
     for (const [peerSessionId] of Array.from(this.peers.entries())) {

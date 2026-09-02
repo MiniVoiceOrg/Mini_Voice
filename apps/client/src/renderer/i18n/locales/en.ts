@@ -1157,4 +1157,23 @@ export const en: TranslationMap = {
   'overlay.minimalistModeTitle': 'Minimalist Mode',
   'overlay.minimalistModeDesc': 'Displays only a compact list with avatar, name and status (no video feeds).',
   'overlay.resetSizeBtn': 'Reset Default Size',
+
+  // ── SFU / Voice Mode ───────────────────────────────────────────────────
+  'stage.connectedSfu': 'SFU',
+  'stage.sfuModeTooltip': 'Routed via centralized SFU server (mediasoup)',
+  'stage.p2pModeTooltip': 'Direct peer-to-peer P2P Mesh connection between participants',
+  'sfu.contingencyTitle': 'P2P Contingency Activated',
+  'sfu.contingencyMessage': 'The SFU server encountered an issue ({reason}). The call was automatically switched to P2P Mesh mode.',
+  'sfu.unknownError': 'SFU connection failure',
+  'serverSettings.voiceModeLabel': 'Voice & Video Mode',
+  'serverSettings.voiceModeDesc': 'Choose the media transmission architecture for audio, camera, and screen sharing.',
+  'serverSettings.voiceModeP2pTitle': 'P2P Mesh (Direct)',
+  'serverSettings.voiceModeP2pDesc': 'Clients stream directly to each other. Best for small calls and domestic networks.',
+  'serverSettings.voiceModeSfuTitle': 'Centralized SFU (mediasoup)',
+  'serverSettings.voiceModeSfuDesc': 'Server receives and redistributes media streams. Best for large calls and high-bandwidth screen sharing.',
+  'serverSettings.whatPassesWhereTitle': 'What goes where?',
+  'serverSettings.whatPassesWhereP2p': 'Audio and video go directly peer-to-peer. The server only handles signaling.',
+  'serverSettings.whatPassesWhereSfu': 'Each participant sends 1 stream to the server, and the server forwards it to all listeners.',
+  'connection.voiceModeLabel': 'Voice Transmission Mode',
+  'connection.voiceModeDesc': 'P2P Mesh (peer-to-peer) or SFU (centralized server routing).',
 };

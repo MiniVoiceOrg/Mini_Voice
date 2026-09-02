@@ -13,6 +13,7 @@ export type LogCategory =
   | 'NETWORK'
   | 'DATABASE'
   | 'WEBRTC'
+  | 'SFU'
   | 'SOUNDBOARD'
   | 'ATTACHMENT';
 
@@ -22,6 +23,7 @@ export type ClientLogCategory =
   | 'IPC'
   | 'NETWORK'
   | 'WEBRTC'
+  | 'SFU'
   | 'AUDIO'
   | 'VIDEO'
   | 'UI'

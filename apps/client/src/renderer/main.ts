@@ -798,6 +798,15 @@ class App {
         variant: 'warning',
       });
     });
+
+    // SFU contingency fallback alert (#515)
+    appEvents.on('sfu.contingency_fallback', (data: { reason?: string }) => {
+      showAlert({
+        title: t('sfu.contingencyTitle'),
+        message: t('sfu.contingencyMessage', { reason: data?.reason || t('sfu.unknownError') }),
+        variant: 'warning',
+      });
+    });
   }
 }
 
