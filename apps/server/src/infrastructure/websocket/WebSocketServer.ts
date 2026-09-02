@@ -1376,6 +1376,23 @@ export class WebSocketServer {
       voiceState: result.voiceState,
     };
 
+    // Whatever this session had in another channel is over: switching channels
+    // on the same server sends no VOICE_LEAVE, and the client's own teardown is
+    // local, so nothing else would ever close those transports — they would sit
+    // on their port pairs until the socket dropped.
+    if (this.sfuManager) {
+      const { closedProducerIds } = this.sfuManager.closeSessionExcept(
+        session.sessionId,
+        payload.channelId
+      );
+      for (const { channelId, producerId } of closedProducerIds) {
+        this.broadcast({
+          type: MessageType.SFU_PRODUCER_CLOSED,
+          payload: { channelId, producerId } satisfies SfuProducerClosedPayload,
+        });
+      }
+    }
+
     // Scoped to the channel's audience so a private room's activity does not
     // reach members who cannot see it (#384).
     await this.broadcastToChannel(payload.channelId, {

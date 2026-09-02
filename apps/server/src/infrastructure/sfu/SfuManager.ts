@@ -501,6 +501,47 @@ export class SfuManager {
     return { closedProducerIds };
   }
 
+  /**
+   * Closes everything a session still holds in channels other than the one it
+   * is joining, reporting the producers that went with it.
+   *
+   * Switching voice channels on the same server never sends a `VOICE_LEAVE`,
+   * and the client's own teardown is local, so without this the transports of
+   * the channel just left keep their port pairs until the socket drops.
+   */
+  public closeSessionExcept(
+    sessionId: string,
+    keepChannelId: string
+  ): { closedProducerIds: Array<{ channelId: string; producerId: string }> } {
+    const closedProducerIds: Array<{ channelId: string; producerId: string }> = [];
+
+    for (const [id, record] of Array.from(this.producers.entries())) {
+      if (record.sessionId === sessionId && record.channelId !== keepChannelId) {
+        closedProducerIds.push({ channelId: record.channelId, producerId: id });
+        record.producer.close();
+        this.producers.delete(id);
+      }
+    }
+
+    for (const [id, record] of Array.from(this.consumers.entries())) {
+      if (record.sessionId === sessionId && record.channelId !== keepChannelId) {
+        record.consumer.close();
+        this.consumers.delete(id);
+      }
+    }
+
+    for (const [id, record] of Array.from(this.transports.entries())) {
+      if (record.sessionId === sessionId && record.channelId !== keepChannelId) {
+        try {
+          record.transport.close();
+        } catch {}
+        this.transports.delete(id);
+      }
+    }
+
+    return { closedProducerIds };
+  }
+
   public getProducersInChannel(channelId: string): Array<{
     producerId: string;
     producerSessionId: string;
