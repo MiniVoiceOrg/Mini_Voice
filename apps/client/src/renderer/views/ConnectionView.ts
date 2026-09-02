@@ -438,16 +438,17 @@ export class ConnectionView {
               <div class="form-group" style="margin-top: 10px;">
                 <label style="margin-bottom: 2px;">${t('connection.voiceModeLabel')}</label>
                 <div style="font-size: 11px; color: var(--text-muted); margin-bottom: 8px;">${t('connection.voiceModeDesc')}</div>
-                <div style="display: flex; gap: 8px;">
-                  <label style="flex: 1; display: flex; align-items: center; gap: 6px; padding: 8px 10px; border: 1px solid var(--border-color); background: var(--bg-tertiary); border-radius: var(--radius-sm); cursor: pointer; font-size: 12px;">
-                    <input type="radio" name="host-voice-mode" value="p2p" checked>
+                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px;" id="host-voice-mode-cards">
+                  <div class="voice-mode-card selected" data-mode="p2p" style="display: flex; align-items: center; gap: 6px; padding: 8px 10px; border: 1.5px solid var(--accent-primary); background: rgba(88, 101, 242, 0.1); border-radius: var(--radius-sm); cursor: pointer; font-size: 12px; font-weight: 600; color: var(--text-primary); transition: all 0.15s ease;">
+                    <span class="material-symbols-outlined md-16" style="color: var(--accent-primary);">wifi_tethering</span>
                     <span>P2P Mesh</span>
-                  </label>
-                  <label style="flex: 1; display: flex; align-items: center; gap: 6px; padding: 8px 10px; border: 1px solid var(--border-color); background: var(--bg-tertiary); border-radius: var(--radius-sm); cursor: pointer; font-size: 12px;">
-                    <input type="radio" name="host-voice-mode" value="sfu">
-                    <span>SFU (Centralizado)</span>
-                  </label>
+                  </div>
+                  <div class="voice-mode-card" data-mode="sfu" style="display: flex; align-items: center; gap: 6px; padding: 8px 10px; border: 1.5px solid var(--border-color); background: var(--bg-tertiary); border-radius: var(--radius-sm); cursor: pointer; font-size: 12px; font-weight: 600; color: var(--text-primary); transition: all 0.15s ease;">
+                    <span class="material-symbols-outlined md-16" style="color: var(--text-muted);">hub</span>
+                    <span>SFU (mediasoup)</span>
+                  </div>
                 </div>
+                <input type="hidden" id="input-host-voice-mode" value="p2p" />
               </div>
 
               <button type="submit" id="btn-submit-host" class="btn btn-primary" style="width: 100%; margin-top: 8px;">
@@ -958,6 +959,24 @@ export class ConnectionView {
       }
     });
 
+    const hostVoiceCards = document.querySelectorAll('#host-voice-mode-cards .voice-mode-card');
+    const hiddenHostVoiceMode = document.getElementById('input-host-voice-mode') as HTMLInputElement | null;
+    hostVoiceCards.forEach((card) => {
+      card.addEventListener('click', () => {
+        const mode = (card as HTMLElement).dataset.mode;
+        if (!mode) return;
+        if (hiddenHostVoiceMode) hiddenHostVoiceMode.value = mode;
+        hostVoiceCards.forEach((c) => {
+          const isSelected = (c as HTMLElement).dataset.mode === mode;
+          c.classList.toggle('selected', isSelected);
+          (c as HTMLElement).style.borderColor = isSelected ? 'var(--accent-primary)' : 'var(--border-color)';
+          (c as HTMLElement).style.background = isSelected ? 'rgba(88, 101, 242, 0.1)' : 'var(--bg-tertiary)';
+          const icon = c.querySelector('.material-symbols-outlined') as HTMLElement | null;
+          if (icon) icon.style.color = isSelected ? 'var(--accent-primary)' : 'var(--text-muted)';
+        });
+      });
+    });
+
     startCreatedButtons.forEach((btn) => {
       btn.addEventListener('click', async (e) => {
         e.preventDefault();
@@ -1174,7 +1193,8 @@ export class ConnectionView {
           server.textChannel === initialText &&
           server.voiceChannel === initialVoice
         );
-        const voiceModeInput = document.querySelector('input[name="host-voice-mode"]:checked') as HTMLInputElement | null;
+        const voiceModeInput = (document.getElementById('input-host-voice-mode') as HTMLInputElement | null) ||
+          (document.querySelector('input[name="host-voice-mode"]:checked') as HTMLInputElement | null);
         const voiceMode = (voiceModeInput?.value as 'p2p' | 'sfu') || 'p2p';
 
         const createdServer: CreatedServer = {

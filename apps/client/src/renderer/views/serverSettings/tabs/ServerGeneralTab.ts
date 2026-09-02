@@ -121,22 +121,23 @@ export class ServerGeneralTab {
           ${t('serverSettings.voiceModeDesc')}
         </div>
 
-        <div style="display: flex; gap: 12px; margin-bottom: 12px;">
-          <label style="flex: 1; display: flex; align-items: flex-start; gap: 8px; padding: 10px 12px; border: 1px solid ${(s.voiceMode || 'p2p') === 'p2p' ? 'var(--accent-primary)' : 'var(--border-color)'}; background: ${(s.voiceMode || 'p2p') === 'p2p' ? 'rgba(88, 101, 242, 0.08)' : 'var(--bg-card-secondary)'}; border-radius: var(--radius-md); cursor: pointer;">
-            <input type="radio" name="server-voice-mode" value="p2p" ${(s.voiceMode || 'p2p') === 'p2p' ? 'checked' : ''} style="margin-top: 2px;">
-            <div>
-              <div style="font-size: 12px; font-weight: 600; color: var(--text-primary);">${t('serverSettings.voiceModeP2pTitle')}</div>
-              <div style="font-size: 11px; color: var(--text-muted);">${t('serverSettings.voiceModeP2pDesc')}</div>
+        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 12px;" id="server-voice-mode-cards">
+          <div class="voice-mode-card ${(s.voiceMode || 'p2p') === 'p2p' ? 'selected' : ''}" data-mode="p2p" style="padding: 12px 14px; border: 1.5px solid ${(s.voiceMode || 'p2p') === 'p2p' ? 'var(--accent-primary)' : 'var(--border-color)'}; background: ${(s.voiceMode || 'p2p') === 'p2p' ? 'rgba(88, 101, 242, 0.1)' : 'var(--bg-card-secondary)'}; border-radius: var(--radius-md); cursor: pointer; transition: all 0.15s ease;">
+            <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 6px;">
+              <span class="material-symbols-outlined md-18" style="color: ${(s.voiceMode || 'p2p') === 'p2p' ? 'var(--accent-primary)' : 'var(--text-muted)'};">wifi_tethering</span>
+              <span style="font-size: 13px; font-weight: 600; color: var(--text-primary);">${t('serverSettings.voiceModeP2pTitle')}</span>
             </div>
-          </label>
-          <label style="flex: 1; display: flex; align-items: flex-start; gap: 8px; padding: 10px 12px; border: 1px solid ${s.voiceMode === 'sfu' ? 'var(--accent-primary)' : 'var(--border-color)'}; background: ${s.voiceMode === 'sfu' ? 'rgba(88, 101, 242, 0.08)' : 'var(--bg-card-secondary)'}; border-radius: var(--radius-md); cursor: pointer;">
-            <input type="radio" name="server-voice-mode" value="sfu" ${s.voiceMode === 'sfu' ? 'checked' : ''} style="margin-top: 2px;">
-            <div>
-              <div style="font-size: 12px; font-weight: 600; color: var(--text-primary);">${t('serverSettings.voiceModeSfuTitle')}</div>
-              <div style="font-size: 11px; color: var(--text-muted);">${t('serverSettings.voiceModeSfuDesc')}</div>
+            <div style="font-size: 11px; color: var(--text-muted); line-height: 1.4;">${t('serverSettings.voiceModeP2pDesc')}</div>
+          </div>
+          <div class="voice-mode-card ${s.voiceMode === 'sfu' ? 'selected' : ''}" data-mode="sfu" style="padding: 12px 14px; border: 1.5px solid ${s.voiceMode === 'sfu' ? 'var(--accent-primary)' : 'var(--border-color)'}; background: ${s.voiceMode === 'sfu' ? 'rgba(88, 101, 242, 0.1)' : 'var(--bg-card-secondary)'}; border-radius: var(--radius-md); cursor: pointer; transition: all 0.15s ease;">
+            <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 6px;">
+              <span class="material-symbols-outlined md-18" style="color: ${s.voiceMode === 'sfu' ? 'var(--accent-primary)' : 'var(--text-muted)'};">hub</span>
+              <span style="font-size: 13px; font-weight: 600; color: var(--text-primary);">${t('serverSettings.voiceModeSfuTitle')}</span>
             </div>
-          </label>
+            <div style="font-size: 11px; color: var(--text-muted); line-height: 1.4;">${t('serverSettings.voiceModeSfuDesc')}</div>
+          </div>
         </div>
+        <input type="hidden" id="input-server-voice-mode" value="${s.voiceMode || 'p2p'}" />
 
         <details style="font-size: 11px; color: var(--text-muted); cursor: pointer;">
           <summary style="font-weight: 600; color: var(--text-secondary); margin-bottom: 6px;">${t('serverSettings.whatPassesWhereTitle')}</summary>
@@ -168,14 +169,41 @@ export class ServerGeneralTab {
   public attach(root: HTMLElement): () => void {
     const toggle = root.querySelector('#checkbox-limit-members') as HTMLInputElement | null;
     const group = root.querySelector('#max-users-group') as HTMLElement | null;
-    if (!toggle || !group) return () => {};
 
     const sync = () => {
-      group.hidden = !toggle.checked;
+      if (toggle && group) group.hidden = !toggle.checked;
     };
-    toggle.addEventListener('change', sync);
-    sync();
+    if (toggle && group) {
+      toggle.addEventListener('change', sync);
+      sync();
+    }
 
-    return () => toggle.removeEventListener('change', sync);
+    const voiceCards = root.querySelectorAll('#server-voice-mode-cards .voice-mode-card');
+    const hiddenVoiceMode = root.querySelector('#input-server-voice-mode') as HTMLInputElement | null;
+
+    const cardCleanups: Array<() => void> = [];
+    voiceCards.forEach((card) => {
+      const listener = () => {
+        const mode = (card as HTMLElement).dataset.mode;
+        if (!mode) return;
+        if (hiddenVoiceMode) hiddenVoiceMode.value = mode;
+
+        voiceCards.forEach((c) => {
+          const isSelected = (c as HTMLElement).dataset.mode === mode;
+          c.classList.toggle('selected', isSelected);
+          (c as HTMLElement).style.borderColor = isSelected ? 'var(--accent-primary)' : 'var(--border-color)';
+          (c as HTMLElement).style.background = isSelected ? 'rgba(88, 101, 242, 0.1)' : 'var(--bg-card-secondary)';
+          const icon = c.querySelector('.material-symbols-outlined') as HTMLElement | null;
+          if (icon) icon.style.color = isSelected ? 'var(--accent-primary)' : 'var(--text-muted)';
+        });
+      };
+      card.addEventListener('click', listener);
+      cardCleanups.push(() => card.removeEventListener('click', listener));
+    });
+
+    return () => {
+      if (toggle && group) toggle.removeEventListener('change', sync);
+      cardCleanups.forEach((cleanup) => cleanup());
+    };
   }
 }

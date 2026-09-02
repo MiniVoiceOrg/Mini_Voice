@@ -16,6 +16,7 @@ import { enableBackdropClose } from '../utils/modal';
 import logoUrl from '../assets/Logo.png';
 import { pickAndCropImage } from './ImageCropModal';
 import { attachInputEmojiPicker } from '../utils/inputEmojiPicker';
+import { showConfirm } from './Dialog';
 import { ServerGeneralTab } from './serverSettings/tabs/ServerGeneralTab';
 import { ServerSecurityTab } from './serverSettings/tabs/ServerSecurityTab';
 import { ServerVoiceVideoTab } from './serverSettings/tabs/ServerVoiceVideoTab';
@@ -343,9 +344,24 @@ export class ServerSettingsModal {
         payload.iconBase64 = this.pendingIconBase64;
       }
 
-      const inputVoiceMode = this.modalEl?.querySelector('input[name="server-voice-mode"]:checked') as HTMLInputElement | null;
+      const inputVoiceMode = (this.modalEl?.querySelector('#input-server-voice-mode') as HTMLInputElement | null) ||
+        (this.modalEl?.querySelector('input[name="server-voice-mode"]:checked') as HTMLInputElement | null);
       if (inputVoiceMode) {
         payload.voiceMode = inputVoiceMode.value as 'p2p' | 'sfu';
+      }
+
+      const previousVoiceMode = serverStore.serverDetails?.voiceMode || 'p2p';
+      if (previousVoiceMode === 'sfu' && payload.voiceMode === 'p2p') {
+        const confirmed = await showConfirm({
+          title: t('serverSettings.voiceModeDisconnectTitle'),
+          message: t('serverSettings.voiceModeDisconnectMessage'),
+          confirmLabel: t('serverSettings.voiceModeDisconnectConfirm'),
+          cancelLabel: t('common.cancel'),
+          variant: 'warning',
+        });
+        if (!confirmed) {
+          return;
+        }
       }
 
       // Attachment storage limits

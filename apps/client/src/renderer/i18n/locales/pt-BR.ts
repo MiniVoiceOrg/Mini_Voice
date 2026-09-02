@@ -1177,6 +1177,9 @@ export const ptBR = {
   'serverSettings.whatPassesWhereTitle': 'O que passa por onde?',
   'serverSettings.whatPassesWhereP2p': 'Áudio e vídeo vão de usuário para usuário (conexão direta). O servidor apenas troca mensagens de sinalização.',
   'serverSettings.whatPassesWhereSfu': 'Cada usuário envia 1 stream de áudio/vídeo para o servidor, e o servidor repassa para todos os ouvintes.',
+  'serverSettings.voiceModeDisconnectTitle': 'Desconectar chamadas de voz',
+  'serverSettings.voiceModeDisconnectMessage': 'Ao mudar o modo de transmissão de SFU para P2P Mesh, todos os participantes conectados aos canais de voz serão desconectados para aplicar a alteração com segurança. Deseja continuar?',
+  'serverSettings.voiceModeDisconnectConfirm': 'Confirmar e Desconectar',
   'connection.voiceModeLabel': 'Modo de Transmissão de Voz',
   'connection.voiceModeDesc': 'P2P Mesh (ponto a ponto) ou SFU (roteamento centralizado no servidor).',
 } as const;

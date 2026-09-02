@@ -1176,6 +1176,9 @@ export const en: TranslationMap = {
   'serverSettings.whatPassesWhereTitle': 'What goes where?',
   'serverSettings.whatPassesWhereP2p': 'Audio and video go directly peer-to-peer. The server only handles signaling.',
   'serverSettings.whatPassesWhereSfu': 'Each participant sends 1 stream to the server, and the server forwards it to all listeners.',
+  'serverSettings.voiceModeDisconnectTitle': 'Disconnect Voice Calls',
+  'serverSettings.voiceModeDisconnectMessage': 'Switching the transmission mode from SFU to P2P Mesh will disconnect all participants currently in voice channels to apply the change safely. Do you want to continue?',
+  'serverSettings.voiceModeDisconnectConfirm': 'Confirm & Disconnect',
   'connection.voiceModeLabel': 'Voice Transmission Mode',
   'connection.voiceModeDesc': 'P2P Mesh (peer-to-peer) or SFU (centralized server routing).',
 };

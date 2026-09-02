@@ -1130,6 +1130,20 @@ export class WebSocketServer {
           payload: { reason: this.sfuManager.getLastError() || 'SFU worker failed to initialize' } satisfies SfuContingencyFallbackPayload,
         });
       }
+    } else if (payload.voiceMode === 'p2p') {
+      // When switching to P2P, cleanly terminate any active SFU channels and evict call participants
+      this.sfuManager.close();
+      const evictedStates = this.signalingService.clearAllVoiceStates();
+      for (const vs of evictedStates) {
+        this.broadcast({
+          type: MessageType.VOICE_USER_LEFT,
+          payload: {
+            channelId: vs.channelId,
+            userId: vs.userId,
+            sessionId: vs.sessionId,
+          },
+        });
+      }
     }
 
     if (payload.turnEnabled !== undefined) {
