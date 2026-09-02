@@ -1,7 +1,9 @@
 import os from 'os';
+import net from 'net';
 import * as mediasoup from 'mediasoup';
 import type { RouterRtpCodecCapability, TransportListenInfo } from 'mediasoup/node/lib/types.js';
 import { LIMITS } from '@monky/shared';
+import { getPublicIp } from '../discovery/ServerIpScanner';
 
 const MEDIA_CODECS: RouterRtpCodecCapability[] = [
   {
@@ -86,6 +88,7 @@ export class SfuManager {
   private readonly rtcMaxPort: number;
   private readonly listenIp: string;
   private announcedIp: string | null = null;
+  private detectedPublicIp: string | null = null;
 
   constructor(options: SfuManagerOptions = {}) {
     this.rtcMinPort = options.rtcMinPort || LIMITS.SFU_DEFAULT_MIN_PORT;
@@ -108,6 +111,15 @@ export class SfuManager {
     }
 
     try {
+      if (!this.announcedIp && !this.detectedPublicIp) {
+        getPublicIp().then((ip) => {
+          if (ip) {
+            this.detectedPublicIp = ip;
+            console.log(`[SFU] Auto-detected public IP for WebRTC candidates: ${ip}`);
+          }
+        }).catch(() => {});
+      }
+
       this.worker = await mediasoup.createWorker({
         rtcMinPort: this.rtcMinPort,
         rtcMaxPort: this.rtcMaxPort,
@@ -158,45 +170,49 @@ export class SfuManager {
     return router;
   }
 
-  private getListenInfos(): TransportListenInfo[] {
+  private getListenInfos(preferredAnnouncedIp?: string): TransportListenInfo[] {
     const portRange = { min: this.rtcMinPort, max: this.rtcMaxPort };
     const infos: TransportListenInfo[] = [];
     const addedAddresses = new Set<string>();
 
+    const addAnnouncedAddress = (addr: string | null | undefined) => {
+      if (!addr) return;
+      const trimmed = addr.trim();
+      if (!trimmed || addedAddresses.has(trimmed)) return;
+      infos.push({
+        protocol: 'udp',
+        ip: this.listenIp,
+        announcedAddress: trimmed,
+        portRange,
+      });
+      infos.push({
+        protocol: 'tcp',
+        ip: this.listenIp,
+        announcedAddress: trimmed,
+        portRange,
+      });
+      addedAddresses.add(trimmed);
+    };
+
+    // 1. Explicit announced IP configured by admin
     if (this.announcedIp) {
-      infos.push({
-        protocol: 'udp',
-        ip: this.listenIp,
-        announcedAddress: this.announcedIp,
-        portRange,
-      });
-      infos.push({
-        protocol: 'tcp',
-        ip: this.listenIp,
-        announcedAddress: this.announcedIp,
-        portRange,
-      });
-      addedAddresses.add(this.announcedIp);
+      addAnnouncedAddress(this.announcedIp);
     }
 
-    // Always include 127.0.0.1 for local/loopback clients
-    if (!addedAddresses.has('127.0.0.1')) {
-      infos.push({
-        protocol: 'udp',
-        ip: this.listenIp,
-        announcedAddress: '127.0.0.1',
-        portRange,
-      });
-      infos.push({
-        protocol: 'tcp',
-        ip: this.listenIp,
-        announcedAddress: '127.0.0.1',
-        portRange,
-      });
-      addedAddresses.add('127.0.0.1');
+    // 2. Client connection host / IP (if client reached server via a public IP or domain)
+    if (preferredAnnouncedIp && preferredAnnouncedIp !== 'localhost' && preferredAnnouncedIp !== '127.0.0.1') {
+      addAnnouncedAddress(preferredAnnouncedIp);
     }
 
-    // Detect all available local network interfaces (Radmin VPN 26.x, LAN 192.168.x, 10.x, etc.)
+    // 3. Auto-detected server public IP (for cloud VPS behind 1:1 NAT like AWS, Oracle Cloud, GCP, etc.)
+    if (this.detectedPublicIp) {
+      addAnnouncedAddress(this.detectedPublicIp);
+    }
+
+    // 4. Always include 127.0.0.1 for local/loopback clients
+    addAnnouncedAddress('127.0.0.1');
+
+    // 5. Detect all available local network interfaces (Radmin VPN 26.x, LAN 192.168.x, 10.x, etc.)
     try {
       const interfaces = os.networkInterfaces();
       for (const [_, ifaceList] of Object.entries(interfaces)) {
@@ -204,21 +220,7 @@ export class SfuManager {
         for (const iface of ifaceList) {
           const family = String(iface.family);
           if ((family === 'IPv4' || family === '4') && iface.address) {
-            if (!addedAddresses.has(iface.address)) {
-              infos.push({
-                protocol: 'udp',
-                ip: this.listenIp,
-                announcedAddress: iface.address,
-                portRange,
-              });
-              infos.push({
-                protocol: 'tcp',
-                ip: this.listenIp,
-                announcedAddress: iface.address,
-                portRange,
-              });
-              addedAddresses.add(iface.address);
-            }
+            addAnnouncedAddress(iface.address);
           }
         }
       }
@@ -251,7 +253,8 @@ export class SfuManager {
   public async createWebRtcTransport(
     sessionId: string,
     channelId: string,
-    direction: 'send' | 'recv'
+    direction: 'send' | 'recv',
+    clientHost?: string
   ): Promise<{
     id: string;
     iceParameters: mediasoup.types.IceParameters;
@@ -260,7 +263,8 @@ export class SfuManager {
     sctpParameters?: mediasoup.types.SctpParameters;
   }> {
     const router = await this.getOrCreateRouter(channelId);
-    const listenInfos = this.getListenInfos();
+    const listenInfos = this.getListenInfos(clientHost);
+
 
     const transport = await router.createWebRtcTransport({
       listenInfos,
