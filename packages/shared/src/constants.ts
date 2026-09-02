@@ -18,7 +18,16 @@ export const LIMITS = {
   DEFAULT_PORT: 3000,
   // Default UDP media port range for SFU (Selective Forwarding Unit) (#515)
   SFU_DEFAULT_MIN_PORT: 40000,
-  SFU_DEFAULT_MAX_PORT: 49999,
+  // Stops one below the coturn relay range (49152-65535). The two allocate UDP
+  // ports independently, so an overlap would let them race for the same port
+  // and fail intermittently once both are enabled.
+  SFU_DEFAULT_MAX_PORT: 49151,
+  // coturn's listening port and relay range. They live here, and not only in
+  // CoturnManager, so the SFU can check its own range against them without
+  // depending on the TURN module.
+  TURN_LISTENING_PORT: 3478,
+  TURN_RELAY_MIN_PORT: 49152,
+  TURN_RELAY_MAX_PORT: 65535,
   MAX_HISTORY_MESSAGES_INITIAL: 100,
   RATE_LIMIT_MAX_MESSAGES: 10,
   RATE_LIMIT_WINDOW_MS: 5000,

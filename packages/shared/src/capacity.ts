@@ -6,7 +6,6 @@ export interface CapacityEstimate {
   maxScreenShareParticipants: number;
   maxCameraParticipants: number;
   recommendedMaxUsers: number;
-  summaryText: string;
 }
 
 export class CapacityEstimator {
@@ -57,8 +56,9 @@ export class CapacityEstimator {
       Math.min(maxAudioParticipants, Math.floor(maxScreenShareParticipants * 1.5))
     );
 
-    const summaryText = `Com ${cpuCores} cores de CPU, ${ramTotalGb} GB de RAM e ~${uploadMbps} Mbps de upload, o modo SFU suporta até ~${maxScreenShareParticipants} pessoas assistindo tela em 1080p60 simultaneamente ou ~${maxAudioParticipants} pessoas em canais de voz.`;
-
+    // Deliberately returns only numbers: an earlier version also built a
+    // ready-made sentence here, hardcoded in Portuguese, which reached English
+    // operators untranslated. Each layer phrases it through its own i18n (#515).
     return {
       cpuCores,
       ramTotalGb,
@@ -67,7 +67,6 @@ export class CapacityEstimator {
       maxScreenShareParticipants,
       maxCameraParticipants,
       recommendedMaxUsers,
-      summaryText,
     };
   }
 }

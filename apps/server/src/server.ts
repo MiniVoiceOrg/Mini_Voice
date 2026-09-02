@@ -587,6 +587,18 @@ export class MonkyServer {
       const server = await this.serverRepo.getServer();
       if (!server?.turnEnabled) return;
 
+      // TURN and SFU are mutually exclusive (#515), but the pair was legal
+      // before that rule existed, so an upgraded database can still carry it.
+      // Leaving coturn up would be worse than redundant: the SFU path hands
+      // out no TURN credentials at all, so the relay would hold port 3478 and
+      // its whole relay range without ever serving an allocation. The row is
+      // repaired so the next boot is clean.
+      if (server.voiceMode === 'sfu') {
+        Logger.warn('NETWORK', 'TURN relay was enabled alongside SFU mode; disabling it (the SFU is the relay).');
+        await this.serverRepo.updateServer({ turnEnabled: false });
+        return;
+      }
+
       const secret = server.turnSecret;
       if (!secret) {
         Logger.warn('NETWORK', 'TURN relay is enabled but has no shared secret; leaving it off.');

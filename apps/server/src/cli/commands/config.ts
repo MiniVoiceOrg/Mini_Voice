@@ -1,6 +1,5 @@
 import fs from 'fs';
 import path from 'path';
-import { spawnSync } from 'child_process';
 import { LIMITS } from '@monky/shared';
 import { PasswordService } from '../../infrastructure/security/PasswordService';
 import {
@@ -11,17 +10,20 @@ import {
   DEFAULT_SERVER_NAME,
 } from '../constants';
 import { CliContext, readLocalConfig, writeLocalConfig } from '../context';
-import { formatBool, formatDate, parseBoolean, parseMemberLimit, parsePositiveInt, printVoiceModeComparisonTable } from '../formatters';
+import { estimateHostCapacity, printCapacityEstimate } from '../capacity';
+import { describeSfuPortProblem, formatBool, formatDate, parseBoolean, parseMemberLimit, parsePositiveInt, printSfuPreflight, printVoiceModeComparisonTable, sfuPreflightSummary } from '../formatters';
 import { t } from '../i18n/index';
 import {
   getPm2ProcessName,
   isMonkyServerRunning,
   writeEcosystem,
 } from '../pm2';
+import { runSync } from '../process';
 import { registerServer } from '../registry';
 import { ask, askChoice, confirm, promptPassword } from '../prompts';
 import { disableAutoUpdate, enableAutoUpdate, isAutoUpdateEnabled, AutoUpdateSchedule } from './update';
 import { CoturnManager } from '../../infrastructure/turn/CoturnManager';
+import { checkSfuPreflight } from '../../infrastructure/sfu/SfuPreflight';
 
 /**
  * Warns, right where the value is shown, when the relay cannot actually run on
@@ -31,6 +33,17 @@ import { CoturnManager } from '../../infrastructure/turn/CoturnManager';
 function turnStatusSuffix(): string {
   const reason = CoturnManager.getUnavailabilityReason();
   return reason ? color(`  (${t('config.turnUnavailable', { reason })})`, ANSI.yellow) : '';
+}
+
+/**
+ * Same intent as {@link turnStatusSuffix}: `voiceMode: sfu` is misleading when
+ * the worker cannot run on this host, since the server starts anyway and
+ * quietly relays nothing.
+ */
+function voiceModeStatusSuffix(voiceMode: string): string {
+  if (voiceMode !== 'sfu') return '';
+  const reason = sfuPreflightSummary(checkSfuPreflight());
+  return reason ? color(`  (${t('config.sfuUnavailable', { reason })})`, ANSI.yellow) : '';
 }
 
 export async function showConfig(ctx: CliContext): Promise<void> {
@@ -52,7 +65,7 @@ export async function showConfig(ctx: CliContext): Promise<void> {
   console.log(`ownerNickname: ${owner?.nickname ?? '-'}`);
   console.log(`allowSoundboard: ${formatBool(server.allowSoundboard !== false)}`);
   console.log(`allowEveryoneMention: ${formatBool(server.allowEveryoneMention !== false)}`);
-  console.log(`voiceMode: ${server.voiceMode || 'p2p'}`);
+  console.log(`voiceMode: ${server.voiceMode || 'p2p'}${voiceModeStatusSuffix(server.voiceMode || 'p2p')}`);
   console.log(`turn: ${formatBool(Boolean(server.turnEnabled))}${turnStatusSuffix()}`);
   console.log(`iconPath: ${server.iconPath ?? '-'}`);
   console.log(`maxAttachmentFileBytes: ${server.maxAttachmentFileBytes ?? '-'}`);
@@ -69,7 +82,20 @@ export async function askConfigKey(): Promise<ConfigKey> {
   return choice as ConfigKey;
 }
 
-export async function setConfig(ctx: CliContext, key: string, value?: string): Promise<void> {
+/**
+ * `skipSfuDiagnostics` is set by `monky create`, which already probed the
+ * ports, printed the capacity report and ran the preflight before the operator
+ * confirmed. Without it the SFU branch below would repeat all three — asking
+ * for the upload bandwidth a second time — and, worse, `throw` on a port
+ * problem that `create` had deliberately downgraded to a warning, aborting
+ * after the database was already bootstrapped (#515).
+ */
+export async function setConfig(
+  ctx: CliContext,
+  key: string,
+  value?: string,
+  options: { skipSfuDiagnostics?: boolean } = {}
+): Promise<void> {
   const normalizedKey = (key.trim() || (await askConfigKey())) as ConfigKey;
   const server = await ctx.serverRepo.getServer();
   if (!server) {
@@ -163,7 +189,7 @@ export async function setConfig(ctx: CliContext, key: string, value?: string): P
             port: portNum,
             serverName: (await ctx.serverRepo.getServer())?.name || DEFAULT_SERVER_NAME,
           });
-          spawnSync('pm2', ['startOrRestart', ecosystemPath], { stdio: 'inherit', shell: true });
+          runSync('pm2', ['startOrRestart', ecosystemPath], { stdio: 'inherit' });
           console.log(color(t('config.portRestarted'), ANSI.green));
         } else {
           console.log(color(t('config.portNextStartOrRestart'), ANSI.dim));
@@ -214,18 +240,51 @@ export async function setConfig(ctx: CliContext, key: string, value?: string): P
       break;
     case 'voiceMode': {
       const mode = nextValue.toLowerCase().trim() === 'sfu' ? 'sfu' : 'p2p';
+
+      if (mode === 'sfu' && !options.skipSfuDiagnostics) {
+        // Refuse before persisting: the desktop path already blocks the switch
+        // when the range is unusable, and the CLI accepting it would be the
+        // only way left to end up with a mode the host cannot serve (#515).
+        const { SfuManager } = await import('../../infrastructure/sfu/SfuManager');
+        const portProblem = await new SfuManager().checkPortAvailability();
+        if (portProblem) {
+          throw new Error(describeSfuPortProblem(portProblem));
+        }
+        console.log(color(t('config.sfuPortOk'), ANSI.green));
+      }
+
       await ctx.serverRepo.updateServer({ voiceMode: mode });
-      if (mode === 'sfu') {
-        const { CapacityEstimator } = await import('../../domain/services/CapacityEstimator');
-        const estimate = CapacityEstimator.estimate();
-        console.log();
-        console.log(color(t('create.sfuCapacityTitle'), ANSI.bold));
-        console.log(color(estimate.summaryText, ANSI.cyan));
+
+      // The SFU is the relay in this mode, so coturn is turned off rather than
+      // left running and unused (#515).
+      if (mode === 'sfu' && server.turnEnabled) {
+        await ctx.serverRepo.updateServer({ turnEnabled: false });
+        console.log(color(t('config.turnDisabledBySfu'), ANSI.yellow));
+      }
+
+      if (mode === 'sfu' && !options.skipSfuDiagnostics) {
+        const report = await estimateHostCapacity();
+        printCapacityEstimate(report);
+        printSfuPreflight(checkSfuPreflight());
+      }
+
+      // Same caveat as `turn`: the running process decided its voice mode at
+      // startup, so the new value only takes effect after a reload. Without
+      // this the operator sees `voiceMode: sfu` in `monky config` while the
+      // server keeps serving P2P (#515).
+      if (isMonkyServerRunning(getPm2ProcessName(ctx.dataDir))) {
+        console.log(color(t('config.voiceModeRestartNeeded'), ANSI.yellow));
       }
       break;
     }
     case 'turn': {
       const enabled = parseBoolean(nextValue);
+      // The SFU already relays every stream, so a second relay would only add
+      // cost and fight it for UDP ports. Refused here as well as on the server
+      // so neither entry point can produce the combination (#515).
+      if (enabled && (server.voiceMode || 'p2p') === 'sfu') {
+        throw new Error(t('config.turnBlockedBySfu'));
+      }
       if (enabled && !CoturnManager.isInstalled()) {
         // Same intent as the desktop toggle: asking is enough, the server does
         // the installing (#431).

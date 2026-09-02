@@ -5,7 +5,7 @@ import net from 'net';
 import os from 'os';
 import path from 'path';
 import { ChildProcess, spawn, spawnSync } from 'child_process';
-import { IceServerConfig, TurnAvailability, TurnInstallProgressPayload, TurnInstallStage, TurnUnavailableReason } from '@monky/shared';
+import { IceServerConfig, LIMITS, TurnAvailability, TurnInstallProgressPayload, TurnInstallStage, TurnUnavailableReason } from '@monky/shared';
 import { Logger } from '../logger/Logger';
 import { getPublicIp } from '../discovery/ServerIpScanner';
 
@@ -19,9 +19,9 @@ export const DEFAULT_STUN_URLS = [
   'stun:stun.cloudflare.com:3478',
 ];
 
-export const TURN_LISTENING_PORT = 3478;
-export const TURN_RELAY_MIN_PORT = 49152;
-export const TURN_RELAY_MAX_PORT = 65535;
+export const TURN_LISTENING_PORT = LIMITS.TURN_LISTENING_PORT;
+export const TURN_RELAY_MIN_PORT = LIMITS.TURN_RELAY_MIN_PORT;
+export const TURN_RELAY_MAX_PORT = LIMITS.TURN_RELAY_MAX_PORT;
 
 /** How long credentials handed to a client stay valid. */
 const CREDENTIAL_TTL_SECONDS = 12 * 60 * 60;

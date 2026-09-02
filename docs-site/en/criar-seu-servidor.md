@@ -25,7 +25,7 @@ When creating or managing a server, you choose the media topology:
 ## Open access over the internet
 
 - **Primary TCP Port:** Allow port `3000` (or your chosen port) in your firewall and configure router port forwarding.
-- **UDP Ports for SFU (mediasoup):** If using SFU mode, also forward/allow UDP port range `40000-49999`.
+- **UDP Ports for SFU (mediasoup):** If using SFU mode, also forward/allow UDP port range `40000-49151`.
 - **Without touching the router:** Use a virtual network/VPN such as Radmin VPN, Hamachi, ZeroTier, or Tailscale.
 
 ## Administer

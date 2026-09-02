@@ -22,6 +22,7 @@ import { parseOption } from './cli/formatters';
 import { listServers, registerServer, serverIdFor, unregisterServer } from './cli/registry';
 import { CapacityEstimator } from './domain/services/CapacityEstimator';
 import { SfuManager } from './infrastructure/sfu/SfuManager';
+import { resolveTurnSfuExclusion } from './application/services/AuthService';
 
 function withTimeout<T>(promise: Promise<T>, ms: number, label: string): Promise<T> {
   return Promise.race([
@@ -798,6 +799,93 @@ async function runTests() {
       throw new Error('Teste 19: Estimativa de capacidade para 4 vCPU / 24 GB RAM incorreta');
     }
 
+    // O estimador reporta a máquina que roda o servidor: sem isso o client caía
+    // para `navigator.deviceMemory`, que descreve o desktop do admin e é
+    // limitado a 8 GB pela spec (#515).
+    const hostSpecs = CapacityEstimator.getHostSpecs();
+    if (!(hostSpecs.cpuCores >= 1) || !(hostSpecs.ramTotalGb > 0)) {
+      throw new Error('Teste 19: getHostSpecs deve reportar CPU e RAM reais do host');
+    }
+
+    // A regra TURN×SFU precisa deixar passar a migração mais comum: VPS Linux
+    // com coturn ligado em P2P, admin escolhe SFU. A UI manda o voiceMode em
+    // todo save, então o payload chega como { voiceMode: 'sfu', turnEnabled:
+    // true } — recusar isso tornaria o upgrade impossível pela interface (#515).
+    const relayCases: Array<{
+      name: string;
+      current: { voiceMode?: string | null; turnEnabled?: boolean | null };
+      requested: { voiceMode?: 'p2p' | 'sfu'; turnEnabled?: boolean };
+      rejected: boolean;
+      turnEnabled: boolean | undefined;
+    }> = [
+      {
+        name: 'migração P2P+TURN → SFU desliga o relay em vez de recusar',
+        current: { voiceMode: 'p2p', turnEnabled: true },
+        requested: { voiceMode: 'sfu', turnEnabled: true },
+        rejected: false,
+        turnEnabled: false,
+      },
+      {
+        name: 'entrar em SFU desliga o relay mesmo sem turnEnabled no payload',
+        current: { voiceMode: 'p2p', turnEnabled: true },
+        requested: { voiceMode: 'sfu' },
+        rejected: false,
+        turnEnabled: false,
+      },
+      {
+        name: 'ligar TURN em servidor que permanece em SFU é recusado',
+        current: { voiceMode: 'sfu', turnEnabled: false },
+        requested: { turnEnabled: true },
+        rejected: true,
+        turnEnabled: undefined,
+      },
+      {
+        name: 'ligar TURN em SFU é recusado mesmo com o voiceMode ecoado',
+        current: { voiceMode: 'sfu', turnEnabled: false },
+        requested: { voiceMode: 'sfu', turnEnabled: true },
+        rejected: true,
+        turnEnabled: undefined,
+      },
+      {
+        name: 'sair do SFU e ligar TURN é permitido',
+        current: { voiceMode: 'sfu', turnEnabled: false },
+        requested: { voiceMode: 'p2p', turnEnabled: true },
+        rejected: false,
+        turnEnabled: true,
+      },
+      {
+        name: 'ligar TURN em P2P continua funcionando',
+        current: { voiceMode: 'p2p', turnEnabled: false },
+        requested: { turnEnabled: true },
+        rejected: false,
+        turnEnabled: true,
+      },
+      {
+        name: 'salvar outra configuração em P2P não mexe no relay',
+        current: { voiceMode: 'p2p', turnEnabled: true },
+        requested: {},
+        rejected: false,
+        turnEnabled: undefined,
+      },
+    ];
+
+    for (const c of relayCases) {
+      const got = resolveTurnSfuExclusion(c.current, c.requested);
+      if (got.rejected !== c.rejected || got.turnEnabled !== c.turnEnabled) {
+        throw new Error(
+          `Teste 19 (TURN×SFU): ${c.name} — esperado ` +
+          `{ rejected: ${c.rejected}, turnEnabled: ${c.turnEnabled} }, ` +
+          `recebido { rejected: ${got.rejected}, turnEnabled: ${got.turnEnabled} }`
+        );
+      }
+    }
+
+    // O range do SFU não pode invadir o range de relay do coturn, senão os dois
+    // disputam as mesmas portas UDP quando ambos estão ativos (#515).
+    if (LIMITS.SFU_DEFAULT_MAX_PORT >= LIMITS.TURN_RELAY_MIN_PORT) {
+      throw new Error('Teste 19: Range UDP do SFU colide com o range de relay do coturn');
+    }
+
     const sfuManager = new SfuManager();
     const routerCaps = await sfuManager.getRouterRtpCapabilities('channel-test-1');
     if (!routerCaps || !Array.isArray(routerCaps.codecs) || routerCaps.codecs.length === 0) {
@@ -829,6 +917,61 @@ async function runTests() {
         throw new Error('Teste 19: Servidor configurado com SFU deve retornar voiceMode: "sfu" no login');
       }
 
+      // O servidor precisa reportar as specs da máquina que realmente roda o
+      // SFU, senão o client volta a estimar capacidade com o hardware errado.
+      const reportedSpecs = authResSfu.payload?.server?.hostSpecs;
+      if (!reportedSpecs || !(reportedSpecs.cpuCores >= 1) || !(reportedSpecs.ramTotalGb > 0)) {
+        throw new Error('Teste 19: serverDetails deve incluir hostSpecs com CPU e RAM do host');
+      }
+
+      // TURN e SFU são mutuamente exclusivos: o SFU já é o relay, então ligar
+      // o coturn junto só queimaria portas e credenciais (#515).
+      await withTimeout(new Promise<void>((resolve, reject) => {
+        const handler = (data: RawData) => {
+          const res = JSON.parse(data.toString());
+          if (res.type === MessageType.SERVER_SETTINGS_UPDATED) {
+            wsSfu.off('message', handler);
+            reject(new Error('Teste 19: ativar TURN no modo SFU deveria ser recusado, não aplicado'));
+            return;
+          }
+          if (res.type !== MessageType.SERVER_ERROR) return;
+          wsSfu.off('message', handler);
+          resolve();
+        };
+        wsSfu.on('message', handler);
+        wsSfu.send(JSON.stringify({
+          type: MessageType.SERVER_UPDATE_SETTINGS,
+          requestId: 'req-sfu-turn',
+          payload: { turnEnabled: true },
+        } satisfies ProtocolMessage));
+      }), 5000, 'Teste 19: TURN recusado no modo SFU');
+
+      // O handshake do SFU precisa continuar funcionando com o modo ligado: o
+      // gate de dispatch consulta o voiceMode gravado antes de qualquer
+      // handler, e um erro aqui derrubaria a voz inteira (#515).
+      await withTimeout(new Promise<void>((resolve, reject) => {
+        const handler = (data: RawData) => {
+          const res = JSON.parse(data.toString());
+          if (res.requestId !== 'req-sfu-caps') return;
+          wsSfu.off('message', handler);
+          if (res.type !== MessageType.SFU_ROUTER_RTP_CAPABILITIES) {
+            reject(new Error(`Teste 19: handshake do SFU recusado em modo SFU (${res.type})`));
+            return;
+          }
+          if (!res.payload?.rtpCapabilities?.codecs?.length) {
+            reject(new Error('Teste 19: RTP Capabilities do handshake vieram vazias'));
+            return;
+          }
+          resolve();
+        };
+        wsSfu.on('message', handler);
+        wsSfu.send(JSON.stringify({
+          type: MessageType.SFU_GET_ROUTER_RTP_CAPABILITIES,
+          requestId: 'req-sfu-caps',
+          payload: { channelId: 'canal-sfu-handshake' },
+        } satisfies ProtocolMessage));
+      }), 10000, 'Teste 19: handshake do SFU aceito em modo SFU');
+
       await withTimeout(new Promise<void>((resolve, reject) => {
         const handler = (data: RawData) => {
           const res = JSON.parse(data.toString());
@@ -847,6 +990,33 @@ async function runTests() {
           payload: { voiceMode: 'p2p' },
         } satisfies ProtocolMessage));
       }), 5000, 'Teste 19: atualização dinâmica de voiceMode no servidor');
+
+      // Já em P2P, o mesmo pedido tem de ser recusado. Sem isso qualquer membro
+      // autenticado sobe um worker mediasoup — e o CREATE_WEBRTC_TRANSPORT
+      // ainda reserva um par de portas — num servidor que o operador deixou
+      // deliberadamente em P2P (#515).
+      await withTimeout(new Promise<void>((resolve, reject) => {
+        const handler = (data: RawData) => {
+          const res = JSON.parse(data.toString());
+          if (res.requestId !== 'req-p2p-caps') return;
+          wsSfu.off('message', handler);
+          if (res.type !== MessageType.SERVER_ERROR) {
+            reject(new Error(`Teste 19: handshake do SFU deveria ser recusado em modo P2P (${res.type})`));
+            return;
+          }
+          if (res.payload?.code !== ProtocolErrorCode.SFU_UNAVAILABLE) {
+            reject(new Error(`Teste 19: recusa do SFU em P2P deveria usar SFU_UNAVAILABLE (${res.payload?.code})`));
+            return;
+          }
+          resolve();
+        };
+        wsSfu.on('message', handler);
+        wsSfu.send(JSON.stringify({
+          type: MessageType.SFU_GET_ROUTER_RTP_CAPABILITIES,
+          requestId: 'req-p2p-caps',
+          payload: { channelId: 'canal-sfu-handshake' },
+        } satisfies ProtocolMessage));
+      }), 5000, 'Teste 19: handshake do SFU recusado em modo P2P');
 
       wsSfu.close();
     } finally {

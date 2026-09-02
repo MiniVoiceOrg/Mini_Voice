@@ -12,7 +12,7 @@ uses it to know which server each command applies to.
 
 ## Installation
 
-Requires **Node.js 20 or newer**.
+Requires **Node.js 22 or newer** (required by mediasoup, used in SFU mode).
 
 ```bash
 curl -fsSL https://monkyorg.github.io/install.sh | bash
@@ -31,8 +31,13 @@ Download the `.tgz` for the desired version from
 [Releases](https://github.com/MonkyOrg/Monky/releases) and install with:
 
 ```bash
-npm install -g https://github.com/MonkyOrg/Monky/releases/download/vX.Y.Z/monky-cli-X.Y.Z.tgz
+npm install -g --allow-scripts=mediasoup https://github.com/MonkyOrg/Monky/releases/download/vX.Y.Z/monky-cli-X.Y.Z.tgz
 ```
+
+`--allow-scripts=mediasoup` permits mediasoup's `postinstall`, which builds the
+SFU worker. From npm 12 on, install scripts are blocked by default, and without
+that binary the server still starts but calls fall back to P2P. On npm older
+than 11.16 the flag is unnecessary and can be omitted.
 
 </details>
 
@@ -459,9 +464,9 @@ The CLI automatically computes and displays a **capacity estimate** based on ava
 
 | Port | Protocol | Purpose |
 |---|---|---|
-| `40000-49999` | UDP | mediasoup worker WebRTC media ports |
+| `40000-49151` | UDP | mediasoup worker WebRTC media ports |
 
-Ensure UDP ports `40000-49999` are open in your server firewall (Oracle Cloud Security List, AWS Security Group, iptables/ufw).
+Ensure UDP ports `40000-49151` are open in your server firewall (Oracle Cloud Security List, AWS Security Group, iptables/ufw).
 
 ---
 

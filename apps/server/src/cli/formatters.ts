@@ -1,5 +1,35 @@
 import { LIMITS, Permission } from '@monky/shared';
 import { ANSI, color, PERMISSION_OPTIONS } from './constants';
+import { t } from './i18n/index';
+import type { SfuPortProblem } from '../infrastructure/sfu/SfuManager';
+import {
+  SFU_MIN_NODE_MAJOR,
+  SfuPreflightIssue,
+  SfuPreflightResult,
+} from '../infrastructure/sfu/SfuPreflight';
+
+/**
+ * Translated counterpart of the server-side `describeSfuPortProblem`.
+ *
+ * The manager reports a structured problem precisely so the operator reads it
+ * in their own language instead of the Portuguese string the server sends to
+ * the desktop client (#515).
+ */
+export function describeSfuPortProblem(problem: SfuPortProblem): string {
+  if (problem.code === 'turn-overlap') {
+    return t('sfu.portOverlap', {
+      minPort: String(problem.minPort),
+      maxPort: String(problem.maxPort),
+      turnMinPort: String(problem.turnMinPort),
+      turnMaxPort: String(problem.turnMaxPort),
+    });
+  }
+  return t('sfu.portBindFailed', {
+    port: String(problem.port),
+    minPort: String(problem.minPort),
+    maxPort: String(problem.maxPort),
+  });
+}
 
 /**
  * Value of a `--flag value` pair.
@@ -139,4 +169,55 @@ export function printVoiceModeComparisonTable(): void {
     console.log(`│ ${d} │ ${p} │ ${s} │`);
   }
   console.log(color('└───────────────────────────────────────┴─────────────────────────┴─────────────────────────┘', ANSI.dim));
+}
+
+/** Problem and matching fix for a preflight issue, in the CLI language. */
+function describeSfuIssue(issue: SfuPreflightIssue): { problem: string; hint: string } {
+  switch (issue.code) {
+    case 'node-version':
+      return {
+        problem: t('sfu.preflightNodeVersion', {
+          found: issue.found ?? '?',
+          required: SFU_MIN_NODE_MAJOR,
+        }),
+        hint: t('sfu.preflightHintNode', { required: SFU_MIN_NODE_MAJOR }),
+      };
+    case 'worker-missing':
+      return {
+        problem: t('sfu.preflightWorkerMissing', { path: issue.workerPath ?? '?' }),
+        hint: t('sfu.preflightHintWorker'),
+      };
+    case 'mediasoup-unresolved':
+    default:
+      return {
+        problem: t('sfu.preflightMediasoupUnresolved'),
+        hint: t('sfu.preflightHintReinstall'),
+      };
+  }
+}
+
+/**
+ * Reports an environment that cannot run the SFU, at the moment the mode is
+ * picked.
+ *
+ * `SfuManager` falls back to P2P rather than refusing to start, so without
+ * this the operator only notices when calls quietly degrade.
+ */
+export function printSfuPreflight(result: SfuPreflightResult): void {
+  if (result.ok) return;
+
+  console.log();
+  console.log(color(t('sfu.preflightTitle'), ANSI.bold));
+  for (const issue of result.issues) {
+    const { problem, hint } = describeSfuIssue(issue);
+    console.log(color(`  ✖ ${problem}`, ANSI.red));
+    console.log(color(`    → ${hint}`, ANSI.dim));
+  }
+  console.log(color(t('sfu.preflightConsequence'), ANSI.yellow));
+}
+
+/** One-line reason for listings, or an empty string when the SFU can run. */
+export function sfuPreflightSummary(result: SfuPreflightResult): string {
+  if (result.ok) return '';
+  return result.issues.map((issue) => describeSfuIssue(issue).problem).join(' ');
 }

@@ -1,4 +1,3 @@
-import { spawn, spawnSync } from 'child_process';
 import { LIMITS, LOG_LEVELS, LogLevel } from '@monky/shared';
 import { SqliteServerRepository } from '../../infrastructure/database/SqliteRepositories';
 import { ANSI, color, DEFAULT_SERVER_NAME } from '../constants';
@@ -15,6 +14,7 @@ import {
   requirePm2,
   writeEcosystem,
 } from '../pm2';
+import { runAsync, runSync } from '../process';
 import { hasServerDatabase, RegisteredServer, registerServer } from '../registry';
 import { confirmDisconnectingUsers } from '../onlineUsers';
 import { knownServers, resolveTargetServer } from '../target';
@@ -92,7 +92,7 @@ export async function buildStartPlan(dataDir: string, args: string[]): Promise<S
 function retireLegacyProcess(dataDir: string): void {
   if (!findLegacyProcessFor(dataDir)) return;
   console.log(color(t('lifecycle.migratingPm2'), ANSI.dim));
-  spawnSync('pm2', ['delete', LEGACY_PM2_PROCESS_NAME], { stdio: 'ignore', shell: true });
+  runSync('pm2', ['delete', LEGACY_PM2_PROCESS_NAME], { stdio: 'ignore' });
 }
 
 export async function startServerCommand(globalArgs: GlobalArgs, args: string[]): Promise<void> {
@@ -118,12 +118,12 @@ export async function startServerCommand(globalArgs: GlobalArgs, args: string[])
 
   // startOrRestart re-reads the ecosystem file, so a process PM2 still knows
   // about from a previous "monky stop" picks up the current port.
-  const result = spawnSync('pm2', ['startOrRestart', ecosystemPath], { stdio: 'inherit', shell: true });
+  const result = runSync('pm2', ['startOrRestart', ecosystemPath], { stdio: 'inherit' });
   if (result.status !== 0) {
     throw new Error(t('lifecycle.startFailed'));
   }
 
-  spawnSync('pm2', ['save'], { stdio: 'ignore', shell: true });
+  runSync('pm2', ['save'], { stdio: 'ignore' });
   registerServer(target.dataDir, { name: plan.serverName, port: plan.port });
 
   console.log();
@@ -150,12 +150,12 @@ export async function stopServerCommand(globalArgs: GlobalArgs): Promise<void> {
   if (!(await confirmDisconnectingUsers(target, 'parar'))) return;
 
   if (!isMonkyServerRegistered(processName) && findLegacyProcessFor(target.dataDir)) {
-    spawnSync('pm2', ['stop', LEGACY_PM2_PROCESS_NAME], { stdio: 'inherit', shell: true });
+    runSync('pm2', ['stop', LEGACY_PM2_PROCESS_NAME], { stdio: 'inherit' });
     console.log(color(t('lifecycle.stopped'), ANSI.green));
     return;
   }
 
-  const result = spawnSync('pm2', ['stop', processName], { encoding: 'utf8', shell: true });
+  const result = runSync('pm2', ['stop', processName], { encoding: 'utf8' });
   if (result.status !== 0) {
     const output = `${result.stdout ?? ''}${result.stderr ?? ''}`;
     if (output.includes('not found')) {
@@ -192,12 +192,12 @@ export async function restartServerCommand(globalArgs: GlobalArgs, args: string[
   const plan = await buildStartPlan(target.dataDir, args);
   const ecosystemPath = writeEcosystem(plan);
 
-  const result = spawnSync('pm2', ['startOrRestart', ecosystemPath], { stdio: 'inherit', shell: true });
+  const result = runSync('pm2', ['startOrRestart', ecosystemPath], { stdio: 'inherit' });
   if (result.status !== 0) {
     throw new Error(t('lifecycle.restartFailed'));
   }
 
-  spawnSync('pm2', ['save'], { stdio: 'ignore', shell: true });
+  runSync('pm2', ['save'], { stdio: 'ignore' });
   registerServer(target.dataDir, { name: plan.serverName, port: plan.port });
 
   console.log(color(t('lifecycle.restarted'), ANSI.green));
@@ -271,12 +271,12 @@ export async function logsServerCommand(globalArgs: GlobalArgs, args: string[] =
   // Without a level filter, hand the terminal straight to PM2 so its own
   // colours and formatting survive; filtering requires reading the stream.
   if (!minLevel) {
-    spawnSync('pm2', pm2Args, { stdio: 'inherit', shell: true });
+    runSync('pm2', pm2Args, { stdio: 'inherit' });
     return;
   }
 
   const threshold = LOG_LEVELS.indexOf(minLevel);
-  const child = spawn('pm2', pm2Args, { shell: true });
+  const child = runAsync('pm2', pm2Args);
   let pending = '';
   let keepingCurrent = false;
 

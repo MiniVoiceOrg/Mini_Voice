@@ -33,7 +33,7 @@ const t = computed(() =>
           'There is no desktop build for Linux yet, but the server runs there through the CLI below.',
         cliTitle: 'Server CLI',
         cliBody:
-          'Host a server on a VPS or on a machine with no desktop app. Requires Node.js 20 or newer.',
+          'Host a server on a VPS or on a machine with no desktop app. Requires Node.js 22 or newer.',
         cliManual: 'Without the install script, or on Windows',
         copy: 'Copy',
         copied: 'Copied!',
@@ -66,7 +66,7 @@ const t = computed(() =>
           'Ainda não existe build do app para Linux, mas o servidor roda por lá através do CLI abaixo.',
         cliTitle: 'CLI do servidor',
         cliBody:
-          'Para hospedar um servidor em uma VPS ou em uma máquina sem o app. Precisa do Node.js 20 ou mais novo.',
+          'Para hospedar um servidor em uma VPS ou em uma máquina sem o app. Precisa do Node.js 22 ou mais novo.',
         cliManual: 'Sem o script de instalação, ou no Windows',
         copy: 'Copiar',
         copied: 'Copiado!',
@@ -153,8 +153,10 @@ const cliScript = computed(() =>
     : 'curl -fsSL https://monkyorg.github.io/install.sh | bash',
 );
 
+// `--allow-scripts=mediasoup` releases the postinstall that builds the SFU
+// worker, which npm 12 blocks by default.
 const cliNpm = computed(() =>
-  release.value?.cli ? `npm install -g ${release.value.cli.url}` : '',
+  release.value?.cli ? `npm install -g --allow-scripts=mediasoup ${release.value.cli.url}` : '',
 );
 
 const copied = ref('');

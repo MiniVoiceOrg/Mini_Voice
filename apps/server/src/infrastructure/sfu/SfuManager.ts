@@ -1,5 +1,6 @@
 import os from 'os';
 import net from 'net';
+import dgram from 'dgram';
 import * as mediasoup from 'mediasoup';
 import type { RouterRtpCodecCapability, TransportListenInfo } from 'mediasoup/node/lib/types.js';
 import { LIMITS } from '@monky/shared';
@@ -73,6 +74,48 @@ export interface SfuTransportRecord {
   direction: 'send' | 'recv';
 }
 
+/**
+ * Why the configured UDP range cannot carry media.
+ *
+ * Structured instead of a message so the CLI and the desktop app can translate
+ * it, the same way {@link checkSfuPreflight} reports a missing worker.
+ */
+export type SfuPortProblem =
+  | { code: 'bind-failed'; port: number; minPort: number; maxPort: number }
+  | {
+      code: 'turn-overlap';
+      minPort: number;
+      maxPort: number;
+      turnMinPort: number;
+      turnMaxPort: number;
+    };
+
+/**
+ * Renders a port problem as the human-readable text carried in the error
+ * payload, and in the server log.
+ *
+ * Portuguese, like the other messages the server sends straight to the client
+ * (`ensureRelayCanRun`). The current desktop client translates
+ * `SFU_UNAVAILABLE` through its own catalogue and only falls back to this text
+ * when it does not recognise the code, so this is what an older client — or
+ * any non-desktop consumer — gets to see. The CLI never reads it: it renders
+ * the structured `SfuPortProblem` through `t()` instead.
+ */
+export function describeSfuPortProblem(problem: SfuPortProblem): string {
+  if (problem.code === 'turn-overlap') {
+    return (
+      `O range UDP do SFU (${problem.minPort}-${problem.maxPort}) invade o range de relay do ` +
+      `coturn (${problem.turnMinPort}-${problem.turnMaxPort}). Os dois disputariam as mesmas portas. ` +
+      'Ajuste o range do SFU para terminar antes de ' + problem.turnMinPort + '.'
+    );
+  }
+  return (
+    `A porta ${problem.port}/UDP não pôde ser reservada, então o range ${problem.minPort}-${problem.maxPort} ` +
+    'não está utilizável. Libere esse range (UDP) no firewall da VPS e confira se nenhum outro processo o ocupa. ' +
+    'Sem essas portas o SFU não consegue transmitir mídia.'
+  );
+}
+
 export class SfuManager {
   private worker: mediasoup.types.Worker | null = null;
   private routers: Map<string, mediasoup.types.Router> = new Map(); // key = channelId
@@ -103,6 +146,94 @@ export class SfuManager {
 
   public getAnnouncedIp(): string | null {
     return this.announcedIp;
+  }
+
+  public getPortRange(): { minPort: number; maxPort: number } {
+    return { minPort: this.rtcMinPort, maxPort: this.rtcMaxPort };
+  }
+
+  /**
+   * Checks that the media range can actually be used, mirroring what
+   * `CoturnManager.checkPortReachability` does for the relay (#515).
+   *
+   * Without this the worker starts, reports success and only fails later when a
+   * transport tries to allocate a blocked port — by then the call is already
+   * degraded and nobody knows why.
+   *
+   * Only a local bind is attempted: unlike the TURN check there is no fixed
+   * port an external service could probe, so a firewall that drops inbound
+   * traffic cannot be detected from here. The bind still catches the common
+   * cases — a conflicting process or a range the OS refuses.
+   */
+  public async checkPortAvailability(): Promise<SfuPortProblem | null> {
+    const overlap = this.findTurnOverlap();
+    if (overlap) return overlap;
+
+    // Sampling: binding ten thousand sockets to prove a range is free would
+    // cost more than it tells us. The edges plus the middle catch a range that
+    // is entirely unusable, which is what actually happens in practice.
+    const span = this.rtcMaxPort - this.rtcMinPort;
+    const samplePorts = [
+      this.rtcMinPort,
+      this.rtcMinPort + Math.floor(span / 2),
+      this.rtcMaxPort,
+    ];
+
+    for (const port of samplePorts) {
+      const bindOk = await SfuManager.probeUdpBind(port, 2000);
+      if (!bindOk) {
+        return {
+          code: 'bind-failed',
+          port,
+          minPort: this.rtcMinPort,
+          maxPort: this.rtcMaxPort,
+        };
+      }
+    }
+
+    return null;
+  }
+
+  /**
+   * coturn allocates relay ports anywhere in its own range, so an overlap makes
+   * the two servers race for the same port once both are enabled.
+   */
+  private findTurnOverlap(): SfuPortProblem | null {
+    const turnMinPort = LIMITS.TURN_RELAY_MIN_PORT;
+    const turnMaxPort = LIMITS.TURN_RELAY_MAX_PORT;
+    if (this.rtcMinPort > turnMaxPort || this.rtcMaxPort < turnMinPort) {
+      return null;
+    }
+    return {
+      code: 'turn-overlap',
+      minPort: this.rtcMinPort,
+      maxPort: this.rtcMaxPort,
+      turnMinPort,
+      turnMaxPort,
+    };
+  }
+
+  /** Binds a UDP socket briefly to prove the port is free. */
+  private static probeUdpBind(port: number, timeoutMs: number): Promise<boolean> {
+    return new Promise((resolve) => {
+      const socket = dgram.createSocket('udp4');
+      const timer = setTimeout(() => {
+        try { socket.close(); } catch { /* already closed */ }
+        resolve(false);
+      }, timeoutMs);
+
+      socket.once('error', () => {
+        clearTimeout(timer);
+        try { socket.close(); } catch { /* already closed */ }
+        resolve(false);
+      });
+
+      socket.bind(port, '0.0.0.0', () => {
+        clearTimeout(timer);
+        try { socket.close(); } catch { /* already closed */ }
+        resolve(true);
+      });
+    });
   }
 
   public async init(): Promise<boolean> {

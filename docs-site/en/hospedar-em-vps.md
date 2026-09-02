@@ -4,7 +4,7 @@ To keep the server up 24/7, run the server alone on a Linux machine — no
 graphical interface and no repository clone. Everything is done by the **Monky
 CLI**, shipped ready to use in every release.
 
-Requires **Node.js 20 or newer** (CI uses 22).
+Requires **Node.js 22 or newer** (required by mediasoup; CI also uses 22).
 
 ## Step by step
 
@@ -12,7 +12,7 @@ Requires **Node.js 20 or newer** (CI uses 22).
 # 1. Install the CLI from the release
 #    The ready-to-paste command, already on the latest version, is on the
 #    download page: https://monkyorg.github.io/Monky/en/download
-npm install -g https://github.com/MonkyOrg/Monky/releases/download/vX.Y.Z/monky-cli-X.Y.Z.tgz
+npm install -g --allow-scripts=mediasoup https://github.com/MonkyOrg/Monky/releases/download/vX.Y.Z/monky-cli-X.Y.Z.tgz
 
 # 2. Create the server (interactive)
 monky create
@@ -35,7 +35,7 @@ full command reference lives in [Monky CLI](/en/cli).
 | `3000` (or the chosen one) | TCP | Login, chat, channels and signalling | Yes, in the VPS firewall |
 | `41234` | UDP | Local network discovery | No, on a VPS |
 | High dynamic | UDP | P2P voice, video and screen | Usually works through STUN |
-| `40000-49999` | UDP | WebRTC media in SFU mode (mediasoup) | Only with SFU mode enabled |
+| `40000-49151` | UDP | WebRTC media in SFU mode (mediasoup) | Only with SFU mode enabled |
 | `3478` | TCP and UDP | TURN relay, if you enable it | Only with the relay on |
 | `49152-65535` | UDP | Media forwarded by the relay | Only with the relay on |
 
