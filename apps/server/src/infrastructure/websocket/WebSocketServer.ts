@@ -1411,6 +1411,20 @@ export class WebSocketServer {
 
     const previous = this.signalingService.leaveVoiceChannel(session.sessionId);
     if (previous) {
+      // Hanging up keeps the socket open, so nothing else would ever reap what
+      // this session held in the SFU: the client's own teardown is local, and
+      // the producers would stay listed for the next person to join, who would
+      // then be told to consume a microphone that left.
+      if (this.sfuManager) {
+        const { closedProducerIds } = this.sfuManager.closeSession(session.sessionId);
+        for (const producerId of closedProducerIds) {
+          this.broadcast({
+            type: MessageType.SFU_PRODUCER_CLOSED,
+            payload: { channelId: previous.channelId, producerId } satisfies SfuProducerClosedPayload,
+          });
+        }
+      }
+
       const leavePayload: VoiceUserLeftPayload = {
         channelId: previous.channelId,
         userId: session.user.id,
@@ -1525,6 +1539,22 @@ export class WebSocketServer {
         this.broadcast({
           type: MessageType.SFU_PRODUCER_CLOSED,
           payload: { channelId: payload.channelId, producerId } satisfies SfuProducerClosedPayload,
+        });
+      }
+      // Whatever this session still holds in another channel is over too. The
+      // join it belonged to may only have reached this point *after* the
+      // VOICE_JOIN for the new channel was handled — clicking straight from one
+      // channel to another starts a join for the old one that is only abandoned
+      // once its first round-trip returns — and joins are serialised, so a
+      // transport for another channel arriving here is always the older one.
+      const abandoned = this.sfuManager.closeSessionExcept(
+        session.sessionId,
+        payload.channelId
+      );
+      for (const { channelId, producerId } of abandoned.closedProducerIds) {
+        this.broadcast({
+          type: MessageType.SFU_PRODUCER_CLOSED,
+          payload: { channelId, producerId } satisfies SfuProducerClosedPayload,
         });
       }
       const transportOptions = await this.sfuManager.createWebRtcTransport(
