@@ -1,6 +1,7 @@
 # Features
 
-- Low-latency P2P voice (WebRTC mesh), with no audio routed through the server.
+- Low-latency voice over WebRTC, straight between participants (P2P Mesh), with no audio routed through the server.
+- Optional SFU mode (`mediasoup`): everyone sends their stream once and the server fans it out, for larger groups and for anyone sharing a high-resolution screen. The app and the CLI ship a capacity estimator to size the host before turning it on.
 - Speech detection (VAD) with adjustable sensitivity and live meter.
 - AI noise suppression (RNNoise).
 - Camera with adaptive resolution and bitrate.

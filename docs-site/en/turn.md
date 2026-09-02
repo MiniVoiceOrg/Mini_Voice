@@ -13,6 +13,18 @@ each of them connects fine with everyone else.
 pair. It is a last resort: WebRTC always tries the direct route first and only
 falls back to the relay when there is no alternative.
 
+::: info This page applies to P2P Mesh mode
+In [SFU mode](/en/criar-seu-servidor#voice-media-modes-p2p-mesh-vs-sfu) every
+participant already connects to the server rather than to each other, so CGNAT
+stops getting in the way and the relay has no job left — the SFU *is* the relay.
+Enabled alongside it, coturn would just hold port 3478 and its whole range
+without ever serving a single allocation, which is why Monky refuses the
+combination from both the app and the CLI. If you are on SFU and media does not
+flow, the fix is to
+[open the SFU ports](/en/hospedar-em-vps#opening-the-sfu-mode-ports), not to turn
+TURN on.
+:::
+
 ## Requirements
 
 - A **Linux** host with a public IP (a typical VPS). No coturn package exists

@@ -24,9 +24,9 @@ trafega direto entre as pessoas**.
 
 </div>
 
-O servidor cuida de login, canais, chat, cargos e **sinalização**. Ele apresenta
-os participantes uns aos outros e sai da frente: voz, vídeo e tela trafegam
-**P2P via WebRTC**, sem passar por ele.
+O servidor cuida de login, canais, chat, cargos e **sinalização**. No modo
+padrão, ele apresenta os participantes uns aos outros e sai da frente: voz,
+vídeo e tela trafegam **P2P via WebRTC**, sem passar por ele.
 
 Isso tem duas consequências que explicam quase todo o resto do projeto:
 
@@ -34,6 +34,10 @@ Isso tem duas consequências que explicam quase todo o resto do projeto:
   modesto aguenta o grupo. O custo de banda fica com os participantes.
 - **A conversa não é legível pelo servidor.** Mesmo quem hospeda não consegue
   ouvir a chamada — o WebRTC é criptografado ponta a ponta entre os pares.
+
+::: warning As duas consequências valem para o modo padrão
+Quem hospeda pode trocar o plano de mídia para o [modo SFU](#topologia-2-sfu-selective-forwarding-unit), e aí as duas afirmações acima deixam de valer: o servidor passa a carregar toda a mídia do canal e a ter acesso ao conteúdo dela. O SRTP termina no `mediasoup`, que decifra os pacotes e os cifra de novo para cada destinatário — é assim que qualquer SFU funciona, e é o preço de não mandar o mesmo vídeo N vezes. Continua não existindo terceiro na jogada, já que o servidor é seu, mas o "nem quem hospeda consegue ouvir" é uma propriedade do P2P Mesh, não do Monky.
+:::
 
 ## Os componentes
 
@@ -473,8 +477,9 @@ packages/
 
 Coisas que são consequência direta da arquitetura, não bugs:
 
-- **Mesh não escala.** Ótimo para um punhado de amigos, ruim para dezenas. Sair
-  disso exigiria um SFU.
+- **Mesh não escala.** Ótimo para um punhado de amigos, ruim para dezenas. Quem
+  precisa de grupos maiores troca para o [modo SFU](#topologia-2-sfu-selective-forwarding-unit),
+  pagando com banda e CPU do host o que economiza na conexão de cada participante.
 - **TURN desligado por padrão.** Redes muito restritivas podem impedir a
   conexão de mídia mesmo com o servidor acessível. Há relay opcional, mas ele
   custa banda do host e só roda em Linux.

@@ -13,6 +13,17 @@ O **TURN** resolve isso fazendo o servidor **repassar a mídia** desse par
 específico. É o último recurso: o WebRTC sempre tenta a rota direta primeiro e
 só cai no relay quando não há alternativa.
 
+::: info Esta página vale para o modo P2P Mesh
+No [modo SFU](/criar-seu-servidor#modos-de-voz-e-midia-p2p-mesh-vs-sfu) cada
+participante já se conecta ao servidor em vez de aos outros, então o CGNAT deixa
+de atrapalhar e o relay perde a função — o próprio SFU é o relay. Ligado junto,
+o coturn só seguraria a porta 3478 e todo o seu range sem servir uma única
+alocação, por isso o Monky recusa a combinação tanto pelo app quanto pela CLI.
+Se você usa SFU e a mídia não flui, o caminho é
+[abrir as portas do SFU](/hospedar-em-vps#abrindo-as-portas-do-modo-sfu),
+não ligar o TURN.
+:::
+
 ## Requisitos
 
 - Host **Linux** com IP público (uma VPS típica). Não existe pacote do coturn

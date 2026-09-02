@@ -1,6 +1,7 @@
 # Recursos
 
-- Voz P2P (WebRTC Mesh) de baixa latência, sem áudio passar pelo servidor.
+- Voz de baixa latência via WebRTC, direto entre os participantes (P2P Mesh) e sem o áudio passar pelo servidor.
+- Modo SFU opcional (`mediasoup`): cada pessoa envia seu fluxo uma única vez e o servidor distribui aos demais, para grupos maiores e para quem compartilha tela em alta resolução. O app e a CLI trazem um estimador de capacidade para dimensionar o host antes de ligar.
 - Detecção de fala (VAD) com sensibilidade ajustável e medidor ao vivo.
 - Supressão de ruído com IA (RNNoise).
 - Câmera com resolução e bitrate adaptativos.

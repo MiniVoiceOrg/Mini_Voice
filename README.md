@@ -1,7 +1,7 @@
 <div align="center">
   <img src="images/Logo.png" alt="Monky" width="220">
   <h1>Monky 🎙️</h1>
-  <p><b>Voz, vídeo, tela e chat entre amigos — no seu próprio servidor, sem cadastro e sem intermediários.</b></p>
+  <p><b>Voz, vídeo, tela e chat entre amigos — no seu próprio servidor, sem cadastro e sem empresa nenhuma no meio.</b></p>
 
   <p>
     <a href="https://github.com/MonkyOrg/Monky/releases/latest"><img alt="Release" src="https://img.shields.io/github/v/release/MonkyOrg/Monky?label=download&color=5865f2"></a>
@@ -80,7 +80,7 @@ flowchart TB
 ```
 
 - **P2P Mesh (Padrão):** O servidor apenas sinaliza; áudio, vídeo e tela vão direto entre os usuários. Não consome banda de mídia no host.
-- **SFU Centralizado (mediasoup):** O servidor roteia os fluxos WebRTC. Quem compartilha tela em 1080p60 envia apenas 1 stream, economizando CPU e upload. Inclui contingência automática para P2P caso o processo SFU sofra instabilidades.
+- **SFU Centralizado (mediasoup):** O servidor roteia os fluxos WebRTC. Quem compartilha tela em 1080p60 envia apenas 1 stream, economizando CPU e upload. Se o processo SFU cair, o cliente avisa em tela e refaz a sessão sozinho assim que ele voltar.
 
 O detalhe completo — protocolo, autenticação por chave pública, banco, permissões, topologias de mídia, perfis de qualidade e limites — está em **[Arquitetura](https://monkyorg.github.io/Monky/arquitetura)**.
 

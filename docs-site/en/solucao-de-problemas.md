@@ -10,7 +10,9 @@
 | Shared screen has no sound | Share a whole screen and check the source app volume |
 | Nothing under Servers on the Network | Discovery only works on the same LAN; click Scan again and check UDP `41234` in the firewall |
 | One participant is silent only for me | Right-click them and set individual volume back to 100% |
-| I can only fail to talk to **one** specific person (everyone else works) | A red `link_off` icon shows next to them. You are both likely behind CGNAT with no direct route. The host can enable the [TURN relay](/en/turn); otherwise both of you need a VPN |
+| I can only fail to talk to **one** specific person (everyone else works) | A red `link_off` icon shows next to them. You are both likely behind CGNAT with no direct route. The host can enable the [TURN relay](/en/turn); otherwise both of you need a VPN. This only happens in P2P Mesh mode |
+| In **SFU mode**, nobody hears anybody and the call never connects | The `40000-49151` range must be open in **both UDP and TCP** on the firewall and the router. Signalling uses a different port, so the server looks fine while no media gets through. See [Opening the SFU mode ports](/en/hospedar-em-vps#opening-the-sfu-mode-ports) |
+| In **SFU mode**, the call drops and the app keeps saying it is reconnecting | The SFU process crashed or never started on the server. The app rebuilds the session on its own once it is back; whoever hosts should check `monky status` and `monky logs` |
 | Avast (or another antivirus) flags the installer/updater | False positive — see [Antivirus: Avast and similar](#antivirus-avast-and-similar) |
 | The **TURN relay** switch is greyed out and will not budge | The host cannot run the relay. The notice under the switch says why: the server is not on Linux, the server predates the feature (update the server), or the server lacks the privileges to install coturn (run `sudo bash scripts/install-turn.sh` once) |
 | TURN is enabled but nobody connects via relay | Ports may be closed. See the [full port guide](/en/turn#required-ports). Run `monky status` — it should show `✔ accessible` |
@@ -128,6 +130,14 @@ troubleshoot.
 If the server is not Linux (TURN unavailable) or the admin can't open the
 ports, both members can join a **VPN** (such as Tailscale, ZeroTier or
 WireGuard). The VPN creates a virtual network that bypasses CGNAT.
+
+### Option 3: SFU mode (if the host is willing to carry the media)
+
+In [SFU mode](/en/criar-seu-servidor#voice-media-modes-p2p-mesh-vs-sfu) nobody
+connects to anybody: each person only talks to the server, so there is no pair
+for CGNAT to break. It settles the problem for good, but it moves the cost — all
+media now flows through the host, which needs the bandwidth and the
+`40000-49151` ports open.
 
 ### How to know if you're behind CGNAT?
 

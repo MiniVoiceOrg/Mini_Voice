@@ -36,8 +36,10 @@ npm install -g --allow-scripts=mediasoup https://github.com/MonkyOrg/Monky/relea
 
 O `--allow-scripts=mediasoup` libera o `postinstall` do mediasoup, que compila o
 worker do SFU. A partir do npm 12 os scripts de instalação são bloqueados por
-padrão, e sem esse binário o servidor sobe mas as chamadas caem para P2P. Em
-versões de npm anteriores à 11.16 o parâmetro é desnecessário e pode ser omitido.
+padrão, e sem esse binário o servidor sobe mas o modo SFU não funciona: as
+chamadas ficam sem mídia e o cliente fica tentando reconectar até o worker subir.
+Em versões de npm anteriores à 11.16 o parâmetro é desnecessário e pode ser
+omitido.
 
 </details>
 
