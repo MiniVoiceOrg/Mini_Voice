@@ -278,12 +278,18 @@ export class WebRtcManager {
       const channelId = voiceStore.currentVoiceChannelId;
       if (!channelId) return;
 
-      const currentMode = this.isSfuMode() ? 'sfu' : 'p2p';
-      const targetMode = isSfu ? 'sfu' : 'p2p';
-      if (currentMode === targetMode) return;
+      const currentlyRunningSfu = this.sfuEngine.isReady() || this.sfuEngine.isChannelConnected();
+      const targetIsSfu = isSfu && !this.isContingencyP2p;
 
-      console.log(`[WebRTC] Voice mode dynamically switched from ${currentMode.toUpperCase()} to ${targetMode.toUpperCase()}. Migrating active call...`);
-      clientLog.info('WEBRTC', `Voice mode dynamically switched from ${currentMode.toUpperCase()} to ${targetMode.toUpperCase()}`);
+      if (currentlyRunningSfu === targetIsSfu) {
+        return;
+      }
+
+      const fromMode = currentlyRunningSfu ? 'SFU' : 'P2P';
+      const toMode = targetIsSfu ? 'SFU' : 'P2P';
+
+      console.log(`[WebRTC] Dynamic voice mode transition requested: ${fromMode} -> ${toMode}. Migrating active call...`);
+      clientLog.info('WEBRTC', `Dynamic voice mode transition requested: ${fromMode} -> ${toMode}`);
 
       // 1. Cleanly tear down previous session connections and media router elements
       this.closeAllPeers();
@@ -299,14 +305,14 @@ export class WebRtcManager {
 
       // 3. Re-initialize in the new target mode
       this.isContingencyP2p = false;
-      if (targetMode === 'sfu') {
+      if (targetIsSfu) {
         await this.initSfuForCurrentChannel();
       } else {
         this.connectToAllParticipants();
       }
 
       // 4. Notify UI of the mode switch
-      appEvents.emit('voice.mode_switched', { mode: targetMode });
+      appEvents.emit('voice.mode_switched', { mode: targetIsSfu ? 'sfu' : 'p2p' });
     });
   }
 
