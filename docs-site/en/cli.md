@@ -36,7 +36,8 @@ npm install -g --allow-scripts=mediasoup https://github.com/MonkyOrg/Monky/relea
 
 `--allow-scripts=mediasoup` permits mediasoup's `postinstall`, which builds the
 SFU worker. From npm 12 on, install scripts are blocked by default, and without
-that binary the server still starts but calls fall back to P2P. On npm older
+that binary the server still starts but SFU mode does not work: calls carry no
+media and the client keeps retrying until the worker comes up. On npm older
 than 11.16 the flag is unnecessary and can be omitted.
 
 </details>

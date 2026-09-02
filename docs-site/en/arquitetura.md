@@ -24,9 +24,9 @@ Everything in Monky starts from one split: **what the server controls** and
 
 </div>
 
-The server handles login, channels, chat, roles and **signaling**. It introduces
-participants to each other and then steps aside: voice, video and screen travel
-**P2P over WebRTC**, without passing through it.
+The server handles login, channels, chat, roles and **signaling**. In the default
+mode, it introduces participants to each other and then steps aside: voice,
+video and screen travel **P2P over WebRTC**, without passing through it.
 
 That has two consequences which explain nearly everything else in the project:
 
@@ -34,6 +34,10 @@ That has two consequences which explain nearly everything else in the project:
   is enough for the group. The bandwidth cost sits with the participants.
 - **The conversation is not readable by the server.** Even the person hosting
   cannot listen in — WebRTC is encrypted end to end between the peers.
+
+::: warning Both consequences describe the default mode
+Whoever hosts can switch the media plane to [SFU mode](#topology-2-sfu-selective-forwarding-unit), and then neither statement above holds: the server starts carrying all of the channel's media and gains access to its contents. SRTP terminates at `mediasoup`, which decrypts each packet and encrypts it again for every recipient — that is how any SFU works, and it is the price of not sending the same video N times. There is still no third party involved, since the server is yours, but "not even the host can listen in" is a property of P2P Mesh, not of Monky.
+:::
 
 ## The components
 
@@ -472,8 +476,9 @@ packages/
 
 Things that follow directly from the architecture, and are not bugs:
 
-- **Mesh does not scale.** Great for a handful of friends, bad for dozens. Moving
-  past it would require an SFU.
+- **Mesh does not scale.** Great for a handful of friends, bad for dozens. Larger
+  groups switch to [SFU mode](#topology-2-sfu-selective-forwarding-unit), paying
+  with host bandwidth and CPU for what each participant's connection saves.
 - **TURN is off by default.** Very restrictive networks can prevent the media
   connection even when the server is reachable. An optional relay exists, but it
   costs the host bandwidth and only runs on Linux.
