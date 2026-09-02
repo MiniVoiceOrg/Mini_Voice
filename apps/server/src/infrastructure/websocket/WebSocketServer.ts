@@ -1384,6 +1384,7 @@ export class WebSocketServer {
   ): Promise<void> {
     if (!session.user || !session.sessionId) return;
     try {
+      console.log(`[SFU Server:WS] User ${session.user.nickname} (${session.sessionId}) requested router capabilities for channel ${payload.channelId}`);
       if (!this.sfuManager.isReady()) {
         await this.sfuManager.init();
       }
@@ -1397,6 +1398,7 @@ export class WebSocketServer {
         } satisfies SfuRouterRtpCapabilitiesPayload,
       });
     } catch (err: any) {
+      console.error(`[SFU Server:WS] Error getting router capabilities for ${session.user.nickname}:`, err);
       this.sendError(session.ws, ProtocolErrorCode.INTERNAL_ERROR, err?.message || 'Erro ao obter capacidades do roteador SFU', requestId);
     }
   }
@@ -1411,6 +1413,7 @@ export class WebSocketServer {
       if (!this.sfuManager.isReady()) {
         await this.sfuManager.init();
       }
+      console.log(`[SFU Server:WS] User ${session.user.nickname} (${session.sessionId}) creating ${payload.direction} transport for channel ${payload.channelId}`);
       const transportOptions = await this.sfuManager.createWebRtcTransport(
         session.sessionId,
         payload.channelId,
@@ -1426,6 +1429,7 @@ export class WebSocketServer {
         } satisfies SfuWebRtcTransportCreatedPayload,
       });
     } catch (err: any) {
+      console.error(`[SFU Server:WS] Error creating transport for ${session.user.nickname}:`, err);
       this.sendError(session.ws, ProtocolErrorCode.INTERNAL_ERROR, err?.message || 'Erro ao criar transporte SFU', requestId);
     }
   }
@@ -1437,6 +1441,7 @@ export class WebSocketServer {
   ): Promise<void> {
     if (!session.user || !session.sessionId) return;
     try {
+      console.log(`[SFU Server:WS] User ${session.user.nickname} (${session.sessionId}) connecting transport ${payload.transportId}`);
       await this.sfuManager.connectWebRtcTransport(payload.transportId, payload.dtlsParameters);
       this.send(session.ws, {
         type: MessageType.SFU_WEBRTC_TRANSPORT_CONNECTED,
@@ -1447,6 +1452,7 @@ export class WebSocketServer {
         },
       });
     } catch (err: any) {
+      console.error(`[SFU Server:WS] Error connecting transport ${payload.transportId} for ${session.user.nickname}:`, err);
       this.sendError(session.ws, ProtocolErrorCode.INTERNAL_ERROR, err?.message || 'Erro ao conectar transporte SFU', requestId);
     }
   }
@@ -1458,6 +1464,7 @@ export class WebSocketServer {
   ): Promise<void> {
     if (!session.user || !session.sessionId) return;
     try {
+      console.log(`[SFU Server:WS] User ${session.user.nickname} (${session.sessionId}) producing ${payload.kind} (${payload.appData?.mediaType}) in channel ${payload.channelId}`);
       const { id } = await this.sfuManager.produce(
         session.sessionId,
         payload.channelId,
@@ -1486,6 +1493,7 @@ export class WebSocketServer {
       };
 
       const participants = this.signalingService.getParticipantsInChannel(payload.channelId);
+      console.log(`[SFU Server:WS] Broadcasting SFU_NEW_PRODUCER to ${participants.length - 1} other participants in channel ${payload.channelId}`);
       for (const p of participants) {
         if (p.sessionId === session.sessionId) continue;
         const sock = this.sessionSockets.get(p.sessionId);
@@ -1497,6 +1505,7 @@ export class WebSocketServer {
         }
       }
     } catch (err: any) {
+      console.error(`[SFU Server:WS] Error producing for ${session.user.nickname}:`, err);
       this.sendError(session.ws, ProtocolErrorCode.INTERNAL_ERROR, err?.message || 'Erro ao produzir mídia no SFU', requestId);
     }
   }
@@ -1508,6 +1517,7 @@ export class WebSocketServer {
   ): Promise<void> {
     if (!session.user || !session.sessionId) return;
     try {
+      console.log(`[SFU Server:WS] User ${session.user.nickname} (${session.sessionId}) consuming producer ${payload.producerId}`);
       const consumed = await this.sfuManager.consume(
         session.sessionId,
         payload.channelId,
@@ -1525,6 +1535,7 @@ export class WebSocketServer {
         } satisfies SfuConsumedPayload,
       });
     } catch (err: any) {
+      console.error(`[SFU Server:WS] Error consuming producer ${payload.producerId} for ${session.user.nickname}:`, err);
       this.sendError(session.ws, ProtocolErrorCode.INTERNAL_ERROR, err?.message || 'Erro ao consumir mídia no SFU', requestId);
     }
   }
@@ -1534,6 +1545,7 @@ export class WebSocketServer {
     payload: SfuProducerClosedPayload
   ): void {
     if (!session.user || !session.sessionId) return;
+    console.log(`[SFU Server:WS] User ${session.user.nickname} closed producer ${payload.producerId}`);
     this.sfuManager.closeProducer(payload.producerId);
     void this.broadcastToChannel(payload.channelId, {
       type: MessageType.SFU_PRODUCER_CLOSED,
@@ -1549,6 +1561,7 @@ export class WebSocketServer {
     if (!session.user || !session.sessionId) return;
     try {
       const channelProducers = this.sfuManager.getProducersInChannel(payload.channelId);
+      console.log(`[SFU Server:WS] User ${session.user.nickname} requested producers list for channel ${payload.channelId} (found ${channelProducers.length})`);
       const producers: SfuNewProducerPayload[] = channelProducers.map((p) => ({
         channelId: payload.channelId,
         producerId: p.producerId,
@@ -1566,6 +1579,7 @@ export class WebSocketServer {
         } satisfies SfuProducersListPayload,
       });
     } catch (err: any) {
+      console.error(`[SFU Server:WS] Error listing producers for ${session.user.nickname}:`, err);
       this.sendError(session.ws, ProtocolErrorCode.INTERNAL_ERROR, err?.message || 'Erro ao listar produtores SFU', requestId);
     }
   }

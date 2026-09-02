@@ -237,16 +237,22 @@ export class RemoteMediaRouter {
       audioEl.setAttribute('data-peer-session', peerSessionId);
       document.body.appendChild(audioEl);
       this.audioElements.set(peerSessionId, audioEl);
+      console.log(`[MediaRouter] Created new <audio> element for peerSessionId: ${peerSessionId}`);
     }
     if (audioEl.srcObject !== stream) {
       audioEl.srcObject = stream;
+      console.log(`[MediaRouter] Set srcObject on <audio> element for ${peerSessionId} with ${stream.getAudioTracks().length} audio tracks`);
     }
     const participant = this.getVoiceParticipants().get(peerSessionId);
     const volume = settingsStore.getUserVolume(peerSessionId, participant?.user.clientId);
     const audioTrack = stream.getAudioTracks()[0];
+    console.log(`[MediaRouter] Applying volume ${volume}% to peerSessionId ${peerSessionId} (audioTrack id: ${audioTrack?.id}, enabled: ${audioTrack?.enabled})`);
     this.applyVolumeToElement(audioEl, volume, peerSessionId, this.amplificationPipelines, audioTrack);
     this.applySinkToElement(audioEl).finally(() => {
-      audioEl!.play().catch((e) => console.warn('[WebRTC:MediaRouter] Audio play error:', e));
+      audioEl!
+        .play()
+        .then(() => console.log(`[MediaRouter] Audio playback started for peerSessionId: ${peerSessionId}`))
+        .catch((e) => console.warn('[WebRTC:MediaRouter] Audio play error:', e));
     });
     return audioEl;
   }

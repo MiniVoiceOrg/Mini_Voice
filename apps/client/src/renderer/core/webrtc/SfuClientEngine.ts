@@ -71,6 +71,7 @@ export class SfuClientEngine {
     this.isConnecting = true;
 
     try {
+      console.log(`[SFU Client] Joining SFU room for channel ${channelId}...`);
       clientLog.info('SFU', `Joining SFU room for channel ${channelId}`);
 
       // 1. Get router RTP capabilities
@@ -85,11 +86,15 @@ export class SfuClientEngine {
         throw new Error('Falha ao obter capacidades RTP do servidor SFU');
       }
 
+      console.log(`[SFU Client] Received Router RTP capabilities (${routerCapsResp.rtpCapabilities.codecs?.length || 0} codecs). Loading device...`);
+
       // 2. Load device
       this.device = new mediasoupClient.Device();
       await this.device.load({ routerRtpCapabilities: routerCapsResp.rtpCapabilities as any });
+      console.log(`[SFU Client] Mediasoup Device loaded! Can produce audio: ${this.device.canProduce('audio')}, video: ${this.device.canProduce('video')}`);
 
       // 3. Create send transport
+      console.log(`[SFU Client] Requesting createSendTransport from server...`);
       const sendCreated = await this.client.sendRequest<SfuWebRtcTransportCreatedPayload>(
         MessageType.SFU_CREATE_WEBRTC_TRANSPORT,
         { channelId, direction: 'send' } satisfies SfuCreateWebRtcTransportPayload,
@@ -97,9 +102,12 @@ export class SfuClientEngine {
         10000
       );
 
+      console.log(`[SFU Client] Send transport created on server (${sendCreated.transportOptions?.id}). ICE candidates:`, sendCreated.transportOptions?.iceCandidates?.map((c: any) => `${c.protocol?.toUpperCase()} ${c.ip || c.address}:${c.port}`));
+
       this.sendTransport = this.device.createSendTransport(sendCreated.transportOptions as any);
 
       this.sendTransport.on('connect', ({ dtlsParameters }, callback, errback) => {
+        console.log(`[SFU Client] Send transport on('connect') DTLS triggered (role: ${dtlsParameters.role})`);
         this.client
           .sendRequest(
             MessageType.SFU_CONNECT_WEBRTC_TRANSPORT,
@@ -111,14 +119,19 @@ export class SfuClientEngine {
             undefined,
             8000
           )
-          .then(() => callback())
+          .then(() => {
+            console.log(`[SFU Client] Send transport DTLS connect acknowledged by server`);
+            callback();
+          })
           .catch((err) => {
+            console.error('[SFU Client] Send transport connect error:', err);
             clientLog.error('SFU', 'Send transport connect error', { error: err?.message });
             errback(err);
           });
       });
 
       this.sendTransport.on('produce', ({ kind, rtpParameters, appData }, callback, errback) => {
+        console.log(`[SFU Client] Send transport on('produce') triggered: kind=${kind}, type=${appData?.mediaType}`);
         this.client
           .sendRequest<SfuProducedPayload>(
             MessageType.SFU_PRODUCE,
@@ -133,15 +146,18 @@ export class SfuClientEngine {
             8000
           )
           .then((resp) => {
+            console.log(`[SFU Client] Producer acknowledged by server with producerId: ${resp.id}`);
             callback({ id: resp.id });
           })
           .catch((err) => {
+            console.error('[SFU Client] Send transport produce error:', err);
             clientLog.error('SFU', 'Send transport produce error', { error: err?.message });
             errback(err);
           });
       });
 
       this.sendTransport.on('connectionstatechange', (state) => {
+        console.log(`[SFU Client] Send transport connectionState changed: ${state}`);
         clientLog.info('SFU', `Send transport state: ${state}`);
         if (state === 'failed') {
           clientLog.warn('SFU', 'Send transport failed, requesting fallback');
@@ -150,6 +166,7 @@ export class SfuClientEngine {
       });
 
       // 4. Create recv transport
+      console.log(`[SFU Client] Requesting createRecvTransport from server...`);
       const recvCreated = await this.client.sendRequest<SfuWebRtcTransportCreatedPayload>(
         MessageType.SFU_CREATE_WEBRTC_TRANSPORT,
         { channelId, direction: 'recv' } satisfies SfuCreateWebRtcTransportPayload,
@@ -157,9 +174,12 @@ export class SfuClientEngine {
         10000
       );
 
+      console.log(`[SFU Client] Recv transport created on server (${recvCreated.transportOptions?.id}). ICE candidates:`, recvCreated.transportOptions?.iceCandidates?.map((c: any) => `${c.protocol?.toUpperCase()} ${c.ip || c.address}:${c.port}`));
+
       this.recvTransport = this.device.createRecvTransport(recvCreated.transportOptions as any);
 
       this.recvTransport.on('connect', ({ dtlsParameters }, callback, errback) => {
+        console.log(`[SFU Client] Recv transport on('connect') DTLS triggered (role: ${dtlsParameters.role})`);
         this.client
           .sendRequest(
             MessageType.SFU_CONNECT_WEBRTC_TRANSPORT,
@@ -171,14 +191,19 @@ export class SfuClientEngine {
             undefined,
             8000
           )
-          .then(() => callback())
+          .then(() => {
+            console.log(`[SFU Client] Recv transport DTLS connect acknowledged by server`);
+            callback();
+          })
           .catch((err) => {
+            console.error('[SFU Client] Recv transport connect error:', err);
             clientLog.error('SFU', 'Recv transport connect error', { error: err?.message });
             errback(err);
           });
       });
 
       this.recvTransport.on('connectionstatechange', (state) => {
+        console.log(`[SFU Client] Recv transport connectionState changed: ${state}`);
         clientLog.info('SFU', `Recv transport state: ${state}`);
         if (state === 'failed') {
           clientLog.warn('SFU', 'Recv transport failed, requesting fallback');
@@ -191,6 +216,7 @@ export class SfuClientEngine {
 
       // 6. Fetch existing producers in the channel and consume them
       try {
+        console.log(`[SFU Client] Fetching existing producers in channel ${channelId}...`);
         const producersResp = await this.client.sendRequest<SfuProducersListPayload>(
           MessageType.SFU_GET_PRODUCERS,
           { channelId } satisfies SfuGetProducersPayload,
@@ -199,19 +225,23 @@ export class SfuClientEngine {
         );
 
         if (producersResp && Array.isArray(producersResp.producers)) {
+          console.log(`[SFU Client] Found ${producersResp.producers.length} existing producers in channel:`, producersResp.producers);
           for (const prod of producersResp.producers) {
             void this.consumeRemoteProducer(prod);
           }
         }
       } catch (err: any) {
+        console.warn('[SFU Client] Failed to fetch existing producers in channel:', err);
         clientLog.warn('SFU', 'Failed to fetch existing producers in channel', { error: err?.message });
       }
 
       this.isConnected = true;
       this.isConnecting = false;
+      console.log(`[SFU Client] Successfully joined and initialized SFU for channel ${channelId}`);
       clientLog.info('SFU', `Successfully connected to SFU channel ${channelId}`);
       return true;
     } catch (err: any) {
+      console.error('[SFU Client] Error joining SFU channel:', err);
       clientLog.error('SFU', 'Error joining SFU channel', { error: err?.message });
       this.leave();
       return false;
@@ -246,9 +276,13 @@ export class SfuClientEngine {
   }
 
   public async produceMic(track: MediaStreamTrack): Promise<mediasoupTypes.Producer | null> {
-    if (!this.sendTransport || !this.device?.canProduce('audio')) return null;
+    if (!this.sendTransport || !this.device?.canProduce('audio')) {
+      console.warn(`[SFU Client] Cannot produce mic: sendTransport=${!!this.sendTransport}, canProduceAudio=${this.device?.canProduce('audio')}`);
+      return null;
+    }
     try {
       this.closeProducer('mic');
+      console.log(`[SFU Client] Producing microphone track ${track.id} (enabled=${track.enabled}, readyState=${track.readyState})...`);
       const producer = await this.sendTransport.produce({
         track,
         appData: { mediaType: 'mic' },
@@ -259,20 +293,27 @@ export class SfuClientEngine {
       });
       this.producers.set('mic', producer);
       producer.on('transportclose', () => {
+        console.log(`[SFU Client] Mic producer transport closed`);
         this.producers.delete('mic');
       });
+      console.log(`[SFU Client] Produced mic audio track ${track.id} with producerId ${producer.id}`);
       clientLog.info('SFU', `Produced mic audio track ${track.id} with producerId ${producer.id}`);
       return producer;
     } catch (err: any) {
+      console.error('[SFU Client] Failed to produce mic track:', err);
       clientLog.error('SFU', 'Failed to produce mic track', { error: err?.message });
       return null;
     }
   }
 
   public async produceCamera(track: MediaStreamTrack): Promise<mediasoupTypes.Producer | null> {
-    if (!this.sendTransport || !this.device?.canProduce('video')) return null;
+    if (!this.sendTransport || !this.device?.canProduce('video')) {
+      console.warn(`[SFU Client] Cannot produce camera: sendTransport=${!!this.sendTransport}, canProduceVideo=${this.device?.canProduce('video')}`);
+      return null;
+    }
     try {
       this.closeProducer('camera');
+      console.log(`[SFU Client] Producing camera track ${track.id}...`);
       const producer = await this.sendTransport.produce({
         track,
         appData: { mediaType: 'camera' },
@@ -281,9 +322,11 @@ export class SfuClientEngine {
       producer.on('transportclose', () => {
         this.producers.delete('camera');
       });
+      console.log(`[SFU Client] Produced camera video track ${track.id} with producerId ${producer.id}`);
       clientLog.info('SFU', `Produced camera video track ${track.id} with producerId ${producer.id}`);
       return producer;
     } catch (err: any) {
+      console.error('[SFU Client] Failed to produce camera track:', err);
       clientLog.error('SFU', 'Failed to produce camera track', { error: err?.message });
       return null;
     }
@@ -302,9 +345,11 @@ export class SfuClientEngine {
       producer.on('transportclose', () => {
         this.producers.delete(key);
       });
+      console.log(`[SFU Client] Produced screen video track ${track.id} shareId ${shareId} with producerId ${producer.id}`);
       clientLog.info('SFU', `Produced screen video track ${track.id} shareId ${shareId} with producerId ${producer.id}`);
       return producer;
     } catch (err: any) {
+      console.error('[SFU Client] Failed to produce screen video track:', err);
       clientLog.error('SFU', 'Failed to produce screen video track', { error: err?.message });
       return null;
     }
@@ -326,9 +371,11 @@ export class SfuClientEngine {
       producer.on('transportclose', () => {
         this.producers.delete(key);
       });
+      console.log(`[SFU Client] Produced screen audio track ${track.id} shareId ${shareId} with producerId ${producer.id}`);
       clientLog.info('SFU', `Produced screen audio track ${track.id} shareId ${shareId} with producerId ${producer.id}`);
       return producer;
     } catch (err: any) {
+      console.error('[SFU Client] Failed to produce screen audio track:', err);
       clientLog.error('SFU', 'Failed to produce screen audio track', { error: err?.message });
       return null;
     }
@@ -363,20 +410,26 @@ export class SfuClientEngine {
   }
 
   private async consumeRemoteProducer(producerData: SfuNewProducerPayload): Promise<void> {
-    if (!this.recvTransport || !this.device || !this.channelId) return;
+    if (!this.recvTransport || !this.device || !this.channelId) {
+      console.warn(`[SFU Client] Cannot consume: recvTransport=${!!this.recvTransport}, device=${!!this.device}, channelId=${this.channelId}`);
+      return;
+    }
     const { producerId, producerSessionId, kind, appData } = producerData;
 
     // Do not consume our own producers
     const mySessionId = this.getMySessionId();
     if (producerSessionId && mySessionId && producerSessionId === mySessionId) {
+      console.log(`[SFU Client] Skipping consumption of our own producer ${producerId}`);
       return;
     }
 
     if (this.consumers.has(producerId) || this.consumerMeta.has(producerId)) {
+      console.log(`[SFU Client] Already consuming producer ${producerId}`);
       return;
     }
 
     try {
+      console.log(`[SFU Client] Consuming remote producer ${producerId} (${kind}, mediaType: ${appData?.mediaType}) from session ${producerSessionId}...`);
       clientLog.info('SFU', `Consuming producer ${producerId} (${kind}) from session ${producerSessionId}`);
 
       const consumed = await this.client.sendRequest<SfuConsumedPayload>(
@@ -399,6 +452,8 @@ export class SfuClientEngine {
         appData: consumed.appData || {},
       });
 
+      console.log(`[SFU Client] Consumed producer ${producerId} successfully! Consumer track: (id=${consumer.track.id}, kind=${consumer.track.kind}, enabled=${consumer.track.enabled}, readyState=${consumer.track.readyState}, muted=${consumer.track.muted})`);
+
       this.consumers.set(producerId, consumer);
       this.consumerMeta.set(producerId, {
         producerSessionId,
@@ -408,10 +463,12 @@ export class SfuClientEngine {
       });
 
       consumer.on('trackended', () => {
+        console.log(`[SFU Client] Consumer track ended for producer ${producerId}`);
         this.handleRemoteProducerClosed(producerId);
       });
 
       consumer.on('transportclose', () => {
+        console.log(`[SFU Client] Consumer transport closed for producer ${producerId}`);
         this.handleRemoteProducerClosed(producerId);
       });
 
@@ -428,6 +485,7 @@ export class SfuClientEngine {
         rtpReceiver: (consumer as any).rtpReceiver,
       });
     } catch (err: any) {
+      console.error(`[SFU Client] Error consuming remote producer ${producerId}:`, err);
       clientLog.error('SFU', `Error consuming remote producer ${producerId}`, { error: err?.message });
     }
   }

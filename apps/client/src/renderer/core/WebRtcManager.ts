@@ -332,6 +332,7 @@ export class WebRtcManager {
 
   private handleSfuConsumerTrack(event: SfuConsumerTrackEvent): void {
     const { producerSessionId, mediaType, track, shareId, rtpReceiver } = event;
+    console.log(`[SFU Client] Routing consumer track: mediaType=${mediaType}, from session=${producerSessionId}, trackId=${track.id}, enabled=${track.enabled}, readyState=${track.readyState}`);
 
     if (this.isOwnOtherDevice(producerSessionId) && mediaType === 'mic') {
       console.log(`[SFU] Dropping microphone from our own other device (${producerSessionId})`);
@@ -340,7 +341,9 @@ export class WebRtcManager {
 
     if (mediaType === 'mic') {
       const stream = new MediaStream([track]);
-      this.mediaRouter.ensureVoiceAudioElement(producerSessionId, stream);
+      console.log(`[SFU Client] Attaching remote mic stream for ${producerSessionId} to RemoteMediaRouter...`);
+      const audioEl = this.mediaRouter.ensureVoiceAudioElement(producerSessionId, stream);
+      console.log(`[SFU Client] Attached remote mic audio element for ${producerSessionId}. Element volume: ${audioEl.volume}, muted: ${audioEl.muted}`);
       this.vadMonitor.setupRemoteReceiverVad(producerSessionId, () => rtpReceiver);
     } else if (mediaType === 'camera') {
       const stream = new MediaStream([track]);

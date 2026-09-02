@@ -270,13 +270,22 @@ export class SfuManager {
       initialAvailableOutgoingBitrate: 2000000,
     });
 
+    console.log(`[SFU Server] Created ${direction} transport ${transport.id} for session ${sessionId} in channel ${channelId}`);
+    console.log(`[SFU Server] Transport ${transport.id} ICE candidates (${transport.iceCandidates.length}):`, transport.iceCandidates.map((c) => `${c.protocol?.toUpperCase()} ${c.ip || (c as any).address}:${c.port}`));
+
+    transport.on('icestatechange', (iceState) => {
+      console.log(`[SFU Server] Transport ${transport.id} (${direction}, session ${sessionId}) ICE state changed: ${iceState}`);
+    });
+
     transport.on('dtlsstatechange', (dtlsState) => {
+      console.log(`[SFU Server] Transport ${transport.id} (${direction}, session ${sessionId}) DTLS state changed: ${dtlsState}`);
       if (dtlsState === 'failed' || dtlsState === 'closed') {
         transport.close();
       }
     });
 
     transport.on('@close', () => {
+      console.log(`[SFU Server] Transport ${transport.id} closed`);
       this.transports.delete(transport.id);
     });
 
@@ -331,7 +340,9 @@ export class SfuManager {
     if (!record) {
       throw new Error(`Transport ${transportId} not found`);
     }
+    console.log(`[SFU Server] Connecting transport ${transportId} (session ${record.sessionId}, ${record.direction}) with DTLS role ${dtlsParameters.role}`);
     await record.transport.connect({ dtlsParameters });
+    console.log(`[SFU Server] Transport ${transportId} connect resolved successfully`);
   }
 
   public async produce(
@@ -353,11 +364,15 @@ export class SfuManager {
       appData,
     });
 
+    console.log(`[SFU Server] Producer created ${producer.id} (${kind}, mediaType: ${appData?.mediaType || 'unknown'}) on transport ${transportId} for session ${sessionId}`);
+
     producer.on('transportclose', () => {
+      console.log(`[SFU Server] Producer ${producer.id} closed (transport closed)`);
       this.producers.delete(producer.id);
     });
 
     producer.on('@close', () => {
+      console.log(`[SFU Server] Producer ${producer.id} closed`);
       this.producers.delete(producer.id);
     });
 
@@ -407,15 +422,20 @@ export class SfuManager {
       paused: false,
     });
 
+    console.log(`[SFU Server] Consumer created ${consumer.id} (${consumer.kind}) for session ${sessionId} consuming producer ${producerId} (owner: ${producerRecord.sessionId}, type: ${producerRecord.appData?.mediaType})`);
+
     consumer.on('transportclose', () => {
+      console.log(`[SFU Server] Consumer ${consumer.id} closed (transport closed)`);
       this.consumers.delete(consumer.id);
     });
 
     consumer.on('producerclose', () => {
+      console.log(`[SFU Server] Consumer ${consumer.id} closed (producer closed)`);
       this.consumers.delete(consumer.id);
     });
 
     consumer.on('@close', () => {
+      console.log(`[SFU Server] Consumer ${consumer.id} closed`);
       this.consumers.delete(consumer.id);
     });
 
