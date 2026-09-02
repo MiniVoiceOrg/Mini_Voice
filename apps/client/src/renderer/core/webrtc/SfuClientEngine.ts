@@ -287,7 +287,6 @@ export class SfuClientEngine {
         track,
         appData: { mediaType: 'mic' },
         codecOptions: {
-          opusStereo: true,
           opusDtx: true,
         },
       });
