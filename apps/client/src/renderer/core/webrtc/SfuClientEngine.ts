@@ -534,6 +534,10 @@ export class SfuClientEngine {
     return this.isConnected && !!this.sendTransport && !!this.recvTransport;
   }
 
+  public isChannelConnected(): boolean {
+    return this.isConnected;
+  }
+
   public async getPing(): Promise<number | null> {
     const transport = this.sendTransport || this.recvTransport;
     if (!transport) return null;

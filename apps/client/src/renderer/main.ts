@@ -135,6 +135,14 @@ class App {
 
     // Start checking for app updates (non-blocking)
     updateService.init();
+
+    // Debug helper to check voice engine status in console
+    (window as any).debugVoice = () => {
+      const status = webRtcManager.getVoiceStatus();
+      console.log('%c🎙️ [Monky Voice Status]', 'color: #5865f2; font-weight: bold; font-size: 14px;');
+      console.table(status);
+      return status;
+    };
   }
 
   private showIdentityOnboarding(): Promise<void> {

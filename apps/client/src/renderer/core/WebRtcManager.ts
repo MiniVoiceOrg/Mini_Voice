@@ -293,6 +293,29 @@ export class WebRtcManager {
     return this.voiceServerStore.serverDetails?.voiceMode === 'sfu' && !this.isContingencyP2p;
   }
 
+  public getVoiceStatus(): {
+    mode: 'SFU' | 'P2P';
+    serverVoiceModeConfig: string;
+    isContingencyFallback: boolean;
+    channelId: string | null;
+    isSfuReady: boolean;
+    isSfuConnected: boolean;
+    connectedP2pPeers: string[];
+    localAudioTrackId?: string;
+  } {
+    const isSfu = this.isSfuMode();
+    return {
+      mode: isSfu ? 'SFU' : 'P2P',
+      serverVoiceModeConfig: this.voiceServerStore.serverDetails?.voiceMode || 'p2p',
+      isContingencyFallback: this.isContingencyP2p,
+      channelId: voiceStore.currentVoiceChannelId,
+      isSfuReady: this.sfuEngine.isReady(),
+      isSfuConnected: this.sfuEngine.isChannelConnected(),
+      connectedP2pPeers: Array.from(this.peers.keys()),
+      localAudioTrackId: this.localAudioTrack?.id,
+    };
+  }
+
   public async initSfuForCurrentChannel(): Promise<void> {
     const channelId = voiceStore.currentVoiceChannelId;
     if (!channelId || !this.isSfuMode()) return;
