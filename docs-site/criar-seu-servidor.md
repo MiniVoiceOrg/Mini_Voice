@@ -25,7 +25,7 @@ Ao criar ou administrar o servidor, você escolhe o modo de voz e vídeo:
 ## Liberar acesso pela internet
 
 - **Porta TCP principal:** Libere a porta `3000` (ou a escolhida) no firewall e configure o port forwarding no roteador.
-- **Portas UDP para SFU (mediasoup):** Se usar o modo SFU, libere também o range UDP `40000-49151` no roteador/firewall.
+- **Portas para o SFU (mediasoup):** Se usar o modo SFU, libere também o range `40000-49151` — em UDP e em TCP — no roteador/firewall. Numa VPS, veja [Abrindo as portas do Modo SFU](/hospedar-em-vps#abrindo-as-portas-do-modo-sfu).
 - **Sem mexer no roteador:** É possível usar uma VPN como Radmin VPN, Hamachi, ZeroTier ou Tailscale.
 
 ## Administrar

@@ -35,7 +35,7 @@ referência completa dos comandos está em [Monky CLI](/cli).
 | `3000` (ou escolhida) | TCP | Login, chat, canais e sinalização | Sim, no firewall da VPS |
 | `41234` | UDP | Descoberta na rede local | Não, numa VPS |
 | Altas dinâmicas | UDP | Voz, vídeo e tela P2P | Normalmente funciona via STUN |
-| `40000-49151` | UDP | Mídia WebRTC no Modo SFU (mediasoup) | Só com o modo SFU ativado |
+| `40000-49151` | UDP e TCP | Mídia WebRTC no Modo SFU (mediasoup) | Só com o modo SFU ativado |
 | `3478` | TCP e UDP | Relay TURN, se você ligar | Só com o relay ligado |
 | `49152-65535` | UDP | Mídia repassada pelo relay | Só com o relay ligado |
 
@@ -44,6 +44,48 @@ diretamente. O Monky traz um **relay TURN opcional** (desligado por padrão) que
 repassa a mídia desse par pelo servidor — veja
 [Relay de mídia (TURN)](/turn). Sem ele, a saída para redes
 muito restritas continua sendo uma VPN.
+
+### Abrindo as portas do Modo SFU
+
+No Modo SFU a mídia não vai mais direto entre as pessoas: ela entra no servidor
+por esse range. Como é tráfego UDP que chega sem ninguém ter pedido antes, a
+regra de `RELATED,ESTABLISHED` que a maioria das distribuições traz **não
+cobre** — o range precisa ser aberto explicitamente, e o mesmo vale para TCP,
+que é o caminho de quem está numa rede que bloqueia UDP.
+
+```bash
+# Abrir o range da mídia SFU
+sudo iptables -I INPUT -p udp --dport 40000:49151 -j ACCEPT
+sudo iptables -I INPUT -p tcp --dport 40000:49151 -j ACCEPT
+
+# Persistir (sobrevive a reboot)
+sudo netfilter-persistent save
+```
+
+::: tip Se usar `ufw` em vez de `iptables`
+```bash
+sudo ufw allow 40000:49151/udp
+sudo ufw allow 40000:49151/tcp
+```
+:::
+
+::: warning O firewall do provedor é outro
+Oracle Cloud, AWS, Azure, GCP e Hetzner têm um firewall fora da máquina, que o
+`iptables` não alcança. O range precisa ser liberado também no painel web, do
+mesmo jeito descrito em [Relay de mídia (TURN)](/turn#abrindo-portas-no-linux) —
+lá os exemplos são das portas do relay, mas o caminho no painel é o mesmo.
+:::
+
+Para conferir se está valendo, entre num canal de voz e veja se a mídia chega:
+
+```bash
+sudo tcpdump -n -i any udp portrange 40000-49151 -c 20
+```
+
+Pacotes `In` de fora da máquina significam que o range está aberto. Só tráfego
+`Out`, ou nada, quer dizer que algo antes está barrando — repare se existe uma
+regra `REJECT` na cadeia `INPUT` acima das que você acabou de inserir
+(`sudo iptables -L INPUT -n -v --line-numbers` mostra a ordem).
 
 ## Manutenção
 
