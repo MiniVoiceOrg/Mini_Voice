@@ -7,7 +7,6 @@ const ptSidebar = [
     items: [
       { text: 'Início', link: '/' },
       { text: 'Download', link: '/download' },
-      { text: 'Instalação', link: '/instalacao' },
       { text: 'Primeiros Passos', link: '/primeiros-passos' },
     ],
   },
@@ -45,7 +44,6 @@ const enSidebar = [
     items: [
       { text: 'Home', link: '/en/' },
       { text: 'Download', link: '/en/download' },
-      { text: 'Installation', link: '/en/instalacao' },
       { text: 'Getting Started', link: '/en/primeiros-passos' },
     ],
   },

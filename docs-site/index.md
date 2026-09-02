@@ -10,7 +10,7 @@ hero:
   actions:
     - theme: brand
       text: Começar
-      link: /instalacao
+      link: /primeiros-passos
     - theme: alt
       text: Download
       link: /download
@@ -38,7 +38,6 @@ features:
 ## Mapa da documentação
 
 - [Download](/download)
-- [Instalação](/instalacao)
 - [Primeiros Passos](/primeiros-passos)
 - [Criar Seu Servidor](/criar-seu-servidor)
 - [Entrar Em Um Servidor](/entrar-em-um-servidor)
