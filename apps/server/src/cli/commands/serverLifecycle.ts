@@ -5,16 +5,19 @@ import { GlobalArgs, readLocalConfig, withContext } from '../context';
 import { formatBool, parseOption, parsePositiveInt, pad } from '../formatters';
 import {
   ensurePm2,
+  deletePm2Process,
   findLegacyProcessFor,
   findPm2Process,
   getPm2ProcessName,
   isMonkyServerRegistered,
   isPm2Available,
   LEGACY_PM2_PROCESS_NAME,
+  Pm2Process,
   requirePm2,
   writeEcosystem,
 } from '../pm2';
 import { runAsync, runSync } from '../process';
+import { diagnoseServerHealth, HealthProblem, needsProcessRecreate } from '../health';
 import { hasServerDatabase, RegisteredServer, registerServer } from '../registry';
 import { confirmDisconnectingUsers } from '../onlineUsers';
 import { knownServers, resolveTargetServer } from '../target';
@@ -42,6 +45,22 @@ function rejectRemovedStartOptions(args: string[]): void {
       throw new Error(t('lifecycle.removedOption', { option, replacement }));
     }
   }
+}
+
+/**
+ * Drops a broken PM2 registration before starting, so the next start builds the
+ * process from the ecosystem instead of reusing one that cannot run.
+ *
+ * Reserved for a process PM2 calls `online` without ever having a pid for it:
+ * the spawn failed, and restarting only asks the same configuration to fail
+ * again — deleting first is what actually recovered it (#522). A plain
+ * `startOrRestart` re-reads the ecosystem file and re-applies the interpreter,
+ * so a stale interpreter alone is not worth dropping the process for.
+ */
+function recreateIfStale(processName: string, entry: Pm2Process | null, forced: boolean): void {
+  if (!forced && !needsProcessRecreate(entry)) return;
+  console.log(color(t('lifecycle.recreatingProcess'), ANSI.yellow));
+  deletePm2Process(processName);
 }
 
 export async function loadStoredServer(
@@ -99,6 +118,7 @@ export async function startServerCommand(globalArgs: GlobalArgs, args: string[])
   rejectRemovedStartOptions(args);
   const portOption = parseOption(args, '--port');
   if (portOption) parsePositiveInt('port', portOption);
+  const fresh = args.includes('--fresh');
 
   const target = await resolveTargetServer(globalArgs, 'iniciar');
   const plan = await buildStartPlan(target.dataDir, args);
@@ -107,14 +127,26 @@ export async function startServerCommand(globalArgs: GlobalArgs, args: string[])
   ensurePm2();
 
   const existing = findPm2Process(processName);
-  if (existing?.pm2_env?.status === 'online') {
-    console.log(color(t('lifecycle.alreadyRunning', { pid: existing.pid ?? '-' }), ANSI.yellow));
-    console.log(color(t('lifecycle.useRestartOrStop'), ANSI.dim));
-    return;
+  // `status === 'online'` alone is not proof the server is up: PM2 reports the
+  // state it intends to keep, so a failed spawn stays "online" with no pid.
+  // Trusting it made `monky start` answer "already running" for a server that
+  // had never started, refusing to fix the very thing it was asked to fix
+  // (#522).
+  if (existing?.pm2_env?.status === 'online' && existing.pid) {
+    if (!fresh) {
+      console.log(color(t('lifecycle.alreadyRunning', { pid: existing.pid }), ANSI.yellow));
+      console.log(color(t('lifecycle.useRestartOrStop'), ANSI.dim));
+      return;
+    }
+    // `--fresh` is the one path where start takes down a server that is
+    // actually up, so it owes the same warning as stop and restart (#334).
+    // A broken process has nobody connected, so this asks nothing there.
+    if (!(await confirmDisconnectingUsers(target, 'reiniciar'))) return;
   }
 
   retireLegacyProcess(target.dataDir);
   const ecosystemPath = writeEcosystem(plan);
+  recreateIfStale(processName, existing, fresh);
 
   // startOrRestart re-reads the ecosystem file, so a process PM2 still knows
   // about from a previous "monky stop" picks up the current port.
@@ -174,6 +206,7 @@ export async function stopServerCommand(globalArgs: GlobalArgs): Promise<void> {
 export async function restartServerCommand(globalArgs: GlobalArgs, args: string[] = []): Promise<void> {
   if (!requirePm2('reiniciar')) return;
 
+  const fresh = args.includes('--fresh');
   const target = await resolveTargetServer(globalArgs, 'reiniciar');
   const processName = getPm2ProcessName(target.dataDir);
 
@@ -191,6 +224,7 @@ export async function restartServerCommand(globalArgs: GlobalArgs, args: string[
   // changed in the meantime actually take effect.
   const plan = await buildStartPlan(target.dataDir, args);
   const ecosystemPath = writeEcosystem(plan);
+  recreateIfStale(processName, findPm2Process(processName), fresh);
 
   const result = runSync('pm2', ['startOrRestart', ecosystemPath], { stdio: 'inherit' });
   if (result.status !== 0) {
@@ -315,7 +349,7 @@ function readServerStatus(dataDir: string): { status: string; process: ReturnTyp
   return { status: found?.pm2_env?.status ?? 'not started', process: found };
 }
 
-function printServerDetails(server: RegisteredServer): void {
+async function printServerDetails(server: RegisteredServer): Promise<void> {
   const { status, process: entry } = readServerStatus(server.dataDir);
   const port = server.port ?? readLocalConfig(server.dataDir).port ?? LIMITS.DEFAULT_PORT;
 
@@ -335,9 +369,25 @@ function printServerDetails(server: RegisteredServer): void {
   console.log(`restarts: ${entry.pm2_env?.restart_time ?? 0}`);
   console.log(`memory: ${entry.monit?.memory ? `${Math.round(entry.monit.memory / 1024 / 1024)} MB` : '-'}`);
   console.log(`cpu: ${entry.monit?.cpu !== undefined ? `${entry.monit.cpu}%` : '-'}`);
+  if (entry.pm2_env?.node_version) console.log(`node: ${entry.pm2_env.node_version}`);
+
+  // PM2's own status is a claim, not a measurement, so it is checked against
+  // the port before being taken at face value (#522).
+  printHealthProblems(await diagnoseServerHealth(entry, port));
 
   // TURN relay info (#441)
   printTurnStatus(server.dataDir);
+}
+
+/** Prints the diagnostics block, or nothing at all when the server is healthy. */
+function printHealthProblems(problems: HealthProblem[]): void {
+  if (problems.length === 0) return;
+  console.log();
+  console.log(color(t('health.title'), ANSI.bold));
+  for (const problem of problems) {
+    console.log(color(`⚠ ${problem.message}`, ANSI.yellow));
+    if (problem.hint) console.log(`  ${color(problem.hint, ANSI.dim)}`);
+  }
 }
 
 export function printServerTable(servers: RegisteredServer[]): void {
@@ -451,6 +501,31 @@ interface TurnCache {
 
 let turnCache: TurnCache = { enabled: null, coturnOk: false, coturnProblem: null, portProblem: null };
 
+/**
+ * Same idea as {@link turnCache}: the dashboard redraws every 2s, and probing
+ * the port inside the render would stall the frame.
+ */
+let healthCache: HealthProblem[] = [];
+
+/**
+ * Reads PM2 once and shares the result with everything drawing this frame.
+ *
+ * Each `readServerStatus` costs two synchronous child processes (`pm2 --version`
+ * then `pm2 jlist`), so letting the health refresh and the render each do their
+ * own doubled the blocking spawns per tick — enough to overrun the 2s interval
+ * on the small VPSes this dashboard is meant for.
+ */
+type StatusSnapshot = ReturnType<typeof readServerStatus>;
+
+async function refreshHealthCache(server: RegisteredServer, snapshot: StatusSnapshot): Promise<void> {
+  const port = server.port ?? readLocalConfig(server.dataDir).port ?? LIMITS.DEFAULT_PORT;
+  try {
+    healthCache = await diagnoseServerHealth(snapshot.process, port);
+  } catch {
+    healthCache = [];
+  }
+}
+
 async function refreshTurnCache(dataDir: string): Promise<void> {
   try {
     await withContext(dataDir, async (ctx) => {
@@ -481,8 +556,8 @@ async function refreshTurnCache(dataDir: string): Promise<void> {
  * the cursor to the top-left, write the full frame, then erase everything
  * below. This produces a smooth in-place update.
  */
-function renderDashboard(server: RegisteredServer): void {
-  const { status, process: entry } = readServerStatus(server.dataDir);
+function renderDashboard(server: RegisteredServer, snapshot: StatusSnapshot): void {
+  const { status, process: entry } = snapshot;
   const port = server.port ?? readLocalConfig(server.dataDir).port ?? LIMITS.DEFAULT_PORT;
 
   const lines: string[] = [];
@@ -510,6 +585,17 @@ function renderDashboard(server: RegisteredServer): void {
     push(`    restarts: ${entry.pm2_env?.restart_time ?? 0}`);
     push(`    memory:   ${entry.monit?.memory ? `${Math.round(entry.monit.memory / 1024 / 1024)} MB` : '-'}`);
     push(`    cpu:      ${entry.monit?.cpu !== undefined ? `${entry.monit.cpu}%` : '-'}`);
+    if (entry.pm2_env?.node_version) push(`    node:     ${entry.pm2_env.node_version}`);
+  }
+
+  // ── Diagnóstico ──
+  if (healthCache.length > 0) {
+    push();
+    push(color(`  ${t('health.title')}`, ANSI.bold));
+    for (const problem of healthCache) {
+      push(color(`    ⚠ ${problem.message}`, ANSI.yellow));
+      if (problem.hint) push(`      ${color(problem.hint, ANSI.dim)}`);
+    }
   }
 
   // ── TURN ──
@@ -561,10 +647,15 @@ export async function statusServerCommand(globalArgs: GlobalArgs, args: string[]
     // Hide cursor for cleaner output, clear screen once
     process.stdout.write('\x1b[?25l\x1b[2J');
     // Seed TURN cache before first render, then render
+    const seed = readServerStatus(target.dataDir);
     await refreshTurnCache(target.dataDir);
-    renderDashboard(target);
+    await refreshHealthCache(target, seed);
+    renderDashboard(target, seed);
     const interval = setInterval(() => {
-      refreshTurnCache(target.dataDir).then(() => renderDashboard(target));
+      const snapshot = readServerStatus(target.dataDir);
+      Promise.all([refreshTurnCache(target.dataDir), refreshHealthCache(target, snapshot)]).then(() =>
+        renderDashboard(target, snapshot)
+      );
     }, 2000);
 
     const cleanup = () => {
@@ -582,7 +673,7 @@ export async function statusServerCommand(globalArgs: GlobalArgs, args: string[]
 
   if (globalArgs.dataDirSpecified) {
     const target = await resolveTargetServer(globalArgs, 'consultar');
-    printServerDetails(target);
+    await printServerDetails(target);
     await printTurnStatusAsync(target.dataDir);
     return;
   }
@@ -595,7 +686,7 @@ export async function statusServerCommand(globalArgs: GlobalArgs, args: string[]
   }
 
   if (servers.length === 1) {
-    printServerDetails(servers[0]);
+    await printServerDetails(servers[0]);
     await printTurnStatusAsync(servers[0].dataDir);
     return;
   }

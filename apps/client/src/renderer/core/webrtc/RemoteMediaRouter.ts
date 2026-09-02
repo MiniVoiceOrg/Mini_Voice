@@ -421,7 +421,7 @@ export class RemoteMediaRouter {
     }
   }
 
-  private cleanupScreenAudio(peerSessionId: string): void {
+  public cleanupScreenAudio(peerSessionId: string): void {
     const el = this.screenAudioElements.get(peerSessionId);
     if (el) {
       try {

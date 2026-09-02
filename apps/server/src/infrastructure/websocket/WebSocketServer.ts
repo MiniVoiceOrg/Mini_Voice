@@ -79,7 +79,6 @@ import {
   SfuNewProducerPayload,
   SfuGetProducersPayload,
   SfuProducersListPayload,
-  SfuContingencyFallbackPayload,
   canAccessChannel,
 } from '@monky/shared';
 import { AuthService } from '../../application/services/AuthService';
@@ -173,7 +172,7 @@ export class WebSocketServer {
           Logger.error(
             'SFU',
             `voiceMode is "sfu" but the SFU worker failed to start: ${this.sfuManager.getLastError()}.${diagnosis} ` +
-              'Voice and video are running in P2P contingency.'
+              'Clients will keep retrying until it comes up.'
           );
         }
       }
@@ -1180,19 +1179,21 @@ export class WebSocketServer {
       const ok = await this.sfuManager.init();
       if (!ok) {
         // The admin is watching this switch right now, so the reason travels
-        // to the client instead of staying in the server log.
+        // to the client instead of staying in the server log. Nothing is
+        // downgraded here: clients keep retrying the SFU on their own until
+        // the worker comes up.
         const preflight = checkSfuPreflight();
         const diagnosis = preflight.ok ? '' : ` ${formatSfuPreflightForLog(preflight)}`;
         Logger.error(
           'SFU',
-          `SFU initialization failed on mode change: ${this.sfuManager.getLastError()}.${diagnosis} Emitting contingency fallback.`
+          `SFU initialization failed on mode change: ${this.sfuManager.getLastError()}.${diagnosis}`
         );
         const reason =
           `${this.sfuManager.getLastError() || 'SFU worker failed to initialize'}${diagnosis}`.trim();
-        this.broadcast({
-          type: MessageType.SFU_CONTINGENCY_FALLBACK,
-          payload: { reason } satisfies SfuContingencyFallbackPayload,
-        });
+        // Deliberately uncorrelated: the settings change itself succeeded and
+        // is confirmed by the broadcast below, so tying this to the requestId
+        // would fail the very request that worked.
+        this.sendError(session.ws, ProtocolErrorCode.SFU_UNAVAILABLE, reason);
       }
     } else if (payload.voiceMode === 'p2p') {
       // When switching to P2P, cleanly terminate any active SFU channels and evict call participants
@@ -1375,6 +1376,23 @@ export class WebSocketServer {
       voiceState: result.voiceState,
     };
 
+    // Whatever this session had in another channel is over: switching channels
+    // on the same server sends no VOICE_LEAVE, and the client's own teardown is
+    // local, so nothing else would ever close those transports — they would sit
+    // on their port pairs until the socket dropped.
+    if (this.sfuManager) {
+      const { closedProducerIds } = this.sfuManager.closeSessionExcept(
+        session.sessionId,
+        payload.channelId
+      );
+      for (const { channelId, producerId } of closedProducerIds) {
+        this.broadcast({
+          type: MessageType.SFU_PRODUCER_CLOSED,
+          payload: { channelId, producerId } satisfies SfuProducerClosedPayload,
+        });
+      }
+    }
+
     // Scoped to the channel's audience so a private room's activity does not
     // reach members who cannot see it (#384).
     await this.broadcastToChannel(payload.channelId, {
@@ -1393,6 +1411,20 @@ export class WebSocketServer {
 
     const previous = this.signalingService.leaveVoiceChannel(session.sessionId);
     if (previous) {
+      // Hanging up keeps the socket open, so nothing else would ever reap what
+      // this session held in the SFU: the client's own teardown is local, and
+      // the producers would stay listed for the next person to join, who would
+      // then be told to consume a microphone that left.
+      if (this.sfuManager) {
+        const { closedProducerIds } = this.sfuManager.closeSession(session.sessionId);
+        for (const producerId of closedProducerIds) {
+          this.broadcast({
+            type: MessageType.SFU_PRODUCER_CLOSED,
+            payload: { channelId: previous.channelId, producerId } satisfies SfuProducerClosedPayload,
+          });
+        }
+      }
+
       const leavePayload: VoiceUserLeftPayload = {
         channelId: previous.channelId,
         userId: session.user.id,
@@ -1494,6 +1526,37 @@ export class WebSocketServer {
         await this.sfuManager.init();
       }
       console.log(`[SFU Server:WS] User ${session.user.nickname} (${session.sessionId}) creating ${payload.direction} transport for channel ${payload.channelId}`);
+      // A client asking for a transport it already has is rejoining after a
+      // failure. Its previous one is never coming back, and nothing else would
+      // ever close it, so it goes now — along with the producers other clients
+      // would otherwise keep trying to consume.
+      const { closedProducerIds } = this.sfuManager.closeTransportsFor(
+        session.sessionId,
+        payload.channelId,
+        payload.direction
+      );
+      for (const producerId of closedProducerIds) {
+        this.broadcast({
+          type: MessageType.SFU_PRODUCER_CLOSED,
+          payload: { channelId: payload.channelId, producerId } satisfies SfuProducerClosedPayload,
+        });
+      }
+      // Whatever this session still holds in another channel is over too. The
+      // join it belonged to may only have reached this point *after* the
+      // VOICE_JOIN for the new channel was handled — clicking straight from one
+      // channel to another starts a join for the old one that is only abandoned
+      // once its first round-trip returns — and joins are serialised, so a
+      // transport for another channel arriving here is always the older one.
+      const abandoned = this.sfuManager.closeSessionExcept(
+        session.sessionId,
+        payload.channelId
+      );
+      for (const { channelId, producerId } of abandoned.closedProducerIds) {
+        this.broadcast({
+          type: MessageType.SFU_PRODUCER_CLOSED,
+          payload: { channelId, producerId } satisfies SfuProducerClosedPayload,
+        });
+      }
       const transportOptions = await this.sfuManager.createWebRtcTransport(
         session.sessionId,
         payload.channelId,
@@ -2201,9 +2264,14 @@ export class WebSocketServer {
     const server = await this.serverRepo.getServer();
     if (server?.voiceMode === 'sfu') return true;
 
+    // Not SFU_UNAVAILABLE: that code means the host cannot carry SFU media and
+    // the client surfaces it to the admin with the reason attached. This is an
+    // ordinary request arriving for the wrong mode — a client still closing
+    // producers while the server is switched to P2P hits it on the normal
+    // path, and it must not raise an alarm at everyone in the call.
     this.sendError(
       session.ws,
-      ProtocolErrorCode.SFU_UNAVAILABLE,
+      ProtocolErrorCode.BAD_REQUEST,
       'Este servidor não está no modo SFU.',
       requestId
     );

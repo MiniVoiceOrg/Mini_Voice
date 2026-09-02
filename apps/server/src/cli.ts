@@ -84,7 +84,8 @@ ${color('OPÇÕES GLOBAIS', ANSI.bold)}
   --lang <código>          Define o idioma (en, pt-BR)
 
 ${color('OPÇÕES POR COMANDO', ANSI.bold)}
-  start   --port <n>
+  start   --port <n>  --fresh
+  restart --fresh          Recria o processo no PM2 do zero (use após trocar a versão do Node)
   status  --watch          Modo dashboard em tempo real (Ctrl+C para sair)
   logs    --lines <n>  --level INFO|WARN|ERROR  --no-follow
   update  --beta  --check  --yes
@@ -137,7 +138,8 @@ ${color('GLOBAL OPTIONS', ANSI.bold)}
   --lang <code>            Set language (en, pt-BR)
 
 ${color('COMMAND OPTIONS', ANSI.bold)}
-  start   --port <n>
+  start   --port <n>  --fresh
+  restart --fresh          Recreate the PM2 process from scratch (use after changing Node version)
   status  --watch          Real-time dashboard mode (Ctrl+C to exit)
   logs    --lines <n>  --level INFO|WARN|ERROR  --no-follow
   update  --beta  --check  --yes

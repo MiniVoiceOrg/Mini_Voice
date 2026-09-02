@@ -184,22 +184,28 @@ Work       stopped  3100   /srv/monky-work
 Starts an **existing** server as a PM2 daemon.
 
 ```bash
-monky start [--port <n>]
+monky start [--port <n>] [--fresh]
 ```
 
 If the machine has no server, the command fails and points at `monky create` —
 it never creates a server on its own.
 
 The `ecosystem.config.cjs` file is rewritten before starting, so the current
-port and name take effect from then on.
+port and name take effect from then on. It also pins the absolute path of the
+Node that ran the command (see [Changing the Node version](#changing-the-node-version)).
 
 ### Options
 
 | Option | Description | Default |
 |---|---|---|
 | `--port <n>` | Port for this run only | value in `monky.json`, or `3000` |
+| `--fresh` | Drops the PM2 process registration and recreates it from scratch | off |
 
 To change the port permanently use `monky config set port`.
+
+`--fresh` is rarely needed: the CLI detects a stale registration on its own and
+recreates the process. It exists to force that by hand. Logs under
+`~/.pm2/logs` are **not** deleted.
 
 ::: warning Removed options
 `--password`, `--max-users`, `--name`, `--voice-channel` and `--text-channel`
@@ -233,7 +239,7 @@ terminal (scripts, cron) the warning is printed and the stop goes ahead.
 Restarts the server applying the current configuration.
 
 ```bash
-monky restart [--port <n>]
+monky restart [--port <n>] [--fresh]
 ```
 
 `ecosystem.config.cjs` is rewritten before the restart, so a port or name
@@ -241,6 +247,9 @@ changed since the last `start` takes effect.
 
 Just like `stop`, if anyone is connected the CLI warns and asks for confirmation
 before restarting.
+
+`--fresh` works the same as in `monky start`: it drops the PM2 process
+registration before bringing the server back up.
 
 ---
 
@@ -265,10 +274,83 @@ uptime: 2026-08-27T18:02:11.000Z
 restarts: 0
 memória: 88 MB
 cpu: 0%
+node: 24.20.0
+```
+
+`status` does not just echo what PM2 says: the port is actually probed. PM2
+reports the state it *intends* to keep, not one it verified — a process that
+failed to start still shows up as `online`. When PM2's claim does not match
+reality, a diagnostics block appears:
+
+```
+Diagnostics
+⚠ PM2 is running the server on Node 20.20.2, but Monky requires Node 22+.
+  Upgrade Node, then run "monky update" to rebuild native modules and "monky restart" to apply it.
+⚠ PM2 reports the process as "online", but it has no PID — it never actually started.
+  This usually means PM2 is trying to use a Node that no longer exists. Run "monky restart --fresh" to re-register the process.
 ```
 
 With several servers and no `--data`, it prints the same table as `monky list` —
 a read-only query has no side effects, so asking would be busywork.
+
+---
+
+## Changing the Node version {#changing-the-node-version}
+
+PM2 runs as a **long-lived daemon** and holds on to the Node it was started
+with. Upgrading Node does not upgrade PM2 along with it, and that is where most
+post-upgrade trouble comes from.
+
+What breaks is not upgrading Node itself, but the **binary path changing or
+disappearing**:
+
+| Situation | What happens |
+|---|---|
+| In-place upgrade (apt/NodeSource, stays at `/usr/bin/node`) | Keeps working: the path exists and now points at the new Node |
+| Switching package manager (apt → nvm) and removing the old one | **Breaks**: PM2 points at a binary that no longer exists and cannot start the process |
+| `nvm use` another version, without removing the old one | **Silent**: the server keeps running on the **old** Node |
+
+In the second case PM2 shows `status: online` with `pid: N/A`, and nothing
+listens on the port — the client complains that "the computer is online, but no
+Monky server is active on the port". `monky status` calls this out in the
+diagnostics block.
+
+Since version 8.1 `ecosystem.config.cjs` pins the **absolute path** of the Node
+that ran `monky start`, instead of letting PM2 resolve `node` from the daemon's
+environment. Because the file is rewritten on every `start` and `restart`, it
+re-adjusts itself.
+
+### Recommended procedure
+
+After changing the Node version:
+
+```bash
+monky update     # rebuilds native modules for the new ABI
+monky restart    # re-pins the interpreter in the ecosystem file
+pm2 save         # writes the good state to the PM2 dump
+```
+
+::: tip Use `monky restart`, not `pm2 restart`
+Only `monky` rewrites `ecosystem.config.cjs`. `pm2 restart` reuses the previous
+registration, with the stale interpreter.
+:::
+
+::: warning `pm2 update` alone does not fix it
+`pm2 update` restores processes from `~/.pm2/dump.pm2`, and the dump carries the
+old interpreter. If the server does not come back, recreate the registration:
+
+```bash
+monky restart --fresh
+```
+
+That drops the PM2 process and registers it again. Files under `~/.pm2/logs` are
+preserved.
+:::
+
+Native modules are a **separate** concern: `better-sqlite3` and the mediasoup
+worker are compiled against the Node ABI (20 = 115, 22 = 127, 24 = 137). Any
+major version change requires reinstalling the CLI, which is what
+`monky update` does.
 
 ---
 

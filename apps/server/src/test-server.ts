@@ -23,6 +23,13 @@ import { listServers, registerServer, serverIdFor, unregisterServer } from './cl
 import { CapacityEstimator } from './domain/services/CapacityEstimator';
 import { SfuManager } from './infrastructure/sfu/SfuManager';
 import { resolveTurnSfuExclusion } from './application/services/AuthService';
+import {
+  evaluateServerHealth,
+  majorOf,
+  needsProcessRecreate,
+  probeLocalPort,
+  STARTUP_GRACE_MS,
+} from './cli/health';
 
 function withTimeout<T>(promise: Promise<T>, ms: number, label: string): Promise<T> {
   return Promise.race([
@@ -527,14 +534,24 @@ async function runTests() {
         throw new Error('Teste 13: servidores diferentes deveriam ter processos PM2 diferentes');
       }
       const ecosystem = generateEcosystem({ dataDir: serverA, port: 3010, serverName: 'Servidor "A"' });
-      if (!ecosystem.includes(`name: '${nameA}'`)) {
+      // O ecosystem é carregado pelo PM2 como módulo, então o que importa é o
+      // valor depois do parse do JS — não o texto cru. Conferir o texto
+      // escondia que as aspas escapadas eram consumidas pelo parser do próprio
+      // literal, entregando ao PM2 um args com aspas desbalanceadas.
+      const loadEcosystemApp = (source: string) => {
+        const generatedModule = { exports: {} as { apps: Array<Record<string, string>> } };
+        new Function('module', source)(generatedModule);
+        return generatedModule.exports.apps[0];
+      };
+      const app = loadEcosystemApp(ecosystem);
+      if (app.name !== nameA) {
         throw new Error('Teste 13: o ecosystem deveria usar o nome de processo derivado da pasta');
       }
-      if (!ecosystem.includes('--port 3010')) {
+      if (!app.args.includes('--port 3010')) {
         throw new Error('Teste 13: o ecosystem deveria conter a porta informada');
       }
-      if (!ecosystem.includes('\\"A\\"')) {
-        throw new Error('Teste 13: aspas no nome do servidor deveriam ser escapadas');
+      if (!app.args.includes('--name "Servidor \\"A\\""')) {
+        throw new Error('Teste 13: aspas no nome do servidor deveriam chegar escapadas ao PM2');
       }
     } finally {
       if (previousHome === undefined) {
@@ -1004,8 +1021,14 @@ async function runTests() {
             reject(new Error(`Teste 19: handshake do SFU deveria ser recusado em modo P2P (${res.type})`));
             return;
           }
-          if (res.payload?.code !== ProtocolErrorCode.SFU_UNAVAILABLE) {
-            reject(new Error(`Teste 19: recusa do SFU em P2P deveria usar SFU_UNAVAILABLE (${res.payload?.code})`));
+          // BAD_REQUEST, e não SFU_UNAVAILABLE: aquele código diz que o host
+          // não consegue carregar mídia SFU e o cliente o exibe ao admin com o
+          // motivo. Aqui é só um pedido chegando no modo errado — inclusive
+          // pelo caminho normal, quando um cliente ainda fecha producers
+          // enquanto o servidor acabou de ser trocado para P2P — e não pode
+          // virar alarme na tela de todo mundo que está na chamada.
+          if (res.payload?.code !== ProtocolErrorCode.BAD_REQUEST) {
+            reject(new Error(`Teste 19: recusa do SFU em P2P deveria usar BAD_REQUEST (${res.payload?.code})`));
             return;
           }
           resolve();
@@ -1023,6 +1046,286 @@ async function runTests() {
       await sfuServer.stop();
     }
     console.log('✔ Teste 19 passou: Estimador de capacidade, SfuManager e ciclo de vida de voiceMode validados');
+
+    // ── Teste 20: Diagnóstico de saúde do processo PM2 (#522) ──
+    // O "monky status" reportava apenas o que o PM2 dizia. Depois de um upgrade
+    // de Node, o daemon ficou incapaz de spawnar o processo e mesmo assim
+    // manteve o status "online" — o CLI dizia que o servidor estava no ar
+    // enquanto a porta estava fechada, sem nada que ligasse uma coisa à outra.
+    const nodeHealthCases = [
+      {
+        name: 'daemon com Node abaixo do mínimo',
+        entry: { pid: 4242, pm2_env: { status: 'online', node_version: '20.20.2' } },
+        portState: 'closed' as const,
+        cliNodeVersion: '24.20.0',
+        expectProblems: 2,
+        expectMatch: /Node 20\.20\.2/,
+      },
+      {
+        name: 'status online sem pid (spawn falhou)',
+        entry: { pm2_env: { status: 'online', node_version: '24.20.0' } },
+        portState: 'closed' as const,
+        cliNodeVersion: '24.20.0',
+        expectProblems: 1,
+        expectMatch: /PID|PID/i,
+      },
+      {
+        name: 'processo sadio',
+        entry: { pid: 10, pm2_env: { status: 'online', node_version: '24.20.0' } },
+        portState: 'listening' as const,
+        cliNodeVersion: '24.20.0',
+        expectProblems: 0,
+        expectMatch: null,
+      },
+      {
+        name: 'servidor parado não é problema de saúde',
+        entry: { pm2_env: { status: 'stopped', node_version: '24.20.0' } },
+        portState: 'closed' as const,
+        cliNodeVersion: '24.20.0',
+        expectProblems: 0,
+        expectMatch: null,
+      },
+      {
+        name: 'porta fechada com processo vivo',
+        entry: { pid: 10, pm2_env: { status: 'online', node_version: '24.20.0' } },
+        portState: 'closed' as const,
+        cliNodeVersion: '24.20.0',
+        expectProblems: 1,
+        expectMatch: null,
+      },
+      {
+        name: 'divergência de major entre CLI e daemon',
+        entry: { pid: 10, pm2_env: { status: 'online', node_version: '22.1.0' } },
+        portState: 'listening' as const,
+        cliNodeVersion: '24.20.0',
+        expectProblems: 1,
+        expectMatch: null,
+      },
+      {
+        // O servidor roda migrações e autodetecta o IP público antes do
+        // listen(), então logo após o start a porta ainda está fechada por
+        // motivo legítimo. Acusar erro aqui geraria alarme falso a cada start.
+        name: 'porta fechada dentro da janela de inicialização',
+        entry: {
+          pid: 10,
+          pm2_env: { status: 'online', node_version: '24.20.0', pm_uptime: Date.now() - 2000 },
+        },
+        portState: 'closed' as const,
+        cliNodeVersion: '24.20.0',
+        expectProblems: 0,
+        expectMatch: null,
+      },
+      {
+        name: 'porta fechada depois da janela de inicialização',
+        entry: {
+          pid: 10,
+          pm2_env: {
+            status: 'online',
+            node_version: '24.20.0',
+            pm_uptime: Date.now() - (STARTUP_GRACE_MS + 5000),
+          },
+        },
+        portState: 'closed' as const,
+        cliNodeVersion: '24.20.0',
+        expectProblems: 1,
+        expectMatch: null,
+      },
+      {
+        // Um spawn que nunca aconteceu não é lentidão de boot: foi assim que o
+        // problema original passou despercebido por 5 minutos.
+        name: 'sem pid é reportado mesmo recém-iniciado',
+        entry: {
+          pm2_env: { status: 'online', node_version: '24.20.0', pm_uptime: Date.now() - 1000 },
+        },
+        portState: 'closed' as const,
+        cliNodeVersion: '24.20.0',
+        expectProblems: 1,
+        expectMatch: null,
+      },
+    ];
+
+    for (const c of nodeHealthCases) {
+      const problems = evaluateServerHealth({
+        entry: c.entry,
+        portState: c.portState,
+        cliNodeVersion: c.cliNodeVersion,
+      });
+      if (problems.length !== c.expectProblems) {
+        throw new Error(
+          `Teste 20 (health): ${c.name} — esperado ${c.expectProblems} problema(s), ` +
+            `obtido ${problems.length}: ${problems.map((p) => p.message).join(' | ')}`
+        );
+      }
+      if (c.expectMatch && !c.expectMatch.test(problems.map((p) => p.message).join(' '))) {
+        throw new Error(`Teste 20 (health): ${c.name} — mensagem não menciona a causa`);
+      }
+      for (const problem of problems) {
+        if (!problem.message || problem.message.includes('{')) {
+          throw new Error(`Teste 20 (health): ${c.name} — placeholder não interpolado`);
+        }
+      }
+    }
+
+    // Um Node antigo é a causa e a porta fechada é o sintoma: reportar o
+    // sintoma primeiro mandaria o operador investigar o lugar errado.
+    const ordered = evaluateServerHealth({
+      entry: { pm2_env: { status: 'online', node_version: '20.20.2' } },
+      portState: 'closed',
+      cliNodeVersion: '24.20.0',
+    });
+    if (!/Node/.test(ordered[0]?.message ?? '')) {
+      throw new Error('Teste 20: a causa (Node) deveria ser reportada antes do sintoma');
+    }
+
+    if (majorOf('v24.20.0') !== 24 || majorOf('20.20.2') !== 20 || majorOf('') !== null) {
+      throw new Error('Teste 20: majorOf deveria extrair o major e tolerar entrada inválida');
+    }
+
+    // Recriar o processo custa caro: se o start seguinte falhar, o registro
+    // some do PM2 e o "monky logs" se recusa a mostrar o que aconteceu. Por
+    // isso o gatilho é só o spawn que nunca aconteceu ("online" sem pid), e
+    // não um interpretador diferente — esse o startOrRestart com o ecosystem
+    // reaplica sozinho.
+    const recreateCases = [
+      {
+        name: 'interpretador antigo resolvido pelo ambiente do daemon',
+        entry: { pid: 10, pm2_env: { status: 'online', exec_interpreter: 'node' } },
+        expected: false,
+      },
+      {
+        name: 'interpretador apontando para um Node removido',
+        entry: {
+          pid: 10,
+          // Derivado do execPath real: um caminho fixo como "/usr/bin/node"
+          // seria o proprio interpretador numa VPS com Node do apt, e o teste
+          // passaria a falhar justamente na plataforma que ele protege.
+          pm2_env: { status: 'online', exec_interpreter: `${process.execPath}.removed` },
+        },
+        expected: false,
+      },
+      {
+        name: 'online sem pid (spawn nunca aconteceu)',
+        entry: { pm2_env: { status: 'online', exec_interpreter: process.execPath } },
+        expected: true,
+      },
+      {
+        name: 'já fixado no interpretador correto',
+        entry: { pid: 10, pm2_env: { status: 'online', exec_interpreter: process.execPath } },
+        expected: false,
+      },
+      {
+        name: 'servidor parado com interpretador correto não precisa recriar',
+        entry: { pm2_env: { status: 'stopped', exec_interpreter: process.execPath } },
+        expected: false,
+      },
+      { name: 'processo inexistente', entry: null, expected: false },
+      {
+        name: 'registro sem interpretador conhecido',
+        entry: { pid: 10, pm2_env: { status: 'online' } },
+        expected: false,
+      },
+    ];
+
+    for (const c of recreateCases) {
+      if (needsProcessRecreate(c.entry) !== c.expected) {
+        throw new Error(
+          `Teste 20 (recreate): ${c.name} — esperado ${c.expected}`
+        );
+      }
+    }
+
+    // Um interpretador diferente do que vamos fixar NAO justifica recriar: o
+    // "startOrRestart" com o ecosystem reaplica o interpretador sozinho, e
+    // deletar o processo custaria os logs se o start seguinte falhasse.
+    const staleEntry = {
+      pid: 10,
+      pm2_env: { status: 'online', exec_interpreter: 'node' },
+    };
+    if (needsProcessRecreate(staleEntry) !== false) {
+      throw new Error('Teste 20: interpretador diferente nao deveria, sozinho, exigir recriacao');
+    }
+    // Um spawn que nunca aconteceu continua exigindo recriacao.
+    if (needsProcessRecreate({ pm2_env: { status: 'online' } }) !== true) {
+      throw new Error('Teste 20: "online" sem pid deveria exigir recriacao');
+    }
+
+    // Uma porta livre precisa ser reconhecida como fechada, senão o
+    // diagnóstico silenciaria justamente o caso que motivou este teste.
+    if ((await probeLocalPort(1, 300)) === 'listening') {
+      throw new Error('Teste 20: porta sem serviço não deveria ser reportada como escutando');
+    }
+    if ((await probeLocalPort(3999, 1000)) !== 'listening') {
+      throw new Error('Teste 20: a porta do servidor de teste deveria estar escutando');
+    }
+
+    // Fora do Windows o ecosystem precisa fixar o interpretador: sem isso o PM2
+    // resolve "node" pelo ambiente do daemon, que é justamente o que quebrou no
+    // upgrade. No Windows fixar custaria o wrapper de fork do PM2 — que só é
+    // aplicado quando o interpretador termina em "node" — e com ele o IPC que
+    // reporta a versão do Node ao diagnóstico.
+    const ecosystemNode = generateEcosystem({
+      dataDir: testDataDir,
+      port: 3010,
+      serverName: 'Interp',
+    });
+    if (process.platform === 'win32') {
+      if (ecosystemNode.includes('interpreter:')) {
+        throw new Error('Teste 20: no Windows o ecosystem não deveria fixar o interpretador');
+      }
+    } else {
+      if (!ecosystemNode.includes('interpreter:')) {
+        throw new Error('Teste 20: o ecosystem deveria fixar o interpretador do Node');
+      }
+      if (!ecosystemNode.includes(process.execPath.replace(/\\/g, '\\\\'))) {
+        throw new Error('Teste 20: o interpretador deveria ser o Node que executa o CLI');
+      }
+    }
+
+    // O ecosystem é um arquivo JS que o PM2 carrega, e o nome do servidor é
+    // texto livre digitado pelo usuário: um apóstrofo fechava o literal e o
+    // PM2 falhava com "File malformated", sem citar o nome. Carregar o
+    // resultado é o que prova que o escape cobre o caso.
+    for (const trickyName of ["Lucas' Server", 'O\'Brien "X"', 'Back\\slash']) {
+      const generated = generateEcosystem({
+        dataDir: testDataDir,
+        port: 3010,
+        serverName: trickyName,
+      });
+      let args: string;
+      try {
+        const generatedModule = { exports: {} as { apps: Array<Record<string, string>> } };
+        new Function('module', generated)(generatedModule);
+        args = generatedModule.exports.apps[0].args;
+      } catch (error) {
+        throw new Error(
+          `Teste 20: o ecosystem gerado para o nome ${trickyName} não é JS válido (${(error as Error).message})`
+        );
+      }
+      // O PM2 separa os argumentos respeitando aspas, então o nome precisa
+      // chegar com as aspas internas escapadas e as barras preservadas.
+      const expected = `--name "${trickyName.replace(/\\/g, '\\\\').replace(/"/g, '\\"')}"`;
+      if (!args.includes(expected)) {
+        throw new Error(
+          `Teste 20: o nome ${trickyName} não sobreviveu ao ecosystem (args: ${args})`
+        );
+      }
+    }
+
+    // O tarball publicado declara o mínimo em `engines`; a constante existe
+    // para o runtime poder checar o mesmo número. Se os dois divergirem, o CLI
+    // passa a diagnosticar um limite que o instalador não aplica.
+    const packCli = fs.readFileSync(path.join(__dirname, '..', '..', '..', 'scripts', 'pack-cli.js'), 'utf8');
+    const declaredEngine = /engines:\s*\{\s*node:\s*'>=(\d+)'/.exec(packCli);
+    if (!declaredEngine) {
+      throw new Error('Teste 20: não foi possível ler o "engines" declarado em scripts/pack-cli.js');
+    }
+    if (Number(declaredEngine[1]) !== LIMITS.MIN_NODE_MAJOR) {
+      throw new Error(
+        `Teste 20: engines do CLI (>=${declaredEngine[1]}) diverge de LIMITS.MIN_NODE_MAJOR ` +
+          `(${LIMITS.MIN_NODE_MAJOR})`
+      );
+    }
+    console.log('✔ Teste 20 passou: Diagnóstico de saúde do PM2 e interpretador fixo no ecosystem validados');
 
     console.log('=== Todos os testes do servidor passaram com sucesso! ===');
   } finally {

@@ -396,7 +396,6 @@ export class SfuManager {
     const router = await this.getOrCreateRouter(channelId);
     const listenInfos = this.getListenInfos(clientHost);
 
-
     const transport = await router.createWebRtcTransport({
       listenInfos,
       enableUdp: true,
@@ -438,6 +437,109 @@ export class SfuManager {
       dtlsParameters: transport.dtlsParameters,
       sctpParameters: transport.sctpParameters,
     };
+  }
+
+  /**
+   * Closes whatever this session already had for one direction in a channel,
+   * and reports the producers that went with it.
+   *
+   * A client only ever uses one transport per direction, so an earlier one is
+   * abandoned by definition once it asks for another — which is what a rejoin
+   * does. Nothing on the wire says so: the client's `leave()` is local, and a
+   * transport whose ICE never completed never reaches the `dtlsstatechange`
+   * that would close it. Without this, a client retrying behind a broken
+   * network path piles up two transports per attempt, each holding ports out
+   * of the SFU range and worker memory until it leaves the voice channel.
+   */
+  public closeTransportsFor(
+    sessionId: string,
+    channelId: string,
+    direction: 'send' | 'recv'
+  ): { closedProducerIds: string[] } {
+    const staleTransportIds = new Set<string>();
+    for (const [id, record] of Array.from(this.transports.entries())) {
+      if (record.sessionId === sessionId && record.channelId === channelId && record.direction === direction) {
+        staleTransportIds.add(id);
+      }
+    }
+    if (staleTransportIds.size === 0) return { closedProducerIds: [] };
+
+    // Closing a transport closes its producers and consumers in mediasoup, but
+    // our own bookkeeping is not notified — leaving entries behind that other
+    // participants would still be told to consume. A session's producers live
+    // on its send transport and its consumers on its recv one, and this runs
+    // before the replacement exists, so everything it has for this direction
+    // in this channel belongs to the transports being dropped.
+    const closedProducerIds: string[] = [];
+    if (direction === 'send') {
+      for (const [id, record] of Array.from(this.producers.entries())) {
+        if (record.sessionId === sessionId && record.channelId === channelId) {
+          closedProducerIds.push(id);
+          this.producers.delete(id);
+        }
+      }
+    } else {
+      for (const [id, record] of Array.from(this.consumers.entries())) {
+        if (record.sessionId === sessionId && record.channelId === channelId) {
+          this.consumers.delete(id);
+        }
+      }
+    }
+
+    for (const id of staleTransportIds) {
+      const record = this.transports.get(id);
+      if (!record) continue;
+      console.log(
+        `[SFU Server] Replacing abandoned ${direction} transport ${id} for session ${sessionId} in channel ${channelId}`
+      );
+      try {
+        record.transport.close();
+      } catch {}
+      this.transports.delete(id);
+    }
+
+    return { closedProducerIds };
+  }
+
+  /**
+   * Closes everything a session still holds in channels other than the one it
+   * is joining, reporting the producers that went with it.
+   *
+   * Switching voice channels on the same server never sends a `VOICE_LEAVE`,
+   * and the client's own teardown is local, so without this the transports of
+   * the channel just left keep their port pairs until the socket drops.
+   */
+  public closeSessionExcept(
+    sessionId: string,
+    keepChannelId: string
+  ): { closedProducerIds: Array<{ channelId: string; producerId: string }> } {
+    const closedProducerIds: Array<{ channelId: string; producerId: string }> = [];
+
+    for (const [id, record] of Array.from(this.producers.entries())) {
+      if (record.sessionId === sessionId && record.channelId !== keepChannelId) {
+        closedProducerIds.push({ channelId: record.channelId, producerId: id });
+        record.producer.close();
+        this.producers.delete(id);
+      }
+    }
+
+    for (const [id, record] of Array.from(this.consumers.entries())) {
+      if (record.sessionId === sessionId && record.channelId !== keepChannelId) {
+        record.consumer.close();
+        this.consumers.delete(id);
+      }
+    }
+
+    for (const [id, record] of Array.from(this.transports.entries())) {
+      if (record.sessionId === sessionId && record.channelId !== keepChannelId) {
+        try {
+          record.transport.close();
+        } catch {}
+        this.transports.delete(id);
+      }
+    }
+
+    return { closedProducerIds };
   }
 
   public getProducersInChannel(channelId: string): Array<{

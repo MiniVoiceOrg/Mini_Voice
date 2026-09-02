@@ -95,7 +95,6 @@ export enum MessageType {
   SFU_NEW_PRODUCER = 'SFU_NEW_PRODUCER',
   SFU_GET_PRODUCERS = 'SFU_GET_PRODUCERS',
   SFU_PRODUCERS_LIST = 'SFU_PRODUCERS_LIST',
-  SFU_CONTINGENCY_FALLBACK = 'SFU_CONTINGENCY_FALLBACK',
 
   // Server -> Client
   AUTH_CHALLENGE = 'AUTH_CHALLENGE',
@@ -674,8 +673,4 @@ export interface SfuGetProducersPayload {
 export interface SfuProducersListPayload {
   channelId: string;
   producers: SfuNewProducerPayload[];
-}
-
-export interface SfuContingencyFallbackPayload {
-  reason: string;
 }

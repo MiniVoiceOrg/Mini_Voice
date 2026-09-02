@@ -54,6 +54,25 @@ monky update --check            # há versão nova?
 monky config set autoUpdate true  # atualiza sozinho, diariamente às 4h
 ```
 
+### Atualizar a versão do Node
+
+O PM2 é um daemon de vida longa e continua usando o Node com que foi iniciado.
+Trocar a versão do Node — principalmente saindo do apt para o `nvm` — pode
+deixar o servidor num estado em que o `pm2 status` diz `online`, mas nada
+escuta na porta.
+
+Depois de mexer no Node, rode sempre:
+
+```bash
+monky update     # recompila os módulos nativos para o novo ABI
+monky restart    # refixa o interpretador usado pelo PM2
+pm2 save         # grava o estado bom no dump do PM2
+```
+
+Se mesmo assim o servidor não voltar, `monky restart --fresh` recria o registro
+do processo no PM2. Os detalhes e o diagnóstico estão em
+[Trocar a versão do Node](/cli#trocar-a-versao-do-node).
+
 ::: tip Mais de um servidor na mesma VPS
 Basta rodar `monky create` de novo com outra pasta e outra porta. O CLI passa a
 perguntar a qual servidor cada comando se refere — ou você informa direto com

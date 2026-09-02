@@ -13,7 +13,9 @@ import {
   ChatMessage,
   MessageType,
   MemberKickedPayload,
+  ProtocolErrorCode,
   RolesListPayload,
+  ServerErrorPayload,
   UserJoinedPayload,
   UserLeftPayload,
   UserConnectionStatePayload,
@@ -48,6 +50,7 @@ import { screenSharePickerModal } from './views/ScreenSharePickerModal';
 import { showAlert } from './views/Dialog';
 import { showIdentityImportDialog } from './views/IdentityDialogs';
 import { initI18n, t } from './i18n';
+import { translateProtocolError } from './i18n/protocolErrors';
 import { toAbsoluteServerIconUrl } from './utils/avatar';
 import { installImageFallback } from './utils/imageFallback';
 import { clientLog } from './core/ClientLogService';
@@ -816,11 +819,31 @@ class App {
       });
     });
 
-    // SFU contingency fallback alert (#515)
-    appEvents.on('sfu.contingency_fallback', (data: { reason?: string }) => {
+    // The SFU link dropped and is being rebuilt. There is no degraded mode to
+    // announce any more: the call is simply reconnecting.
+    appEvents.on('sfu.reconnecting', (data: { reason?: string }) => {
       showAlert({
-        title: t('sfu.contingencyTitle'),
-        message: t('sfu.contingencyMessage', { reason: data?.reason || t('sfu.unknownError') }),
+        title: t('sfu.reconnectingTitle'),
+        message: t('sfu.reconnectingMessage', { reason: data?.reason || t('sfu.unknownError') }),
+        variant: 'warning',
+      });
+    });
+
+    // The SFU refusing to start after an admin switched the server to it
+    // arrives as an error with no requestId, which `NetworkClient` cannot
+    // correlate to anything and therefore only re-emits — so without a
+    // listener the admin would never hear about it.
+    //
+    // The server's own message is preferred over the code's canned text: it
+    // carries what actually failed (the worker error and the port preflight),
+    // while the canned string only describes the port conflict. Uncorrelated
+    // errors are otherwise left alone, since fire-and-forget requests fail
+    // this way too and have always been silent here.
+    appEvents.on(`message.${MessageType.SERVER_ERROR}`, (payload: ServerErrorPayload) => {
+      if (payload?.code !== ProtocolErrorCode.SFU_UNAVAILABLE) return;
+      showAlert({
+        title: t('sfu.unavailableTitle'),
+        message: payload.message || translateProtocolError(payload.code, payload.message),
         variant: 'warning',
       });
     });
