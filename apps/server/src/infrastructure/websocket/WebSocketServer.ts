@@ -79,7 +79,6 @@ import {
   SfuNewProducerPayload,
   SfuGetProducersPayload,
   SfuProducersListPayload,
-  SfuContingencyFallbackPayload,
   canAccessChannel,
 } from '@monky/shared';
 import { AuthService } from '../../application/services/AuthService';
@@ -173,7 +172,7 @@ export class WebSocketServer {
           Logger.error(
             'SFU',
             `voiceMode is "sfu" but the SFU worker failed to start: ${this.sfuManager.getLastError()}.${diagnosis} ` +
-              'Voice and video are running in P2P contingency.'
+              'Clients will keep retrying until it comes up.'
           );
         }
       }
@@ -1180,19 +1179,21 @@ export class WebSocketServer {
       const ok = await this.sfuManager.init();
       if (!ok) {
         // The admin is watching this switch right now, so the reason travels
-        // to the client instead of staying in the server log.
+        // to the client instead of staying in the server log. Nothing is
+        // downgraded here: clients keep retrying the SFU on their own until
+        // the worker comes up.
         const preflight = checkSfuPreflight();
         const diagnosis = preflight.ok ? '' : ` ${formatSfuPreflightForLog(preflight)}`;
         Logger.error(
           'SFU',
-          `SFU initialization failed on mode change: ${this.sfuManager.getLastError()}.${diagnosis} Emitting contingency fallback.`
+          `SFU initialization failed on mode change: ${this.sfuManager.getLastError()}.${diagnosis}`
         );
         const reason =
           `${this.sfuManager.getLastError() || 'SFU worker failed to initialize'}${diagnosis}`.trim();
-        this.broadcast({
-          type: MessageType.SFU_CONTINGENCY_FALLBACK,
-          payload: { reason } satisfies SfuContingencyFallbackPayload,
-        });
+        // Deliberately uncorrelated: the settings change itself succeeded and
+        // is confirmed by the broadcast below, so tying this to the requestId
+        // would fail the very request that worked.
+        this.sendError(session.ws, ProtocolErrorCode.SFU_UNAVAILABLE, reason);
       }
     } else if (payload.voiceMode === 'p2p') {
       // When switching to P2P, cleanly terminate any active SFU channels and evict call participants

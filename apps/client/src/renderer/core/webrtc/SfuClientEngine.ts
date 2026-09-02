@@ -34,7 +34,13 @@ export interface SfuConsumerTrackEvent {
 export interface SfuClientEngineCallbacks {
   onConsumerTrack: (event: SfuConsumerTrackEvent) => void;
   onConsumerClosed: (producerSessionId: string, mediaType: string, shareId?: string) => void;
-  onFallbackToP2p: (reason: string) => void;
+  /**
+   * The SFU link is down. There is no degraded mode to fall back to, so the
+   * manager answers this by rejoining the room until it comes back.
+   */
+  onConnectionFailed: (reason: string) => void;
+  /** A transport reached `connected`, which closes any rejoin ladder in flight. */
+  onConnected: () => void;
 }
 
 export class SfuClientEngine {
@@ -50,6 +56,17 @@ export class SfuClientEngine {
   private consumerMeta: Map<string, { producerSessionId: string; mediaType: string; shareId?: string; consumerId: string }> = new Map();
   private isConnecting: boolean = false;
   private isConnected: boolean = false;
+  /**
+   * Last reported state of each transport.
+   *
+   * Tracked separately because the two carry different media in different
+   * directions and can diverge: a send transport reaching `connected` while
+   * the recv one failed must not be read as a healthy session, or the rejoin
+   * that the failure asked for would be cancelled and half the call would stay
+   * dead.
+   */
+  private sendTransportState: string = 'new';
+  private recvTransportState: string = 'new';
   private unsubscribeEvents: Array<() => void> = [];
 
   constructor(
@@ -159,10 +176,13 @@ export class SfuClientEngine {
       this.sendTransport.on('connectionstatechange', (state) => {
         console.log(`[SFU Client] Send transport connectionState changed: ${state}`);
         clientLog.info('SFU', `Send transport state: ${state}`);
+        this.sendTransportState = state;
         if (state === 'failed') {
-          clientLog.warn('SFU', 'Send transport failed, requesting fallback');
-          this.callbacks.onFallbackToP2p('Falha na conexão do transporte de envio SFU');
+          clientLog.warn('SFU', 'Send transport failed, requesting reconnect');
+          this.callbacks.onConnectionFailed('SFU send transport connection failed');
+          return;
         }
+        this.notifyIfFullyConnected();
       });
 
       // 4. Create recv transport
@@ -205,10 +225,13 @@ export class SfuClientEngine {
       this.recvTransport.on('connectionstatechange', (state) => {
         console.log(`[SFU Client] Recv transport connectionState changed: ${state}`);
         clientLog.info('SFU', `Recv transport state: ${state}`);
+        this.recvTransportState = state;
         if (state === 'failed') {
-          clientLog.warn('SFU', 'Recv transport failed, requesting fallback');
-          this.callbacks.onFallbackToP2p('Falha na conexão do transporte de recepção SFU');
+          clientLog.warn('SFU', 'Recv transport failed, requesting reconnect');
+          this.callbacks.onConnectionFailed('SFU recv transport connection failed');
+          return;
         }
+        this.notifyIfFullyConnected();
       });
 
       // 5. Register network listeners for new producers and producer closed
@@ -259,19 +282,12 @@ export class SfuClientEngine {
       this.handleRemoteProducerClosed(payload.producerId);
     };
 
-    const handleContingencyFallback = (payload: { reason?: string }) => {
-      clientLog.warn('SFU', `Contingency fallback triggered: ${payload.reason}`);
-      this.callbacks.onFallbackToP2p(payload.reason || 'Servidor acionou contingência P2P');
-    };
-
     appEvents.on(`message.${MessageType.SFU_NEW_PRODUCER}`, handleNewProducer);
     appEvents.on(`message.${MessageType.SFU_PRODUCER_CLOSED}`, handleProducerClosed);
-    appEvents.on(`message.${MessageType.SFU_CONTINGENCY_FALLBACK}`, handleContingencyFallback);
 
     this.unsubscribeEvents.push(() => {
       appEvents.off(`message.${MessageType.SFU_NEW_PRODUCER}`, handleNewProducer);
       appEvents.off(`message.${MessageType.SFU_PRODUCER_CLOSED}`, handleProducerClosed);
-      appEvents.off(`message.${MessageType.SFU_CONTINGENCY_FALLBACK}`, handleContingencyFallback);
     });
   }
 
@@ -626,5 +642,17 @@ export class SfuClientEngine {
     this.channelId = null;
     this.isConnected = false;
     this.isConnecting = false;
+    this.sendTransportState = 'new';
+    this.recvTransportState = 'new';
+  }
+
+  /**
+   * Reports a healthy session only once both directions are up, so a rejoin
+   * asked for by one transport is never cancelled by the other succeeding.
+   */
+  private notifyIfFullyConnected(): void {
+    if (this.sendTransportState === 'connected' && this.recvTransportState === 'connected') {
+      this.callbacks.onConnected();
+    }
   }
 }

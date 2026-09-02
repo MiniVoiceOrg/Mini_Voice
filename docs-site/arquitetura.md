@@ -303,8 +303,10 @@ No modo SFU, cada cliente abre apenas **2 WebRTC Transports** com o servidor:
 
 Quem transmite envia seu fluxo em 1080p60 **uma única vez**, economizando drasticamente o upload e a CPU do usuário.
 
-::: tip Resiliência & Fallback Automático
-Se o processo SFU sofrer qualquer falha ou indisponibilidade, o cliente emite uma notificação em tela e entra em **contingência automática P2P**, restabelecendo a comunicação entre os membros sem derrubar a chamada.
+::: tip Resiliência & Reconexão Automática
+Se o processo SFU sofrer qualquer falha ou indisponibilidade, o cliente avisa em tela e passa a **refazer a sessão SFU automaticamente**, com espera progressiva entre as tentativas, até o servidor voltar.
+
+Não existe queda para P2P: uma malha em que só o lado que percebeu a falha troca de protocolo nunca se forma, porque o outro lado continua respondendo como cliente SFU e descarta a oferta recebida. O resultado seria uma chamada muda por trás de um aviso tranquilizador — por isso o caminho é reconectar, e não degradar.
 :::
 
 ### Sinalização

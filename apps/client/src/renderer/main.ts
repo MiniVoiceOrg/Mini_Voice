@@ -816,11 +816,12 @@ class App {
       });
     });
 
-    // SFU contingency fallback alert (#515)
-    appEvents.on('sfu.contingency_fallback', (data: { reason?: string }) => {
+    // The SFU link dropped and is being rebuilt. There is no degraded mode to
+    // announce any more: the call is simply reconnecting.
+    appEvents.on('sfu.reconnecting', (data: { reason?: string }) => {
       showAlert({
-        title: t('sfu.contingencyTitle'),
-        message: t('sfu.contingencyMessage', { reason: data?.reason || t('sfu.unknownError') }),
+        title: t('sfu.reconnectingTitle'),
+        message: t('sfu.reconnectingMessage', { reason: data?.reason || t('sfu.unknownError') }),
         variant: 'warning',
       });
     });

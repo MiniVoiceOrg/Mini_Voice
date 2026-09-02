@@ -303,8 +303,10 @@ In SFU mode, each client opens only **2 WebRTC Transports** with the host server
 
 The broadcaster encodes and sends 1080p60 screen streams **only once**, drastically reducing upstream bandwidth and local CPU load.
 
-::: tip Resilience & Automatic Fallback
-If the SFU process encounters errors or unexpected downtime, clients display a toast notification and trigger an **automatic P2P contingency fallback**, maintaining the voice call uninterrupted.
+::: tip Resilience & Automatic Reconnection
+If the SFU process encounters errors or unexpected downtime, clients show a notice and **rebuild the SFU session automatically**, backing off between attempts until the server is back.
+
+There is no drop to P2P: a mesh where only the side that noticed the failure switches protocol never forms, because the other side keeps answering as an SFU client and discards the incoming offer. That would leave a silent call behind a reassuring notice — so the client reconnects instead of degrading.
 :::
 
 ### Signaling

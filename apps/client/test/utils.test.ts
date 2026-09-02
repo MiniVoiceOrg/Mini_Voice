@@ -710,11 +710,12 @@ function runTests() {
     send: (type: string, payload: any) => {},
     on: () => () => {},
   };
-  let fallbackCalled = false;
+  let connectionFailedCalled = false;
   const sfuEngine = new SfuClientEngine(mockSignalClient as any, {
     onConsumerTrack: () => {},
     onConsumerClosed: () => {},
-    onFallbackToP2p: () => { fallbackCalled = true; },
+    onConnectionFailed: () => { connectionFailedCalled = true; },
+    onConnected: () => {},
   });
   assert(typeof sfuEngine.join === 'function', 'SfuClientEngine possui método join');
   assert(typeof sfuEngine.produceMic === 'function', 'SfuClientEngine possui método produceMic');
