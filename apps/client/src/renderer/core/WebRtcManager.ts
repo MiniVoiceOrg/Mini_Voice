@@ -485,7 +485,10 @@ export class WebRtcManager {
     } else if (mediaType === 'screen_video') {
       this.voiceParticipants.removeRemoteScreenStream(producerSessionId, shareId || 'default');
     } else if (mediaType === 'screen_audio') {
-      this.mediaRouter.cleanupPeerMedia(producerSessionId);
+      // Only the screen audio goes: `cleanupPeerMedia` would also tear down the
+      // peer's voice <audio> element and its amplification pipeline, which is
+      // how ending a screen share used to mute the sharer for everyone else.
+      this.mediaRouter.cleanupScreenAudio(producerSessionId);
     }
   }
 
