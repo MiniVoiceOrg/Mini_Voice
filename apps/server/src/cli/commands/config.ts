@@ -11,7 +11,7 @@ import {
   DEFAULT_SERVER_NAME,
 } from '../constants';
 import { CliContext, readLocalConfig, writeLocalConfig } from '../context';
-import { formatBool, formatDate, parseBoolean, parseMemberLimit, parsePositiveInt } from '../formatters';
+import { formatBool, formatDate, parseBoolean, parseMemberLimit, parsePositiveInt, printVoiceModeComparisonTable } from '../formatters';
 import { t } from '../i18n/index';
 import {
   getPm2ProcessName,
@@ -115,6 +115,7 @@ export async function setConfig(ctx: CliContext, key: string, value?: string): P
         nextValue = await askChoice(t('config.askBoolean'), ['true', 'false']);
         break;
       case 'voiceMode':
+        printVoiceModeComparisonTable();
         nextValue = await askChoice(t('config.askVoiceMode'), ['p2p', 'sfu']);
         break;
       case 'maxUsers':
@@ -217,6 +218,8 @@ export async function setConfig(ctx: CliContext, key: string, value?: string): P
       if (mode === 'sfu') {
         const { CapacityEstimator } = await import('../../domain/services/CapacityEstimator');
         const estimate = CapacityEstimator.estimate();
+        console.log();
+        console.log(color(t('create.sfuCapacityTitle'), ANSI.bold));
         console.log(color(estimate.summaryText, ANSI.cyan));
       }
       break;

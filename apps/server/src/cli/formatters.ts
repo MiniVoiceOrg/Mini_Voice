@@ -114,3 +114,29 @@ export function normalizeRoleColor(value: string): string | null {
   }
   return trimmed.startsWith('#') ? trimmed : `#${trimmed}`;
 }
+
+export function printVoiceModeComparisonTable(): void {
+  const rows = [
+    { data: '🎤 Áudio (voz)', p2p: 'Direto entre peers', sfu: 'Passa pelo servidor' },
+    { data: '📹 Vídeo (câmera)', p2p: 'Direto entre peers', sfu: 'Passa pelo servidor' },
+    { data: '🖥️ Compartilhamento de tela', p2p: 'Direto entre peers', sfu: 'Passa pelo servidor' },
+    { data: '💬 Mensagens de chat', p2p: 'Passa pelo servidor', sfu: 'Passa pelo servidor' },
+    { data: '📎 Arquivos e anexos', p2p: 'Armazenados no servidor', sfu: 'Armazenados no servidor' },
+    { data: '🔗 Sinalização WebRTC', p2p: 'Passa pelo servidor', sfu: 'Passa pelo servidor' },
+    { data: '👤 Perfis e avatares', p2p: 'Armazenados no servidor', sfu: 'Armazenados no servidor' },
+    { data: '⚙️ Canais, cargos, configurações', p2p: 'Armazenados no servidor', sfu: 'Armazenados no servidor' },
+    { data: '🟢 Status e presença', p2p: 'Passa pelo servidor', sfu: 'Passa pelo servidor' },
+  ];
+
+  console.log();
+  console.log(color('┌───────────────────────────────────────┬─────────────────────────┬─────────────────────────┐', ANSI.dim));
+  console.log(color('│ Dado                                  │ P2P Mesh                │ SFU                     │', ANSI.bold));
+  console.log(color('├───────────────────────────────────────┼─────────────────────────┼─────────────────────────┤', ANSI.dim));
+  for (const r of rows) {
+    const d = pad(r.data, 37);
+    const p = pad(r.p2p, 23);
+    const s = pad(r.sfu, 23);
+    console.log(`│ ${d} │ ${p} │ ${s} │`);
+  }
+  console.log(color('└───────────────────────────────────────┴─────────────────────────┴─────────────────────────┘', ANSI.dim));
+}

@@ -20,7 +20,7 @@ import {
 } from '../context';
 import { DecryptedIdentity, decryptIdentityExport } from '../identity';
 import { t } from '../i18n/index';
-import { parseOption, parseMemberLimit, parsePositiveInt } from '../formatters';
+import { parseOption, parseMemberLimit, parsePositiveInt, printVoiceModeComparisonTable } from '../formatters';
 import { hasServerDatabase, registerServer } from '../registry';
 import { setConfig } from './config';
 import { startServerCommand } from './serverLifecycle';
@@ -177,7 +177,13 @@ export async function createCommand(globalArgs: GlobalArgs, args: string[]): Pro
   const maxUsers = await askMemberLimit(args);
 
   const rawVoiceMode = parseOption(args, '--voice-mode');
-  const voiceMode: 'p2p' | 'sfu' = rawVoiceMode === 'sfu' ? 'sfu' : rawVoiceMode === 'p2p' ? 'p2p' : ((await askChoice(t('create.voiceModeChoice'), ['p2p', 'sfu'])) as 'p2p' | 'sfu');
+  let voiceMode: 'p2p' | 'sfu';
+  if (rawVoiceMode === 'sfu' || rawVoiceMode === 'p2p') {
+    voiceMode = rawVoiceMode;
+  } else {
+    printVoiceModeComparisonTable();
+    voiceMode = (await askChoice(t('create.voiceModeChoice'), ['p2p', 'sfu'])) as 'p2p' | 'sfu';
+  }
 
   if (voiceMode === 'sfu') {
     const { CapacityEstimator } = await import('../../domain/services/CapacityEstimator');

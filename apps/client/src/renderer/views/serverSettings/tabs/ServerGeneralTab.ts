@@ -4,6 +4,11 @@ import { serverStore } from '../../../stores/serverStore';
 import { t } from '../../../i18n';
 import { LIMITS } from '@monky/shared';
 import logoUrl from '../../../assets/Logo.png';
+import {
+  renderWhatPassesWhereTableHtml,
+  renderCapacityEstimatorHtml,
+  attachCapacityEstimatorEvents,
+} from '../../../utils/voiceModeInfo';
 
 export class ServerGeneralTab {
   /**
@@ -48,7 +53,7 @@ export class ServerGeneralTab {
             <div class="input-with-emoji-container">
               <input id="input-server-name" type="text" value="${escapeHtml(s.name)}" required minlength="2" maxlength="50" style="padding-right: 36px;">
               <button type="button" id="btn-emoji-server-name" class="btn-input-emoji" title="${t('chat.emojiPickerTitle')}">
-                <span class="material-symbols-outlined md-18">mood</span>
+                <span class="material-symbols-outlined md-18">sentiment_satisfied</span>
               </button>
             </div>
           </div>
@@ -58,58 +63,22 @@ export class ServerGeneralTab {
       <div style="background: var(--bg-card); border: 1px solid var(--border-color); border-radius: var(--radius-md); padding: 14px; margin-bottom: 16px;">
         <div style="display: flex; align-items: center; justify-content: space-between; gap: 12px;">
           <div>
-            <label for="checkbox-limit-members" style="font-size: 13px; font-weight: 600; color: var(--text-primary); display: flex; align-items: center; gap: 6px; cursor: pointer; margin-bottom: 2px;">
-              <span class="material-symbols-outlined md-18" style="color: var(--accent-primary);">group</span>
-              <span>${t('serverSettings.memberLimitLabel')}</span>
-            </label>
-            <div style="font-size: 11px; color: var(--text-muted);">
-              ${t('serverSettings.memberLimitDesc')}
-            </div>
+            <div style="font-size: 13px; font-weight: 600; color: var(--text-primary); margin-bottom: 2px;">${t('serverSettings.memberLimitLabel')}</div>
+            <div style="font-size: 11px; color: var(--text-muted);">${t('serverSettings.memberLimitDesc')}</div>
           </div>
-          <label class="toggle-switch" aria-label="${t('serverSettings.memberLimitLabel')}">
+          <label class="toggle-switch">
             <input id="checkbox-limit-members" type="checkbox" ${hasLimit ? 'checked' : ''}>
             <span class="toggle-slider"></span>
           </label>
         </div>
-        <div class="form-group" id="max-users-group" style="margin-bottom: 0; margin-top: 12px;" ${hasLimit ? '' : 'hidden'}>
-          <label style="margin-bottom: 4px; font-size: 12px;">${t('serverSettings.memberLimitValueLabel')}</label>
+
+        <div id="max-users-group" class="form-group" style="margin-top: 12px; margin-bottom: 0;" ${hasLimit ? '' : 'hidden'}>
+          <label style="margin-bottom: 4px;">${t('serverSettings.memberLimitValueLabel')}</label>
           <input id="input-max-users" type="number" min="1" step="1" value="${limitValue}">
-          <div style="font-size: 11px; color: var(--text-muted); margin-top: 6px;">
+          <div style="font-size: 11px; color: var(--text-muted); margin-top: 4px;">
             ${t('serverSettings.memberLimitHint', { count: memberCount })}
           </div>
         </div>
-      </div>
-
-      <div style="display: flex; align-items: center; justify-content: space-between; gap: 12px; background: var(--bg-card); border: 1px solid var(--border-color); border-radius: var(--radius-md); padding: 12px 14px; margin-bottom: 16px;">
-        <div>
-          <label for="checkbox-allow-everyone-mention" style="font-size: 13px; font-weight: 600; color: var(--text-primary); display: flex; align-items: center; gap: 6px; cursor: pointer; margin-bottom: 2px;">
-            <span class="material-symbols-outlined md-18" style="color: var(--accent-primary);">alternate_email</span>
-            <span>${t('serverSettings.allowEveryoneMention')}</span>
-          </label>
-          <div style="font-size: 11px; color: var(--text-muted);">
-            ${t('serverSettings.allowEveryoneMentionDesc')}
-          </div>
-        </div>
-        <label class="toggle-switch" aria-label="${t('serverSettings.allowEveryoneMention')}">
-          <input id="checkbox-allow-everyone-mention" type="checkbox" ${s.allowEveryoneMention !== false ? 'checked' : ''}>
-          <span class="toggle-slider"></span>
-        </label>
-      </div>
-
-      <div style="display: flex; align-items: center; justify-content: space-between; gap: 12px; background: var(--bg-card); border: 1px solid var(--border-color); border-radius: var(--radius-md); padding: 12px 14px; margin-bottom: 16px;">
-        <div>
-          <label for="checkbox-allow-message-edit" style="font-size: 13px; font-weight: 600; color: var(--text-primary); display: flex; align-items: center; gap: 6px; cursor: pointer; margin-bottom: 2px;">
-            <span class="material-symbols-outlined md-18" style="color: var(--accent-primary);">edit_note</span>
-            <span>${t('serverSettings.allowMessageEdit')}</span>
-          </label>
-          <div style="font-size: 11px; color: var(--text-muted);">
-            ${t('serverSettings.allowMessageEditDesc')}
-          </div>
-        </div>
-        <label class="toggle-switch" aria-label="${t('serverSettings.allowMessageEdit')}">
-          <input id="checkbox-allow-message-edit" type="checkbox" ${s.allowMessageEdit !== false ? 'checked' : ''}>
-          <span class="toggle-slider"></span>
-        </label>
       </div>
 
       <div style="background: var(--bg-card); border: 1px solid var(--border-color); border-radius: var(--radius-md); padding: 14px; margin-bottom: 16px;">
@@ -139,13 +108,8 @@ export class ServerGeneralTab {
         </div>
         <input type="hidden" id="input-server-voice-mode" value="${s.voiceMode || 'p2p'}" />
 
-        <details style="font-size: 11px; color: var(--text-muted); cursor: pointer;">
-          <summary style="font-weight: 600; color: var(--text-secondary); margin-bottom: 6px;">${t('serverSettings.whatPassesWhereTitle')}</summary>
-          <div style="margin-top: 6px; padding: 8px; background: var(--bg-tertiary); border-radius: var(--radius-sm); line-height: 1.5;">
-            <div>• <strong>P2P Mesh:</strong> ${t('serverSettings.whatPassesWhereP2p')}</div>
-            <div>• <strong>SFU:</strong> ${t('serverSettings.whatPassesWhereSfu')}</div>
-          </div>
-        </details>
+        ${renderWhatPassesWhereTableHtml()}
+        ${renderCapacityEstimatorHtml('general')}
       </div>
 
       <div style="background: var(--bg-card); border: 1px solid var(--border-color); border-radius: var(--radius-md); padding: 14px;">
@@ -201,9 +165,12 @@ export class ServerGeneralTab {
       cardCleanups.push(() => card.removeEventListener('click', listener));
     });
 
+    const cleanupCapacity = attachCapacityEstimatorEvents(root, 'general');
+
     return () => {
       if (toggle && group) toggle.removeEventListener('change', sync);
       cardCleanups.forEach((cleanup) => cleanup());
+      cleanupCapacity();
     };
   }
 }
