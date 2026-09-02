@@ -232,9 +232,30 @@ Client A ◄──────────────► Client B
              WebRTC
 ```
 
-Isso reduz drasticamente o consumo do servidor.
+Isso reduz drasticamente o consumo do servidor no modo P2P padrão.
+
+### 6.1 Modo Centralizado: SFU (Selective Forwarding Unit)
+
+A partir da versão 3.5.0, o Monky suporta alternar o servidor para o modo **SFU** baseado em `mediasoup`.
+
+Topologia SFU:
+```text
+Client A ───(sendTransport: áudio/vídeo/tela)───► [ mediasoup SFU Worker ]
+                                                          │
+          ◄───(recvTransport: trilhas de A e C)───────────┤
+Client B                                                  │
+          ◄───(recvTransport: trilhas de A e B)───────────┘
+Client C
+```
+
+Vantagens:
+- Quem compartilha tela em 1080p60 transmite apenas 1 stream upstream.
+- Redução exponencial do uso de CPU e banda dos clientes em chamadas com mais de 3 participantes.
+- Mecanismo de **contingência automática (Fallback P2P)** caso o worker SFU sofra interrupção.
+- Estimador de capacidade integrado (CPU, RAM, Bandwidth) no client e CLI.
 
 ---
+
 
 # 7. Problema de NAT
 

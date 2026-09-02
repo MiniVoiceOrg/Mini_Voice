@@ -52,33 +52,38 @@ Manual completo de uso e hospedagem em **[monkyorg.github.io/Monky](https://monk
 
 ## 🏗️ Como funciona por dentro
 
-O Monky separa **o que o servidor controla** do **que trafega entre as pessoas**:
+O Monky separa **o que o servidor controla** do **que trafega entre as pessoas**, suportando dois modos de mídia:
 
 ```mermaid
 flowchart TB
-    subgraph MP["Plano de mídia — P2P, não passa pelo servidor"]
+    subgraph P2P["Modo P2P Mesh (Padrão)"]
         direction LR
-        A2["Ana"] <-->|"voz · vídeo · tela"| B2["Bruno"]
-        B2 <-->|"voz · vídeo · tela"| C2["Carla"]
-        A2 <-->|"voz · vídeo · tela"| C2
+        A1["Ana"] <-->|"WebRTC direto"| B1["Bruno"]
+        B1 <-->|"WebRTC direto"| C1["Carla"]
+        A1 <-->|"WebRTC direto"| C1
+    end
+
+    subgraph SFU["Modo SFU (Centralizado)"]
+        direction LR
+        A2["Ana"] <-->|"1 stream (1080p60)"| MS[("mediasoup<br/>Worker")]
+        B2["Bruno"] <-->|"1 stream"| MS
+        C2["Carla"] <-->|"1 stream"| MS
     end
 
     S[("Servidor Monky<br/>WebSocket + SQLite")]
-    A["Ana"] <-->|"login, canais, chat, sinalização"| S
+    A["Ana"] <-->|"login, chat, sinalização"| S
     B["Bruno"] <--> S
     C["Carla"] <--> S
 
-    S -.->|"apresenta os pares<br/>uns aos outros"| MP
+    S -.->|"Sinalização"| P2P
+    S -.->|"Roteamento"| SFU
 ```
 
-O servidor cuida de login, canais, chat, cargos e sinalização — e sai da frente.
-Voz, vídeo e tela vão **direto de uma pessoa para a outra** via WebRTC, em mesh.
-Duas consequências: a banda do servidor quase não importa (um VPS baratinho dá
-conta) e **nem quem hospeda consegue ouvir a conversa**.
+- **P2P Mesh (Padrão):** O servidor apenas sinaliza; áudio, vídeo e tela vão direto entre os usuários. Não consome banda de mídia no host.
+- **SFU Centralizado (mediasoup):** O servidor roteia os fluxos WebRTC. Quem compartilha tela em 1080p60 envia apenas 1 stream, economizando CPU e upload. Inclui contingência automática para P2P caso o processo SFU sofra instabilidades.
 
-O detalhe completo — protocolo, autenticação por chave pública, banco, permissões,
-plano de mídia, perfis de qualidade e limites conhecidos — está em
-**[Arquitetura](https://monkyorg.github.io/Monky/arquitetura)**.
+O detalhe completo — protocolo, autenticação por chave pública, banco, permissões, topologias de mídia, perfis de qualidade e limites — está em **[Arquitetura](https://monkyorg.github.io/Monky/arquitetura)**.
+
 
 ## 🗳️ Roadmap & Votação
 
