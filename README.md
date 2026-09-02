@@ -39,7 +39,7 @@ Baixe a versão mais recente em [github.com/MonkyOrg/Monky/releases/latest](http
 | Windows 10/11 (x64) | `Monky-<versão>-win-x64-portable.exe` | Não instala nada, é só executar |
 | macOS (Intel / Apple Silicon) | `Monky-<versão>-mac-<arch>.dmg` | Escolha `x64` (Intel) ou `arm64` (M1/M2/M3+) |
 
-Se o Windows/macOS mostrar aviso de segurança, veja [Instalação](https://monkyorg.github.io/Monky/instalacao). Para checksums e assinatura, veja [Verificar Releases](https://monkyorg.github.io/Monky/verificar-releases).
+Se o Windows/macOS mostrar aviso de segurança, veja [Download](https://monkyorg.github.io/Monky/download). Para checksums e assinatura, veja [Verificar Releases](https://monkyorg.github.io/Monky/verificar-releases).
 
 ## 📚 Documentação
 

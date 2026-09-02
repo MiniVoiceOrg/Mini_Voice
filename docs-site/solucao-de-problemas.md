@@ -2,7 +2,7 @@
 
 | Sintoma | O que costuma resolver |
 |---|---|
-| macOS diz que o app "está danificado e não pode ser aberto" | É a quarentena do Gatekeeper (app ainda não notarizado). Rode no Terminal: `xattr -dr com.apple.quarantine /Applications/Monky.app`. Veja [Instalação](/instalacao#avisos-de-seguranca) |
+| macOS diz que o app "está danificado e não pode ser aberto" | É a quarentena do Gatekeeper (app ainda não notarizado). Rode no Terminal: `xattr -dr com.apple.quarantine /Applications/Monky.app`. Veja [Download](/download#macos-o-aplicativo-esta-danificado-e-nao-pode-ser-aberto) |
 | Não consigo conectar no servidor do meu amigo | Confirme IP e porta; peça para ele confirmar que o servidor está iniciado; verifique firewall e port forwarding; em CGNAT, usem VPN ou [TURN](/turn) |
 | Nickname já em uso | Nicknames são únicos por servidor — escolha outro |
 | Entrei, mas ninguém me ouve | Confira microfone em Configurações › Dispositivos, veja o medidor VAD, baixe a sensibilidade e confirme que o mic não está mutado |
