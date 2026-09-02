@@ -13,6 +13,7 @@ import {
   ChatMessage,
   MessageType,
   MemberKickedPayload,
+  ProtocolErrorCode,
   RolesListPayload,
   ServerErrorPayload,
   UserJoinedPayload,
@@ -828,16 +829,21 @@ class App {
       });
     });
 
-    // An error the server sent on its own, not as the answer to a request:
-    // `NetworkClient` only rejects a promise when it can correlate a
-    // requestId, so without this the payload would be emitted and nothing
-    // would be listening. The SFU refusing to start after an admin switched
-    // the server to it arrives this way, and the admin has to hear about it.
+    // The SFU refusing to start after an admin switched the server to it
+    // arrives as an error with no requestId, which `NetworkClient` cannot
+    // correlate to anything and therefore only re-emits — so without a
+    // listener the admin would never hear about it.
+    //
+    // The server's own message is preferred over the code's canned text: it
+    // carries what actually failed (the worker error and the port preflight),
+    // while the canned string only describes the port conflict. Uncorrelated
+    // errors are otherwise left alone, since fire-and-forget requests fail
+    // this way too and have always been silent here.
     appEvents.on(`message.${MessageType.SERVER_ERROR}`, (payload: ServerErrorPayload) => {
-      if (!payload) return;
+      if (payload?.code !== ProtocolErrorCode.SFU_UNAVAILABLE) return;
       showAlert({
-        title: t('app.serverErrorTitle'),
-        message: translateProtocolError(payload.code, payload.message),
+        title: t('sfu.unavailableTitle'),
+        message: payload.message || translateProtocolError(payload.code, payload.message),
         variant: 'warning',
       });
     });

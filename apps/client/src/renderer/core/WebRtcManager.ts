@@ -113,6 +113,12 @@ export class WebRtcManager {
   private sfuReconnectTimer: any = null;
   private isSfuJoining: boolean = false;
   /**
+   * A join was asked for while another was running. The one in flight captured
+   * the channel as it was when it started, so it cannot serve a request made
+   * after the state moved: it runs again once the current one unwinds.
+   */
+  private sfuJoinRequested: boolean = false;
+  /**
    * Bumped whenever the SFU session is torn down or a new join starts. A join
    * takes several round-trips, and the user can leave the channel or a newer
    * join can begin while an older one is still awaiting; comparing the epoch
@@ -423,8 +429,17 @@ export class WebRtcManager {
     if (!channelId || !this.isSfuMode()) return;
     // Two joins in flight interleave their assignments inside the engine and
     // can leave it holding a send transport from one and a recv transport from
-    // the other, whose server-side peer is already gone.
-    if (this.isSfuJoining) return;
+    // the other, whose server-side peer is already gone. The request is not
+    // dropped, though: the running join captured the channel as it was when it
+    // started, so a state change since then may be exactly what it is missing.
+    // Switching voice channels does both at once — the join for the old
+    // channel is still in flight when the join for the new one is asked for —
+    // and dropping the second one left the client in the new channel with no
+    // session at all, because the first then discarded itself for being stale.
+    if (this.isSfuJoining) {
+      this.sfuJoinRequested = true;
+      return;
+    }
 
     const epoch = ++this.sfuJoinEpoch;
     this.isSfuJoining = true;
@@ -465,6 +480,10 @@ export class WebRtcManager {
       }
     } finally {
       this.isSfuJoining = false;
+      if (this.sfuJoinRequested) {
+        this.sfuJoinRequested = false;
+        await this.performSfuJoin();
+      }
     }
   }
 
