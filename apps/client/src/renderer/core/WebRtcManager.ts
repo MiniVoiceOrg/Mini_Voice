@@ -480,8 +480,14 @@ export class WebRtcManager {
       }
     } finally {
       this.isSfuJoining = false;
-      if (this.sfuJoinRequested) {
-        this.sfuJoinRequested = false;
+      // Only re-run when the finished join did not already serve the request:
+      // it may well have been for this very channel, and rebuilding a healthy
+      // session closes the producers everyone is consuming — a room-wide audio
+      // gap every time someone new arrives mid-join. The ladder is left alone
+      // for the same reason `initSfuForCurrentChannel` refuses to run under it.
+      const queued = this.sfuJoinRequested;
+      this.sfuJoinRequested = false;
+      if (queued && !this.sfuReconnectTimer && !this.sfuEngine.isReady()) {
         await this.performSfuJoin();
       }
     }

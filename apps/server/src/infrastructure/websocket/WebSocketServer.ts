@@ -2217,9 +2217,14 @@ export class WebSocketServer {
     const server = await this.serverRepo.getServer();
     if (server?.voiceMode === 'sfu') return true;
 
+    // Not SFU_UNAVAILABLE: that code means the host cannot carry SFU media and
+    // the client surfaces it to the admin with the reason attached. This is an
+    // ordinary request arriving for the wrong mode — a client still closing
+    // producers while the server is switched to P2P hits it on the normal
+    // path, and it must not raise an alarm at everyone in the call.
     this.sendError(
       session.ws,
-      ProtocolErrorCode.SFU_UNAVAILABLE,
+      ProtocolErrorCode.BAD_REQUEST,
       'Este servidor não está no modo SFU.',
       requestId
     );

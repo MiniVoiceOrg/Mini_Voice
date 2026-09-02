@@ -1021,8 +1021,14 @@ async function runTests() {
             reject(new Error(`Teste 19: handshake do SFU deveria ser recusado em modo P2P (${res.type})`));
             return;
           }
-          if (res.payload?.code !== ProtocolErrorCode.SFU_UNAVAILABLE) {
-            reject(new Error(`Teste 19: recusa do SFU em P2P deveria usar SFU_UNAVAILABLE (${res.payload?.code})`));
+          // BAD_REQUEST, e não SFU_UNAVAILABLE: aquele código diz que o host
+          // não consegue carregar mídia SFU e o cliente o exibe ao admin com o
+          // motivo. Aqui é só um pedido chegando no modo errado — inclusive
+          // pelo caminho normal, quando um cliente ainda fecha producers
+          // enquanto o servidor acabou de ser trocado para P2P — e não pode
+          // virar alarme na tela de todo mundo que está na chamada.
+          if (res.payload?.code !== ProtocolErrorCode.BAD_REQUEST) {
+            reject(new Error(`Teste 19: recusa do SFU em P2P deveria usar BAD_REQUEST (${res.payload?.code})`));
             return;
           }
           resolve();
