@@ -1431,7 +1431,8 @@ export class WebSocketServer {
       const transportOptions = await this.sfuManager.createWebRtcTransport(
         session.sessionId,
         payload.channelId,
-        payload.direction
+        payload.direction,
+        session.requestHost
       );
       this.send(session.ws, {
         type: MessageType.SFU_WEBRTC_TRANSPORT_CREATED,
