@@ -302,8 +302,9 @@ export class MainView {
     const update = async () => {
       const pingEl = document.getElementById('sidebar-voice-ping');
       if (!pingEl) return;
+      const isSfu = webRtcManager.isSfuMode();
       const participants = participantManager.getInVoiceChannel(voiceStore.currentVoiceChannelId || '');
-      if (participants.length <= 1) {
+      if (participants.length <= 1 && !isSfu) {
         pingEl.textContent = '0 ms';
         return;
       }

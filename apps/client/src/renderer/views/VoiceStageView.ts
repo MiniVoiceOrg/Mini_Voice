@@ -1392,10 +1392,11 @@ export class VoiceStageView {
 
       if (!pingBadge || !pingText || !this.currentChannelId) return;
 
+      const isSfu = webRtcManager.isSfuMode();
       const participants = participantManager.getInVoiceChannel(this.currentChannelId);
       const isSolo = participants.length <= 1;
 
-      if (isSolo) {
+      if (isSolo && !isSfu) {
         pingBadge.className = 'stage-ping-badge good';
         pingText.textContent = '0 ms';
         if (tooltipContent) {
@@ -1424,15 +1425,16 @@ export class VoiceStageView {
         }
 
         if (tooltipContent) {
+          const tooltipKey = isSfu ? 'stage.tooltipPingSfu' : 'stage.tooltipPing';
           tooltipContent.innerHTML = `
-            ${t('stage.tooltipPing', { ping: avgPing, quality })}
+            ${t(tooltipKey as any, { ping: avgPing, quality })}
           `;
         }
       } else {
-        pingText.textContent = webRtcManager.isSfuMode() ? 'SFU' : 'P2P';
+        pingText.textContent = isSfu ? 'SFU' : 'P2P';
         pingBadge.className = 'stage-ping-badge good';
         if (tooltipContent) {
-          tooltipContent.innerHTML = t('stage.tooltipEstablishing');
+          tooltipContent.innerHTML = isSfu ? t('stage.tooltipEstablishingSfu' as any) : t('stage.tooltipEstablishing');
         }
       }
     };
