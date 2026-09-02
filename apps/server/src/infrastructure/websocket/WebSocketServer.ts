@@ -1495,6 +1495,21 @@ export class WebSocketServer {
         await this.sfuManager.init();
       }
       console.log(`[SFU Server:WS] User ${session.user.nickname} (${session.sessionId}) creating ${payload.direction} transport for channel ${payload.channelId}`);
+      // A client asking for a transport it already has is rejoining after a
+      // failure. Its previous one is never coming back, and nothing else would
+      // ever close it, so it goes now — along with the producers other clients
+      // would otherwise keep trying to consume.
+      const { closedProducerIds } = this.sfuManager.closeTransportsFor(
+        session.sessionId,
+        payload.channelId,
+        payload.direction
+      );
+      for (const producerId of closedProducerIds) {
+        this.broadcast({
+          type: MessageType.SFU_PRODUCER_CLOSED,
+          payload: { channelId: payload.channelId, producerId } satisfies SfuProducerClosedPayload,
+        });
+      }
       const transportOptions = await this.sfuManager.createWebRtcTransport(
         session.sessionId,
         payload.channelId,

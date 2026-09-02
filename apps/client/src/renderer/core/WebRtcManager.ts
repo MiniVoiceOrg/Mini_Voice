@@ -111,7 +111,15 @@ export class WebRtcManager {
   private sfuEngine: SfuClientEngine;
   private sfuReconnectAttempts: number = 0;
   private sfuReconnectTimer: any = null;
-  private isSfuRejoining: boolean = false;
+  private isSfuJoining: boolean = false;
+  /**
+   * Bumped whenever the SFU session is torn down or a new join starts. A join
+   * takes several round-trips, and the user can leave the channel or a newer
+   * join can begin while an older one is still awaiting; comparing the epoch
+   * it started with is what tells the stale join to undo itself instead of
+   * finishing and reviving a session nobody is in.
+   */
+  private sfuJoinEpoch: number = 0;
 
   private screenAudioStreamIds: Set<string> = new Set();
   private screenVideoStreamIds: Set<string> = new Set();
@@ -394,32 +402,82 @@ export class WebRtcManager {
     // would race it and strand a second set of transports on the server. This
     // path is reached from every `connectToPeer` call, so an SFU that is down
     // would otherwise get one extra join per participant, ignoring the backoff.
-    if (this.sfuReconnectTimer || this.isSfuRejoining) return;
+    if (this.sfuReconnectTimer) return;
     await this.performSfuJoin();
   }
 
+  /**
+   * Builds the SFU session for the channel the user is in and publishes
+   * whatever is being captured locally.
+   *
+   * Everything after the first await can outlive what asked for it: joining
+   * takes several round-trips, during which the user can leave the channel,
+   * the server can be switched to P2P, or a rejoin can tear the session down.
+   * A join that resumes into any of those would rebuild transports for a
+   * session nobody is in, leaving the engine reporting itself connected to a
+   * channel that was already left — so it checks the epoch it started with and
+   * undoes itself instead.
+   */
   private async performSfuJoin(): Promise<void> {
     const channelId = voiceStore.currentVoiceChannelId;
     if (!channelId || !this.isSfuMode()) return;
+    // Two joins in flight interleave their assignments inside the engine and
+    // can leave it holding a send transport from one and a recv transport from
+    // the other, whose server-side peer is already gone.
+    if (this.isSfuJoining) return;
 
-    const ok = await this.sfuEngine.join(channelId);
-    if (!ok) {
-      this.handleSfuConnectionFailure('Could not join the SFU room for this channel');
-      return;
-    }
+    const epoch = ++this.sfuJoinEpoch;
+    this.isSfuJoining = true;
+    try {
+      const ok = await this.sfuEngine.join(channelId);
+      if (this.isSfuJoinStale(epoch, channelId)) {
+        this.sfuEngine.leave();
+        return;
+      }
+      if (!ok) {
+        this.handleSfuConnectionFailure('Could not join the SFU room for this channel');
+        return;
+      }
 
-    if (this.localAudioTrack) {
-      await this.sfuEngine.produceMic(this.localAudioTrack);
+      if (this.localAudioTrack) {
+        await this.sfuEngine.produceMic(this.localAudioTrack);
+      }
+      if (this.localCameraTrack) {
+        await this.sfuEngine.produceCamera(this.localCameraTrack);
+      }
+      for (const [shareId, track] of this.localScreenTracks.entries()) {
+        await this.sfuEngine.produceScreenVideo(track, shareId);
+      }
+      if (this.localScreenAudioTrack) {
+        await this.sfuEngine.produceScreenAudio(this.localScreenAudioTrack, 'default');
+      }
+
+      if (this.isSfuJoinStale(epoch, channelId)) {
+        this.sfuEngine.leave();
+      }
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      clientLog.error('SFU', 'SFU join threw', { error: message });
+      // Without this the ladder would end here: the throw is what the retry
+      // exists for, and nothing else would schedule the next attempt.
+      if (!this.isSfuJoinStale(epoch, channelId)) {
+        this.handleSfuConnectionFailure(message);
+      }
+    } finally {
+      this.isSfuJoining = false;
     }
-    if (this.localCameraTrack) {
-      await this.sfuEngine.produceCamera(this.localCameraTrack);
-    }
-    for (const [shareId, track] of this.localScreenTracks.entries()) {
-      await this.sfuEngine.produceScreenVideo(track, shareId);
-    }
-    if (this.localScreenAudioTrack) {
-      await this.sfuEngine.produceScreenAudio(this.localScreenAudioTrack, 'default');
-    }
+  }
+
+  /**
+   * Whether the join that started at `epoch` still describes the session the
+   * user is actually in.
+   */
+  private isSfuJoinStale(epoch: number, channelId: string): boolean {
+    return (
+      this.sfuJoinEpoch !== epoch ||
+      voiceStore.currentVoiceChannelId !== channelId ||
+      !this.isSfuMode()
+    );
   }
 
   public connectToAllParticipants(): void {
@@ -531,22 +589,18 @@ export class WebRtcManager {
   /** Tears the SFU session down and builds it again from scratch. */
   private async rejoinSfu(): Promise<void> {
     if (!voiceStore.currentVoiceChannelId || !this.isSfuMode()) return;
-    if (this.isSfuRejoining) return;
-
-    this.isSfuRejoining = true;
-    try {
-      this.sfuEngine.leave();
-      // Calls the inner join directly: the public entry point refuses to run
-      // while a ladder is in flight, which is exactly what we are.
-      // A failure in here schedules the next rung on its own.
-      await this.performSfuJoin();
-    } catch (err) {
-      clientLog.error('SFU', 'Rejoin attempt threw', {
-        error: err instanceof Error ? err.message : String(err),
-      });
-    } finally {
-      this.isSfuRejoining = false;
+    // A join from an earlier rung is still running. Cutting it off here would
+    // leave nobody to schedule the next one, so let it finish and take the
+    // following rung instead.
+    if (this.isSfuJoining) {
+      this.handleSfuConnectionFailure('A previous SFU join is still in flight');
+      return;
     }
+
+    this.abandonSfuSession();
+    // Calls the inner join directly: it schedules the next rung on its own if
+    // this attempt fails.
+    await this.performSfuJoin();
   }
 
   /** Closes the ladder once media is flowing again. */
@@ -564,13 +618,27 @@ export class WebRtcManager {
     }
   }
 
+  /**
+   * Drops the SFU session and disowns any join still in flight, so one that
+   * resumes afterwards undoes itself rather than rebuilding what was just
+   * torn down.
+   */
+  private abandonSfuSession(): void {
+    this.sfuJoinEpoch++;
+    this.sfuEngine.leave();
+  }
+
+  /**
+   * Stops the reconnection ladder. It deliberately does not touch
+   * `isSfuJoining`: clearing a mutex a running join still owns is how two of
+   * them end up interleaved.
+   */
   private resetSfuReconnect(): void {
     if (this.sfuReconnectTimer) {
       clearTimeout(this.sfuReconnectTimer);
       this.sfuReconnectTimer = null;
     }
     this.sfuReconnectAttempts = 0;
-    this.isSfuRejoining = false;
   }
 
   /**
@@ -1945,7 +2013,7 @@ export class WebRtcManager {
   }
 
   public closeAllPeers(): void {
-    this.sfuEngine.leave();
+    this.abandonSfuSession();
     this.resetSfuReconnect();
     const peerCount = this.peers.size;
     clientLog.info('WEBRTC', `Closing all peers (${peerCount} active)`);

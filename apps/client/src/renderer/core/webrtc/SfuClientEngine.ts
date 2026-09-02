@@ -182,7 +182,7 @@ export class SfuClientEngine {
           this.callbacks.onConnectionFailed('SFU send transport connection failed');
           return;
         }
-        this.notifyIfFullyConnected();
+        this.notifyIfHealthy();
       });
 
       // 4. Create recv transport
@@ -231,7 +231,7 @@ export class SfuClientEngine {
           this.callbacks.onConnectionFailed('SFU recv transport connection failed');
           return;
         }
-        this.notifyIfFullyConnected();
+        this.notifyIfHealthy();
       });
 
       // 5. Register network listeners for new producers and producer closed
@@ -647,12 +647,22 @@ export class SfuClientEngine {
   }
 
   /**
-   * Reports a healthy session only once both directions are up, so a rejoin
-   * asked for by one transport is never cancelled by the other succeeding.
+   * Reports a healthy session as soon as one direction is up, provided the
+   * other one is not down.
+   *
+   * Requiring *both* to be connected reads safer — a rejoin asked for by one
+   * transport must never be cancelled by the other succeeding — but a
+   * transport's underlying peer connection stays `new` until something
+   * negotiates on it, and mediasoup only negotiates on the first `produce()`
+   * or `consume()`. A listen-only client never produces and a client whose
+   * peers are all silent never consumes, so for them the pair could never both
+   * be connected: recovery would never be reported as finished, the other
+   * participants would keep their "connecting" badge, and the backoff would
+   * stay pinned at its longest delay for the rest of the session.
    */
-  private notifyIfFullyConnected(): void {
-    if (this.sendTransportState === 'connected' && this.recvTransportState === 'connected') {
-      this.callbacks.onConnected();
-    }
+  private notifyIfHealthy(): void {
+    if (this.sendTransportState === 'failed' || this.recvTransportState === 'failed') return;
+    if (this.sendTransportState !== 'connected' && this.recvTransportState !== 'connected') return;
+    this.callbacks.onConnected();
   }
 }

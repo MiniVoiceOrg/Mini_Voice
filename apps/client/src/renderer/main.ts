@@ -14,6 +14,7 @@ import {
   MessageType,
   MemberKickedPayload,
   RolesListPayload,
+  ServerErrorPayload,
   UserJoinedPayload,
   UserLeftPayload,
   UserConnectionStatePayload,
@@ -48,6 +49,7 @@ import { screenSharePickerModal } from './views/ScreenSharePickerModal';
 import { showAlert } from './views/Dialog';
 import { showIdentityImportDialog } from './views/IdentityDialogs';
 import { initI18n, t } from './i18n';
+import { translateProtocolError } from './i18n/protocolErrors';
 import { toAbsoluteServerIconUrl } from './utils/avatar';
 import { installImageFallback } from './utils/imageFallback';
 import { clientLog } from './core/ClientLogService';
@@ -822,6 +824,20 @@ class App {
       showAlert({
         title: t('sfu.reconnectingTitle'),
         message: t('sfu.reconnectingMessage', { reason: data?.reason || t('sfu.unknownError') }),
+        variant: 'warning',
+      });
+    });
+
+    // An error the server sent on its own, not as the answer to a request:
+    // `NetworkClient` only rejects a promise when it can correlate a
+    // requestId, so without this the payload would be emitted and nothing
+    // would be listening. The SFU refusing to start after an admin switched
+    // the server to it arrives this way, and the admin has to hear about it.
+    appEvents.on(`message.${MessageType.SERVER_ERROR}`, (payload: ServerErrorPayload) => {
+      if (!payload) return;
+      showAlert({
+        title: t('app.serverErrorTitle'),
+        message: translateProtocolError(payload.code, payload.message),
         variant: 'warning',
       });
     });

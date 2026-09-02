@@ -958,6 +958,7 @@ export const en: TranslationMap = {
   'app.reconnecting': 'Trying to reconnect…',
   'app.serverShutdownTitle': 'Server closed',
   'app.serverShutdownMessage': 'The host closed the server. You were disconnected.',
+  'app.serverErrorTitle': 'Server notice',
   'app.kickedFromServerMessage': 'You were removed from the server by an administrator.',
   'upload.cancelled': 'Upload cancelled',
   'upload.noConnection': 'No connection to the server',

@@ -959,6 +959,7 @@ export const ptBR = {
   'app.reconnecting': 'Tentando reconectar…',
   'app.serverShutdownTitle': 'Servidor encerrado',
   'app.serverShutdownMessage': 'O anfitrião encerrou o servidor. Você foi desconectado.',
+  'app.serverErrorTitle': 'Aviso do servidor',
   'app.kickedFromServerMessage': 'Você foi removido do servidor por um administrador.',
   'upload.cancelled': 'Upload cancelado',
   'upload.noConnection': 'Sem conexão com o servidor',
