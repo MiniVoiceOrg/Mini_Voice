@@ -77,6 +77,8 @@ import {
   SfuConsumerClosedPayload,
   SfuConsumerSetPausedPayload,
   SfuNewProducerPayload,
+  SfuGetProducersPayload,
+  SfuProducersListPayload,
   SfuContingencyFallbackPayload,
   canAccessChannel,
 } from '@monky/shared';
@@ -427,6 +429,10 @@ export class WebSocketServer {
 
       case MessageType.SFU_PRODUCER_CLOSED:
         this.handleSfuProducerClosed(session, payload as SfuProducerClosedPayload);
+        break;
+
+      case MessageType.SFU_GET_PRODUCERS:
+        await this.handleSfuGetProducers(session, payload as SfuGetProducersPayload, requestId);
         break;
 
       case MessageType.SFU_CONSUMER_SET_PAUSED:
@@ -1533,6 +1539,35 @@ export class WebSocketServer {
       type: MessageType.SFU_PRODUCER_CLOSED,
       payload,
     });
+  }
+
+  private async handleSfuGetProducers(
+    session: ClientSession,
+    payload: SfuGetProducersPayload,
+    requestId?: string
+  ): Promise<void> {
+    if (!session.user || !session.sessionId) return;
+    try {
+      const channelProducers = this.sfuManager.getProducersInChannel(payload.channelId);
+      const producers: SfuNewProducerPayload[] = channelProducers.map((p) => ({
+        channelId: payload.channelId,
+        producerId: p.producerId,
+        producerSessionId: p.producerSessionId,
+        kind: p.kind,
+        appData: p.appData,
+      }));
+
+      this.send(session.ws, {
+        type: MessageType.SFU_PRODUCERS_LIST,
+        requestId,
+        payload: {
+          channelId: payload.channelId,
+          producers,
+        } satisfies SfuProducersListPayload,
+      });
+    } catch (err: any) {
+      this.sendError(session.ws, ProtocolErrorCode.INTERNAL_ERROR, err?.message || 'Erro ao listar produtores SFU', requestId);
+    }
   }
 
   private async handleSfuConsumerSetPaused(

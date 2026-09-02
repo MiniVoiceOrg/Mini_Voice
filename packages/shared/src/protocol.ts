@@ -86,6 +86,8 @@ export enum MessageType {
   SFU_CONSUMER_CLOSED = 'SFU_CONSUMER_CLOSED',
   SFU_CONSUMER_SET_PAUSED = 'SFU_CONSUMER_SET_PAUSED',
   SFU_NEW_PRODUCER = 'SFU_NEW_PRODUCER',
+  SFU_GET_PRODUCERS = 'SFU_GET_PRODUCERS',
+  SFU_PRODUCERS_LIST = 'SFU_PRODUCERS_LIST',
   SFU_CONTINGENCY_FALLBACK = 'SFU_CONTINGENCY_FALLBACK',
 
   // Server -> Client
@@ -656,6 +658,15 @@ export interface SfuNewProducerPayload {
   producerSessionId: string;
   kind: 'audio' | 'video';
   appData: Record<string, any>;
+}
+
+export interface SfuGetProducersPayload {
+  channelId: string;
+}
+
+export interface SfuProducersListPayload {
+  channelId: string;
+  producers: SfuNewProducerPayload[];
 }
 
 export interface SfuContingencyFallbackPayload {

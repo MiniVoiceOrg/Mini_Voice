@@ -1078,12 +1078,16 @@ export class MainView {
       isDeafened: voiceStore.isDeafened,
     });
 
-    // Connect to all peers already in this voice channel
-    const peersInChannel = participantManager.getInVoiceChannel(channelId);
-    for (const peer of peersInChannel) {
-      const peerSessionId = peer.user.sessionId || peer.user.id;
-      if (!serverStore.isMySession(peer.user.sessionId)) {
-        await webRtcManager.connectToPeer(peerSessionId, true);
+    if (webRtcManager.isSfuMode()) {
+      await webRtcManager.initSfuForCurrentChannel();
+    } else {
+      // Connect to all peers already in this voice channel
+      const peersInChannel = participantManager.getInVoiceChannel(channelId);
+      for (const peer of peersInChannel) {
+        const peerSessionId = peer.user.sessionId || peer.user.id;
+        if (!serverStore.isMySession(peer.user.sessionId)) {
+          await webRtcManager.connectToPeer(peerSessionId, true);
+        }
       }
     }
   }

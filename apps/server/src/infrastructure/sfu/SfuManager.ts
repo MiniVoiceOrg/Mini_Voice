@@ -1,5 +1,6 @@
+import os from 'os';
 import * as mediasoup from 'mediasoup';
-import type { RouterRtpCodecCapability } from 'mediasoup/node/lib/types.js';
+import type { RouterRtpCodecCapability, TransportListenInfo } from 'mediasoup/node/lib/types.js';
 import { LIMITS } from '@monky/shared';
 
 const MEDIA_CODECS: RouterRtpCodecCapability[] = [
@@ -157,6 +158,91 @@ export class SfuManager {
     return router;
   }
 
+  private getListenInfos(): TransportListenInfo[] {
+    const portRange = { min: this.rtcMinPort, max: this.rtcMaxPort };
+    const infos: TransportListenInfo[] = [];
+    const addedAddresses = new Set<string>();
+
+    if (this.announcedIp) {
+      infos.push({
+        protocol: 'udp',
+        ip: this.listenIp,
+        announcedAddress: this.announcedIp,
+        portRange,
+      });
+      infos.push({
+        protocol: 'tcp',
+        ip: this.listenIp,
+        announcedAddress: this.announcedIp,
+        portRange,
+      });
+      addedAddresses.add(this.announcedIp);
+    }
+
+    // Always include 127.0.0.1 for local/loopback clients
+    if (!addedAddresses.has('127.0.0.1')) {
+      infos.push({
+        protocol: 'udp',
+        ip: this.listenIp,
+        announcedAddress: '127.0.0.1',
+        portRange,
+      });
+      infos.push({
+        protocol: 'tcp',
+        ip: this.listenIp,
+        announcedAddress: '127.0.0.1',
+        portRange,
+      });
+      addedAddresses.add('127.0.0.1');
+    }
+
+    // Detect all available local network interfaces (Radmin VPN 26.x, LAN 192.168.x, 10.x, etc.)
+    try {
+      const interfaces = os.networkInterfaces();
+      for (const [_, ifaceList] of Object.entries(interfaces)) {
+        if (!ifaceList) continue;
+        for (const iface of ifaceList) {
+          const family = String(iface.family);
+          if ((family === 'IPv4' || family === '4') && iface.address) {
+            if (!addedAddresses.has(iface.address)) {
+              infos.push({
+                protocol: 'udp',
+                ip: this.listenIp,
+                announcedAddress: iface.address,
+                portRange,
+              });
+              infos.push({
+                protocol: 'tcp',
+                ip: this.listenIp,
+                announcedAddress: iface.address,
+                portRange,
+              });
+              addedAddresses.add(iface.address);
+            }
+          }
+        }
+      }
+    } catch {
+      // Ignore network interface detection failure
+    }
+
+    // Fallback if no valid address was found
+    if (infos.length === 0) {
+      infos.push({
+        protocol: 'udp',
+        ip: this.listenIp,
+        portRange,
+      });
+      infos.push({
+        protocol: 'tcp',
+        ip: this.listenIp,
+        portRange,
+      });
+    }
+
+    return infos;
+  }
+
   public async getRouterRtpCapabilities(channelId: string): Promise<mediasoup.types.RtpCapabilities> {
     const router = await this.getOrCreateRouter(channelId);
     return router.rtpCapabilities;
@@ -174,14 +260,10 @@ export class SfuManager {
     sctpParameters?: mediasoup.types.SctpParameters;
   }> {
     const router = await this.getOrCreateRouter(channelId);
+    const listenInfos = this.getListenInfos();
 
     const transport = await router.createWebRtcTransport({
-      listenIps: [
-        {
-          ip: this.listenIp,
-          announcedIp: this.announcedIp || undefined,
-        },
-      ],
+      listenInfos,
       enableUdp: true,
       enableTcp: true,
       preferUdp: true,
@@ -212,6 +294,33 @@ export class SfuManager {
       dtlsParameters: transport.dtlsParameters,
       sctpParameters: transport.sctpParameters,
     };
+  }
+
+  public getProducersInChannel(channelId: string): Array<{
+    producerId: string;
+    producerSessionId: string;
+    kind: 'audio' | 'video';
+    appData: Record<string, any>;
+  }> {
+    const list: Array<{
+      producerId: string;
+      producerSessionId: string;
+      kind: 'audio' | 'video';
+      appData: Record<string, any>;
+    }> = [];
+
+    for (const [producerId, p] of this.producers.entries()) {
+      if (p.channelId === channelId && !p.producer.closed) {
+        list.push({
+          producerId,
+          producerSessionId: p.sessionId,
+          kind: p.kind,
+          appData: p.appData,
+        });
+      }
+    }
+
+    return list;
   }
 
   public async connectWebRtcTransport(

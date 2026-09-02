@@ -6,15 +6,17 @@ import {
   SfuConsumePayload,
   SfuConsumedPayload,
   SfuCreateWebRtcTransportPayload,
+  SfuGetProducersPayload,
   SfuGetRouterRtpCapabilitiesPayload,
   SfuNewProducerPayload,
   SfuProducePayload,
   SfuProducedPayload,
   SfuProducerClosedPayload,
+  SfuProducersListPayload,
   SfuRouterRtpCapabilitiesPayload,
   SfuWebRtcTransportCreatedPayload,
 } from '@monky/shared';
-import { networkClient, NetworkClient } from '../NetworkClient';
+import { NetworkClient } from '../NetworkClient';
 import { clientLog } from '../ClientLogService';
 import { appEvents } from '../EventBus';
 
@@ -36,6 +38,8 @@ export interface SfuClientEngineCallbacks {
 }
 
 export class SfuClientEngine {
+  private getClient: () => NetworkClient;
+  private getMySessionId: () => string | undefined;
   private device: mediasoupClient.Device | null = null;
   private sendTransport: mediasoupTypes.Transport | null = null;
   private recvTransport: mediasoupTypes.Transport | null = null;
@@ -49,9 +53,17 @@ export class SfuClientEngine {
   private unsubscribeEvents: Array<() => void> = [];
 
   constructor(
-    private client: NetworkClient,
+    getClient: () => NetworkClient,
+    getMySessionId: () => string | undefined,
     private callbacks: SfuClientEngineCallbacks
-  ) {}
+  ) {
+    this.getClient = getClient;
+    this.getMySessionId = getMySessionId;
+  }
+
+  private get client(): NetworkClient {
+    return this.getClient();
+  }
 
   public async join(channelId: string): Promise<boolean> {
     this.leave();
@@ -176,6 +188,24 @@ export class SfuClientEngine {
 
       // 5. Register network listeners for new producers and producer closed
       this.subscribeNetworkEvents();
+
+      // 6. Fetch existing producers in the channel and consume them
+      try {
+        const producersResp = await this.client.sendRequest<SfuProducersListPayload>(
+          MessageType.SFU_GET_PRODUCERS,
+          { channelId } satisfies SfuGetProducersPayload,
+          undefined,
+          8000
+        );
+
+        if (producersResp && Array.isArray(producersResp.producers)) {
+          for (const prod of producersResp.producers) {
+            void this.consumeRemoteProducer(prod);
+          }
+        }
+      } catch (err: any) {
+        clientLog.warn('SFU', 'Failed to fetch existing producers in channel', { error: err?.message });
+      }
 
       this.isConnected = true;
       this.isConnecting = false;
@@ -336,6 +366,16 @@ export class SfuClientEngine {
     if (!this.recvTransport || !this.device || !this.channelId) return;
     const { producerId, producerSessionId, kind, appData } = producerData;
 
+    // Do not consume our own producers
+    const mySessionId = this.getMySessionId();
+    if (producerSessionId && mySessionId && producerSessionId === mySessionId) {
+      return;
+    }
+
+    if (this.consumers.has(producerId) || this.consumerMeta.has(producerId)) {
+      return;
+    }
+
     try {
       clientLog.info('SFU', `Consuming producer ${producerId} (${kind}) from session ${producerSessionId}`);
 
@@ -435,6 +475,27 @@ export class SfuClientEngine {
 
   public isReady(): boolean {
     return this.isConnected && !!this.sendTransport && !!this.recvTransport;
+  }
+
+  public async getPing(): Promise<number | null> {
+    const transport = this.sendTransport || this.recvTransport;
+    if (!transport) return null;
+    try {
+      const stats = await transport.getStats();
+      for (const report of stats.values()) {
+        if (report.type === 'candidate-pair' && (report.state === 'succeeded' || report.nominated)) {
+          if (typeof report.currentRoundTripTime === 'number') {
+            return Math.round(report.currentRoundTripTime * 1000);
+          }
+          if (typeof report.roundTripTime === 'number') {
+            return Math.round(report.roundTripTime * 1000);
+          }
+        }
+      }
+      return null;
+    } catch {
+      return null;
+    }
   }
 
   public leave(): void {

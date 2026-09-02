@@ -1429,7 +1429,7 @@ export class VoiceStageView {
           `;
         }
       } else {
-        pingText.textContent = 'P2P';
+        pingText.textContent = webRtcManager.isSfuMode() ? 'SFU' : 'P2P';
         pingBadge.className = 'stage-ping-badge good';
         if (tooltipContent) {
           tooltipContent.innerHTML = t('stage.tooltipEstablishing');

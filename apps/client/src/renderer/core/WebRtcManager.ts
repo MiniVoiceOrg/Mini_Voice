@@ -197,11 +197,15 @@ export class WebRtcManager {
     this.mediaRouter = new RemoteMediaRouter(() => this.voiceParticipants);
     this.vadMonitor = new RemoteVadMonitor(() => this.voiceParticipants);
     this.diagnosticsCollector = new RtcDiagnosticsCollector();
-    this.sfuEngine = new SfuClientEngine(this.signalClient, {
-      onConsumerTrack: (event) => this.handleSfuConsumerTrack(event),
-      onConsumerClosed: (sessionId, mediaType, shareId) => this.handleSfuConsumerClosed(sessionId, mediaType, shareId),
-      onFallbackToP2p: (reason) => this.handleSfuFallbackToP2p(reason),
-    });
+    this.sfuEngine = new SfuClientEngine(
+      () => this.signalClient,
+      () => this.currentSessionId,
+      {
+        onConsumerTrack: (event) => this.handleSfuConsumerTrack(event),
+        onConsumerClosed: (sessionId, mediaType, shareId) => this.handleSfuConsumerClosed(sessionId, mediaType, shareId),
+        onFallbackToP2p: (reason) => this.handleSfuFallbackToP2p(reason),
+      }
+    );
     this.setupSignalListeners();
   }
 
@@ -827,6 +831,9 @@ export class WebRtcManager {
 
   public async connectToPeer(peerSessionId: string, isInitiator: boolean): Promise<void> {
     if (this.isSfuMode()) {
+      if (!this.sfuEngine.isReady()) {
+        await this.initSfuForCurrentChannel();
+      }
       return;
     }
     clientLog.info('WEBRTC', `Connecting to peer ${peerSessionId} (initiator: ${isInitiator})`, {
@@ -1318,7 +1325,9 @@ export class WebRtcManager {
   public async setLocalAudioTrack(track: MediaStreamTrack | null): Promise<void> {
     this.localAudioTrack = track;
     if (this.isSfuMode()) {
-      if (track) {
+      if (!this.sfuEngine.isReady()) {
+        await this.initSfuForCurrentChannel();
+      } else if (track) {
         await this.sfuEngine.produceMic(track);
       } else {
         this.sfuEngine.closeProducer('mic');
@@ -1355,7 +1364,9 @@ export class WebRtcManager {
   public async setLocalCameraTrack(track: MediaStreamTrack | null): Promise<void> {
     this.localCameraTrack = track;
     if (this.isSfuMode()) {
-      if (track) {
+      if (!this.sfuEngine.isReady()) {
+        await this.initSfuForCurrentChannel();
+      } else if (track) {
         await this.sfuEngine.produceCamera(track);
       } else {
         this.sfuEngine.closeProducer('camera');
@@ -1614,6 +1625,9 @@ export class WebRtcManager {
   }
 
   public async getAverageP2pPing(): Promise<number | null> {
+    if (this.isSfuMode()) {
+      return this.sfuEngine.getPing();
+    }
     return this.diagnosticsCollector.getAverageP2pPing(this.peers);
   }
 
