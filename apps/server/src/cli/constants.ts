@@ -18,6 +18,7 @@ export const CONFIG_KEYS = [
   'maxUsers',
   'allowSoundboard',
   'allowEveryoneMention',
+  'showRoleBadgesToEveryone',
   'voiceMode',
   'maxAttachmentFileBytes',
   'maxAttachmentStorageBytes',

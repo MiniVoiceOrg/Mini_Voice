@@ -1223,6 +1223,7 @@ export class WebSocketServer {
       allowSoundboard: result.allowSoundboard,
       allowEveryoneMention: result.allowEveryoneMention,
       allowMessageEdit: result.allowMessageEdit,
+      showRoleBadgesToEveryone: result.showRoleBadgesToEveryone,
       voiceMode: result.voiceMode,
       iconUrl: result.iconUrl,
       attachmentStorage: result.attachmentStorage,

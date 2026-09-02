@@ -17,6 +17,21 @@ export class ServerRolesTab {
 
     return `
       <div style="display: flex; flex-direction: column; gap: 16px; width: 100%;">
+        <div style="display: flex; align-items: center; justify-content: space-between; background: var(--bg-card); padding: 12px 14px; border-radius: var(--radius-md); border: 1px solid var(--border-color);">
+          <div>
+            <label for="checkbox-show-role-badges" style="font-size: 13px; font-weight: 600; color: var(--text-primary); display: flex; align-items: center; gap: 6px; cursor: pointer; margin-bottom: 2px;">
+              <span class="material-symbols-outlined md-18" style="color: var(--accent-primary);">visibility</span>
+              <span>${t('roles.badgeVisibility')}</span>
+            </label>
+            <div style="font-size: 11px; color: var(--text-muted);">
+              ${t('roles.badgeVisibilityDesc')}
+            </div>
+          </div>
+          <label class="toggle-switch" aria-label="${t('roles.badgeVisibility')}">
+            <input id="checkbox-show-role-badges" type="checkbox" ${serverStore.serverDetails?.showRoleBadgesToEveryone !== false ? 'checked' : ''}>
+            <span class="toggle-slider"></span>
+          </label>
+        </div>
         <div style="background: var(--bg-card); border: 1px solid var(--border-color); border-radius: var(--radius-md); padding: 14px; display: flex; flex-direction: column; gap: 12px; overflow: visible;">
           <div style="display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; flex-wrap: wrap;">
             <div>

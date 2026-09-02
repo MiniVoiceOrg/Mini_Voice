@@ -31,3 +31,26 @@ ratio (16:9, 16:10, 4:3 and 21:9), resolution (from the lowest up to 4K), FPS
 and bitrate. Every dropdown keeps a **Custom...** entry that reveals the plain
 number box for anything outside the list. Changing the aspect ratio keeps the
 resolution closest to the one you were already using.
+
+### Sharing your screen while gaming
+
+Encoding video is expensive, and the codec decides whether that cost lands on
+the CPU or the GPU. AV1 and VP9 compress better, but almost no PC has a hardware
+encoder for them — at 1080p60 the work falls entirely on the CPU and the game
+loses frames. H.264 is hardware accelerated on practically every graphics card
+(NVENC, QuickSync, AMF).
+
+That is why, on the **Gaming** profile, the **Automatic** codec puts H.264
+first. If you use another profile and the game stutters while sharing, pick
+**H.264 / AVC** under *Preferred Video Codec*.
+
+On Windows, Monky also captures the screen through the **Windows Graphics
+Capture** API, which composites on the GPU and stops delivering frames when
+nothing on screen changes. It needs Windows 10 1809 or newer and does not work
+inside Remote Desktop sessions — in those cases Monky falls back to the old
+method on its own. To force the old method, start the app with
+`MONKY_DISABLE_WGC=1`.
+
+One last tip that holds for any capture software: sharing **the game window**
+usually costs less than sharing the whole monitor, and playing in *borderless
+fullscreen* avoids the mode switches that make a game hitch.

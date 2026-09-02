@@ -36,6 +36,7 @@ import { soundEffects } from '../core/SoundEffects';
 import { getAvatarUrl, toAbsoluteServerIconUrl } from '../utils/avatar';
 import { peerFailureTooltip } from '../utils/peerFailureHint';
 import { serverRailView } from './ServerRailView';
+import { soundboardPlayersBar } from './SoundboardPlayersBar';
 import logoUrl from '../assets/Logo.png';
 import { t, tCount } from '../i18n';
 
@@ -140,6 +141,7 @@ export class MainView {
 
           <!-- Bottom User Bar -->
           <div class="user-control-bar">
+            <div id="soundboard-players-slot" class="sb-notice-slot"></div>
             <div id="screenshare-notice-slot"></div>
             <div id="voice-connection-row-slot"></div>
             <div class="user-media-bar" id="user-media-bar">
@@ -227,6 +229,9 @@ export class MainView {
     // cached signature (#282).
     this.screenShareNoticeSignature = null;
     this.updateScreenShareNotice();
+
+    const soundboardSlot = document.getElementById('soundboard-players-slot');
+    if (soundboardSlot) soundboardPlayersBar.mount(soundboardSlot);
   }
 
   /**
@@ -1216,7 +1221,13 @@ export class MainView {
               ${isSelfDeafened ? `<span class="material-symbols-outlined md-14 member-cam-icon" title="${t('main.audioMuted')}">headset_off</span>` : ''}
             </div>
             ${(() => {
-              const userRoles = serverStore.getUserRoles(m.id).filter((r) => !r.isDefault);
+              // With public badges off, a role tag is only rendered for members
+              // who hold that same role (#530).
+              const badgesArePublic = serverStore.serverDetails?.showRoleBadgesToEveryone !== false;
+              const myRoleIds = badgesArePublic ? [] : serverStore.getUserRoleIds(serverStore.currentUser?.id || '');
+              const userRoles = serverStore
+                .getUserRoles(m.id)
+                .filter((r) => !r.isDefault && (badgesArePublic || myRoleIds.includes(r.id)));
               return userRoles.length ? `<div class="member-role-tags">${userRoles.map((role) => `<span class="member-role-tag" style="${role.color ? `--role-color: ${role.color}` : ''}">${escapeHtml(role.name)}</span>`).join('')}</div>` : '';
             })()}
             <span class="member-subtext">${statusText}</span>
@@ -1522,7 +1533,7 @@ export class MainView {
     });
 
     const u7 = appEvents.on(`message.${MessageType.SERVER_SETTINGS_UPDATED}`, (payload: any) => {
-      serverStore.updateServerMeta(payload.name, payload.hasPassword, payload.allowSoundboard, payload.iconUrl, payload.attachmentStorage, payload.maxUsers, payload.turnEnabled, payload.allowEveryoneMention, payload.allowMessageEdit, payload.voiceMode);
+      serverStore.updateServerMeta(payload.name, payload.hasPassword, payload.allowSoundboard, payload.iconUrl, payload.attachmentStorage, payload.maxUsers, payload.turnEnabled, payload.allowEveryoneMention, payload.allowMessageEdit, payload.voiceMode, payload.showRoleBadgesToEveryone);
       serverStore.setTurnAvailability(payload.turnAvailability);
       // The store above is the one of whichever server sent this. Everything
       // below writes to the screen and to the saved-server list, so it may only
@@ -1672,6 +1683,7 @@ export class MainView {
     this.stopSidebarPing();
     this.clearTextChannelDragHover();
     this.unbindListeners();
+    soundboardPlayersBar.unmount();
     this.userCardObserver?.disconnect();
     this.userCardObserver = null;
     this.chatView?.destroy();

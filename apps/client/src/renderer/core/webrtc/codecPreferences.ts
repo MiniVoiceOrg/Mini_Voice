@@ -4,7 +4,8 @@ import { settingsStore } from '../../stores/settingsStore';
  * Video codec prioritization for WebRTC peer connections.
  *
  * Supports user-customizable preferred codecs with automatic hardware fallback:
- * - auto: prioritized as AV1 -> VP9 -> VP8 -> H.264
+ * - auto: prioritized as AV1 -> VP9 -> VP8 -> H.264, except on the Gaming preset
+ *   (see below)
  * - av1 / vp9 / vp8 / h264: places chosen codec first, keeping all others as fallback
  */
 
@@ -24,7 +25,23 @@ export interface CodecCapabilityLike {
   sdpFmtpLine?: string;
 }
 
-export function getPriorityListForCodec(preferred: PreferredVideoCodec): string[] {
+/**
+ * Whether "auto" should favour a codec the GPU can encode instead of the one
+ * with the best compression.
+ *
+ * AV1 and VP9 have no hardware encoder on most desktops, so WebRTC encodes them
+ * on the CPU — at 1080p60 that is enough work to steal frames from the game
+ * being shared (#526). H.264 is the only codec with near-universal NVENC /
+ * QuickSync / AMF support, which is also what Discord and OBS lean on.
+ */
+export function shouldPreferHardwareEncoding(): boolean {
+  return settingsStore?.qualityPreset === 'GAMING';
+}
+
+export function getPriorityListForCodec(
+  preferred: PreferredVideoCodec,
+  preferHardwareEncoding = false
+): string[] {
   switch (preferred) {
     case 'av1':
       return ['video/av1', 'video/vp9', 'video/vp8', 'video/h264'];
@@ -36,7 +53,9 @@ export function getPriorityListForCodec(preferred: PreferredVideoCodec): string[
       return ['video/h264', 'video/av1', 'video/vp9', 'video/vp8'];
     case 'auto':
     default:
-      return ['video/av1', 'video/vp9', 'video/vp8', 'video/h264'];
+      return preferHardwareEncoding
+        ? ['video/h264', 'video/av1', 'video/vp9', 'video/vp8']
+        : ['video/av1', 'video/vp9', 'video/vp8', 'video/h264'];
   }
 }
 
@@ -46,9 +65,10 @@ export function getPriorityListForCodec(preferred: PreferredVideoCodec): string[
  */
 export function sortVideoCodecs<T extends CodecCapabilityLike>(
   codecs: T[],
-  preferred: PreferredVideoCodec = 'auto'
+  preferred: PreferredVideoCodec = 'auto',
+  preferHardwareEncoding = false
 ): T[] {
-  const priorityList = getPriorityListForCodec(preferred);
+  const priorityList = getPriorityListForCodec(preferred, preferHardwareEncoding);
   const getPriority = (mimeType: string): number => {
     const lower = mimeType.toLowerCase();
     const index = priorityList.findIndex((pref) => lower === pref);
@@ -75,7 +95,7 @@ export function getPrioritizedVideoCodecs(
   if (!capabilities || !Array.isArray(capabilities.codecs) || capabilities.codecs.length === 0) {
     return [];
   }
-  return sortVideoCodecs(capabilities.codecs, preferred);
+  return sortVideoCodecs(capabilities.codecs, preferred, shouldPreferHardwareEncoding());
 }
 
 /**

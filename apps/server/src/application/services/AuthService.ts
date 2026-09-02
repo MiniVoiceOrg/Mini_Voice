@@ -373,6 +373,7 @@ export class AuthService {
       allowSoundboard: server.allowSoundboard !== false,
       allowEveryoneMention: server.allowEveryoneMention !== false,
       allowMessageEdit: server.allowMessageEdit !== false,
+      showRoleBadgesToEveryone: server.showRoleBadgesToEveryone !== false,
       voiceMode: server.voiceMode || 'p2p',
       hostSpecs: CapacityEstimator.getHostSpecs(),
       turnEnabled: Boolean(server.turnEnabled),
@@ -438,6 +439,7 @@ export class AuthService {
     allowSoundboard?: boolean;
     allowEveryoneMention?: boolean;
     allowMessageEdit?: boolean;
+    showRoleBadgesToEveryone?: boolean;
     voiceMode?: VoiceMode;
     iconBase64?: string | null;
     maxAttachmentFileBytes?: number;
@@ -451,6 +453,7 @@ export class AuthService {
     allowSoundboard?: boolean;
     allowEveryoneMention?: boolean;
     allowMessageEdit?: boolean;
+    showRoleBadgesToEveryone?: boolean;
     voiceMode?: VoiceMode;
     iconUrl?: string | null;
     attachmentStorage?: AttachmentStorageInfo;
@@ -521,6 +524,9 @@ export class AuthService {
     if (payload.allowMessageEdit !== undefined) {
       updates.allowMessageEdit = Boolean(payload.allowMessageEdit);
     }
+    if (payload.showRoleBadgesToEveryone !== undefined) {
+      updates.showRoleBadgesToEveryone = Boolean(payload.showRoleBadgesToEveryone);
+    }
     if (payload.voiceMode !== undefined) {
       updates.voiceMode = payload.voiceMode === 'sfu' ? 'sfu' : 'p2p';
     }
@@ -586,6 +592,7 @@ export class AuthService {
       allowSoundboard: updatedServer?.allowSoundboard !== false,
       allowEveryoneMention: updatedServer?.allowEveryoneMention !== false,
       allowMessageEdit: updatedServer?.allowMessageEdit !== false,
+      showRoleBadgesToEveryone: updatedServer?.showRoleBadgesToEveryone !== false,
       voiceMode: updatedServer?.voiceMode || 'p2p',
       iconUrl: this.avatarStorage.getPublicUrl(updatedServer?.iconPath),
       attachmentStorage: await this.attachmentService.getStorageInfo(),

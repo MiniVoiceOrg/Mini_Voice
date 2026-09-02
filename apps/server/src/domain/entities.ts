@@ -11,6 +11,11 @@ export interface ServerRecord {
   /** Whether `@todos` / `@everyone` pings the whole channel (#464). */
   allowEveryoneMention?: boolean;
   allowMessageEdit?: boolean;
+  /**
+   * Whether role badges in the member list are shown to everyone (#530).
+   * When off, a badge is only visible to members who hold that same role.
+   */
+  showRoleBadgesToEveryone?: boolean;
   /** Voice mode ('p2p' | 'sfu') (#515). */
   voiceMode?: VoiceMode;
   iconPath?: string | null;

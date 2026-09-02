@@ -19,6 +19,8 @@ import {
 import { NetworkClient } from '../NetworkClient';
 import { clientLog } from '../ClientLogService';
 import { appEvents } from '../EventBus';
+import { settingsStore } from '../../stores/settingsStore';
+import { shouldPreferHardwareEncoding, sortVideoCodecs } from './codecPreferences';
 
 export interface SfuConsumerTrackEvent {
   producerSessionId: string;
@@ -300,6 +302,32 @@ export class SfuClientEngine {
     }
   }
 
+  /**
+   * Picks which codec to encode video with instead of letting mediasoup take the
+   * first one the router offers (#526).
+   *
+   * The router advertises AV1 first, and AV1 has no hardware encoder on most
+   * desktops — so a 1080p screen share was being encoded on the CPU, which is
+   * exactly what makes a game stutter while sharing. This honours the same
+   * preference the user picks for P2P calls.
+   */
+  private pickVideoCodec(): mediasoupTypes.RtpCodecCapability | undefined {
+    const codecs = this.device?.rtpCapabilities?.codecs;
+    if (!codecs) return undefined;
+
+    const videoCodecs = codecs.filter(
+      (codec) => codec.kind === 'video' && !/\/(rtx|red|ulpfec|flexfec)/i.test(codec.mimeType)
+    );
+    if (videoCodecs.length === 0) return undefined;
+
+    const [best] = sortVideoCodecs(
+      videoCodecs,
+      settingsStore?.preferredVideoCodec ?? 'auto',
+      shouldPreferHardwareEncoding()
+    );
+    return best;
+  }
+
   public async produceMic(track: MediaStreamTrack): Promise<mediasoupTypes.Producer | null> {
     if (!this.sendTransport || !this.canProduceKind('audio')) {
       console.warn(`[SFU Client] Cannot produce mic: sendTransport=${!!this.sendTransport}, canProduceAudio=${this.canProduceKind('audio')}`);
@@ -340,6 +368,7 @@ export class SfuClientEngine {
       console.log(`[SFU Client] Producing camera track ${track.id}...`);
       const producer = await this.sendTransport.produce({
         track,
+        codec: this.pickVideoCodec(),
         appData: { mediaType: 'camera' },
       });
       this.producers.set('camera', producer);
@@ -363,6 +392,7 @@ export class SfuClientEngine {
       this.closeProducer(key);
       const producer = await this.sendTransport.produce({
         track,
+        codec: this.pickVideoCodec(),
         appData: { mediaType: 'screen_video', shareId },
       });
       this.producers.set(key, producer);

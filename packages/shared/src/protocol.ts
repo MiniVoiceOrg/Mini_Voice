@@ -262,6 +262,8 @@ export interface ServerUpdateSettingsPayload {
   allowEveryoneMention?: boolean;
   /** Enables or disables editing of already-sent messages (#504). */
   allowMessageEdit?: boolean;
+  /** Shows role badges to every member, or only to who holds the role (#530). */
+  showRoleBadgesToEveryone?: boolean;
   iconBase64?: string | null; // Data URL, pure base64, or null to remove
   // Attachment storage limits in bytes (#11).
   maxAttachmentFileBytes?: number;
@@ -450,6 +452,8 @@ export interface ServerSettingsUpdatedPayload {
   allowEveryoneMention?: boolean;
   /** Current state of the message-editing switch (#504). */
   allowMessageEdit?: boolean;
+  /** Current state of the role badge visibility switch (#530). */
+  showRoleBadgesToEveryone?: boolean;
   /** Current state of the voice/video topology mode ('p2p' | 'sfu') (#515). */
   voiceMode?: VoiceMode;
   iconUrl?: string | null;

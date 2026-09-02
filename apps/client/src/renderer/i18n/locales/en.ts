@@ -723,7 +723,7 @@ export const en: TranslationMap = {
   'settings.maxBandwidthLabel': 'Max bandwidth',
   'settings.videoCodecSection': 'Preferred Video Codec',
   'settings.videoCodecHelp': 'Choose which compression format to prioritize for your screen share and camera streams. Monky keeps other codecs as automatic fallback if remote peers lack support for the chosen codec.',
-  'settings.videoCodecDesc': 'Sets encoding priority for your screen and camera. "Automatic" selects the best codec supported by your hardware (AV1 > VP9 > VP8 > H.264).',
+  'settings.videoCodecDesc': 'Sets encoding priority for your screen and camera. "Automatic" selects the best codec supported by your hardware (AV1 > VP9 > VP8 > H.264), except on the Gaming preset, where H.264 comes first so the GPU handles the encoding and your game keeps its frame rate.',
   'settings.codecAuto': 'Automatic (Recommended — best compatibility)',
   'settings.codecAv1': 'AV1 (High efficiency and sharpness)',
   'settings.codecVp9': 'VP9 (High quality and compression)',
@@ -771,6 +771,10 @@ export const en: TranslationMap = {
   'keybinds.actionToggleCameraDesc': 'Turns your camera video on or off in voice calls.',
   'keybinds.actionToggleScreenShare': 'Toggle Screen Share',
   'keybinds.actionToggleScreenShareDesc': 'Opens the picker to start or stop screen sharing.',
+  'keybinds.actionToggleSoundboardMute': 'Mute soundboard',
+  'keybinds.actionToggleSoundboardMuteDesc': 'Silences or brings back the soundboard sounds.',
+  'keybinds.actionStopSoundboard': 'Stop soundboard sounds',
+  'keybinds.actionStopSoundboardDesc': 'Cuts short every soundboard sound playing right now.',
   'keybinds.recordShortcut': 'Record shortcut',
   'keybinds.editShortcut': 'Change shortcut',
   'keybinds.clearShortcut': 'Remove shortcut',
@@ -869,6 +873,8 @@ export const en: TranslationMap = {
 
   // ── Permissions & roles ──────────────────────────────────────────────────
   'roles.rolesList': 'Roles',
+  'roles.badgeVisibility': 'Show role badges to everyone',
+  'roles.badgeVisibilityDesc': 'When off, a role badge in the member list is only visible to members who hold that same role.',
   'roles.membersList': 'Members',
   'roles.editorTitle': 'Role editor',
   'roles.editorNewTitle': 'New Role',

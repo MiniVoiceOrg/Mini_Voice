@@ -34,6 +34,18 @@ export const KEYBIND_ACTIONS: KeybindActionDefinition[] = [
     descKey: 'keybinds.actionToggleScreenShareDesc',
     icon: 'screen_share',
   },
+  {
+    id: 'toggle_soundboard_mute',
+    nameKey: 'keybinds.actionToggleSoundboardMute',
+    descKey: 'keybinds.actionToggleSoundboardMuteDesc',
+    icon: 'volume_off',
+  },
+  {
+    id: 'stop_soundboard',
+    nameKey: 'keybinds.actionStopSoundboard',
+    descKey: 'keybinds.actionStopSoundboardDesc',
+    icon: 'stop_circle',
+  },
 ];
 
 export class KeybindService {
@@ -85,6 +97,12 @@ export class KeybindService {
         break;
       case 'toggle_screen_share':
         appEvents.emit('keybind.toggle_screen_share');
+        break;
+      case 'toggle_soundboard_mute':
+        appEvents.emit('keybind.toggle_soundboard_mute');
+        break;
+      case 'stop_soundboard':
+        appEvents.emit('keybind.stop_soundboard');
         break;
       default:
         console.warn(`[KeybindService] Unknown action: ${action}`);

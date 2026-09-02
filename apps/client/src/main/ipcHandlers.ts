@@ -1,4 +1,4 @@
-import { app, BrowserWindow, desktopCapturer, dialog, globalShortcut, ipcMain, shell, systemPreferences } from 'electron';
+import { app, BrowserWindow, desktopCapturer, dialog, globalShortcut, ipcMain, screen, shell, systemPreferences } from 'electron';
 import { execFile } from 'child_process';
 import fs from 'fs';
 import http from 'http';
@@ -890,6 +890,33 @@ export function setupIpcHandlers(
 
   ipcMain.handle('window:close', () => {
     mainWindow.close();
+  });
+
+  // The connection screen must never need scrolling: it grows to whatever the
+  // card measures, error banner included, and only stops at the display's work
+  // area so the window can't outgrow the monitor (#536).
+  ipcMain.handle('window:fit-home-content', (_event, contentHeight: number) => {
+    if (!Number.isFinite(contentHeight) || contentHeight <= 0) return;
+    if (mainWindow.isDestroyed() || mainWindow.isMaximized() || mainWindow.isFullScreen()) return;
+
+    const bounds = mainWindow.getBounds();
+    const [, currentContentHeight] = mainWindow.getContentSize();
+    // Title bar and borders are not part of the measured content.
+    const chrome = bounds.height - currentContentHeight;
+    const workArea = screen.getDisplayMatching(bounds).workArea;
+    const desired = Math.ceil(contentHeight) + chrome;
+    const target = Math.max(HOME_MIN_HEIGHT, Math.min(desired, workArea.height));
+
+    mainWindow.setMinimumSize(HOME_MIN_WIDTH, target);
+
+    // Only ever grow: shrinking would fight a user who deliberately enlarged
+    // the window, and a taller window never causes the scrollbar this fixes.
+    if (bounds.height >= target) return;
+
+    // Growing downwards past the taskbar would push the card off-screen, so the
+    // window slides up just enough to stay inside the work area.
+    const y = Math.max(workArea.y, Math.min(bounds.y, workArea.y + workArea.height - target));
+    mainWindow.setBounds({ ...bounds, y, height: target });
   });
 
   // App version (for update checks)

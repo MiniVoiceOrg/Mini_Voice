@@ -200,6 +200,17 @@ export class SoundboardService {
     this.stopSoundForUser(userId);
   }
 
+  /**
+   * Stops every sound at once (#517). Our own playback is announced to the
+   * channel for the same reason a single stop is: the audio already travelled,
+   * so silence has to be asked for, not assumed.
+   */
+  public stopAllFromUi(): void {
+    const hasLocalPlayback = this.getActivePlaybacks().some((p) => this.isLocalPlayback(p.userId));
+    if (hasLocalPlayback) this.broadcastStop();
+    this.stopSound();
+  }
+
   /** Whether a playback entry belongs to this client (call user or preview). */
   private isLocalPlayback(userId: string): boolean {
     if (userId === 'local') return true;

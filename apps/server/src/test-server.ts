@@ -1008,6 +1008,27 @@ async function runTests() {
         } satisfies ProtocolMessage));
       }), 5000, 'Teste 19: atualização dinâmica de voiceMode no servidor');
 
+      // A visibilidade das badges de cargo é uma configuração do servidor, e o
+      // cliente só sabe esconder o que o broadcast disser (#530).
+      await withTimeout(new Promise<void>((resolve, reject) => {
+        const handler = (data: RawData) => {
+          const res = JSON.parse(data.toString());
+          if (res.type !== MessageType.SERVER_SETTINGS_UPDATED) return;
+          wsSfu.off('message', handler);
+          if (res.payload?.showRoleBadgesToEveryone !== false) {
+            reject(new Error('Teste 19: SERVER_SETTINGS_UPDATED deve refletir showRoleBadgesToEveryone: false'));
+            return;
+          }
+          resolve();
+        };
+        wsSfu.on('message', handler);
+        wsSfu.send(JSON.stringify({
+          type: MessageType.SERVER_UPDATE_SETTINGS,
+          requestId: 'req-role-badges',
+          payload: { showRoleBadgesToEveryone: false },
+        } satisfies ProtocolMessage));
+      }), 5000, 'Teste 19: visibilidade das badges de cargo');
+
       // Já em P2P, o mesmo pedido tem de ser recusado. Sem isso qualquer membro
       // autenticado sobe um worker mediasoup — e o CREATE_WEBRTC_TRANSPORT
       // ainda reserva um par de portas — num servidor que o operador deixou
@@ -1045,7 +1066,7 @@ async function runTests() {
     } finally {
       await sfuServer.stop();
     }
-    console.log('✔ Teste 19 passou: Estimador de capacidade, SfuManager e ciclo de vida de voiceMode validados');
+    console.log('✔ Teste 19 passou: Estimador de capacidade, SfuManager, ciclo de vida de voiceMode e visibilidade das badges de cargo validados');
 
     // ── Teste 20: Diagnóstico de saúde do processo PM2 (#522) ──
     // O "monky status" reportava apenas o que o PM2 dizia. Depois de um upgrade

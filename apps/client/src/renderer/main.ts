@@ -365,6 +365,20 @@ class App {
       }
     });
 
+    // Silencing the soundboard and cutting every sound short are the two things
+    // people reach for mid-call, so both got a shortcut (#517). The event is
+    // re-emitted because `save()` only persists — active playbacks re-read their
+    // volume from `settings.updated`.
+    appEvents.on('keybind.toggle_soundboard_mute', () => {
+      settingsStore.soundboardMuted = !settingsStore.soundboardMuted;
+      settingsStore.save();
+      appEvents.emit('settings.updated');
+    });
+
+    appEvents.on('keybind.stop_soundboard', () => {
+      soundboardService.stopAllFromUi();
+    });
+
     // Language switch (#16): re-render whichever screen is on, so every label
     // built into the templates comes back in the new language.
     appEvents.on('i18n.language_changed', () => {
@@ -751,7 +765,14 @@ class App {
       videoService.stopScreenShare();
       webRtcManager.clearLocalScreenTracks();
       webRtcManager.closeAllPeers();
+      // Being kicked is still leaving the call, so it gets the same cue as
+      // leaving on your own (#533) — read before reset(), which clears the
+      // server-side deafen that decides whether anything should be heard.
+      const shouldPlayLeaveCue = !voiceStore.getEffectiveDeafened();
       voiceStore.reset();
+      if (shouldPlayLeaveCue) {
+        soundEffects.play('leave_voice');
+      }
       if (isForegroundEvent()) this.mainView.render();
     });
 

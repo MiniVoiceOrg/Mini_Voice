@@ -724,7 +724,7 @@ export const ptBR = {
   'settings.maxBandwidthLabel': 'Banda máx',
   'settings.videoCodecSection': 'Codec de Vídeo Preferido',
   'settings.videoCodecHelp': 'Escolha qual formato de compressão priorizar para suas transmissões de tela e câmera. O Monky mantém os demais codecs como fallback para garantir compatibilidade caso os outros usuários não suportem o codec selecionado.',
-  'settings.videoCodecDesc': 'Define a prioridade de codificação da sua tela e câmera. "Automático" escolhe o melhor codec suportado pelo seu computador (AV1 > VP9 > VP8 > H.264).',
+  'settings.videoCodecDesc': 'Define a prioridade de codificação da sua tela e câmera. "Automático" escolhe o melhor codec suportado pelo seu computador (AV1 > VP9 > VP8 > H.264), exceto no preset Gaming, onde o H.264 vem primeiro para que a GPU faça a codificação e o seu jogo mantenha os FPS.',
   'settings.codecAuto': 'Automático (Recomendado — melhor compatibilidade)',
   'settings.codecAv1': 'AV1 (Maior eficiência e nitidez)',
   'settings.codecVp9': 'VP9 (Alta qualidade e compressão)',
@@ -772,6 +772,10 @@ export const ptBR = {
   'keybinds.actionToggleCameraDesc': 'Ativa ou desativa sua webcam no canal de voz.',
   'keybinds.actionToggleScreenShare': 'Compartilhar Tela',
   'keybinds.actionToggleScreenShareDesc': 'Abre o seletor para iniciar ou parar compartilhamento de tela.',
+  'keybinds.actionToggleSoundboardMute': 'Mutar soundboard',
+  'keybinds.actionToggleSoundboardMuteDesc': 'Silencia ou volta a ouvir os sons do soundboard.',
+  'keybinds.actionStopSoundboard': 'Parar sons do soundboard',
+  'keybinds.actionStopSoundboardDesc': 'Interrompe todos os sons do soundboard tocando agora.',
   'keybinds.recordShortcut': 'Gravar atalho',
   'keybinds.editShortcut': 'Alterar atalho',
   'keybinds.clearShortcut': 'Remover atalho',
@@ -870,6 +874,8 @@ export const ptBR = {
 
   // ── Permissões & cargos ──────────────────────────────────────────────────
   'roles.rolesList': 'Cargos',
+  'roles.badgeVisibility': 'Mostrar cargos para todos',
+  'roles.badgeVisibilityDesc': 'Quando desligado, a etiqueta de um cargo na lista de membros só aparece para quem tem esse mesmo cargo.',
   'roles.membersList': 'Membros',
   'roles.editorTitle': 'Editor de cargo',
   'roles.editorNewTitle': 'Novo cargo',

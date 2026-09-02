@@ -40,6 +40,7 @@ export class ConnectionView {
   private runningHostedPort: number | null = null;
   private readonly discoveredServers: Map<string, DiscoveredServer> = new Map();
   private onboardingAutoOpened: boolean = false;
+  private contentResizeObserver: ResizeObserver | null = null;
 
   constructor(container: HTMLElement) {
     this.container = container;
@@ -425,7 +426,7 @@ export class ConnectionView {
                 </div>
               </div>
 
-              <div class="form-group" style="display: flex; align-items: center; justify-content: space-between; gap: 12px;">
+              <div class="form-group" style="flex-direction: row; align-items: center; justify-content: space-between; gap: 12px;">
                 <div>
                   <label style="margin-bottom: 2px;">${t('connection.memberLimitLabel')}</label>
                   <div style="font-size: 11px; color: var(--text-muted);">${t('connection.memberLimitDesc')}</div>
@@ -483,7 +484,31 @@ export class ConnectionView {
     `;
 
     this.attachEvents();
+    this.observeContentHeight();
     void this.refreshHostedServerStatus();
+  }
+
+  /**
+   * Grows the window to whatever the card currently measures so the home screen
+   * never needs scrolling (#536). A ResizeObserver covers every cause at once:
+   * the error banner, switching tabs, the LAN/saved server lists and language
+   * changes. The main process caps the result at the display's work area.
+   */
+  private observeContentHeight(): void {
+    const layout = this.container.querySelector('.connection-layout') as HTMLElement | null;
+    const card = layout?.querySelector('.connection-card') as HTMLElement | null;
+    if (!layout || !card || typeof ResizeObserver === 'undefined') return;
+
+    this.contentResizeObserver?.disconnect();
+    this.contentResizeObserver = new ResizeObserver(() => {
+      const cardHeight = card.getBoundingClientRect().height;
+      // A detached card measures zero; resizing to that would be nonsense.
+      if (cardHeight <= 0) return;
+      const style = getComputedStyle(layout);
+      const padding = parseFloat(style.paddingTop) + parseFloat(style.paddingBottom);
+      void window.api?.fitHomeWindowToContent?.(cardHeight + (Number.isFinite(padding) ? padding : 0));
+    });
+    this.contentResizeObserver.observe(card);
   }
 
   private async startHostedServer(server: CreatedServer, nickname: string): Promise<void> {
