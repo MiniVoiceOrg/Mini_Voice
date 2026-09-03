@@ -238,10 +238,6 @@ export class VoiceStageView {
             <span class="material-symbols-outlined md-18" style="margin-right: 4px;">stop_screen_share</span>
             <span>${t('screenShare.stopSharing')}</span>
           </button>
-          <button id="stage-btn-stop-overlay" class="btn btn-danger" style="display: ${overlayBridgeService.isActive() ? 'inline-flex' : 'none'}; margin-left: 8px; padding: 0 16px; height: 38px;" title="${t('overlay.stopOverlayBtn')}">
-            <span class="material-symbols-outlined md-18" style="margin-right: 4px;">close</span>
-            <span>${t('overlay.stopOverlayBtn')}</span>
-          </button>
           <button id="stage-btn-leave" class="btn btn-danger" style="margin-left: 12px; padding: 0 16px; height: 38px;" title="${t('stage.leaveChannel')}">
             <span class="material-symbols-outlined md-18" style="margin-right: 4px;">call_end</span>
             <span>${t('stage.leaveVoice')}</span>
@@ -301,16 +297,12 @@ export class VoiceStageView {
     }
 
     const btnStopShare = document.getElementById('stage-btn-stop-share') as HTMLButtonElement | null;
-    const btnStopOverlay = document.getElementById('stage-btn-stop-overlay') as HTMLButtonElement | null;
     const btnLeave = document.getElementById('stage-btn-leave') as HTMLButtonElement | null;
 
     if (btnStopShare) {
       const hasScreenAudio = screenAudioService.getIsCapturing();
       btnStopShare.style.display = voiceStore.isScreenSharing ? 'inline-flex' : 'none';
       btnStopShare.title = hasScreenAudio ? t('stage.stopScreenShareWithAudio') : t('stage.stopScreenShare');
-    }
-    if (btnStopOverlay) {
-      btnStopOverlay.style.display = overlayBridgeService.isActive() ? 'inline-flex' : 'none';
     }
     if (btnLeave) {
       btnLeave.style.marginLeft = '12px';
@@ -1606,11 +1598,6 @@ export class VoiceStageView {
     const btnOverlay = document.getElementById('stage-btn-overlay');
     btnOverlay?.addEventListener('click', () => {
       overlayConfigModal.open();
-    });
-
-    const btnStopOverlay = document.getElementById('stage-btn-stop-overlay');
-    btnStopOverlay?.addEventListener('click', async () => {
-      await overlayBridgeService.deactivate();
     });
 
     const btnSoundboard = document.getElementById('stage-btn-soundboard');

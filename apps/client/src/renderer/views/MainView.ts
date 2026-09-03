@@ -37,6 +37,7 @@ import { getAvatarUrl, toAbsoluteServerIconUrl } from '../utils/avatar';
 import { peerFailureTooltip } from '../utils/peerFailureHint';
 import { serverRailView } from './ServerRailView';
 import { soundboardPlayersBar } from './SoundboardPlayersBar';
+import { overlayBridgeService } from '../core/OverlayBridgeService';
 import logoUrl from '../assets/Logo.png';
 import { t, tCount } from '../i18n';
 
@@ -143,6 +144,7 @@ export class MainView {
           <div class="user-control-bar">
             <div id="soundboard-players-slot" class="sb-notice-slot"></div>
             <div id="screenshare-notice-slot"></div>
+            <div id="overlay-notice-slot"></div>
             <div id="voice-connection-row-slot"></div>
             <div class="user-media-bar" id="user-media-bar">
               <button id="media-btn-camera" class="btn btn-icon media-bar-btn-lg ${voiceStore.isCameraOn ? 'broadcasting-pulse active' : ''}" title="${t('main.toggleCamera')}">
@@ -229,6 +231,7 @@ export class MainView {
     // cached signature (#282).
     this.screenShareNoticeSignature = null;
     this.updateScreenShareNotice();
+    this.updateOverlayNotice();
 
     const soundboardSlot = document.getElementById('soundboard-players-slot');
     if (soundboardSlot) soundboardPlayersBar.mount(soundboardSlot);
@@ -426,6 +429,35 @@ export class MainView {
         this.openVoiceStage(single ? sharers[0].id : undefined);
       });
     }
+  }
+
+  /**
+   * Sidebar line mirroring the screen-share notice, but for the overlay: it
+   * tells the user the overlay is on and carries the stop button, so the overlay
+   * no longer needs a stop control on the stage. Unlike the screen-share notice,
+   * it stays visible on the stage too — the overlay keeps running there, so its
+   * indicator should as well.
+   */
+  private updateOverlayNotice(): void {
+    const slot = document.getElementById('overlay-notice-slot');
+    if (!slot) return;
+
+    if (!overlayBridgeService.isActive()) {
+      slot.innerHTML = '';
+      return;
+    }
+
+    slot.innerHTML = `
+      <div class="screenshare-notice screenshare-notice--self">
+        <span class="material-symbols-outlined md-16 screenshare-notice-icon">picture_in_picture_alt</span>
+        <span class="screenshare-notice-text">${t('overlay.overlayActive')}</span>
+        <button id="overlay-notice-stop-btn" class="screenshare-notice-btn screenshare-notice-btn--danger">${t('overlay.stopOverlayBtn')}</button>
+      </div>
+    `;
+
+    document.getElementById('overlay-notice-stop-btn')?.addEventListener('click', () => {
+      void overlayBridgeService.deactivate();
+    });
   }
 
   /**
@@ -1639,7 +1671,13 @@ export class MainView {
       this.renderChannels();
     });
 
-    this.unbindEvents.push(u1, u2, u3, u4, u5, u6, u7, u7b, u7c, u7d, u8, u9, u10, u11, u12, u13);
+    // Keep the sidebar overlay notice in sync: `state_changed` covers the window
+    // opening/closing, `overlay_settings.updated` covers the "open on leaving the
+    // stage" arm/disarm that also counts as active (#169).
+    const u14 = appEvents.on('overlay.state_changed', () => this.updateOverlayNotice());
+    const u15 = appEvents.on('overlay_settings.updated', () => this.updateOverlayNotice());
+
+    this.unbindEvents.push(u1, u2, u3, u4, u5, u6, u7, u7b, u7c, u7d, u8, u9, u10, u11, u12, u13, u14, u15);
   }
 
   /** True when the given text channel is the one currently visible on screen (#14). */
