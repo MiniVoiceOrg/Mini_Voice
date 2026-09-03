@@ -1,19 +1,22 @@
 import { app, BrowserWindow } from 'electron';
+import { spawn } from 'child_process';
 import fs from 'fs';
 import path from 'path';
 import { UpdateOutcome } from '@monky/shared';
 import { getMainLanguage, mt, setMainLanguage } from './i18n';
 import { updateLog } from './updateLog';
 /**
- * Windows/Linux install handoff (#498).
+ * Windows/Linux install handoff (#498, #543).
  *
- * `quitAndInstall` runs the NSIS installer silently and kills the app, so the
- * screen goes empty for several seconds with no clue that anything is
- * happening. Worse, clicking the icon during that window either fails with a
- * Windows error (the executable is mid-replacement) or starts a second copy on
- * top of the install.
+ * `quitAndInstall` kills the app so the NSIS installer can replace the .exe.
+ * The installer is a non-silent oneClick target, so it shows its own progress
+ * window during the file replacement — but there is still a brief hand-off on
+ * each side (the app quitting before that window appears, and the relaunch
+ * after it closes) when clicking the icon either fails with a Windows error
+ * (the executable is mid-replacement) or starts a second copy on top of the
+ * install.
  *
- * Two things fix that from the app side:
+ * Two things smooth that over from the app side:
  *
  * 1. A small always-on-top window replaces the main UI right before quitting,
  *    saying what is being installed and asking the user not to reopen the app.
@@ -335,9 +338,11 @@ export function hasInstallSentinel(): boolean {
 // ---------------------------------------------------------------------------
 // TEST-ONLY: local update-flow simulation (Bancada A).
 //
-// These reproduce the post-install UX without a real download or NSIS run, so
-// the splash timing and the renderer-ready hand-off (#498/#543) can be checked
-// with a plain `npm run start`. main.ts wires them strictly behind the
+// The `finish`/`full` helpers reproduce the post-install UX without a real
+// download or NSIS run, so the splash timing and the renderer-ready hand-off
+// (#498/#543) can be checked with a plain `npm run start`. `beginRealNsisInstallTest`
+// goes further and drives a real (isolated) installer, reproducing the actual
+// NSIS gap for an end-to-end watch. main.ts wires them strictly behind the
 // `MONKY_SIM_UPDATE` env var, so a normal launch never reaches them.
 // ---------------------------------------------------------------------------
 
@@ -382,4 +387,36 @@ export function beginSimulatedFullInstall(): void {
       app.exit(0);
     }, 2500);
   });
+}
+
+/**
+ * Runs a REAL (isolated) NSIS install exactly the way electron-updater's
+ * `quitAndInstall(false, true)` does — no `/S`, so the oneClick installer shows
+ * its own progress window, plus `--force-run` so it relaunches the app after —
+ * bracketed by the real "installing" splash (before quitting) and, via the
+ * sentinel, the "finishing" splash (on the relaunch). Unlike the `full`
+ * simulation above, this reproduces the actual NSIS gap, so the whole
+ * installing -> progress window -> finishing -> app sequence — including the
+ * fix that replaces the old blank screen with the installer's progress window —
+ * can be watched locally against a throwaway build, with no published beta
+ * (#498/#543).
+ *
+ * Driven by `MONKY_SIM_UPDATE=nsis` + `MONKY_SIM_INSTALLER` (the installer to
+ * run) + `MONKY_SIM_TARGET` (the version it produces, so the relaunched build
+ * takes the success path). Test-only; a normal launch never sets these.
+ */
+export function beginRealNsisInstallTest(installerPath: string, targetVersion: string): void {
+  updateLog('SIM(nsis): begin real installer test', { installerPath, targetVersion });
+  void beginUpdateInstall(targetVersion)
+    .then(() => new Promise<void>((resolve) => setTimeout(resolve, 2500)))
+    .then(() => {
+      const installDir = path.dirname(app.getPath('exe'));
+      // Mirror NsisUpdater.doInstall's args for a non-silent, auto-relaunching
+      // oneClick update: no `/S`, `--force-run`, and the current install dir.
+      const args = ['--updated', '--force-run', `/D=${installDir}`];
+      updateLog('SIM(nsis): spawning installer', { installerPath, args });
+      const child = spawn(installerPath, args, { detached: true, stdio: 'ignore' });
+      child.unref();
+      setTimeout(() => app.exit(0), 0);
+    });
 }

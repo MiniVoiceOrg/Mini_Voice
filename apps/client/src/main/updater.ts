@@ -71,9 +71,10 @@ function delay(ms: number): Promise<void> {
 }
 
 // How long the "installing…" splash lingers before `quitAndInstall` tears the
-// app down. It needs to be readable, because right after this the screen goes
-// dark for the whole silent NSIS install (the app must quit so the .exe can be
-// replaced) and this message is the user's only heads-up about the wait (#498).
+// app down. It needs to be readable, because right after this the app quits so
+// the .exe can be replaced. The NSIS installer (oneClick, non-silent) then
+// shows its own progress window during the install, and this splash is the
+// user's heads-up right before that hand-off (#498, #543).
 const SPLASH_LINGER_MS = 2500;
 
 // ── Update detection via GitHub API (reliable on all platforms) ──────────────
@@ -349,21 +350,24 @@ export function setupUpdater(mainWindow: BrowserWindow): void {
         downloadedVersion = cleanVer((info as { version?: string })?.version ?? '');
         updateLog('update-downloaded', { version: downloadedVersion });
         mainWindow.webContents.send('updater:downloaded', { manual: false });
-        // Install silently and relaunch automatically — no installer wizard.
-        // The progress window takes over the screen first so the user knows why
-        // the app is about to disappear, and knows not to reopen it (#498).
-        // `quitAndInstall` waits until the splash is actually on screen, since
-        // firing it in the same tick killed the window before it ever painted.
+        // Run the installer non-silently and relaunch automatically — still no
+        // wizard (oneClick), but now the installer's own progress window covers
+        // the screen during the file replacement instead of leaving it blank,
+        // so there is always something on screen through the update (#498, #543).
+        // The app-side splash takes over first so the user knows why the app is
+        // about to disappear, and knows not to reopen it. `quitAndInstall` waits
+        // until that splash is actually on screen, since firing it in the same
+        // tick killed the window before it ever painted.
         setTimeout(() => {
           beginUpdateInstall(downloadedVersion, mainWindow)
             .then(() => delay(SPLASH_LINGER_MS))
             .then(() => {
               updateLog('calling quitAndInstall', {
                 version: downloadedVersion,
-                isSilent: true,
+                isSilent: false,
                 isForceRunAfter: true,
               });
-              updater.quitAndInstall(true, true);
+              updater.quitAndInstall(false, true);
             })
             .catch((e) => {
               updateLog('quitAndInstall chain FAILED', { error: msg(e) });
@@ -474,7 +478,7 @@ export function setupUpdater(mainWindow: BrowserWindow): void {
           updateLog('updater:install calling quitAndInstall', {
             version: downloadedVersion || cleanVer(pendingTag ?? ''),
           });
-          updater.quitAndInstall(true, true);
+          updater.quitAndInstall(false, true);
         })
         .catch((e) => {
           updateLog('updater:install chain FAILED', { error: msg(e) });
