@@ -744,6 +744,7 @@ export const en: TranslationMap = {
   'settings.updatesSection': 'Updates',
   'settings.currentVersion': 'Current version:',
   'settings.checkUpdates': 'Check for updates',
+  'settings.viewChangelog': "What's new in this version",
   'settings.checking': 'Checking...',
   'settings.updateAvailable': 'Version {version} is available! See the banner at the top to update.',
   'settings.upToDate': 'You are already on the latest version.',
@@ -964,6 +965,14 @@ export const en: TranslationMap = {
     'Installer opened. Monky will close so you can drag the new version into your Applications folder.',
   'update.downloadFailed': 'Could not download the update.',
   'update.downloadManually': 'Download manually',
+
+  // ── In-app changelog (ChangelogModal.ts) (#547) ──────────────────────────
+  'changelog.title': "What's new",
+  'changelog.titleVersion': "What's new — {version}",
+  'changelog.updatedTo': 'Updated to {version} 🎉',
+  'changelog.loading': 'Loading changelog…',
+  'changelog.unavailable': "Couldn't load the changelog for this version.",
+  'changelog.viewOnGithub': 'View on GitHub',
 
   // ── App (main.ts) ────────────────────────────────────────────────────────
   'app.connectionLost': 'Connection lost',

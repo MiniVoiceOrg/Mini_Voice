@@ -1,6 +1,7 @@
 import { escapeHtml } from '../utils/html';
 import { t } from '../i18n';
 import { settingsStore } from '../stores/settingsStore';
+import { changelogModal } from '../views/ChangelogModal';
 
 const DISMISSED_KEY = 'monky_dismissed_update';
 const CHECK_INTERVAL_MS = 60 * 60 * 1000; // 1 hour
@@ -77,11 +78,21 @@ class UpdateService {
       }
 
       this.setText(t('update.installed', { version: escapeHtml(outcome.version) }));
+      // Prefer the in-app changelog (#547): when it has content it opens on its
+      // own and is the whole "what's new" confirmation. The banner stays as the
+      // fallback for an offline start (or a version with no published release),
+      // and its button re-opens the same modal instead of the browser.
+      const shown = await changelogModal.open({ celebrate: true, requireContent: true });
+      if (shown) {
+        return;
+      }
       this.setActions([
         {
           label: t('update.whatsNew'),
           primary: true,
-          onClick: () => window.api.openExternal(RELEASES_URL),
+          onClick: () => {
+            void changelogModal.open({ celebrate: true });
+          },
         },
         { label: '×', dismiss: true, onClick: () => this.dismiss() },
       ]);

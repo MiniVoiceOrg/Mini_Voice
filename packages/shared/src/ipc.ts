@@ -149,6 +149,21 @@ export type UpdateOutcome =
   | { status: 'success'; version: string; fromVersion: string }
   | { status: 'failed'; version: string };
 
+/**
+ * Release notes for a version, fetched from the GitHub Releases API so the
+ * client can show an in-app changelog after updating and on demand (#547).
+ */
+export interface ReleaseNotesResult {
+  ok: boolean;
+  /** Clean version the notes belong to (e.g. "8.2.8" or "8.2.8-beta"). */
+  version?: string;
+  /** Raw markdown body of the GitHub release. */
+  body?: string;
+  /** URL of the release page, for a "view on GitHub" link. */
+  url?: string;
+  error?: string;
+}
+
 export interface DiscoveredLanServer {
   host: string;
   port: number;
@@ -392,6 +407,7 @@ export interface IpcInvokeChannels {
   'updater:download': { args: [allowBeta: boolean]; returnType: UpdateSimpleResult };
   'updater:install': { args: []; returnType: UpdateSimpleResult };
   'updater:outcome': { args: []; returnType: UpdateOutcome | null };
+  'updater:release-notes': { args: [tag?: string]; returnType: ReleaseNotesResult };
 
   // Client Logging (#444)
   'client-log:write': { args: [entry: ClientLogEntry]; returnType: void };

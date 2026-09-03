@@ -2,7 +2,7 @@ import { app, BrowserWindow, ipcMain, shell } from 'electron';
 import fs from 'fs';
 import https from 'https';
 import path from 'path';
-import { UpdateOutcome } from '@monky/shared';
+import { UpdateOutcome, ReleaseNotesResult } from '@monky/shared';
 import { mt } from './i18n';
 import { beginUpdateInstall, consumeUpdateOutcome } from './updateInstall';
 import { updateLog } from './updateLog';
@@ -281,6 +281,41 @@ async function downloadMacDmg(mainWindow: BrowserWindow): Promise<CheckResult> {
   }
 }
 
+/**
+ * Fetches the GitHub release notes for a version so the renderer can show an
+ * in-app changelog after an update and on demand from Settings (#547).
+ *
+ * Defaults to the running version, which — right after a successful update and
+ * relaunch — is already the version the user just moved to. Done in the main
+ * process to reuse the same User-Agent the rest of the updater uses and to keep
+ * the GitHub call off the renderer.
+ */
+async function fetchReleaseNotes(tag?: string): Promise<ReleaseNotesResult> {
+  const wanted = (tag && tag.trim()) || `v${app.getVersion()}`;
+  const normalized = /^v/i.test(wanted) ? wanted : `v${wanted}`;
+  const headers = { Accept: 'application/vnd.github+json', 'User-Agent': 'Monky-App' };
+  try {
+    const res = await fetch(
+      `https://api.github.com/repos/${GITHUB_REPO}/releases/tags/${encodeURIComponent(normalized)}`,
+      { headers }
+    );
+    if (!res.ok) {
+      updateLog('fetchReleaseNotes: not ok', { tag: normalized, status: res.status });
+      return { ok: false, error: `HTTP ${res.status}` };
+    }
+    const rel = (await res.json()) as { tag_name?: string; body?: string; html_url?: string };
+    return {
+      ok: true,
+      version: (rel.tag_name ?? normalized).replace(/^v/i, ''),
+      body: typeof rel.body === 'string' ? rel.body : '',
+      url: rel.html_url ?? `https://github.com/${GITHUB_REPO}/releases/tag/${normalized}`,
+    };
+  } catch (e) {
+    updateLog('fetchReleaseNotes FAILED', { tag: normalized, error: msg(e) });
+    return { ok: false, error: msg(e) };
+  }
+}
+
 // ── Wiring ───────────────────────────────────────────────────────────────
 
 export function setupUpdater(mainWindow: BrowserWindow): void {
@@ -453,5 +488,11 @@ export function setupUpdater(mainWindow: BrowserWindow): void {
   // into the "updated to X" (or "update did not finish") banner (#498).
   ipcMain.handle('updater:outcome', async (): Promise<UpdateOutcome | null> => {
     return consumeUpdateOutcome();
+  });
+
+  // Release notes for the in-app changelog: shown once after an update and on
+  // demand from Settings (#547). Defaults to the running version's release.
+  ipcMain.handle('updater:release-notes', async (_e, tag?: unknown): Promise<ReleaseNotesResult> => {
+    return fetchReleaseNotes(typeof tag === 'string' ? tag : undefined);
   });
 }
