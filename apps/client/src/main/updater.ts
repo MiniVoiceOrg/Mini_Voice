@@ -57,6 +57,10 @@ function msg(e: unknown): string {
   return e instanceof Error ? e.message : String(e);
 }
 
+function delay(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
 // ── Update detection via GitHub API (reliable on all platforms) ──────────────
 
 interface MacAsset {
@@ -272,13 +276,13 @@ export function setupUpdater(mainWindow: BrowserWindow): void {
         // Install silently and relaunch automatically — no installer wizard.
         // The progress window takes over the screen first so the user knows why
         // the app is about to disappear, and knows not to reopen it (#498).
+        // `quitAndInstall` waits until the splash is actually on screen, since
+        // firing it in the same tick killed the window before it ever painted.
         setTimeout(() => {
-          try {
-            beginUpdateInstall(downloadedVersion, mainWindow);
-            updater.quitAndInstall(true, true);
-          } catch (e) {
-            mainWindow.webContents.send('updater:error', msg(e));
-          }
+          beginUpdateInstall(downloadedVersion, mainWindow)
+            .then(() => delay(800))
+            .then(() => updater.quitAndInstall(true, true))
+            .catch((e) => mainWindow.webContents.send('updater:error', msg(e)));
         }, 1500);
       });
       updater.on('error', (err) => {
@@ -373,8 +377,10 @@ export function setupUpdater(mainWindow: BrowserWindow): void {
     }
     // Defer so the IPC reply is delivered before the app quits to install.
     setImmediate(() => {
-      beginUpdateInstall(downloadedVersion || cleanVer(pendingTag ?? ''), mainWindow);
-      updater.quitAndInstall(true, true);
+      beginUpdateInstall(downloadedVersion || cleanVer(pendingTag ?? ''), mainWindow)
+        .then(() => delay(800))
+        .then(() => updater.quitAndInstall(true, true))
+        .catch((e) => mainWindow.webContents.send('updater:error', msg(e)));
     });
     return { ok: true };
   });
