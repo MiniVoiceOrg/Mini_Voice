@@ -8,6 +8,7 @@ import { screenAudioService } from '../core/ScreenAudioService';
 import { videoService } from '../core/VideoService';
 import { voiceStore, VoiceStore } from '../stores/voiceStore';
 import { webRtcManager } from '../core/WebRtcManager';
+import { settingsStore } from '../stores/settingsStore';
 import { setButtonLoading } from '../utils/buttonLoading';
 import { showAlert, showConfirm } from './Dialog';
 import { t } from '../i18n';
@@ -154,6 +155,7 @@ export class ScreenSharePickerModal {
     }
 
     panel.innerHTML = `
+      ${this.renderGameTipHtml()}
       <div class="screen-sources-grid">
         ${available.map((s) => `
           <div class="source-item ${this.selectedSourceId === s.id ? 'selected' : ''}" data-source-id="${escapeHtml(s.id)}">
@@ -170,6 +172,28 @@ export class ScreenSharePickerModal {
     `;
 
     this.attachSourceEvents();
+  }
+
+  /**
+   * Tells people how to share a game without paying for it in frame rate (#526).
+   *
+   * Both tips are only worth showing when they are actionable: pointing at the
+   * Apps tab makes no sense once you are already on it, and the codec advice is
+   * noise for someone already on the Gaming preset, where "Automatic" picks
+   * H.264 on its own.
+   */
+  private renderGameTipHtml(): string {
+    const tips: string[] = [];
+    if (this.activeTab === 'screen') tips.push(t('screenShare.gameTipWindow'));
+    if (settingsStore.qualityPreset !== 'GAMING') tips.push(t('screenShare.gameTipCodec'));
+    if (tips.length === 0) return '';
+
+    return `
+      <div class="share-game-tip">
+        <span class="material-symbols-outlined md-18">sports_esports</span>
+        <span>${tips.join(' ')}</span>
+      </div>
+    `;
   }
 
   private attachSourceEvents(): void {

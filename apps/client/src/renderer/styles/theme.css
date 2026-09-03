@@ -334,7 +334,11 @@ input:focus, textarea:focus, select:focus {
 /* Connection Screen Styles */
 .connection-layout {
   width: 100vw;
-  height: 100vh;
+  /* Not `100vh`: this lives below the 33px custom title bar, so a full viewport
+     height overflowed by exactly the title bar and left the home screen with a
+     permanent sliver of scroll (#536). */
+  flex: 1 1 auto;
+  min-height: 0;
   overflow-y: auto;
   overflow-x: hidden;
   display: flex;
@@ -5157,6 +5161,32 @@ button[data-loading="1"]::after {
   border: 1px solid rgba(242, 63, 67, 0.35);
   color: var(--text-secondary);
   font-size: 12px;
+}
+
+/* A hint, not a warning: it must read as help while sharing a game, so it uses
+   the accent colour instead of the red the "already sharing" banner needs. */
+.share-game-tip {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 10px 12px;
+  margin-bottom: 12px;
+  border-radius: var(--radius-md);
+  background: rgba(88, 101, 242, 0.1);
+  border: 1px solid rgba(88, 101, 242, 0.3);
+  color: var(--text-secondary);
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.share-game-tip .material-symbols-outlined {
+  color: var(--accent-primary);
+  flex-shrink: 0;
+}
+
+.share-game-tip b {
+  color: var(--text-primary);
+  font-weight: 600;
 }
 
 /* Covers only the server interface: the title bar and the server rail stay usable

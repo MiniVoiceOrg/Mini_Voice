@@ -328,6 +328,8 @@ export const en: TranslationMap = {
   'screenShare.confirmSwitch': 'Switch Source',
   'screenShare.noScreens': 'No screen detected.',
   'screenShare.noWindows': 'No open application window was detected.',
+  'screenShare.gameTipWindow': 'Sharing a game? Picking the game under <b>Apps</b> costs fewer frames than sending your whole screen.',
+  'screenShare.gameTipCodec': 'The <b>Gaming</b> profile (Settings › Quality) helps too: there the Automatic codec uses H.264, which your graphics card encodes on its own.',
   'screenShare.errorTitle': 'Screen sharing failed',
   'screenShare.limitTitle': 'Screen limit reached',
   'screenShare.confirmAdd': 'Add screen',
