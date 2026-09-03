@@ -2,7 +2,7 @@ import { app, BrowserWindow, ipcMain, Menu, screen, session, shell } from 'elect
 import path from 'path';
 import { setupIpcHandlers } from './ipcHandlers';
 import { setupUpdater } from './updater';
-import { handleLaunchDuringUpdate } from './updateInstall';
+import { handleLaunchDuringUpdate, isInstallSplashActive, dismissInstallSplash } from './updateInstall';
 import { ServerManager } from './serverManager';
 import { TrayManager } from './trayManager';
 import { ClientLogger } from './clientLogger';
@@ -126,7 +126,7 @@ function quitApplication(): void {
   app.quit();
 }
 
-function createWindow(): void {
+function createWindow(deferShow = false): void {
   const iconCandidates = [
     path.join(__dirname, '../../build/icon.ico'),
     path.join(__dirname, '../../build/icon.png'),
@@ -149,6 +149,10 @@ function createWindow(): void {
     minWidth: HOME_MIN_WIDTH,
     minHeight: HOME_MIN_HEIGHT,
     backgroundColor: '#0e1117',
+    // Right after an update install the window is held back (show: false) and
+    // only revealed once it has painted, so the "finishing" splash hands off to
+    // a fully-drawn UI with no dark gap in between (#498).
+    show: !deferShow,
     // Windows/Linux: fully frameless (custom title bar in the renderer).
     // macOS: keep the native traffic-light buttons but hide the title bar.
     frame: isMac,
@@ -194,6 +198,26 @@ function createWindow(): void {
     overlayManager,
   });
   setupUpdater(mainWindow);
+
+  // A launch straight after an update install keeps the "finishing" splash up
+  // while this fresh process cold-starts. Hold the main window back until its
+  // first frame is painted, then reveal it and drop the splash together, so the
+  // splash only disappears as Monky actually opens (#498). A fallback timer
+  // guarantees a slow or missing paint never strands the window behind it.
+  if (deferShow) {
+    let revealed = false;
+    const reveal = (): void => {
+      if (revealed) return;
+      revealed = true;
+      if (mainWindow && !mainWindow.isDestroyed() && !mainWindow.isVisible()) {
+        mainWindow.show();
+        mainWindow.focus();
+      }
+      setTimeout(() => dismissInstallSplash(), 80);
+    };
+    mainWindow.once('ready-to-show', reveal);
+    setTimeout(reveal, 15000);
+  }
 
   // In dev, load Vite dev server if running, otherwise load dist/index.html
   if (process.env.VITE_DEV_SERVER_URL) {
@@ -290,7 +314,7 @@ if (!gotTheLock) {
       callback(allowed.includes(permission));
     });
 
-    createWindow();
+    createWindow(isInstallSplashActive());
     bindMainWindowNavigationGuards();
 
     app.on('activate', () => {

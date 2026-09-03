@@ -248,6 +248,12 @@ export function handleLaunchDuringUpdate(): boolean {
       version: sentinel.targetVersion,
       fromVersion: sentinel.fromVersion,
     };
+    // The old process's splash died when it quit for the silent install, and the
+    // fresh process still has a cold start ahead of it — that is the long dark
+    // gap the user sees. Put the splash straight back up so it visually carries
+    // through the cold boot; main.ts then dismisses it the instant the main
+    // window has painted, so it only disappears as Monky actually opens (#498).
+    openWindow(mt('updateInstall.finishing'), mt('updateInstall.finishingHint'));
     return false;
   }
 
@@ -263,6 +269,25 @@ export function handleLaunchDuringUpdate(): boolean {
   );
   setTimeout(() => app.exit(0), BUSY_WINDOW_MS);
   return true;
+}
+
+/**
+ * Whether the post-install splash is currently on screen. main.ts uses this to
+ * decide whether to hold the main window back until it has painted (#498).
+ */
+export function isInstallSplashActive(): boolean {
+  return !!installWindow && !installWindow.isDestroyed();
+}
+
+/**
+ * Closes the splash. Called the moment the main window is ready, so the hand-off
+ * from "finishing update" to the live UI has no dark gap in between (#498).
+ */
+export function dismissInstallSplash(): void {
+  if (installWindow && !installWindow.isDestroyed()) {
+    installWindow.close();
+  }
+  installWindow = null;
 }
 
 /**
