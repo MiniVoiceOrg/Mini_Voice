@@ -955,7 +955,10 @@ export const en: TranslationMap = {
   'update.updateNow': 'Update now',
   'update.startingDownload': 'Starting download…',
   'update.downloading': 'Downloading update… {percent}%',
-  'update.installing': 'Update downloaded. Installing and restarting…',
+  'update.installing': 'Update downloaded. Monky will close to install it and reopens on its own.',
+  'update.installed': 'Monky updated to version <strong>{version}</strong>.',
+  'update.whatsNew': "What's new",
+  'update.installFailed': 'The update to version {version} did not finish.',
   'update.installerOpened':
     'Installer opened. Monky will close so you can drag the new version into your Applications folder.',
   'update.downloadFailed': 'Could not download the update.',
@@ -1169,6 +1172,12 @@ export const en: TranslationMap = {
   'overlay.minimalistModeTitle': 'Minimalist Mode',
   'overlay.minimalistModeDesc': 'Displays only a compact list with avatar, name and status (no video feeds).',
   'overlay.resetSizeBtn': 'Reset Default Size',
+  'overlay.hideSelfTitle': 'Hide Myself',
+  'overlay.hideSelfDesc': 'Hides your own card from the overlay, showing only the other participants.',
+  'overlay.stopOverlayBtn': 'Stop Overlay',
+  'overlay.overlayActive': 'Overlay active',
+  'overlay.waitingChannel': 'Waiting for a voice channel...',
+  'overlay.aloneInChannel': 'Nobody else in the channel',
 
   // ── SFU / Voice Mode ───────────────────────────────────────────────────
   'stage.connectedSfu': 'SFU',

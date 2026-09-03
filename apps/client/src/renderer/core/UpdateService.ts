@@ -4,6 +4,7 @@ import { settingsStore } from '../stores/settingsStore';
 
 const DISMISSED_KEY = 'monky_dismissed_update';
 const CHECK_INTERVAL_MS = 60 * 60 * 1000; // 1 hour
+const INSTALLED_BANNER_MS = 15000;
 const RELEASES_URL = 'https://github.com/MonkyOrg/Monky/releases/latest';
 
 interface BannerAction {
@@ -28,6 +29,7 @@ class UpdateService {
   private textEl: HTMLElement | null = null;
   private actionsEl: HTMLElement | null = null;
   private latestVersion = '';
+  private bannerKind = '';
   private listenersBound = false;
   private unbindUpdateEvents: Array<() => void> = [];
 
@@ -45,9 +47,55 @@ class UpdateService {
     }
 
     this.bindUpdateEvents();
+    void this.reportLastInstall();
 
     setTimeout(() => this.check(), 4000);
     setInterval(() => this.check(), CHECK_INTERVAL_MS);
+  }
+
+  /**
+   * Confirms the install that ran while the app was closed (#498). Without it
+   * the app just reappears and the user has to dig into Settings to find out
+   * whether the update actually landed.
+   */
+  private async reportLastInstall(): Promise<void> {
+    try {
+      const outcome = await window.api.getUpdateOutcome?.();
+      if (!outcome) return;
+
+      if (outcome.status === 'failed') {
+        this.setText(t('update.installFailed', { version: escapeHtml(outcome.version) }));
+        this.setActions([
+          {
+            label: t('update.downloadManually'),
+            primary: true,
+            onClick: () => window.api.openExternal(RELEASES_URL),
+          },
+          { label: '×', dismiss: true, onClick: () => this.dismiss() },
+        ]);
+        return;
+      }
+
+      this.setText(t('update.installed', { version: escapeHtml(outcome.version) }));
+      this.setActions([
+        {
+          label: t('update.whatsNew'),
+          primary: true,
+          onClick: () => window.api.openExternal(RELEASES_URL),
+        },
+        { label: '×', dismiss: true, onClick: () => this.dismiss() },
+      ]);
+      this.bannerKind = 'installed';
+      // Good news doesn't need to stay on screen: clear it unless something
+      // else has taken the banner over in the meantime.
+      window.setTimeout(() => {
+        if (this.bannerKind === 'installed') {
+          this.dismiss();
+        }
+      }, INSTALLED_BANNER_MS);
+    } catch {
+      // Non-fatal: the banner is informational only.
+    }
   }
 
   private bindUpdateEvents(): void {
@@ -149,6 +197,7 @@ class UpdateService {
     if (this.latestVersion) {
       localStorage.setItem(DISMISSED_KEY, this.latestVersion);
     }
+    this.bannerKind = '';
     this.banner?.remove();
     this.banner = null;
     this.textEl = null;
@@ -178,6 +227,7 @@ class UpdateService {
 
   private setText(html: string): void {
     this.ensureBanner();
+    this.bannerKind = '';
     if (this.textEl) {
       this.textEl.innerHTML = html;
     }

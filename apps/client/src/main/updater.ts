@@ -2,7 +2,9 @@ import { app, BrowserWindow, ipcMain, shell } from 'electron';
 import fs from 'fs';
 import https from 'https';
 import path from 'path';
+import { UpdateOutcome } from '@monky/shared';
 import { mt } from './i18n';
+import { beginUpdateInstall, consumeUpdateOutcome } from './updateInstall';
 import {
   cleanVer,
   feedUrlForTag,
@@ -93,6 +95,12 @@ function quitForMacInstall(delayMs: number): void {
     setTimeout(() => app.exit(0), 4000);
   }, delayMs);
 }
+
+/**
+ * Version electron-updater finished downloading, so the install step can name
+ * it on the progress window even when the user triggers it later by hand.
+ */
+let downloadedVersion = '';
 
 /**
  * Tag of the release `checkViaGitHub` decided the user should get. The download
@@ -258,11 +266,15 @@ export function setupUpdater(mainWindow: BrowserWindow): void {
         const percent = (p as { percent?: number })?.percent ?? 0;
         mainWindow.webContents.send('updater:progress', Math.round(percent));
       });
-      updater.on('update-downloaded', () => {
+      updater.on('update-downloaded', (info) => {
+        downloadedVersion = cleanVer((info as { version?: string })?.version ?? '');
         mainWindow.webContents.send('updater:downloaded', { manual: false });
         // Install silently and relaunch automatically — no installer wizard.
+        // The progress window takes over the screen first so the user knows why
+        // the app is about to disappear, and knows not to reopen it (#498).
         setTimeout(() => {
           try {
+            beginUpdateInstall(downloadedVersion, mainWindow);
             updater.quitAndInstall(true, true);
           } catch (e) {
             mainWindow.webContents.send('updater:error', msg(e));
@@ -360,7 +372,16 @@ export function setupUpdater(mainWindow: BrowserWindow): void {
       return { ok: false, error: mt('error.updaterUnavailable') };
     }
     // Defer so the IPC reply is delivered before the app quits to install.
-    setImmediate(() => updater.quitAndInstall(true, true));
+    setImmediate(() => {
+      beginUpdateInstall(downloadedVersion || cleanVer(pendingTag ?? ''), mainWindow);
+      updater.quitAndInstall(true, true);
+    });
     return { ok: true };
+  });
+
+  // Reported once per launch, right after an install: the renderer turns it
+  // into the "updated to X" (or "update did not finish") banner (#498).
+  ipcMain.handle('updater:outcome', async (): Promise<UpdateOutcome | null> => {
+    return consumeUpdateOutcome();
   });
 }

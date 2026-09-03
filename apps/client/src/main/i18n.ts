@@ -24,6 +24,14 @@ const CATALOGS = {
     'error.startServerFailed': 'Falha ao iniciar servidor',
     'error.deleteServerDataFailed': 'Não foi possível apagar os dados do servidor',
     'error.deleteServerDataRunning': 'Pare o servidor antes de apagar os dados dele',
+    'updateInstall.title': 'Atualizando o Monky',
+    'updateInstall.installing': 'Instalando a versão {version}…',
+    'updateInstall.installingGeneric': 'Instalando a atualização…',
+    'updateInstall.installingHint':
+      'Não abra o Monky agora — ele reabre sozinho assim que a instalação terminar.',
+    'updateInstall.busy': 'A versão {version} está sendo instalada.',
+    'updateInstall.busyHint':
+      'Esta janela fecha sozinha. O Monky abre automaticamente quando a instalação terminar.',
     'screenPermission.title': 'Permissão de gravação de tela',
     'screenPermission.message': 'O macOS está negando a captura de tela para o Monky.',
     'screenPermission.detail':
@@ -61,6 +69,14 @@ const CATALOGS = {
     'error.startServerFailed': 'Failed to start the server',
     'error.deleteServerDataFailed': 'Could not delete the server data',
     'error.deleteServerDataRunning': 'Stop the server before deleting its data',
+    'updateInstall.title': 'Updating Monky',
+    'updateInstall.installing': 'Installing version {version}…',
+    'updateInstall.installingGeneric': 'Installing the update…',
+    'updateInstall.installingHint':
+      "Don't open Monky right now — it reopens on its own once the install finishes.",
+    'updateInstall.busy': 'Version {version} is being installed.',
+    'updateInstall.busyHint':
+      'This window closes on its own. Monky opens automatically when the install finishes.',
     'screenPermission.title': 'Screen recording permission',
     'screenPermission.message': 'macOS is denying screen capture for Monky.',
     'screenPermission.detail':
@@ -93,6 +109,10 @@ export function setMainLanguage(language: string | undefined): void {
   if (language === 'en' || language === 'pt-BR') {
     currentLanguage = language;
   }
+}
+
+export function getMainLanguage(): MainLanguage {
+  return currentLanguage;
 }
 
 export function mt(key: MainTranslationKey, params?: Record<string, string>): string {

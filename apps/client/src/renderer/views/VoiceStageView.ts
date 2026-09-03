@@ -228,7 +228,7 @@ export class VoiceStageView {
           <button id="stage-btn-screen" class="btn btn-icon ${voiceStore.isScreenSharing ? 'broadcasting-pulse active' : ''}" title="${voiceStore.isScreenSharing ? t('stage.stopScreenShare') : t('main.shareScreen')}">
             <span class="material-symbols-outlined">${voiceStore.isScreenSharing ? 'stop_screen_share' : 'screen_share'}</span>
           </button>
-          <button id="stage-btn-overlay" class="btn btn-icon ${overlayBridgeService.getIsOpen() ? 'broadcasting-pulse active' : ''}" title="${t('overlay.openOverlay')}">
+          <button id="stage-btn-overlay" class="btn btn-icon ${overlayBridgeService.isActive() ? 'broadcasting-pulse active' : ''}" title="${t('overlay.openOverlay')}">
             <span class="material-symbols-outlined">picture_in_picture_alt</span>
           </button>
           <button id="stage-btn-soundboard" class="btn btn-icon" title="${t('main.openSoundboard')}">
@@ -238,9 +238,9 @@ export class VoiceStageView {
             <span class="material-symbols-outlined md-18" style="margin-right: 4px;">stop_screen_share</span>
             <span>${t('screenShare.stopSharing')}</span>
           </button>
-          <button id="stage-btn-stop-overlay" class="btn btn-danger" style="display: ${overlayBridgeService.getIsOpen() ? 'inline-flex' : 'none'}; margin-left: 8px; padding: 0 16px; height: 38px;" title="${t('overlay.closeOverlayBtn')}">
+          <button id="stage-btn-stop-overlay" class="btn btn-danger" style="display: ${overlayBridgeService.isActive() ? 'inline-flex' : 'none'}; margin-left: 8px; padding: 0 16px; height: 38px;" title="${t('overlay.stopOverlayBtn')}">
             <span class="material-symbols-outlined md-18" style="margin-right: 4px;">close</span>
-            <span>${t('overlay.closeOverlayBtn')}</span>
+            <span>${t('overlay.stopOverlayBtn')}</span>
           </button>
           <button id="stage-btn-leave" class="btn btn-danger" style="margin-left: 12px; padding: 0 16px; height: 38px;" title="${t('stage.leaveChannel')}">
             <span class="material-symbols-outlined md-18" style="margin-right: 4px;">call_end</span>
@@ -294,9 +294,9 @@ export class VoiceStageView {
 
     const btnOverlay = document.getElementById('stage-btn-overlay');
     if (btnOverlay) {
-      const isOverlayOpen = overlayBridgeService.getIsOpen();
-      btnOverlay.className = `btn btn-icon ${isOverlayOpen ? 'broadcasting-pulse active' : ''}`;
-      btnOverlay.title = t('overlay.openOverlay');
+      const isOverlayActive = overlayBridgeService.isActive();
+      btnOverlay.className = `btn btn-icon ${isOverlayActive ? 'broadcasting-pulse active' : ''}`;
+      btnOverlay.title = isOverlayActive ? t('overlay.overlayActive') : t('overlay.openOverlay');
       btnOverlay.innerHTML = `<span class="material-symbols-outlined">picture_in_picture_alt</span>`;
     }
 
@@ -310,7 +310,7 @@ export class VoiceStageView {
       btnStopShare.title = hasScreenAudio ? t('stage.stopScreenShareWithAudio') : t('stage.stopScreenShare');
     }
     if (btnStopOverlay) {
-      btnStopOverlay.style.display = overlayBridgeService.getIsOpen() ? 'inline-flex' : 'none';
+      btnStopOverlay.style.display = overlayBridgeService.isActive() ? 'inline-flex' : 'none';
     }
     if (btnLeave) {
       btnLeave.style.marginLeft = '12px';
@@ -1610,7 +1610,7 @@ export class VoiceStageView {
 
     const btnStopOverlay = document.getElementById('stage-btn-stop-overlay');
     btnStopOverlay?.addEventListener('click', async () => {
-      await overlayBridgeService.close();
+      await overlayBridgeService.deactivate();
     });
 
     const btnSoundboard = document.getElementById('stage-btn-soundboard');
@@ -1655,6 +1655,9 @@ export class VoiceStageView {
     const u8 = appEvents.on('local.screen_audio_started', () => this.updateControlsUI());
     const u9 = appEvents.on('local.screen_audio_stopped', () => this.updateControlsUI());
     const u10 = appEvents.on('overlay.state_changed', () => this.updateControlsUI());
+    // Arming "open on leaving the stage" turns the overlay on without opening a
+    // window, so the stage controls have to follow the setting too (#169).
+    const u13 = appEvents.on('overlay_settings.updated', () => this.updateControlsUI());
 
     const u11 = appEvents.on('voice.mode_switched', () => {
       this.updateHeaderModeBadge();
@@ -1671,7 +1674,7 @@ export class VoiceStageView {
     // browsing another server during a call (#400), write it onto the wrong
     // server's participants (#426).
 
-    this.unbindEvents.push(u1, u2, u3, u4, u5, u6, u7, u8, u9, u10, u11, u12);
+    this.unbindEvents.push(u1, u2, u3, u4, u5, u6, u7, u8, u9, u10, u11, u12, u13);
   }
 
   private updateHeaderModeBadge(): void {

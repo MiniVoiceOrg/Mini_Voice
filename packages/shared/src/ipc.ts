@@ -141,6 +141,14 @@ export interface UpdateSimpleResult {
   error?: string;
 }
 
+/**
+ * Result of the update install that ran between two launches (#498). Reported
+ * once, on the first launch after the installer took over.
+ */
+export type UpdateOutcome =
+  | { status: 'success'; version: string; fromVersion: string }
+  | { status: 'failed'; version: string };
+
 export interface DiscoveredLanServer {
   host: string;
   port: number;
@@ -240,6 +248,7 @@ export interface OverlayConfig {
   transparentBackground: boolean;
   autoOpenOnLeaveStage?: boolean;
   minimalistMode?: boolean;
+  hideSelf?: boolean;
   bounds?: OverlayBounds;
 }
 
@@ -383,6 +392,7 @@ export interface IpcInvokeChannels {
   'updater:check': { args: []; returnType: UpdateCheckResult };
   'updater:download': { args: [allowBeta: boolean]; returnType: UpdateSimpleResult };
   'updater:install': { args: []; returnType: UpdateSimpleResult };
+  'updater:outcome': { args: []; returnType: UpdateOutcome | null };
 
   // Client Logging (#444)
   'client-log:write': { args: [entry: ClientLogEntry]; returnType: void };

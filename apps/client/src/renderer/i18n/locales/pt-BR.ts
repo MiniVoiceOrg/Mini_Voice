@@ -956,7 +956,10 @@ export const ptBR = {
   'update.updateNow': 'Atualizar agora',
   'update.startingDownload': 'Iniciando download…',
   'update.downloading': 'Baixando atualização… {percent}%',
-  'update.installing': 'Atualização baixada. Instalando e reiniciando…',
+  'update.installing': 'Atualização baixada. O Monky vai fechar para instalar e reabre sozinho.',
+  'update.installed': 'Monky atualizado para a versão <strong>{version}</strong>.',
+  'update.whatsNew': 'Ver novidades',
+  'update.installFailed': 'A atualização para a versão {version} não foi concluída.',
   'update.installerOpened':
     'Instalador aberto. O Monky vai fechar para você arrastar a nova versão até a pasta Aplicativos.',
   'update.downloadFailed': 'Falha ao baixar a atualização.',
@@ -1170,6 +1173,12 @@ export const ptBR = {
   'overlay.minimalistModeTitle': 'Modo Minimalista',
   'overlay.minimalistModeDesc': 'Exibe apenas a lista compacta com avatar, nome e status (sem transmissão de vídeo).',
   'overlay.resetSizeBtn': 'Restaurar Tamanho Padrão',
+  'overlay.hideSelfTitle': 'Não Me Exibir',
+  'overlay.hideSelfDesc': 'Oculta o seu próprio card da sobreposição, mostrando apenas os outros participantes.',
+  'overlay.stopOverlayBtn': 'Parar Sobreposição',
+  'overlay.overlayActive': 'Sobreposição ativa',
+  'overlay.waitingChannel': 'Aguardando canal de voz...',
+  'overlay.aloneInChannel': 'Ninguém mais no canal',
 
   // ── SFU / Voice Mode ───────────────────────────────────────────────────
   'stage.connectedSfu': 'SFU',

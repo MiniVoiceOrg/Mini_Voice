@@ -89,6 +89,7 @@ export class SettingsStore {
   public overlayTransparentBackground: boolean = false;
   public overlayAutoOpenOnLeaveStage: boolean = false;
   public overlayMinimalistMode: boolean = false;
+  public overlayHideSelf: boolean = false;
   public overlaySavedBounds: OverlayBounds | null = null;
 
   constructor() {
@@ -216,6 +217,9 @@ export class SettingsStore {
         if (typeof this.overlayMinimalistMode !== 'boolean') {
           this.overlayMinimalistMode = false;
         }
+        if (typeof this.overlayHideSelf !== 'boolean') {
+          this.overlayHideSelf = false;
+        }
         if (
           this.overlaySavedBounds &&
           (typeof this.overlaySavedBounds.width !== 'number' || typeof this.overlaySavedBounds.height !== 'number')
@@ -236,6 +240,7 @@ export class SettingsStore {
       transparentBackground: this.overlayTransparentBackground,
       autoOpenOnLeaveStage: this.overlayAutoOpenOnLeaveStage,
       minimalistMode: this.overlayMinimalistMode,
+      hideSelf: this.overlayHideSelf,
       bounds: this.overlaySavedBounds || undefined,
     };
   }
@@ -258,6 +263,9 @@ export class SettingsStore {
     }
     if (typeof config.minimalistMode === 'boolean') {
       this.overlayMinimalistMode = config.minimalistMode;
+    }
+    if (typeof config.hideSelf === 'boolean') {
+      this.overlayHideSelf = config.hideSelf;
     }
     if (config.bounds) {
       this.overlaySavedBounds = config.bounds;
@@ -409,6 +417,7 @@ export class SettingsStore {
         overlayTransparentBackground: this.overlayTransparentBackground,
         overlayAutoOpenOnLeaveStage: this.overlayAutoOpenOnLeaveStage,
         overlayMinimalistMode: this.overlayMinimalistMode,
+        overlayHideSelf: this.overlayHideSelf,
         overlaySavedBounds: this.overlaySavedBounds,
       }));
       appEvents.emit('settings.updated');

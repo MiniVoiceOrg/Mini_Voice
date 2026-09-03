@@ -4,6 +4,7 @@ import type {
   OverlaySyncState,
 } from '@monky/shared';
 import { escapeHtml } from '../utils/html';
+import { t } from '../i18n';
 
 type OverlayTile = {
   p: OverlayParticipantState;
@@ -13,12 +14,16 @@ type OverlayTile = {
   key: string;
 };
 
+/** Deve acompanhar a duração das animações overlayCardIn/Out do theme.css. */
+const CARD_FADE_MS = 260;
+
 export class OverlayStageView {
   private container: HTMLElement;
   private currentState: OverlaySyncState | null = null;
   private localPeerConnection: RTCPeerConnection | null = null;
   private slotStreams: MediaStream[] = [];
   private unbindListeners: Array<() => void> = [];
+  private leavingTimers = new Map<string, number>();
 
   constructor(container: HTMLElement) {
     this.container = container;
@@ -126,7 +131,9 @@ export class OverlayStageView {
 
   public render(): void {
     if (!this.currentState || !this.currentState.participants || this.currentState.participants.length === 0) {
-      this.renderEmptyState();
+      // With "hide myself" on, an empty list means nobody else is around —
+      // saying we're waiting for a voice channel would be wrong (#169).
+      this.renderEmptyState(!!this.currentState?.config?.hideSelf);
       return;
     }
 
@@ -196,7 +203,7 @@ export class OverlayStageView {
     const cardsContainer = this.container.querySelector('.overlay-cards-container') as HTMLElement | null;
     if (cardsContainer) {
       cardsContainer.className = `overlay-cards-container ${layoutClass}`;
-      this.reconcileCards(cardsContainer, tiles, isMinimalist);
+      this.reconcileCards(cardsContainer, tiles, isMinimalist, isFocusSpeaker);
     }
 
     if (!isMinimalist) {
@@ -204,7 +211,7 @@ export class OverlayStageView {
     }
   }
 
-  private renderEmptyState(): void {
+  private renderEmptyState(isAlone: boolean = false): void {
     this.container.innerHTML = `
       <div class="overlay-stage-root">
         <div class="overlay-stage-topbar">
@@ -213,14 +220,14 @@ export class OverlayStageView {
             <span class="overlay-channel-title" style="font-size: 11px; font-weight: 600; color: var(--text-muted);">Monky Overlay</span>
           </div>
           <div class="overlay-topbar-actions">
-            <button id="btn-overlay-close" class="overlay-action-btn close" title="Fechar Sobreposição">
+            <button id="btn-overlay-close" class="overlay-action-btn close" title="${t('overlay.closeOverlayBtn')}">
               <span class="material-symbols-outlined md-14">close</span>
             </button>
           </div>
         </div>
         <div class="overlay-empty-state">
           <span class="material-symbols-outlined md-20" style="color: var(--text-muted); opacity: 0.6;">group</span>
-          <span>Aguardando canal de voz...</span>
+          <span>${isAlone ? t('overlay.aloneInChannel') : t('overlay.waitingChannel')}</span>
         </div>
       </div>
     `;
@@ -239,7 +246,7 @@ export class OverlayStageView {
               <span class="overlay-channel-title" style="font-size: 11px; font-weight: 600; color: var(--text-muted);"></span>
             </div>
             <div class="overlay-topbar-actions">
-              <button id="btn-overlay-close" class="overlay-action-btn close" title="Fechar Sobreposição">
+              <button id="btn-overlay-close" class="overlay-action-btn close" title="${t('overlay.closeOverlayBtn')}">
                 <span class="material-symbols-outlined md-14">close</span>
               </button>
             </div>
@@ -255,7 +262,12 @@ export class OverlayStageView {
    * Reconciliação cirúrgica de cards do DOM.
    * Preserva a tag <video> e seu srcObject para evitar piscadas e repaints desnecessários.
    */
-  private reconcileCards(cardsContainer: HTMLElement, tiles: OverlayTile[], isMinimalist: boolean): void {
+  private reconcileCards(
+    cardsContainer: HTMLElement,
+    tiles: OverlayTile[],
+    isMinimalist: boolean,
+    useCrossfade: boolean
+  ): void {
     const existingItems = new Map<string, HTMLElement>();
     cardsContainer.querySelectorAll('.overlay-card, .overlay-mini-item').forEach((item) => {
       const key = item.getAttribute('data-tile-key');
@@ -264,10 +276,16 @@ export class OverlayStageView {
 
     const activeKeys = new Set(tiles.map((t) => t.key));
 
-    // Remove cards obsoletos
+    // Remove cards obsoletos. No modo foco a troca de orador seria um corte
+    // seco, então o card antigo sai em fade por cima do novo (#169).
     existingItems.forEach((item, key) => {
       if (!activeKeys.has(key)) {
-        item.remove();
+        if (useCrossfade && item.classList.contains('overlay-card')) {
+          this.startCardFadeOut(item, key);
+        } else {
+          this.cancelCardFadeOut(item, key);
+          item.remove();
+        }
       }
     });
 
@@ -279,6 +297,7 @@ export class OverlayStageView {
       const slotStr = tile.slotIndex !== undefined ? String(tile.slotIndex) : '';
 
       let item = existingItems.get(tile.key);
+      if (item) this.cancelCardFadeOut(item, tile.key);
 
       if (isMinimalist) {
         // Renderização minimalista
@@ -344,11 +363,35 @@ export class OverlayStageView {
         item.setAttribute('data-slot', slotStr);
       }
 
-      // Garante a ordem correta no DOM
-      if (cardsContainer.children[index] !== item) {
-        cardsContainer.insertBefore(item, cardsContainer.children[index] || null);
+      // Garante a ordem correta no DOM, ignorando os cards que estão saindo
+      const liveChildren = Array.from(cardsContainer.children).filter(
+        (child) => !child.classList.contains('leaving')
+      );
+      if (liveChildren[index] !== item) {
+        cardsContainer.insertBefore(item, liveChildren[index] || null);
       }
     });
+  }
+
+  private startCardFadeOut(item: HTMLElement, key: string): void {
+    if (this.leavingTimers.has(key)) return;
+    item.classList.add('leaving');
+    item.removeAttribute('data-slot');
+    const timer = window.setTimeout(() => {
+      this.leavingTimers.delete(key);
+      item.remove();
+    }, CARD_FADE_MS);
+    this.leavingTimers.set(key, timer);
+  }
+
+  /** The speaker may come back before the fade ends: reuse the card as-is. */
+  private cancelCardFadeOut(item: HTMLElement, key: string): void {
+    const timer = this.leavingTimers.get(key);
+    if (timer !== undefined) {
+      clearTimeout(timer);
+      this.leavingTimers.delete(key);
+    }
+    item.classList.remove('leaving');
   }
 
   private getCardInnerHtml(tile: OverlayTile, hasVideo: boolean, name: string, isSpeaking: boolean): string {
@@ -415,7 +458,7 @@ export class OverlayStageView {
   private bindVideos(): void {
     if (this.slotStreams.length === 0) return;
 
-    const cards = this.container.querySelectorAll('.overlay-card.has-video');
+    const cards = this.container.querySelectorAll('.overlay-card.has-video:not(.leaving)');
     cards.forEach((card) => {
       const tileKey = card.getAttribute('data-tile-key');
       const slotStr = card.getAttribute('data-slot');
@@ -450,6 +493,8 @@ export class OverlayStageView {
   public destroy(): void {
     this.unbindListeners.forEach((u) => u());
     this.unbindListeners = [];
+    this.leavingTimers.forEach((timer) => clearTimeout(timer));
+    this.leavingTimers.clear();
     if (this.localPeerConnection) {
       try {
         this.localPeerConnection.close();
