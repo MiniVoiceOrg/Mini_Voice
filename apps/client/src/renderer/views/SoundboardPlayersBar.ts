@@ -106,7 +106,7 @@ export class SoundboardPlayersBar {
   private renderBarInnerHtml(soundName: string, userName?: string): string {
     const label = userName ? `${soundName} · ${userName}` : soundName;
     return `
-      <span class="material-symbols-outlined md-16 sb-notice-icon">graphic_eq</span>
+      <span class="material-symbols-outlined md-16 sb-notice-icon">volume_up</span>
       <div class="sb-notice-body">
         <span class="sb-notice-text" title="${escapeHtml(label)}">${escapeHtml(label)}</span>
         <div class="sb-notice-progress-track">

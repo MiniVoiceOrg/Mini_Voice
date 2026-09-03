@@ -1665,8 +1665,8 @@ input:focus, textarea:focus, select:focus {
   gap: 8px;
   padding: 6px 8px;
   margin-bottom: 2px;
-  background-color: rgba(35, 165, 90, 0.12);
-  border: 1px solid rgba(35, 165, 90, 0.4);
+  background-color: rgba(88, 101, 242, 0.12);
+  border: 1px solid rgba(88, 101, 242, 0.4);
   border-radius: var(--radius-sm);
   animation: sbNoticeIn 0.16s ease-out;
 }
@@ -1698,7 +1698,7 @@ input:focus, textarea:focus, select:focus {
 }
 
 .sb-notice-icon {
-  color: var(--success);
+  color: var(--accent-primary);
   flex-shrink: 0;
 }
 
@@ -1730,7 +1730,7 @@ input:focus, textarea:focus, select:focus {
   height: 100%;
   width: 0;
   border-radius: 2px;
-  background-color: var(--success);
+  background-color: var(--accent-primary);
   transition: width 0.1s linear;
 }
 
@@ -7015,6 +7015,15 @@ body.overlay-window-mode #app {
   transition: opacity 0.2s ease;
 }
 
+/* The bar itself is a drag region, and drag regions swallow :hover, so relying
+   on hover alone left nothing to aim at when the pointer was right over the bar
+   — the user ended up "clicking on nothing". The grip now rests as a faint,
+   always-present chip so it is discoverable, and the whole bar still lights up
+   on hover (#543). */
+.overlay-stage-topbar > .overlay-drag-handle {
+  opacity: 0.5;
+}
+
 .overlay-stage-root:hover .overlay-stage-topbar {
   background: rgba(14, 17, 23, 0.75);
   backdrop-filter: blur(8px);
@@ -7029,6 +7038,10 @@ body.overlay-window-mode #app {
   align-items: center;
   cursor: grab;
   user-select: none;
+  padding: 2px 8px;
+  border-radius: 6px;
+  background: rgba(14, 17, 23, 0.55);
+  backdrop-filter: blur(4px);
 }
 
 .overlay-topbar-actions {
@@ -7061,6 +7074,29 @@ body.overlay-window-mode #app {
 .overlay-action-btn.close:hover {
   background: var(--danger);
   color: #ffffff;
+}
+
+/* Purely a visual cue in the bottom-right corner: with the window background
+   fully transparent, the frameless resize edge is invisible and the user has no
+   idea where to grab to resize. It must not eat pointer events, otherwise it
+   would sit on top of the real (OS-handled) resize border (#543). */
+.overlay-resize-hint {
+  position: absolute;
+  right: 3px;
+  bottom: 3px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: rgba(255, 255, 255, 0.9);
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.2s ease;
+  text-shadow: 0 1px 3px rgba(0, 0, 0, 0.9);
+  transform: rotate(90deg);
+}
+
+.overlay-stage-root:hover .overlay-resize-hint {
+  opacity: 0.65;
 }
 
 .overlay-empty-state {

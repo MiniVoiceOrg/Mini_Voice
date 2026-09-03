@@ -1,4 +1,4 @@
-import { OverlayConfig, OverlayLayout, OverlayMode, OverlayPosition } from '@monky/shared';
+import { OverlayConfig, OverlayLayout, OverlayMode, OverlayPosition, OVERLAY_DEFAULT_WIDTH, OVERLAY_DEFAULT_HEIGHT } from '@monky/shared';
 import { settingsStore } from '../stores/settingsStore';
 import { overlayBridgeService } from '../core/OverlayBridgeService';
 import { t } from '../i18n';
@@ -26,6 +26,14 @@ export class OverlayConfigModal {
     this.currentAutoOpenOnLeaveStage = !!config.autoOpenOnLeaveStage;
     this.currentMinimalistMode = !!config.minimalistMode;
     this.currentHideSelf = !!config.hideSelf;
+
+    // The overlay only stores custom bounds once the user moves or resizes it.
+    // The "reset size" control is pointless at the default size, so it only
+    // shows after the size itself was changed (#543).
+    const bounds = config.bounds;
+    const overlaySizeChanged =
+      !!bounds &&
+      (bounds.width !== OVERLAY_DEFAULT_WIDTH || bounds.height !== OVERLAY_DEFAULT_HEIGHT);
 
     this.modalEl = document.createElement('div');
     this.modalEl.className = 'modal-backdrop';
@@ -153,7 +161,7 @@ export class OverlayConfigModal {
               <label style="font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px; color: var(--text-muted); margin: 0;">
                 ${t('overlay.sectionPosition')}
               </label>
-              <button type="button" id="btn-overlay-reset-size" class="btn btn-secondary btn-sm" style="display: inline-flex; align-items: center; gap: 4px; padding: 3px 8px; font-size: 11px; height: 26px;">
+              <button type="button" id="btn-overlay-reset-size" class="btn btn-secondary btn-sm" style="display: ${overlaySizeChanged ? 'inline-flex' : 'none'}; align-items: center; gap: 4px; padding: 3px 8px; font-size: 11px; height: 26px;">
                 <span class="material-symbols-outlined md-14">restart_alt</span>
                 <span>${t('overlay.resetSizeBtn')}</span>
               </button>
@@ -354,6 +362,8 @@ export class OverlayConfigModal {
         window.api.resetOverlayBounds().catch(() => {});
       }
       settingsStore.setOverlayConfig({ bounds: undefined });
+      // Back at the default size, so the control has nothing left to reset (#543).
+      (btnResetSize as HTMLElement).style.display = 'none';
       this.syncLiveIfActive();
     });
 

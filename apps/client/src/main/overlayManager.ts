@@ -1,6 +1,10 @@
 import { BrowserWindow, screen } from 'electron';
 import path from 'path';
 import { pathToFileURL } from 'url';
+import {
+  OVERLAY_DEFAULT_WIDTH,
+  OVERLAY_DEFAULT_HEIGHT,
+} from '@monky/shared';
 import type {
   OverlayBounds,
   OverlayConfig,
@@ -9,8 +13,8 @@ import type {
   OverlaySyncState,
 } from '@monky/shared';
 
-const DEFAULT_OVERLAY_WIDTH = 340;
-const DEFAULT_OVERLAY_HEIGHT = 240;
+const DEFAULT_OVERLAY_WIDTH = OVERLAY_DEFAULT_WIDTH;
+const DEFAULT_OVERLAY_HEIGHT = OVERLAY_DEFAULT_HEIGHT;
 const PADDING = 24;
 
 export class OverlayManager {

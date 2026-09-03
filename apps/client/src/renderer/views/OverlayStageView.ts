@@ -227,6 +227,9 @@ export class OverlayStageView {
           <span class="material-symbols-outlined md-20" style="color: var(--text-muted); opacity: 0.6;">group</span>
           <span>${isAlone ? t('overlay.aloneInChannel') : t('overlay.waitingChannel')}</span>
         </div>
+        <div class="overlay-resize-hint" aria-hidden="true">
+          <span class="material-symbols-outlined md-16">open_in_full</span>
+        </div>
       </div>
     `;
     this.attachControls();
@@ -250,6 +253,9 @@ export class OverlayStageView {
             </div>
           </div>
           <div class="overlay-cards-container"></div>
+          <div class="overlay-resize-hint" aria-hidden="true">
+            <span class="material-symbols-outlined md-16">open_in_full</span>
+          </div>
         </div>
       `;
       this.attachControls();
