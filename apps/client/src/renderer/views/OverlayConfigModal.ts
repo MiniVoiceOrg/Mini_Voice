@@ -1,6 +1,7 @@
 import { OverlayConfig, OverlayLayout, OverlayMode, OverlayPosition, OVERLAY_DEFAULT_WIDTH, OVERLAY_DEFAULT_HEIGHT } from '@monky/shared';
 import { settingsStore } from '../stores/settingsStore';
 import { overlayBridgeService } from '../core/OverlayBridgeService';
+import { appEvents } from '../core/EventBus';
 import { t } from '../i18n';
 
 export class OverlayConfigModal {
@@ -13,6 +14,7 @@ export class OverlayConfigModal {
   private currentAutoOpenOnLeaveStage: boolean = false;
   private currentMinimalistMode: boolean = false;
   private currentHideSelf: boolean = false;
+  private overlaySettingsUnbind: (() => void) | null = null;
 
   public open(): void {
     this.close();
@@ -213,6 +215,23 @@ export class OverlayConfigModal {
 
     document.body.appendChild(this.modalEl);
     this.attachEvents();
+
+    // Resizing the overlay window while this modal is open must reveal (or hide)
+    // the "reset size" control right away — before this it only re-evaluated when
+    // the modal was closed and reopened (#543).
+    this.overlaySettingsUnbind = appEvents.on('overlay_settings.updated', () => {
+      this.refreshResetSizeButton();
+    });
+  }
+
+  private refreshResetSizeButton(): void {
+    const btn = this.modalEl?.querySelector('#btn-overlay-reset-size') as HTMLElement | null;
+    if (!btn) return;
+    const bounds = settingsStore.getOverlayConfig().bounds;
+    const overlaySizeChanged =
+      !!bounds &&
+      (bounds.width !== OVERLAY_DEFAULT_WIDTH || bounds.height !== OVERLAY_DEFAULT_HEIGHT);
+    btn.style.display = overlaySizeChanged ? 'inline-flex' : 'none';
   }
 
   /**
@@ -263,6 +282,10 @@ export class OverlayConfigModal {
   }
 
   public close(): void {
+    if (this.overlaySettingsUnbind) {
+      this.overlaySettingsUnbind();
+      this.overlaySettingsUnbind = null;
+    }
     if (this.modalEl) {
       this.modalEl.remove();
       this.modalEl = null;

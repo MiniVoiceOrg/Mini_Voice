@@ -6,6 +6,15 @@ import type {
 import { escapeHtml } from '../utils/html';
 import { t } from '../i18n';
 
+/**
+ * `availLeft`/`availWidth` let the overlay work out which side of the display it
+ * is docked to, so the resize hint can hop to the corner that still has room to
+ * grow. They are widely supported but absent from the DOM lib types (#543).
+ */
+interface ScreenWithAvail extends Screen {
+  availLeft?: number;
+}
+
 type OverlayTile = {
   p: OverlayParticipantState;
   kind: 'camera' | 'screen' | 'voice';
@@ -24,6 +33,7 @@ export class OverlayStageView {
   private slotStreams: MediaStream[] = [];
   private unbindListeners: Array<() => void> = [];
   private leavingTimers = new Map<string, number>();
+  private isHovered = false;
 
   constructor(container: HTMLElement) {
     this.container = container;
@@ -51,6 +61,15 @@ export class OverlayStageView {
             this.currentState.config = config;
             this.render();
           }
+        })
+      );
+    }
+
+    if (window.api?.onOverlayHoverChanged) {
+      this.unbindListeners.push(
+        window.api.onOverlayHoverChanged((hovered) => {
+          this.isHovered = hovered;
+          this.applyHoverState();
         })
       );
     }
@@ -191,6 +210,11 @@ export class OverlayStageView {
       rootEl.classList.toggle('minimalist-mode', isMinimalist);
     }
 
+    // The DOM may have just been rebuilt, so re-apply the hover flag and the
+    // corner the resize hint belongs in (#543).
+    this.applyHoverState();
+    this.updateResizeHintSide();
+
     // Atualiza nome do canal
     const titleEl = this.container.querySelector('.overlay-channel-title') as HTMLElement | null;
     if (titleEl && this.currentState.channelName) {
@@ -233,6 +257,8 @@ export class OverlayStageView {
       </div>
     `;
     this.attachControls();
+    this.applyHoverState();
+    this.updateResizeHintSide();
   }
 
   private ensureBaseStructure(): void {
@@ -483,6 +509,27 @@ export class OverlayStageView {
         }
       }
     });
+  }
+
+  private applyHoverState(): void {
+    const root = this.container.querySelector('.overlay-stage-root');
+    if (root) root.classList.toggle('is-hovered', this.isHovered);
+  }
+
+  /**
+   * Moves the resize hint to the bottom corner that faces away from the screen
+   * edge. Docked against the right of the display the window can only grow from
+   * its left side, so the hint hops there; otherwise it stays bottom-right
+   * (#543).
+   */
+  private updateResizeHintSide(): void {
+    const root = this.container.querySelector('.overlay-stage-root');
+    if (!root) return;
+    const scr = window.screen as ScreenWithAvail;
+    const availLeft = typeof scr.availLeft === 'number' ? scr.availLeft : 0;
+    const windowCenterX = window.screenX + window.outerWidth / 2;
+    const screenCenterX = availLeft + scr.availWidth / 2;
+    root.classList.toggle('dock-right', windowCenterX > screenCenterX);
   }
 
   private attachControls(): void {

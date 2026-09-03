@@ -22,6 +22,8 @@ export class OverlayManager {
   private mainWindow: BrowserWindow;
   private currentConfig: OverlayConfig | null = null;
   private boundsDebounceTimeout: NodeJS.Timeout | null = null;
+  private hoverPollTimer: NodeJS.Timeout | null = null;
+  private isHovered = false;
 
   constructor(mainWindow: BrowserWindow) {
     this.mainWindow = mainWindow;
@@ -122,8 +124,16 @@ export class OverlayManager {
     this.overlayWindow.on('moved', handleBoundsChange);
     this.overlayWindow.on('resized', handleBoundsChange);
 
+    // The top bar is a `-webkit-app-region: drag` region, and drag regions
+    // swallow DOM mouse events, so CSS `:hover` never fires while the pointer is
+    // over the bar. We track the cursor from the main process instead and push a
+    // hover flag to the overlay, so the whole overlay (bar included) lights up
+    // (#543).
+    this.startHoverTracking();
+
     this.overlayWindow.on('closed', () => {
       this.overlayWindow = null;
+      this.stopHoverTracking();
       if (this.boundsDebounceTimeout) {
         clearTimeout(this.boundsDebounceTimeout);
         this.boundsDebounceTimeout = null;
@@ -136,12 +146,48 @@ export class OverlayManager {
 
   public close(): boolean {
     if (this.overlayWindow && !this.overlayWindow.isDestroyed()) {
+      this.stopHoverTracking();
       this.overlayWindow.close();
       this.overlayWindow = null;
       this.notifyStateChanged(false);
       return true;
     }
     return false;
+  }
+
+  /**
+   * Polls the cursor position and tells the overlay when it enters or leaves the
+   * window. This is the only reliable way to drive a hover state that also covers
+   * the draggable top bar, since `-webkit-app-region: drag` regions never emit
+   * DOM mouse events to the renderer (#543).
+   */
+  private startHoverTracking(): void {
+    this.stopHoverTracking();
+    this.hoverPollTimer = setInterval(() => {
+      if (!this.overlayWindow || this.overlayWindow.isDestroyed()) {
+        this.stopHoverTracking();
+        return;
+      }
+      const point = screen.getCursorScreenPoint();
+      const b = this.overlayWindow.getBounds();
+      const inside =
+        point.x >= b.x &&
+        point.x < b.x + b.width &&
+        point.y >= b.y &&
+        point.y < b.y + b.height;
+      if (inside !== this.isHovered) {
+        this.isHovered = inside;
+        this.overlayWindow.webContents.send('overlay:hover-changed', inside);
+      }
+    }, 120);
+  }
+
+  private stopHoverTracking(): void {
+    if (this.hoverPollTimer) {
+      clearInterval(this.hoverPollTimer);
+      this.hoverPollTimer = null;
+    }
+    this.isHovered = false;
   }
 
   public setConfig(configPartial: Partial<OverlayConfig>): void {
