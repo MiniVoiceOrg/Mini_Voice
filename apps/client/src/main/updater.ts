@@ -61,6 +61,12 @@ function delay(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
+// How long the "installing…" splash lingers before `quitAndInstall` tears the
+// app down. It needs to be readable, because right after this the screen goes
+// dark for the whole silent NSIS install (the app must quit so the .exe can be
+// replaced) and this message is the user's only heads-up about the wait (#498).
+const SPLASH_LINGER_MS = 2500;
+
 // ── Update detection via GitHub API (reliable on all platforms) ──────────────
 
 interface MacAsset {
@@ -280,7 +286,7 @@ export function setupUpdater(mainWindow: BrowserWindow): void {
         // firing it in the same tick killed the window before it ever painted.
         setTimeout(() => {
           beginUpdateInstall(downloadedVersion, mainWindow)
-            .then(() => delay(800))
+            .then(() => delay(SPLASH_LINGER_MS))
             .then(() => updater.quitAndInstall(true, true))
             .catch((e) => mainWindow.webContents.send('updater:error', msg(e)));
         }, 1500);
@@ -378,7 +384,7 @@ export function setupUpdater(mainWindow: BrowserWindow): void {
     // Defer so the IPC reply is delivered before the app quits to install.
     setImmediate(() => {
       beginUpdateInstall(downloadedVersion || cleanVer(pendingTag ?? ''), mainWindow)
-        .then(() => delay(800))
+        .then(() => delay(SPLASH_LINGER_MS))
         .then(() => updater.quitAndInstall(true, true))
         .catch((e) => mainWindow.webContents.send('updater:error', msg(e)));
     });
