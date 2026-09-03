@@ -61,6 +61,7 @@ class App {
   private appContainer: HTMLElement;
   private connectionView!: ConnectionView;
   private mainView!: MainView;
+  private rendererReadySignalled = false;
 
   constructor() {
     this.appContainer = document.getElementById('app')!;
@@ -125,6 +126,10 @@ class App {
     // Render connection view initially
     this.connectionView?.render();
 
+    // The main UI has now been written to the DOM — let the main process lift
+    // the post-update splash once it actually paints (#498).
+    this.signalRendererReady();
+
     // Load soundboard sounds if configured
     soundboardService.loadSounds().catch(() => {});
 
@@ -146,6 +151,24 @@ class App {
       console.table(status);
       return status;
     };
+  }
+
+  /**
+   * Tells the main process the real UI has painted, so the post-update
+   * "Abrindo o Monky…" splash lifts exactly as Monky becomes visible instead of
+   * at the blank first paint that `ready-to-show` marks (#498). Guarded to fire
+   * once; the double `requestAnimationFrame` waits for a frame to actually paint
+   * after the DOM was written (a hidden window still paints because
+   * `backgroundThrottling` is off).
+   */
+  private signalRendererReady(): void {
+    if (this.rendererReadySignalled) return;
+    this.rendererReadySignalled = true;
+    requestAnimationFrame(() => {
+      requestAnimationFrame(() => {
+        window.api?.signalRendererReady?.();
+      });
+    });
   }
 
   private showIdentityOnboarding(): Promise<void> {
@@ -170,6 +193,10 @@ class App {
           </div>
         </div>
       `;
+
+      // Onboarding is the first real paint for a user without an identity; let
+      // the main process lift the post-update splash here too (#498).
+      this.signalRendererReady();
 
       document.getElementById('btn-onboard-create')?.addEventListener('click', async () => {
         // Generate identity

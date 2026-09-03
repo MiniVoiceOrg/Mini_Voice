@@ -1,8 +1,16 @@
-import { app, BrowserWindow, ipcMain, Menu, screen, session, shell } from 'electron';
+import { app, BrowserWindow, ipcMain, IpcMainEvent, Menu, screen, session, shell } from 'electron';
 import path from 'path';
 import { setupIpcHandlers } from './ipcHandlers';
 import { setupUpdater } from './updater';
-import { handleLaunchDuringUpdate, isInstallSplashActive, dismissInstallSplash } from './updateInstall';
+import {
+  handleLaunchDuringUpdate,
+  isInstallSplashActive,
+  dismissInstallSplash,
+  hasInstallSentinel,
+  primeSimulatedInstallFinish,
+  beginSimulatedFullInstall,
+} from './updateInstall';
+import { updateLog } from './updateLog';
 import { ServerManager } from './serverManager';
 import { TrayManager } from './trayManager';
 import { ClientLogger } from './clientLogger';
@@ -200,23 +208,41 @@ function createWindow(deferShow = false): void {
   setupUpdater(mainWindow);
 
   // A launch straight after an update install keeps the "finishing" splash up
-  // while this fresh process cold-starts. Hold the main window back until its
-  // first frame is painted, then reveal it and drop the splash together, so the
-  // splash only disappears as Monky actually opens (#498). A fallback timer
-  // guarantees a slow or missing paint never strands the window behind it.
+  // while this fresh process cold-starts. Hold the main window back until the
+  // renderer says its real UI has painted, then reveal it and drop the splash
+  // together, so the splash only disappears as Monky actually opens (#498). A
+  // fallback timer guarantees a slow or missing signal never strands the window
+  // behind it.
   if (deferShow) {
     let revealed = false;
-    const reveal = (): void => {
+    let onRendererReady: ((event: IpcMainEvent) => void) | null = null;
+    const reveal = (reason: string): void => {
       if (revealed) return;
       revealed = true;
+      updateLog('reveal main window after update', { reason });
+      if (onRendererReady) {
+        ipcMain.removeListener('app:renderer-ready', onRendererReady);
+        onRendererReady = null;
+      }
       if (mainWindow && !mainWindow.isDestroyed() && !mainWindow.isVisible()) {
         mainWindow.show();
         mainWindow.focus();
       }
       setTimeout(() => dismissInstallSplash(), 80);
     };
-    mainWindow.once('ready-to-show', reveal);
-    setTimeout(reveal, 15000);
+    // Primary trigger: the renderer signals once its real UI has painted. The
+    // old `ready-to-show` trigger fired at the blank first paint (a dark
+    // rectangle still loading the bundle), which is exactly why the splash
+    // vanished seconds before Monky appeared (#498).
+    onRendererReady = (event: IpcMainEvent): void => {
+      if (mainWindow && !mainWindow.isDestroyed() && event.sender === mainWindow.webContents) {
+        reveal('renderer-ready');
+      }
+    };
+    ipcMain.on('app:renderer-ready', onRendererReady);
+    // Fallback: never leave the window stranded behind the splash if the signal
+    // never arrives (renderer crash, load failure, …).
+    setTimeout(() => reveal('timeout'), 20000);
   }
 
   // In dev, load Vite dev server if running, otherwise load dist/index.html
@@ -286,6 +312,20 @@ if (!gotTheLock) {
   });
 
   app.whenReady().then(() => {
+    // TEST-ONLY (Bancada A): simulate the update install UX without a real
+    // download or NSIS run. Gated entirely on MONKY_SIM_UPDATE, so a normal
+    // launch never reaches it. `full` shows the installing splash then
+    // relaunches into the finishing splash; `finish` jumps straight to the
+    // finishing splash. See docs at the bottom of updateInstall.ts.
+    const sim = process.env.MONKY_SIM_UPDATE;
+    if (sim === 'full' && !hasInstallSentinel()) {
+      beginSimulatedFullInstall();
+      return;
+    }
+    if (sim === 'finish' && !hasInstallSentinel()) {
+      primeSimulatedInstallFinish();
+    }
+
     // A launch that lands in the middle of an install must not build a second
     // UI on top of a half-replaced installation: show what is going on and bow
     // out instead (#498).

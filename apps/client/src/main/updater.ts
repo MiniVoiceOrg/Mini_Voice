@@ -5,6 +5,7 @@ import path from 'path';
 import { UpdateOutcome } from '@monky/shared';
 import { mt } from './i18n';
 import { beginUpdateInstall, consumeUpdateOutcome } from './updateInstall';
+import { updateLog } from './updateLog';
 import {
   cleanVer,
   feedUrlForTag,
@@ -24,9 +25,17 @@ interface CheckResult {
 
 // electron-updater is loaded lazily (only on Windows/Linux) so that a missing
 // or broken package never prevents the app itself from starting.
+interface UpdaterLogger {
+  info: (message: unknown) => void;
+  warn: (message: unknown) => void;
+  error: (message: unknown) => void;
+  debug?: (message: unknown) => void;
+}
+
 type AutoUpdater = {
   autoDownload: boolean;
   autoInstallOnAppQuit: boolean;
+  logger: UpdaterLogger | null;
   on: (event: string, cb: (arg: unknown) => void) => void;
   setFeedURL: (options: { provider: 'generic'; url: string }) => void;
   checkForUpdates: () => Promise<{ updateInfo?: { version: string } } | null>;
@@ -162,10 +171,21 @@ async function checkViaGitHub(): Promise<CheckResult> {
 
     const version = (rel.tag_name ?? '').replace(/^v/i, '');
     if (!version || !isNewer(version, app.getVersion())) {
+      updateLog('checkViaGitHub: no newer release', {
+        candidate: version,
+        current: app.getVersion(),
+        beta: betaChannel,
+      });
       return { ok: true, available: false, version };
     }
 
     pendingTag = rel.tag_name ?? null;
+    updateLog('checkViaGitHub: update available', {
+      version,
+      tag: pendingTag,
+      current: app.getVersion(),
+      beta: betaChannel,
+    });
 
     // On macOS, record the .dmg matching the current CPU architecture so the
     // download step can fetch it directly.
@@ -271,6 +291,20 @@ export function setupUpdater(mainWindow: BrowserWindow): void {
     if (updater) {
       updater.autoDownload = false;
       updater.autoInstallOnAppQuit = true;
+      // Route electron-updater's own internal logging into update-flow.log. Its
+      // NSIS install step and any spawn/relaunch failure are reported here — the
+      // most likely place to catch why a real update silently fails to apply
+      // (#498's "had to close, wait, reopen" report). `debug` is left off so the
+      // per-chunk download noise stays out of the file.
+      updater.logger = {
+        info: (m) => updateLog('eu:info', { m: String(m) }),
+        warn: (m) => updateLog('eu:warn', { m: String(m) }),
+        error: (m) => updateLog('eu:error', { m: String(m) }),
+      };
+      updateLog('setupUpdater: electron-updater ready', {
+        autoDownload: updater.autoDownload,
+        autoInstallOnAppQuit: updater.autoInstallOnAppQuit,
+      });
 
       updater.on('download-progress', (p) => {
         const percent = (p as { percent?: number })?.percent ?? 0;
@@ -278,6 +312,7 @@ export function setupUpdater(mainWindow: BrowserWindow): void {
       });
       updater.on('update-downloaded', (info) => {
         downloadedVersion = cleanVer((info as { version?: string })?.version ?? '');
+        updateLog('update-downloaded', { version: downloadedVersion });
         mainWindow.webContents.send('updater:downloaded', { manual: false });
         // Install silently and relaunch automatically — no installer wizard.
         // The progress window takes over the screen first so the user knows why
@@ -287,11 +322,22 @@ export function setupUpdater(mainWindow: BrowserWindow): void {
         setTimeout(() => {
           beginUpdateInstall(downloadedVersion, mainWindow)
             .then(() => delay(SPLASH_LINGER_MS))
-            .then(() => updater.quitAndInstall(true, true))
-            .catch((e) => mainWindow.webContents.send('updater:error', msg(e)));
+            .then(() => {
+              updateLog('calling quitAndInstall', {
+                version: downloadedVersion,
+                isSilent: true,
+                isForceRunAfter: true,
+              });
+              updater.quitAndInstall(true, true);
+            })
+            .catch((e) => {
+              updateLog('quitAndInstall chain FAILED', { error: msg(e) });
+              mainWindow.webContents.send('updater:error', msg(e));
+            });
         }, 1500);
       });
       updater.on('error', (err) => {
+        updateLog('electron-updater error event', { error: msg(err) });
         mainWindow.webContents.send('updater:error', msg(err));
       });
     }
@@ -355,11 +401,15 @@ export function setupUpdater(mainWindow: BrowserWindow): void {
         return { ok: false, error: mt('error.noPendingUpdate') };
       }
       updater.setFeedURL({ provider: 'generic', url: feedUrlForTag(pendingTag) });
+      updateLog('updater:download', { tag: pendingTag, feedUrl: feedUrlForTag(pendingTag) });
       // electron-updater requires its own check before it can download.
       await updater.checkForUpdates();
+      updateLog('checkForUpdates done, starting downloadUpdate');
       await updater.downloadUpdate();
+      updateLog('downloadUpdate resolved');
       return { ok: true };
     } catch (e) {
+      updateLog('updater:download FAILED', { error: msg(e) });
       return { ok: false, error: msg(e) };
     }
   });
@@ -385,8 +435,16 @@ export function setupUpdater(mainWindow: BrowserWindow): void {
     setImmediate(() => {
       beginUpdateInstall(downloadedVersion || cleanVer(pendingTag ?? ''), mainWindow)
         .then(() => delay(SPLASH_LINGER_MS))
-        .then(() => updater.quitAndInstall(true, true))
-        .catch((e) => mainWindow.webContents.send('updater:error', msg(e)));
+        .then(() => {
+          updateLog('updater:install calling quitAndInstall', {
+            version: downloadedVersion || cleanVer(pendingTag ?? ''),
+          });
+          updater.quitAndInstall(true, true);
+        })
+        .catch((e) => {
+          updateLog('updater:install chain FAILED', { error: msg(e) });
+          mainWindow.webContents.send('updater:error', msg(e));
+        });
     });
     return { ok: true };
   });
