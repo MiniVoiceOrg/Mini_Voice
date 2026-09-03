@@ -29,6 +29,7 @@ import type {
   StickerSaveResult,
   TrayVoiceStatus,
   UpdateCheckResult,
+  UpdateOutcome,
   UpdateSimpleResult,
 } from '@monky/shared';
 
@@ -92,6 +93,7 @@ export interface ElectronApi {
   downloadUpdate: () => Promise<UpdateSimpleResult>;
   installUpdate: () => Promise<UpdateSimpleResult>;
   setUpdateChannel: (allowBeta: boolean) => Promise<UpdateSimpleResult>;
+  getUpdateOutcome: () => Promise<UpdateOutcome | null>;
   onUpdateProgress: (cb: (percent: number) => void) => () => void;
   onUpdateDownloaded: (cb: (info: { manual: boolean }) => void) => () => void;
   onUpdateError: (cb: (message: string) => void) => () => void;
@@ -244,6 +246,7 @@ const api: ElectronApi = {
   downloadUpdate: () => ipcRenderer.invoke('updater:download'),
   installUpdate: () => ipcRenderer.invoke('updater:install'),
   setUpdateChannel: (allowBeta) => ipcRenderer.invoke('updater:set-channel', allowBeta),
+  getUpdateOutcome: () => ipcRenderer.invoke('updater:outcome'),
   onUpdateProgress: (cb) => {
     const listener = (_e: Electron.IpcRendererEvent, percent: number) => cb(percent);
     ipcRenderer.on('updater:progress', listener);

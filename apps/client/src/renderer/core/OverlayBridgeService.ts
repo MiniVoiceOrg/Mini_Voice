@@ -200,6 +200,27 @@ export class OverlayBridgeService {
     return this.isOpen;
   }
 
+  /**
+   * Whether the overlay is on as far as the user is concerned: either showing
+   * right now, or armed to appear as soon as they leave the stage. Without the
+   * second half the stage controls claim the overlay is off at the exact moment
+   * "open on leaving the stage" keeps it hidden — while on the stage (#169).
+   */
+  public isActive(): boolean {
+    return this.isOpen || !!settingsStore.getOverlayConfig().autoOpenOnLeaveStage;
+  }
+
+  /**
+   * Turns the overlay off for good: closing an armed overlay would otherwise
+   * pop right back up the moment the stage loses focus.
+   */
+  public async deactivate(): Promise<boolean> {
+    if (settingsStore.getOverlayConfig().autoOpenOnLeaveStage) {
+      settingsStore.setOverlayConfig({ autoOpenOnLeaveStage: false });
+    }
+    return this.close();
+  }
+
   private throttledSyncState(): void {
     if (this.syncThrottleTimer !== null) return;
     this.syncThrottleTimer = window.setTimeout(() => {
@@ -320,9 +341,15 @@ export class OverlayBridgeService {
     const currentSessionId = serverStore.currentUser?.sessionId || serverStore.currentUser?.id;
     const config = settingsStore.getOverlayConfig();
 
+    // "Hide me" keeps the local user out of the overlay entirely, so they don't
+    // waste a slot (and screen space) watching themselves (#169).
+    const visibleParticipants = config.hideSelf
+      ? participants.filter((p) => sidOf(p) !== currentSessionId)
+      : participants;
+
     // Detectar orador ativo
     let currentSpeakerSessionId: string | null = null;
-    for (const p of participants) {
+    for (const p of visibleParticipants) {
       const isLocal = sidOf(p) === currentSessionId;
       const isSpeaking = isLocal ? voiceStore.isSpeaking : p.isSpeaking;
       if (isSpeaking) {
@@ -333,20 +360,20 @@ export class OverlayBridgeService {
     }
 
     if (!currentSpeakerSessionId && this.lastActiveSpeakerSessionId) {
-      const exists = participants.some((p) => sidOf(p) === this.lastActiveSpeakerSessionId);
+      const exists = visibleParticipants.some((p) => sidOf(p) === this.lastActiveSpeakerSessionId);
       if (exists) {
         currentSpeakerSessionId = this.lastActiveSpeakerSessionId;
       }
     }
 
-    if (!currentSpeakerSessionId && participants.length > 0) {
-      currentSpeakerSessionId = sidOf(participants[0]);
+    if (!currentSpeakerSessionId && visibleParticipants.length > 0) {
+      currentSpeakerSessionId = sidOf(visibleParticipants[0]);
     }
 
     let nextSlotIndex = 0;
     const nextAssignedTracks: Array<string | null> = new Array(MAX_VIDEO_SLOTS).fill(null);
 
-    const participantStates: OverlayParticipantState[] = participants.map((p) => {
+    const participantStates: OverlayParticipantState[] = visibleParticipants.map((p) => {
       const isLocal = sidOf(p) === currentSessionId;
       const isCamOn = isLocal ? voiceStore.isCameraOn : (p.voiceState?.isCameraOn ?? false);
       const isSpeaking = isLocal ? voiceStore.isSpeaking : p.isSpeaking;

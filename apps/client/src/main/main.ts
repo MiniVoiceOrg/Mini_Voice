@@ -2,6 +2,7 @@ import { app, BrowserWindow, ipcMain, Menu, screen, session, shell } from 'elect
 import path from 'path';
 import { setupIpcHandlers } from './ipcHandlers';
 import { setupUpdater } from './updater';
+import { handleLaunchDuringUpdate } from './updateInstall';
 import { ServerManager } from './serverManager';
 import { TrayManager } from './trayManager';
 import { ClientLogger } from './clientLogger';
@@ -261,6 +262,13 @@ if (!gotTheLock) {
   });
 
   app.whenReady().then(() => {
+    // A launch that lands in the middle of an install must not build a second
+    // UI on top of a half-replaced installation: show what is going on and bow
+    // out instead (#498).
+    if (handleLaunchDuringUpdate()) {
+      return;
+    }
+
     // Remove the default application menu (File / Edit / View ...).
     Menu.setApplicationMenu(null);
 

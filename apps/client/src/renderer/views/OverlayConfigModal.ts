@@ -13,6 +13,7 @@ export class OverlayConfigModal {
   private currentTransparentBackground: boolean = false;
   private currentAutoOpenOnLeaveStage: boolean = false;
   private currentMinimalistMode: boolean = false;
+  private currentHideSelf: boolean = false;
 
   public open(): void {
     this.close();
@@ -26,8 +27,7 @@ export class OverlayConfigModal {
     this.currentTransparentBackground = config.transparentBackground;
     this.currentAutoOpenOnLeaveStage = !!config.autoOpenOnLeaveStage;
     this.currentMinimalistMode = !!config.minimalistMode;
-
-    const isAlreadyOpen = overlayBridgeService.getIsOpen();
+    this.currentHideSelf = !!config.hideSelf;
 
     this.modalEl = document.createElement('div');
     this.modalEl.className = 'modal-backdrop';
@@ -83,7 +83,22 @@ export class OverlayConfigModal {
             </div>
           </div>
 
-          <!-- 2. Switch Modo Minimalista -->
+          <!-- 2. Switch Ocultar-me -->
+          <div style="display: flex; align-items: center; justify-content: space-between; gap: 12px; background: var(--bg-card); border: 1px solid var(--border-color); border-radius: var(--radius-md); padding: 10px 14px;">
+            <div style="display: flex; align-items: center; gap: 8px;">
+              <span class="material-symbols-outlined md-18" style="color: var(--text-secondary);">visibility_off</span>
+              <div>
+                <div style="font-size: 12px; font-weight: 600; color: var(--text-primary);">${t('overlay.hideSelfTitle')}</div>
+                <div style="font-size: 11px; color: var(--text-muted);">${t('overlay.hideSelfDesc')}</div>
+              </div>
+            </div>
+            <label class="toggle-switch" aria-label="${t('overlay.hideSelfTitle')}">
+              <input type="checkbox" id="overlay-hide-self-cb" ${this.currentHideSelf ? 'checked' : ''} />
+              <span class="toggle-slider"></span>
+            </label>
+          </div>
+
+          <!-- 3. Switch Modo Minimalista -->
           <div style="display: flex; align-items: center; justify-content: space-between; gap: 12px; background: var(--bg-card); border: 1px solid var(--border-color); border-radius: var(--radius-md); padding: 10px 14px;">
             <div style="display: flex; align-items: center; gap: 8px;">
               <span class="material-symbols-outlined md-18" style="color: var(--warning);">view_compact</span>
@@ -98,7 +113,7 @@ export class OverlayConfigModal {
             </label>
           </div>
 
-          <!-- 3. Switch Ativar ao Sair do Palco -->
+          <!-- 4. Switch Ativar ao Sair do Palco -->
           <div style="display: flex; align-items: center; justify-content: space-between; gap: 12px; background: var(--bg-card); border: 1px solid var(--border-color); border-radius: var(--radius-md); padding: 10px 14px;">
             <div style="display: flex; align-items: center; gap: 8px;">
               <span class="material-symbols-outlined md-18" style="color: var(--success);">smart_toy</span>
@@ -113,7 +128,7 @@ export class OverlayConfigModal {
             </label>
           </div>
 
-          <!-- 4. Disposição dos Cards -->
+          <!-- 5. Disposição dos Cards -->
           <div>
             <label style="display: block; font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px; color: var(--text-muted); margin-bottom: 8px;">
               ${t('overlay.sectionLayout')}
@@ -134,7 +149,7 @@ export class OverlayConfigModal {
             </div>
           </div>
 
-          <!-- 5. Posição na Tela & Redimensionamento -->
+          <!-- 6. Posição na Tela & Redimensionamento -->
           <div>
             <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px;">
               <label style="font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px; color: var(--text-muted); margin: 0;">
@@ -165,7 +180,7 @@ export class OverlayConfigModal {
             </div>
           </div>
 
-          <!-- 6. Switch Fundo Transparente -->
+          <!-- 7. Switch Fundo Transparente -->
           <div style="display: flex; align-items: center; justify-content: space-between; gap: 12px; background: var(--bg-card); border: 1px solid var(--border-color); border-radius: var(--radius-md); padding: 10px 14px;">
             <div style="display: flex; align-items: center; gap: 8px;">
               <span class="material-symbols-outlined md-18" style="color: var(--primary);">opacity</span>
@@ -180,7 +195,7 @@ export class OverlayConfigModal {
             </label>
           </div>
 
-          <!-- 7. Opacidade dos Cards (visível quando Fundo Transparente desmarcado) -->
+          <!-- 8. Opacidade dos Cards (visível quando Fundo Transparente desmarcado) -->
           <div id="overlay-opacity-group" style="${this.currentTransparentBackground ? 'display: none;' : 'display: block;'}">
             <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
               <label style="font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px; color: var(--text-muted); margin: 0;">
@@ -199,36 +214,61 @@ export class OverlayConfigModal {
         </div>
 
         <!-- Footer -->
-        <div class="modal-footer" style="padding: 14px 20px; border-top: 1px solid var(--border-color); display: flex; align-items: center; justify-content: space-between; background: var(--bg-tertiary); gap: 12px;">
-          <div>
-            ${isAlreadyOpen ? `
-              <button type="button" id="btn-overlay-modal-close-window" class="btn btn-danger" style="display: inline-flex; align-items: center; gap: 6px; padding: 0 16px; height: 38px; flex-shrink: 0; white-space: nowrap;">
-                <span class="material-symbols-outlined md-16">close</span>
-                <span>${t('overlay.closeOverlayBtn')}</span>
-              </button>
-            ` : `
-              <button type="button" id="btn-overlay-modal-cancel" class="btn btn-secondary" style="padding: 0 16px; height: 38px; flex-shrink: 0; white-space: nowrap;">
-                ${t('common.cancel')}
-              </button>
-            `}
-          </div>
-          <div style="display: flex; align-items: center; gap: 8px;">
-            ${isAlreadyOpen ? `
-              <button type="button" id="btn-overlay-modal-cancel" class="btn btn-secondary" style="padding: 0 16px; height: 38px; flex-shrink: 0; white-space: nowrap;">
-                ${t('common.cancel')}
-              </button>
-            ` : ''}
-            <button type="button" id="btn-overlay-modal-apply" class="btn btn-primary" style="display: inline-flex; align-items: center; gap: 6px; padding: 0 20px; height: 38px; font-weight: 600; flex-shrink: 0; white-space: nowrap;">
-              <span class="material-symbols-outlined md-16">${isAlreadyOpen ? 'sync' : 'rocket_launch'}</span>
-              <span>${isAlreadyOpen ? t('overlay.applyChangesBtn') : t('overlay.startOverlayBtn')}</span>
-            </button>
-          </div>
+        <div class="modal-footer" id="overlay-modal-footer" style="padding: 14px 20px; border-top: 1px solid var(--border-color); display: flex; align-items: center; justify-content: space-between; background: var(--bg-tertiary); gap: 12px;">
+          ${this.renderFooterHtml()}
         </div>
       </div>
     `;
 
     document.body.appendChild(this.modalEl);
-    this.attachEvents(isAlreadyOpen);
+    this.attachEvents();
+  }
+
+  /**
+   * The footer follows whether the overlay is *active*, not whether its window
+   * happens to be up: with "open on leaving the stage" armed, the window is
+   * closed precisely while this modal is on screen, and offering "Start
+   * overlay" there would be a lie (#169).
+   */
+  private renderFooterHtml(): string {
+    const isActive = this.isOverlayActive();
+    return `
+      <div>
+        ${isActive ? `
+          <button type="button" id="btn-overlay-modal-close-window" class="btn btn-danger" style="display: inline-flex; align-items: center; gap: 6px; padding: 0 16px; height: 38px; flex-shrink: 0; white-space: nowrap;">
+            <span class="material-symbols-outlined md-16">close</span>
+            <span>${t('overlay.stopOverlayBtn')}</span>
+          </button>
+        ` : `
+          <button type="button" id="btn-overlay-modal-cancel" class="btn btn-secondary" style="padding: 0 16px; height: 38px; flex-shrink: 0; white-space: nowrap;">
+            ${t('common.cancel')}
+          </button>
+        `}
+      </div>
+      <div style="display: flex; align-items: center; gap: 8px;">
+        ${isActive ? `
+          <button type="button" id="btn-overlay-modal-cancel" class="btn btn-secondary" style="padding: 0 16px; height: 38px; flex-shrink: 0; white-space: nowrap;">
+            ${t('common.cancel')}
+          </button>
+        ` : ''}
+        <button type="button" id="btn-overlay-modal-apply" class="btn btn-primary" style="display: inline-flex; align-items: center; gap: 6px; padding: 0 20px; height: 38px; font-weight: 600; flex-shrink: 0; white-space: nowrap;">
+          <span class="material-symbols-outlined md-16">${isActive ? 'sync' : 'rocket_launch'}</span>
+          <span>${isActive ? t('overlay.applyChangesBtn') : t('overlay.startOverlayBtn')}</span>
+        </button>
+      </div>
+    `;
+  }
+
+  /** Active means "showing now" or "armed to show when the stage is left". */
+  private isOverlayActive(): boolean {
+    return overlayBridgeService.getIsOpen() || this.currentAutoOpenOnLeaveStage;
+  }
+
+  private refreshFooter(): void {
+    const footer = this.modalEl?.querySelector('#overlay-modal-footer') as HTMLElement | null;
+    if (!footer) return;
+    footer.innerHTML = this.renderFooterHtml();
+    this.attachFooterEvents();
   }
 
   public close(): void {
@@ -238,17 +278,15 @@ export class OverlayConfigModal {
     }
   }
 
-  private attachEvents(isAlreadyOpen: boolean): void {
+  private attachEvents(): void {
     if (!this.modalEl) return;
 
-    // Fechar no X, Cancelar ou clique fora no backdrop
+    // Fechar no X ou clique fora no backdrop
     this.modalEl.querySelector('#modal-close')?.addEventListener('click', () => this.close());
-    this.modalEl.querySelectorAll('#btn-overlay-modal-cancel').forEach((btn) => {
-      btn.addEventListener('click', () => this.close());
-    });
     this.modalEl.addEventListener('click', (e) => {
       if (e.target === this.modalEl) this.close();
     });
+    this.attachFooterEvents();
 
     // Seleção de modo
     const modeCards = this.modalEl.querySelectorAll('.overlay-option-card[data-mode]');
@@ -261,7 +299,7 @@ export class OverlayConfigModal {
         if (focusWrapper) {
           focusWrapper.style.display = this.currentMode === 'cameras-only' && !this.currentMinimalistMode ? 'flex' : 'none';
         }
-        if (isAlreadyOpen) this.syncLive();
+        this.syncLiveIfActive();
       });
     });
 
@@ -269,7 +307,7 @@ export class OverlayConfigModal {
     const chkFocus = this.modalEl.querySelector('#overlay-focus-speaker-cb') as HTMLInputElement | null;
     chkFocus?.addEventListener('change', () => {
       this.currentFocusActiveSpeaker = chkFocus.checked;
-      if (isAlreadyOpen) this.syncLive();
+      this.syncLiveIfActive();
     });
 
     // Toggle Modo Minimalista
@@ -284,7 +322,7 @@ export class OverlayConfigModal {
       if (focusWrapper) {
         focusWrapper.style.display = this.currentMode === 'cameras-only' && !this.currentMinimalistMode ? 'flex' : 'none';
       }
-      if (isAlreadyOpen) this.syncLive();
+      this.syncLiveIfActive();
     });
 
     // Toggle Ativar ao Sair do Palco
@@ -292,6 +330,16 @@ export class OverlayConfigModal {
     chkAutoOpen?.addEventListener('change', () => {
       this.currentAutoOpenOnLeaveStage = chkAutoOpen.checked;
       this.saveCurrentConfig();
+      // Arming the overlay makes it active right away, so the footer has to stop
+      // offering "Start overlay" (#169).
+      this.refreshFooter();
+    });
+
+    // Toggle Ocultar-me
+    const chkHideSelf = this.modalEl.querySelector('#overlay-hide-self-cb') as HTMLInputElement | null;
+    chkHideSelf?.addEventListener('change', () => {
+      this.currentHideSelf = chkHideSelf.checked;
+      this.syncLiveIfActive();
     });
 
     // Toggle Fundo Transparente
@@ -302,7 +350,7 @@ export class OverlayConfigModal {
       if (opacityGroup) {
         opacityGroup.style.display = this.currentTransparentBackground ? 'none' : 'block';
       }
-      if (isAlreadyOpen) this.syncLive();
+      this.syncLiveIfActive();
     });
 
     // Seleção de layout
@@ -312,7 +360,7 @@ export class OverlayConfigModal {
         layoutCards.forEach((c) => c.classList.remove('selected'));
         card.classList.add('selected');
         this.currentLayout = card.getAttribute('data-layout') as OverlayLayout;
-        if (isAlreadyOpen) this.syncLive();
+        this.syncLiveIfActive();
       });
     });
 
@@ -323,7 +371,7 @@ export class OverlayConfigModal {
         posButtons.forEach((b) => b.classList.remove('selected'));
         btn.classList.add('selected');
         this.currentPosition = btn.getAttribute('data-pos') as OverlayPosition;
-        if (isAlreadyOpen) this.syncLive();
+        this.syncLiveIfActive();
       });
     });
 
@@ -334,7 +382,7 @@ export class OverlayConfigModal {
         window.api.resetOverlayBounds().catch(() => {});
       }
       settingsStore.setOverlayConfig({ bounds: undefined });
-      if (isAlreadyOpen) this.syncLive();
+      this.syncLiveIfActive();
     });
 
     // Slider de opacidade
@@ -343,23 +391,42 @@ export class OverlayConfigModal {
     opacitySlider?.addEventListener('input', () => {
       this.currentCardOpacity = parseInt(opacitySlider.value, 10);
       if (opacityLabel) opacityLabel.textContent = `${this.currentCardOpacity}%`;
-      if (isAlreadyOpen) this.syncLive();
+      this.syncLiveIfActive();
+    });
+  }
+
+  private attachFooterEvents(): void {
+    if (!this.modalEl) return;
+
+    this.modalEl.querySelectorAll('#btn-overlay-modal-cancel').forEach((btn) => {
+      btn.addEventListener('click', () => this.close());
     });
 
-    // Botão Fechar Janela de Overlay
+    // Botão Parar Sobreposição (desarma o modo automático e fecha a janela)
     const btnCloseWindow = this.modalEl.querySelector('#btn-overlay-modal-close-window');
     btnCloseWindow?.addEventListener('click', async () => {
-      await overlayBridgeService.close();
+      await overlayBridgeService.deactivate();
       this.close();
     });
 
     // Botão Ativar / Aplicar
     const btnApply = this.modalEl.querySelector('#btn-overlay-modal-apply');
     btnApply?.addEventListener('click', async () => {
+      const armedButHidden = this.isOverlayActive() && !overlayBridgeService.getIsOpen();
       this.saveCurrentConfig();
-      await overlayBridgeService.open(settingsStore.getOverlayConfig());
+      if (armedButHidden) {
+        // Only armed: the window belongs to the automation, and forcing it open
+        // over the stage would just make it close again on the next check.
+        this.syncLive();
+      } else {
+        await overlayBridgeService.open(settingsStore.getOverlayConfig());
+      }
       this.close();
     });
+  }
+
+  private syncLiveIfActive(): void {
+    if (this.isOverlayActive()) this.syncLive();
   }
 
   private saveCurrentConfig(): void {
@@ -372,6 +439,7 @@ export class OverlayConfigModal {
       transparentBackground: this.currentTransparentBackground,
       autoOpenOnLeaveStage: this.currentAutoOpenOnLeaveStage,
       minimalistMode: this.currentMinimalistMode,
+      hideSelf: this.currentHideSelf,
     });
   }
 
