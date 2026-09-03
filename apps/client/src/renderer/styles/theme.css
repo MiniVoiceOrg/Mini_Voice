@@ -1650,6 +1650,23 @@ input:focus, textarea:focus, select:focus {
   flex-shrink: 0;
 }
 
+/* Voice reconnection surfaced inline in the sidebar indicator (#553): the row
+   turns amber and the signal glyph pulses while the SFU link is rebuilt, in
+   place of the old blocking full-screen overlay. */
+.voice-connection-row.reconnecting {
+  border-color: color-mix(in srgb, var(--warning) 45%, var(--border-color));
+}
+
+.voice-conn-signal.reconnecting {
+  color: var(--warning);
+  animation: voice-reconnect-pulse 1.2s ease-in-out infinite;
+}
+
+@keyframes voice-reconnect-pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.35; }
+}
+
 /* #517: soundboard playbacks queued in the sidebar, next to the screen-share
    notice, so what is playing (and its stop button) is reachable without the
    soundboard modal open. */
@@ -1851,6 +1868,18 @@ input:focus, textarea:focus, select:focus {
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+}
+
+.voice-conn-server {
+  font-size: 11px;
+  color: var(--text-muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.voice-connection-row.reconnecting .voice-conn-status {
+  color: var(--warning);
 }
 
 .voice-conn-ping {
@@ -5206,37 +5235,9 @@ button[data-loading="1"]::after {
   font-weight: 600;
 }
 
-/* Covers only the server interface: the title bar and the server rail stay usable
-   so the user can switch servers, go home or close the app while it retries (#321). */
-.reconnect-overlay {
-  position: absolute;
-  inset: 0 0 0 var(--server-rail-width);
-  z-index: 4000;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  background: rgba(0, 0, 0, 0.55);
-  backdrop-filter: blur(2px);
-}
-
-/* Fallback when the overlay cannot be anchored to the server layout. */
-body > .reconnect-overlay {
-  position: fixed;
-  inset: 0;
-}
-
-.reconnect-card {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 12px;
-  padding: 28px 36px;
-  background: var(--bg-panel);
-  border: 1px solid var(--border-color);
-  border-radius: var(--radius-lg, 12px);
-  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.4);
-}
-
+/* The stage reconnection spinner (VoiceStageView) reuses this class and the
+   reconnect-spin keyframes below; the blocking server overlay that used to live
+   here was removed in favour of the inline sidebar indicator (#553). */
 .reconnect-spinner {
   width: 34px;
   height: 34px;
@@ -5248,17 +5249,6 @@ body > .reconnect-overlay {
 
 @keyframes reconnect-spin {
   to { transform: rotate(360deg); }
-}
-
-.reconnect-title {
-  font-weight: 700;
-  font-size: 15px;
-  color: var(--text-primary);
-}
-
-.reconnect-subtitle {
-  font-size: 12px;
-  color: var(--text-muted);
 }
 
 .settings-cam-preview {
