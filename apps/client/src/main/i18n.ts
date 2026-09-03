@@ -28,7 +28,7 @@ const CATALOGS = {
     'updateInstall.installing': 'Instalando a versão {version}…',
     'updateInstall.installingGeneric': 'Instalando a atualização…',
     'updateInstall.installingHint':
-      'Não abra o Monky agora — ele reabre sozinho assim que a instalação terminar.',
+      'Não abra o Monky agora — a instalação pode levar até cerca de um minuto, e ele reabre sozinho ao terminar.',
     'updateInstall.busy': 'A versão {version} está sendo instalada.',
     'updateInstall.busyHint':
       'Esta janela fecha sozinha. O Monky abre automaticamente quando a instalação terminar.',
@@ -73,7 +73,7 @@ const CATALOGS = {
     'updateInstall.installing': 'Installing version {version}…',
     'updateInstall.installingGeneric': 'Installing the update…',
     'updateInstall.installingHint':
-      "Don't open Monky right now — it reopens on its own once the install finishes.",
+      "Don't open Monky right now — the install can take up to about a minute, and it reopens on its own when it's done.",
     'updateInstall.busy': 'Version {version} is being installed.',
     'updateInstall.busyHint':
       'This window closes on its own. Monky opens automatically when the install finishes.',
