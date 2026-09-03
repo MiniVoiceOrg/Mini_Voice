@@ -77,15 +77,18 @@ class UpdateService {
         return;
       }
 
-      this.setText(t('update.installed', { version: escapeHtml(outcome.version) }));
       // Prefer the in-app changelog (#547): when it has content it opens on its
-      // own and is the whole "what's new" confirmation. The banner stays as the
-      // fallback for an offline start (or a version with no published release),
-      // and its button re-opens the same modal instead of the browser.
+      // own and is the whole "what's new" confirmation. Set the banner text only
+      // *after* that decision — otherwise it is created behind the modal and,
+      // because this path returns early, is left on screen with no dismiss and
+      // no auto-hide timer (#547). The banner is just the fallback for an offline
+      // start (or a version with no published release), and its button re-opens
+      // the same modal instead of the browser.
       const shown = await changelogModal.open({ celebrate: true, requireContent: true });
       if (shown) {
         return;
       }
+      this.setText(t('update.installed', { version: escapeHtml(outcome.version) }));
       this.setActions([
         {
           label: t('update.whatsNew'),
