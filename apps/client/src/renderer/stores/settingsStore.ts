@@ -259,8 +259,12 @@ export class SettingsStore {
     if (typeof config.hideSelf === 'boolean') {
       this.overlayHideSelf = config.hideSelf;
     }
-    if (config.bounds) {
-      this.overlaySavedBounds = config.bounds;
+    // Presence of the key (not truthiness) is what matters: resetting the size
+    // sends `{ bounds: undefined }` on purpose, and that has to actually clear
+    // the saved bounds so the "reset size" control knows it is back to default
+    // (#543).
+    if ('bounds' in config) {
+      this.overlaySavedBounds = config.bounds ?? null;
     }
     this.save();
     appEvents.emit('overlay_settings.updated', this.getOverlayConfig());

@@ -7018,18 +7018,22 @@ body.overlay-window-mode #app {
 /* The bar itself is a drag region, and drag regions swallow :hover, so relying
    on hover alone left nothing to aim at when the pointer was right over the bar
    — the user ended up "clicking on nothing". The grip now rests as a faint,
-   always-present chip so it is discoverable, and the whole bar still lights up
-   on hover (#543). */
+   always-present chip so it is discoverable, and the whole bar lights up
+   whenever the pointer is over the overlay: `.is-hovered` is driven from the
+   main process (cursor tracking) precisely because the drag region blocks CSS
+   :hover over the bar (#543). */
 .overlay-stage-topbar > .overlay-drag-handle {
   opacity: 0.5;
 }
 
-.overlay-stage-root:hover .overlay-stage-topbar {
+.overlay-stage-root:hover .overlay-stage-topbar,
+.overlay-stage-root.is-hovered .overlay-stage-topbar {
   background: rgba(14, 17, 23, 0.75);
   backdrop-filter: blur(8px);
 }
 
-.overlay-stage-root:hover .overlay-stage-topbar > * {
+.overlay-stage-root:hover .overlay-stage-topbar > *,
+.overlay-stage-root.is-hovered .overlay-stage-topbar > * {
   opacity: 1;
 }
 
@@ -7076,14 +7080,16 @@ body.overlay-window-mode #app {
   color: #ffffff;
 }
 
-/* Purely a visual cue in the bottom-right corner: with the window background
-   fully transparent, the frameless resize edge is invisible and the user has no
-   idea where to grab to resize. It must not eat pointer events, otherwise it
-   would sit on top of the real (OS-handled) resize border (#543). */
+/* Purely a visual cue sitting flush in a bottom corner: with the window
+   background fully transparent, the frameless resize edge is invisible and the
+   user has no idea where to grab to resize. It hugs the very corner to mimic the
+   OS resize grip, and hops to whichever bottom corner faces away from the screen
+   edge (see `.dock-right`). It must not eat pointer events, otherwise it would
+   sit on top of the real (OS-handled) resize border (#543). */
 .overlay-resize-hint {
   position: absolute;
-  right: 3px;
-  bottom: 3px;
+  right: 0;
+  bottom: 0;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -7095,7 +7101,16 @@ body.overlay-window-mode #app {
   transform: rotate(90deg);
 }
 
-.overlay-stage-root:hover .overlay-resize-hint {
+/* Docked against the right edge of the display, the window can only grow from
+   its left side, so the hint (and its arrow) mirror to the bottom-left (#543). */
+.overlay-stage-root.dock-right .overlay-resize-hint {
+  right: auto;
+  left: 0;
+  transform: scaleX(-1) rotate(90deg);
+}
+
+.overlay-stage-root:hover .overlay-resize-hint,
+.overlay-stage-root.is-hovered .overlay-resize-hint {
   opacity: 0.65;
 }
 

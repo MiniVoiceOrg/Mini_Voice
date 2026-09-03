@@ -132,6 +132,7 @@ export interface ElectronApi {
   onOverlaySignalReceived: (cb: (signal: string) => void) => () => void;
   onOverlaySyncStateReceived: (cb: (state: OverlaySyncState) => void) => () => void;
   onOverlayCloseRequested: (cb: () => void) => () => void;
+  onOverlayHoverChanged: (cb: (hovered: boolean) => void) => () => void;
 
   // Client Logging (#444)
   writeClientLog: (entry: ClientLogEntry) => Promise<void>;
@@ -360,6 +361,13 @@ const api: ElectronApi = {
     ipcRenderer.on('overlay:close-requested', listener);
     return () => {
       ipcRenderer.removeListener('overlay:close-requested', listener);
+    };
+  },
+  onOverlayHoverChanged: (cb) => {
+    const listener = (_e: Electron.IpcRendererEvent, hovered: boolean) => cb(hovered);
+    ipcRenderer.on('overlay:hover-changed', listener);
+    return () => {
+      ipcRenderer.removeListener('overlay:hover-changed', listener);
     };
   },
 
