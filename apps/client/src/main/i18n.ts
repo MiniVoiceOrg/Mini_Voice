@@ -32,6 +32,9 @@ const CATALOGS = {
     'updateInstall.busy': 'A versão {version} está sendo instalada.',
     'updateInstall.busyHint':
       'Esta janela fecha sozinha. O Monky abre automaticamente quando a instalação terminar.',
+    'updateInstall.finishing': 'Abrindo o Monky…',
+    'updateInstall.finishingHint':
+      'A atualização foi concluída. Só um instante enquanto o Monky abre.',
     'screenPermission.title': 'Permissão de gravação de tela',
     'screenPermission.message': 'O macOS está negando a captura de tela para o Monky.',
     'screenPermission.detail':
@@ -77,6 +80,9 @@ const CATALOGS = {
     'updateInstall.busy': 'Version {version} is being installed.',
     'updateInstall.busyHint':
       'This window closes on its own. Monky opens automatically when the install finishes.',
+    'updateInstall.finishing': 'Opening Monky…',
+    'updateInstall.finishingHint':
+      'The update is done. Just a moment while Monky opens.',
     'screenPermission.title': 'Screen recording permission',
     'screenPermission.message': 'macOS is denying screen capture for Monky.',
     'screenPermission.detail':
