@@ -325,38 +325,6 @@ class App {
     webRtcManager.setDeafened(voiceStore.getEffectiveDeafened());
   }
 
-  private showReconnectOverlay(): void {
-    // Anchor to the server layout so the title bar and the server rail stay
-    // usable while reconnecting (#321).
-    const host = document.querySelector('.main-layout') || document.body;
-    let overlay = document.getElementById('reconnect-overlay');
-    if (overlay && overlay.parentElement !== host) {
-      overlay.remove();
-      overlay = null;
-    }
-    if (!overlay) {
-      overlay = document.createElement('div');
-      overlay.id = 'reconnect-overlay';
-      overlay.className = 'reconnect-overlay';
-      overlay.innerHTML = `
-        <div class="reconnect-card">
-          <div class="reconnect-spinner"></div>
-          <div class="reconnect-title">${t('app.connectionLost')}</div>
-          <div id="reconnect-subtitle" class="reconnect-subtitle"></div>
-        </div>
-      `;
-      host.appendChild(overlay);
-    }
-    const subtitle = document.getElementById('reconnect-subtitle');
-    if (subtitle) {
-      subtitle.textContent = t('app.reconnecting');
-    }
-  }
-
-  private hideReconnectOverlay(): void {
-    document.getElementById('reconnect-overlay')?.remove();
-  }
-
   /**
    * Whether the event being handled came from the server hosting the call.
    *
@@ -459,7 +427,6 @@ class App {
 
       if (isForegroundEvent()) {
         this.mainView.render();
-        this.hideReconnectOverlay();
       }
 
       // Persist the server icon on the saved server entry so the rail shows it
@@ -523,8 +490,6 @@ class App {
       // A background server dropping must not disturb what is on screen (#400).
       if (!isForegroundEvent()) return;
 
-      this.hideReconnectOverlay();
-
       // Another server may still be connected — typically the one hosting the
       // call. Showing it beats dumping the user on the connection screen while
       // they are still talking to someone.
@@ -542,15 +507,6 @@ class App {
       this.mainView.destroy();
       void window.api?.setWindowInServer?.(false);
       this.connectionView.render();
-    });
-
-    // Reconnection feedback overlay
-    appEvents.on('network.reconnecting', () => {
-      // The overlay covers the whole server view, so a background server
-      // retrying must not raise it: only the visible session can hide it again,
-      // and it would stay stuck over a server that is working fine (#400).
-      if (!isForegroundEvent()) return;
-      this.showReconnectOverlay();
     });
 
     // Protocol Server -> Client Broadcast Handlers
@@ -867,14 +823,21 @@ class App {
       });
     });
 
-    // The SFU link dropped and is being rebuilt. There is no degraded mode to
-    // announce any more: the call is simply reconnecting.
-    appEvents.on('sfu.reconnecting', (data: { reason?: string }) => {
-      showAlert({
-        title: t('sfu.reconnectingTitle'),
-        message: t('sfu.reconnectingMessage', { reason: data?.reason || t('sfu.unknownError') }),
-        variant: 'warning',
-      });
+    // The SFU link dropped and is being rebuilt. Instead of a blocking modal,
+    // this surfaces in the sidebar voice indicator (yellow) plus a recurring
+    // audio cue, and clears itself once media flows again (#553).
+    appEvents.on('sfu.reconnecting', () => {
+      voiceStore.setReconnecting(true);
+    });
+    appEvents.on('sfu.reconnected', () => {
+      voiceStore.setReconnecting(false);
+    });
+
+    // Drives the recurring reconnection cue for the whole attempt, stopping as
+    // soon as the call recovers or the user leaves the channel (#553).
+    appEvents.on('voice.reconnecting_changed', (reconnecting: boolean) => {
+      if (reconnecting) soundEffects.startReconnectingLoop();
+      else soundEffects.stopReconnectingLoop();
     });
 
     // The SFU refusing to start after an admin switched the server to it

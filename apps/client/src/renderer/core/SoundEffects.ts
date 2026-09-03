@@ -47,6 +47,9 @@ export function getSoundLabels(): Record<string, string> {
 export class SoundEffectManager {
   private audioMap: Partial<Record<SoundEffectType, HTMLAudioElement>> = {};
   private toneCtx: AudioContext | null = null;
+  // Handle for the repeating reconnection cue (#553): a window.setInterval id
+  // while a voice call is reconnecting, or null when it is not.
+  private reconnectLoopTimer: number | null = null;
 
   constructor() {
     this.loadAll();
@@ -210,6 +213,64 @@ export class SoundEffectManager {
       osc.stop(now + 0.08);
     } catch (e) {
       console.debug('[SoundEffects] PTT tone synthesis failed:', e);
+    }
+  }
+
+  /**
+   * Soft descending two-note cue (A4 -> F4) played while a voice call is
+   * reconnecting (#553). The gentle falling minor third reads as "trouble" and
+   * is intentionally distinct from the chat and screen-share cues.
+   */
+  private playReconnectCue(): void {
+    try {
+      if (!this.toneCtx) {
+        const Ctor = window.AudioContext || (window as any).webkitAudioContext;
+        this.toneCtx = new Ctor();
+        if (settingsStore.selectedSpeakerId && typeof (this.toneCtx as any).setSinkId === 'function') {
+          (this.toneCtx as any).setSinkId(settingsStore.selectedSpeakerId).catch(() => {});
+        }
+      }
+      const ctx = this.toneCtx!;
+      if (ctx.state === 'suspended') ctx.resume().catch(() => {});
+
+      const now = ctx.currentTime;
+      const freqs = [440, 349.23]; // A4 -> F4, a gentle falling minor third
+      const gain = ctx.createGain();
+      gain.gain.setValueAtTime(0.0001, now);
+      gain.gain.exponentialRampToValueAtTime(0.16, now + 0.02);
+      gain.gain.exponentialRampToValueAtTime(0.0001, now + 0.4);
+      gain.connect(ctx.destination);
+
+      freqs.forEach((freq, i) => {
+        const osc = ctx.createOscillator();
+        osc.type = 'sine';
+        osc.frequency.setValueAtTime(freq, now + i * 0.16);
+        osc.connect(gain);
+        osc.start(now + i * 0.16);
+        osc.stop(now + i * 0.16 + 0.2);
+      });
+    } catch (e) {
+      console.debug('[SoundEffects] Reconnect cue synthesis failed:', e);
+    }
+  }
+
+  /**
+   * Starts a recurring reconnection cue that keeps playing for the whole
+   * duration of a voice reconnection (#553). Idempotent: calling it again while
+   * already looping is a no-op, so repeated 'sfu.reconnecting' events don't
+   * stack timers.
+   */
+  public startReconnectingLoop(): void {
+    if (this.reconnectLoopTimer !== null) return;
+    this.playReconnectCue();
+    this.reconnectLoopTimer = window.setInterval(() => this.playReconnectCue(), 5000);
+  }
+
+  /** Stops the recurring reconnection cue, if one is running. */
+  public stopReconnectingLoop(): void {
+    if (this.reconnectLoopTimer !== null) {
+      clearInterval(this.reconnectLoopTimer);
+      this.reconnectLoopTimer = null;
     }
   }
 

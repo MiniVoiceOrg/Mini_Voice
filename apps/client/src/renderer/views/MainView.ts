@@ -41,6 +41,15 @@ import { overlayBridgeService } from '../core/OverlayBridgeService';
 import logoUrl from '../assets/Logo.png';
 import { t, tCount } from '../i18n';
 
+/**
+ * Icons for the sidebar voice indicator (#553). Centralised so switching the
+ * connected/reconnecting glyph is a one-line change. `rss_feed` reads as a
+ * signal/connection ("tilted wifi"); `signal_wifi_bad` carries the failure
+ * exclamation used while reconnecting.
+ */
+const VOICE_ICON_CONNECTED = 'rss_feed';
+const VOICE_ICON_RECONNECTING = 'signal_wifi_bad';
+
 export class MainView {
   private container: HTMLElement;
   private chatView: ChatView | null = null;
@@ -264,13 +273,19 @@ export class MainView {
       return;
     }
 
+    const reconnecting = voiceStore.isReconnecting;
+    const serverName = serverStore.serverDetails?.name ?? '';
+    const signalIcon = reconnecting ? VOICE_ICON_RECONNECTING : VOICE_ICON_CONNECTED;
+    const statusText = reconnecting ? t('main.reconnecting') : t('main.voiceConnected');
+
     slot.innerHTML = `
-      <div class="voice-connection-row" id="voice-connection-row">
+      <div class="voice-connection-row ${reconnecting ? 'reconnecting' : ''}" id="voice-connection-row">
         <div class="voice-conn-info">
-          <span class="material-symbols-outlined md-16 voice-conn-signal">graphic_eq</span>
+          <span class="material-symbols-outlined md-16 voice-conn-signal ${reconnecting ? 'reconnecting' : ''}"${reconnecting ? ` title="${t('main.reconnectingTitle')}"` : ''}>${signalIcon}</span>
           <div class="voice-conn-text">
-            <span class="voice-conn-status">${t('main.voiceConnected')}</span>
+            <span class="voice-conn-status">${statusText}</span>
             <span class="voice-conn-channel" id="sidebar-voice-channel">${escapeHtml(vc.name)}</span>
+            ${serverName ? `<span class="voice-conn-server">${escapeHtml(serverName)}</span>` : ''}
           </div>
           <span class="voice-conn-ping" id="sidebar-voice-ping" title="${t('main.averagePing')}">-- ms</span>
         </div>
@@ -1677,7 +1692,11 @@ export class MainView {
     const u14 = appEvents.on('overlay.state_changed', () => this.updateOverlayNotice());
     const u15 = appEvents.on('overlay_settings.updated', () => this.updateOverlayNotice());
 
-    this.unbindEvents.push(u1, u2, u3, u4, u5, u6, u7, u7b, u7c, u7d, u8, u9, u10, u11, u12, u13, u14, u15);
+    // Repaint the sidebar voice row when the call flips in/out of reconnecting
+    // so the icon, colour and status text track the live state (#553).
+    const u16 = appEvents.on('voice.reconnecting_changed', () => this.updateVoiceConnectionRow());
+
+    this.unbindEvents.push(u1, u2, u3, u4, u5, u6, u7, u7b, u7c, u7d, u8, u9, u10, u11, u12, u13, u14, u15, u16);
   }
 
   /** True when the given text channel is the one currently visible on screen (#14). */
