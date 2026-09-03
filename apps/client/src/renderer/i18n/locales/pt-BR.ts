@@ -329,6 +329,8 @@ export const ptBR = {
   'screenShare.confirmSwitch': 'Trocar Fonte',
   'screenShare.noScreens': 'Nenhuma tela detectada.',
   'screenShare.noWindows': 'Nenhuma janela de aplicativo aberta foi detectada.',
+  'screenShare.gameTipWindow': 'Vai compartilhar um jogo? Escolher o jogo em <b>Aplicativos</b> custa menos FPS do que mandar a tela inteira.',
+  'screenShare.gameTipCodec': 'O perfil <b>Gaming</b> (Configurações › Qualidade) também ajuda: nele o codec Automático usa H.264, que a sua placa de vídeo codifica sozinha.',
   'screenShare.errorTitle': 'Erro ao compartilhar tela',
   'screenShare.limitTitle': 'Limite de telas atingido',
   'screenShare.confirmAdd': 'Adicionar tela',

@@ -506,7 +506,13 @@ export class ConnectionView {
       if (cardHeight <= 0) return;
       const style = getComputedStyle(layout);
       const padding = parseFloat(style.paddingTop) + parseFloat(style.paddingBottom);
-      void window.api?.fitHomeWindowToContent?.(cardHeight + (Number.isFinite(padding) ? padding : 0));
+      // The custom title bar sits outside the layout but inside the window, so
+      // asking only for the card's height left it short by exactly that strip —
+      // enough to keep a scrollbar around. Measuring the gap instead of
+      // hardcoding 33px keeps this right if the title bar ever changes.
+      const outsideLayout = Math.max(0, window.innerHeight - layout.getBoundingClientRect().height);
+      const needed = cardHeight + (Number.isFinite(padding) ? padding : 0) + outsideLayout;
+      void window.api?.fitHomeWindowToContent?.(Math.ceil(needed));
     });
     this.contentResizeObserver.observe(card);
   }
