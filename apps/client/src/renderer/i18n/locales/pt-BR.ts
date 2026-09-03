@@ -745,6 +745,7 @@ export const ptBR = {
   'settings.updatesSection': 'Atualizações',
   'settings.currentVersion': 'Versão atual:',
   'settings.checkUpdates': 'Verificar atualizações',
+  'settings.viewChangelog': 'Novidades desta versão',
   'settings.checking': 'Verificando...',
   'settings.updateAvailable': 'Nova versão {version} disponível! Veja o aviso no topo para atualizar.',
   'settings.upToDate': 'Você já está na versão mais recente.',
@@ -965,6 +966,14 @@ export const ptBR = {
     'Instalador aberto. O Monky vai fechar para você arrastar a nova versão até a pasta Aplicativos.',
   'update.downloadFailed': 'Falha ao baixar a atualização.',
   'update.downloadManually': 'Baixar manualmente',
+
+  // ── Changelog no cliente (ChangelogModal.ts) (#547) ──────────────────────
+  'changelog.title': 'Novidades',
+  'changelog.titleVersion': 'Novidades — {version}',
+  'changelog.updatedTo': 'Atualizado para {version} 🎉',
+  'changelog.loading': 'Carregando novidades…',
+  'changelog.unavailable': 'Não foi possível carregar as novidades desta versão.',
+  'changelog.viewOnGithub': 'Ver no GitHub',
 
   // ── App (main.ts) ────────────────────────────────────────────────────────
   'app.connectionLost': 'Conexão perdida',
