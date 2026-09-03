@@ -148,7 +148,6 @@ export class OverlayManager {
         position: 'bottom-right',
         cardOpacity: 0.85,
         focusActiveSpeaker: false,
-        transparentBackground: false,
         ...configPartial,
       };
     } else {

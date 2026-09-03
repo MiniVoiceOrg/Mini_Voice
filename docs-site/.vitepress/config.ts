@@ -84,7 +84,11 @@ export default withMermaid(defineConfig({
     ['script', {}, `
 (function() {
   var b = '/Monky/', p = location.pathname;
-  if (!localStorage.getItem('monky-lang-manual')) {
+  // Crawlers indexam com navigator.language = en-US e sem localStorage, o que
+  // faria o Googlebot ver um redirect em toda página PT e invalidar o hreflang.
+  var isBot = /bot|crawl|spider|slurp|bingpreview|duckduckbot|baiduspider|yandex|facebookexternalhit|embedly|quora link preview|showyoubot|outbrain|pinterest|whatsapp|telegrambot|discordbot|lighthouse|headlesschrome/i
+    .test(navigator.userAgent || '');
+  if (!isBot && !localStorage.getItem('monky-lang-manual')) {
     var isEn = p.startsWith(b + 'en/') || p === b + 'en';
     var wantsPt = (navigator.language || '').startsWith('pt');
     if (wantsPt && isEn) { location.replace(b + p.slice(b.length + 3)); return; }

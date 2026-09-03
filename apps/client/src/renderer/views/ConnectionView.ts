@@ -247,7 +247,7 @@ export class ConnectionView {
             <img src="${logoUrl}" alt="Monky Logo" style="width: 200px; max-width: 70%; height: auto; max-height: 80px; object-fit: contain; filter: drop-shadow(0 4px 16px rgba(88, 101, 242, 0.4));">
             <div class="brand-logo" style="display: flex; align-items: center; justify-content: center; gap: 8px;">
               <span style="font-size: 24px; font-weight: 800; letter-spacing: -0.5px;">Monky</span>
-              <span class="brand-badge" style="font-size: 11px; padding: 2px 8px;">P2P</span>
+              <span class="brand-badge" style="font-size: 11px; padding: 2px 8px;">${t('connection.brandBadge')}</span>
             </div>
             <div class="brand-tagline" style="font-size: 12px; color: var(--text-secondary); margin-top: 2px;">${t('connection.tagline')}</div>
           </div>

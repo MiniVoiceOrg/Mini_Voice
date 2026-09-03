@@ -7168,22 +7168,12 @@ body.overlay-window-mode #app {
   background: var(--bg-panel);
   opacity: var(--overlay-card-opacity, 0.85);
   backdrop-filter: blur(8px);
-  border: 1px solid rgba(255, 255, 255, 0.1);
+  /* Transparente por padrão: a borda existe só para o realce de quem fala, e a
+     linha branca antiga aparecia recortada sobre o jogo (#543). */
+  border: 1px solid transparent;
   border-radius: 8px;
   overflow: hidden;
   transition: border-color 0.15s ease, box-shadow 0.15s ease, opacity 0.15s ease;
-}
-
-.overlay-stage-root.transparent-bg .overlay-card {
-  background: transparent !important;
-  border-color: rgba(255, 255, 255, 0.15) !important;
-  box-shadow: none !important;
-  backdrop-filter: none !important;
-  opacity: 1 !important;
-}
-
-.overlay-stage-root.transparent-bg .overlay-video-wrapper {
-  background: transparent !important;
 }
 
 .overlay-card.speaking {
@@ -7333,19 +7323,12 @@ body.overlay-window-mode #app {
 }
 
 /* ── Modo Minimalista da Sobreposição ────────────────────────────────────── */
+/* A janela nunca tem caixa: o fundo e a opacidade vivem nos itens, não num
+   contêiner que se recortava sobre o jogo com uma borda branca (#543). */
 .overlay-stage-root.minimalist-mode {
-  background: rgba(14, 17, 23, var(--overlay-card-opacity, 0.85));
-  backdrop-filter: blur(12px);
-  border: 1px solid rgba(255, 255, 255, 0.12);
-  border-radius: 10px;
-  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5);
-}
-
-.overlay-stage-root.minimalist-mode.transparent-bg {
-  background: transparent !important;
-  border-color: transparent !important;
-  backdrop-filter: none !important;
-  box-shadow: none !important;
+  background: transparent;
+  border: none;
+  box-shadow: none;
 }
 
 .overlay-cards-container.layout-minimalist {
@@ -7361,15 +7344,11 @@ body.overlay-window-mode #app {
   align-items: center;
   gap: 8px;
   padding: 5px 8px;
-  background: rgba(255, 255, 255, 0.05);
-  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: rgba(14, 17, 23, var(--overlay-card-opacity, 0.85));
+  backdrop-filter: blur(8px);
+  border: 1px solid transparent;
   border-radius: 6px;
   transition: all 0.15s ease;
-}
-
-.overlay-stage-root.minimalist-mode.transparent-bg .overlay-mini-item {
-  background: rgba(14, 17, 23, 0.75);
-  backdrop-filter: blur(8px);
 }
 
 .overlay-mini-item.speaking {

@@ -405,6 +405,7 @@ export const en: TranslationMap = {
 
   // ── Connection screen (ConnectionView.ts) ────────────────────────────────
   'connection.tagline': 'Direct, fast and private conversations between friends',
+  'connection.brandBadge': 'Self-hosted',
   'connection.settingsTitle': 'Settings',
   'connection.tabJoin': 'Join Server',
   'connection.tabHost': 'My Servers',
@@ -1162,8 +1163,6 @@ export const en: TranslationMap = {
   'overlay.posTopRight': 'Top Right',
   'overlay.posBottomLeft': 'Bottom Left',
   'overlay.posBottomRight': 'Bottom Right',
-  'overlay.transparentBackgroundTitle': 'Transparent Background',
-  'overlay.transparentBackgroundDesc': 'Floating cards directly without solid background container.',
   'overlay.sectionOpacity': 'Card Opacity',
   'overlay.opacityTranslucent': 'Translucent',
   'overlay.opacitySolid': 'Solid',

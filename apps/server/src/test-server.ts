@@ -1348,6 +1348,54 @@ async function runTests() {
     }
     console.log('✔ Teste 20 passou: Diagnóstico de saúde do PM2 e interpretador fixo no ecosystem validados');
 
+    // ── Teste 21: Toda saída da voz precisa reapear o SFU (#527) ──
+    // Um producer que fica no SFU depois do dono sair faz o próximo a entrar
+    // consumir um microfone fantasma: áudio que nunca chega e um participante
+    // que aparece mudo para sempre. A limpeza vive em closeSfuSession(), e o
+    // risco real é um caminho de saída novo (ou existente) esquecer de chamá-la
+    // — por isso a asserção é sobre os caminhos, não sobre um deles.
+    const wsServerSource = fs.readFileSync(
+      path.join(__dirname, '..', 'src', 'infrastructure', 'websocket', 'WebSocketServer.ts'),
+      'utf8'
+    );
+    const readMethodBody = (methodName: string): string => {
+      const signature = new RegExp(`\\n  (?:private|public|protected)?\\s*(?:async\\s+)?${methodName}\\s*\\(`);
+      const start = signature.exec(wsServerSource);
+      if (!start) {
+        throw new Error(`Teste 21: método ${methodName} não encontrado em WebSocketServer.ts`);
+      }
+      const openBrace = wsServerSource.indexOf('{', start.index + start[0].length);
+      let depth = 0;
+      for (let i = openBrace; i < wsServerSource.length; i++) {
+        if (wsServerSource[i] === '{') depth++;
+        else if (wsServerSource[i] === '}') {
+          depth--;
+          if (depth === 0) return wsServerSource.slice(openBrace, i + 1);
+        }
+      }
+      throw new Error(`Teste 21: não foi possível delimitar o corpo de ${methodName}`);
+    };
+
+    // handleVoiceLeave e announceVoiceLeave (desconexão) já cobriam a saída
+    // normal; os kicks é que passavam batido, porque o cliente expulso apenas
+    // se desmonta localmente e nunca manda VOICE_LEAVE.
+    for (const exitPath of ['handleVoiceLeave', 'announceVoiceLeave', 'handleAdminKickVoice', 'handleMemberKick']) {
+      if (!readMethodBody(exitPath).includes('this.closeSfuSession(')) {
+        throw new Error(`Teste 21: ${exitPath} sai da voz sem fechar a sessão no SFU (producers fantasma)`);
+      }
+    }
+
+    // E a limpeza só serve se avisar o canal: sem SFU_PRODUCER_CLOSED, quem
+    // ficou continua com o consumer aberto do lado dele.
+    const closeSfuSessionBody = readMethodBody('closeSfuSession');
+    if (!closeSfuSessionBody.includes('sfuManager.closeSession(')) {
+      throw new Error('Teste 21: closeSfuSession deveria fechar a sessão no SfuManager');
+    }
+    if (!closeSfuSessionBody.includes('MessageType.SFU_PRODUCER_CLOSED')) {
+      throw new Error('Teste 21: closeSfuSession deveria anunciar SFU_PRODUCER_CLOSED para o canal');
+    }
+    console.log('✔ Teste 21 passou: Todas as saídas da voz fecham a sessão no SFU e anunciam os producers');
+
     console.log('=== Todos os testes do servidor passaram com sucesso! ===');
   } finally {
     await server.stop();
