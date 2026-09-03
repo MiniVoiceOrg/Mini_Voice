@@ -3,6 +3,7 @@ import fs from 'fs';
 import path from 'path';
 import { UpdateOutcome } from '@monky/shared';
 import { getMainLanguage, mt, setMainLanguage } from './i18n';
+import { updateLog } from './updateLog';
 /**
  * Windows/Linux install handoff (#498).
  *
@@ -197,7 +198,13 @@ function whenVisible(win: BrowserWindow | null): Promise<void> {
  * back until the window is really visible (#498).
  */
 export function beginUpdateInstall(targetVersion: string, mainWindow?: BrowserWindow): Promise<void> {
-  if (targetVersion && targetVersion !== app.getVersion()) {
+  const willRecord = !!(targetVersion && targetVersion !== app.getVersion());
+  updateLog('beginUpdateInstall', {
+    targetVersion,
+    from: app.getVersion(),
+    recordSentinel: willRecord,
+  });
+  if (willRecord) {
     const sentinel: Sentinel = {
       targetVersion,
       fromVersion: app.getVersion(),
@@ -206,8 +213,10 @@ export function beginUpdateInstall(targetVersion: string, mainWindow?: BrowserWi
     };
     try {
       fs.writeFileSync(sentinelPath(), JSON.stringify(sentinel), 'utf-8');
-    } catch {
+      updateLog('sentinel written', { path: sentinelPath() });
+    } catch (err) {
       // Non-fatal: the splash below still gives the user feedback.
+      updateLog('sentinel write FAILED', { error: String(err) });
     }
   }
 
@@ -237,11 +246,23 @@ export function beginUpdateInstall(targetVersion: string, mainWindow?: BrowserWi
  */
 export function handleLaunchDuringUpdate(): boolean {
   const sentinel = readSentinel();
-  if (!sentinel) return false;
+  if (!sentinel) {
+    updateLog('handleLaunchDuringUpdate: no sentinel, normal launch');
+    return false;
+  }
+
+  const ageMs = Date.now() - sentinel.startedAt;
+  updateLog('handleLaunchDuringUpdate: sentinel found', {
+    targetVersion: sentinel.targetVersion,
+    fromVersion: sentinel.fromVersion,
+    current: app.getVersion(),
+    ageMs,
+  });
 
   setMainLanguage(sentinel.language);
 
   if (app.getVersion() === sentinel.targetVersion) {
+    updateLog('update SUCCESS: version matches, showing finishing splash');
     clearSentinel();
     pendingOutcome = {
       status: 'success',
@@ -257,12 +278,14 @@ export function handleLaunchDuringUpdate(): boolean {
     return false;
   }
 
-  if (Date.now() - sentinel.startedAt >= STALE_AFTER_MS) {
+  if (ageMs >= STALE_AFTER_MS) {
+    updateLog('update STALE: sentinel too old, treating as failed', { ageMs });
     clearSentinel();
     pendingOutcome = { status: 'failed', version: sentinel.targetVersion };
     return false;
   }
 
+  updateLog('update BUSY: install still running, showing busy splash and exiting');
   openWindow(
     mt('updateInstall.busy', { version: sentinel.targetVersion }),
     mt('updateInstall.busyHint')
@@ -285,6 +308,7 @@ export function isInstallSplashActive(): boolean {
  */
 export function dismissInstallSplash(): void {
   if (installWindow && !installWindow.isDestroyed()) {
+    updateLog('dismissInstallSplash: closing splash');
     installWindow.close();
   }
   installWindow = null;
@@ -298,4 +322,64 @@ export function consumeUpdateOutcome(): UpdateOutcome | null {
   const outcome = pendingOutcome;
   pendingOutcome = null;
   return outcome;
+}
+
+/**
+ * Whether an install sentinel is currently on disk. Only used to gate the
+ * test-only simulation below so its relaunch does not loop.
+ */
+export function hasInstallSentinel(): boolean {
+  return readSentinel() !== null;
+}
+
+// ---------------------------------------------------------------------------
+// TEST-ONLY: local update-flow simulation (Bancada A).
+//
+// These reproduce the post-install UX without a real download or NSIS run, so
+// the splash timing and the renderer-ready hand-off (#498/#543) can be checked
+// with a plain `npm run start`. main.ts wires them strictly behind the
+// `MONKY_SIM_UPDATE` env var, so a normal launch never reaches them.
+// ---------------------------------------------------------------------------
+
+/**
+ * Writes a sentinel whose target is the *current* version, so the very next
+ * `handleLaunchDuringUpdate()` takes the success path — the "Abrindo o Monky…"
+ * splash plus the deferred reveal — exactly as a real post-install launch
+ * would. Used by `MONKY_SIM_UPDATE=finish`.
+ */
+export function primeSimulatedInstallFinish(): void {
+  const sentinel: Sentinel = {
+    targetVersion: app.getVersion(),
+    fromVersion: 'sim',
+    startedAt: Date.now(),
+    language: getMainLanguage(),
+  };
+  try {
+    fs.writeFileSync(sentinelPath(), JSON.stringify(sentinel), 'utf-8');
+    updateLog('SIM: primed finish sentinel', { version: app.getVersion() });
+  } catch (err) {
+    updateLog('SIM: failed to prime finish sentinel', { error: String(err) });
+  }
+}
+
+/**
+ * Shows the "installing" splash, then relaunches into the finish simulation,
+ * reproducing the whole installing -> quit -> finishing -> reveal sequence
+ * locally (minus the real NSIS gap). Used by `MONKY_SIM_UPDATE=full`; the
+ * sentinel it writes stops the relaunched process from looping back here.
+ */
+export function beginSimulatedFullInstall(): void {
+  updateLog('SIM: begin full install simulation');
+  const win = openWindow(
+    mt('updateInstall.installing', { version: `${app.getVersion()} (sim)` }),
+    mt('updateInstall.installingHint')
+  );
+  primeSimulatedInstallFinish();
+  void whenVisible(win).then(() => {
+    setTimeout(() => {
+      updateLog('SIM: relaunching to emulate post-install boot');
+      app.relaunch();
+      app.exit(0);
+    }, 2500);
+  });
 }

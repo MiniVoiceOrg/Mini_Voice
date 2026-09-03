@@ -89,6 +89,7 @@ export interface ElectronApi {
   fitHomeWindowToContent: (contentHeight: number) => Promise<void>;
   close: () => Promise<void>;
   getAppVersion: () => Promise<string>;
+  signalRendererReady: () => void;
   checkForUpdates: () => Promise<UpdateCheckResult>;
   downloadUpdate: () => Promise<UpdateSimpleResult>;
   installUpdate: () => Promise<UpdateSimpleResult>;
@@ -243,6 +244,7 @@ const api: ElectronApi = {
   fitHomeWindowToContent: (contentHeight) => ipcRenderer.invoke('window:fit-home-content', contentHeight),
   close: () => ipcRenderer.invoke('window:close'),
   getAppVersion: () => ipcRenderer.invoke('app:get-version'),
+  signalRendererReady: () => ipcRenderer.send('app:renderer-ready'),
   checkForUpdates: () => ipcRenderer.invoke('updater:check'),
   downloadUpdate: () => ipcRenderer.invoke('updater:download'),
   installUpdate: () => ipcRenderer.invoke('updater:install'),
