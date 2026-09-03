@@ -168,11 +168,35 @@ function openWindow(message: string, hint: string): BrowserWindow | null {
 }
 
 /**
+ * Resolves once the splash is actually on screen (or right away if it could not
+ * be created). `quitAndInstall` tears the whole app down, so calling it in the
+ * same tick as `openWindow` — as the update flow used to — killed the window
+ * before it ever painted, which is why #498's progress window never showed. The
+ * fallback timer makes sure a late or missing paint never blocks the install.
+ */
+function whenVisible(win: BrowserWindow | null): Promise<void> {
+  if (!win || win.isDestroyed() || win.isVisible()) return Promise.resolve();
+  return new Promise<void>((resolve) => {
+    let settled = false;
+    const finish = (): void => {
+      if (settled) return;
+      settled = true;
+      resolve();
+    };
+    win.once('show', finish);
+    setTimeout(finish, 2000);
+  });
+}
+
+/**
  * Records the install and swaps the UI for the progress window. Called right
  * before `quitAndInstall`, so the last thing on screen explains the wait
  * instead of the window simply vanishing.
+ *
+ * Resolves once the splash has painted so the caller can hold `quitAndInstall`
+ * back until the window is really visible (#498).
  */
-export function beginUpdateInstall(targetVersion: string, mainWindow?: BrowserWindow): void {
+export function beginUpdateInstall(targetVersion: string, mainWindow?: BrowserWindow): Promise<void> {
   if (targetVersion && targetVersion !== app.getVersion()) {
     const sentinel: Sentinel = {
       targetVersion,
@@ -187,7 +211,7 @@ export function beginUpdateInstall(targetVersion: string, mainWindow?: BrowserWi
     }
   }
 
-  openWindow(
+  const win = openWindow(
     targetVersion
       ? mt('updateInstall.installing', { version: targetVersion })
       : mt('updateInstall.installingGeneric'),
@@ -199,6 +223,8 @@ export function beginUpdateInstall(targetVersion: string, mainWindow?: BrowserWi
   if (mainWindow && !mainWindow.isDestroyed() && mainWindow.isVisible()) {
     mainWindow.hide();
   }
+
+  return whenVisible(win);
 }
 
 /**
