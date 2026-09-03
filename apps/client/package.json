@@ -83,8 +83,9 @@
       ]
     },
     "nsis": {
-      "oneClick": false,
-      "allowToChangeInstallationDirectory": true,
+      "oneClick": true,
+      "perMachine": false,
+      "allowToChangeInstallationDirectory": false,
       "artifactName": "Monky-${version}-win-${arch}-setup.${ext}"
     },
     "portable": {

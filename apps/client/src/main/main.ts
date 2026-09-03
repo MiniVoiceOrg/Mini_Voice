@@ -9,6 +9,7 @@ import {
   hasInstallSentinel,
   primeSimulatedInstallFinish,
   beginSimulatedFullInstall,
+  beginRealNsisInstallTest,
 } from './updateInstall';
 import { updateLog } from './updateLog';
 import { ServerManager } from './serverManager';
@@ -321,6 +322,17 @@ if (!gotTheLock) {
     if (sim === 'full' && !hasInstallSentinel()) {
       beginSimulatedFullInstall();
       return;
+    }
+    // `nsis` runs a REAL (isolated) installer to reproduce the actual NSIS gap
+    // the `full` simulation skips — used by scripts/test-update-local.ps1 to
+    // watch the update UX end to end without publishing a beta.
+    if (sim === 'nsis' && !hasInstallSentinel()) {
+      const installerPath = process.env.MONKY_SIM_INSTALLER;
+      if (installerPath && fs.existsSync(installerPath)) {
+        beginRealNsisInstallTest(installerPath, process.env.MONKY_SIM_TARGET || app.getVersion());
+        return;
+      }
+      updateLog('SIM(nsis): installer missing, skipping', { installerPath });
     }
     if (sim === 'finish' && !hasInstallSentinel()) {
       primeSimulatedInstallFinish();
