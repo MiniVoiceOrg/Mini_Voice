@@ -1222,12 +1222,14 @@ export class MainView {
             </div>
             ${(() => {
               // With public badges off, a role tag is only rendered for members
-              // who hold that same role (#530).
+              // who hold that same role — except for admins, who moderate the
+              // server and therefore always see every badge (#530).
               const badgesArePublic = serverStore.serverDetails?.showRoleBadgesToEveryone !== false;
-              const myRoleIds = badgesArePublic ? [] : serverStore.getUserRoleIds(serverStore.currentUser?.id || '');
+              const canSeeAllBadges = badgesArePublic || serverStore.hasPermission(Permission.ADMINISTRATOR);
+              const myRoleIds = canSeeAllBadges ? [] : serverStore.getUserRoleIds(serverStore.currentUser?.id || '');
               const userRoles = serverStore
                 .getUserRoles(m.id)
-                .filter((r) => !r.isDefault && (badgesArePublic || myRoleIds.includes(r.id)));
+                .filter((r) => !r.isDefault && (canSeeAllBadges || myRoleIds.includes(r.id)));
               return userRoles.length ? `<div class="member-role-tags">${userRoles.map((role) => `<span class="member-role-tag" style="${role.color ? `--role-color: ${role.color}` : ''}">${escapeHtml(role.name)}</span>`).join('')}</div>` : '';
             })()}
             <span class="member-subtext">${statusText}</span>

@@ -1,5 +1,13 @@
 export const PROTOCOL_VERSION = 6;
 
+/**
+ * Default size of the floating overlay window (#169). Shared so the renderer can
+ * tell whether the user resized it away from the default — the "reset size"
+ * control is only worth showing once the size actually changed (#543).
+ */
+export const OVERLAY_DEFAULT_WIDTH = 340;
+export const OVERLAY_DEFAULT_HEIGHT = 240;
+
 export const LIMITS = {
   MAX_MESSAGE_LENGTH: 2000,
   MAX_AVATAR_SIZE: 5 * 1024 * 1024, // 5 MB
