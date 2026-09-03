@@ -1719,11 +1719,28 @@ input:focus, textarea:focus, select:focus {
   text-overflow: ellipsis;
 }
 
+.sb-notice-progress-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
 .sb-notice-progress-track {
+  flex: 1;
+  min-width: 0;
   height: 3px;
   border-radius: 2px;
   background-color: rgba(255, 255, 255, 0.12);
   overflow: hidden;
+}
+
+.sb-notice-time {
+  flex-shrink: 0;
+  font-size: 10px;
+  line-height: 1;
+  color: var(--text-muted);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
 }
 
 .sb-notice-progress-fill {
@@ -7082,14 +7099,15 @@ body.overlay-window-mode #app {
 
 /* Purely a visual cue sitting flush in a bottom corner: with the window
    background fully transparent, the frameless resize edge is invisible and the
-   user has no idea where to grab to resize. It hugs the very corner to mimic the
-   OS resize grip, and hops to whichever bottom corner faces away from the screen
-   edge (see `.dock-right`). It must not eat pointer events, otherwise it would
-   sit on top of the real (OS-handled) resize border (#543). */
+   user has no idea where to grab to resize. It draws a diagonal resize grip in
+   the very corner to mimic the OS grip, and hops to whichever bottom corner
+   faces away from the screen edge (see `.dock-right`). It must not eat pointer
+   events, otherwise it would sit on top of the real (OS-handled) resize border
+   (#543). */
 .overlay-resize-hint {
   position: absolute;
-  right: 0;
-  bottom: 0;
+  right: 2px;
+  bottom: 2px;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -7097,16 +7115,15 @@ body.overlay-window-mode #app {
   opacity: 0;
   pointer-events: none;
   transition: opacity 0.2s ease;
-  text-shadow: 0 1px 3px rgba(0, 0, 0, 0.9);
-  transform: rotate(90deg);
+  filter: drop-shadow(0 1px 2px rgba(0, 0, 0, 0.9));
 }
 
 /* Docked against the right edge of the display, the window can only grow from
-   its left side, so the hint (and its arrow) mirror to the bottom-left (#543). */
+   its left side, so the grip mirrors to the bottom-left corner (#543). */
 .overlay-stage-root.dock-right .overlay-resize-hint {
   right: auto;
-  left: 0;
-  transform: scaleX(-1) rotate(90deg);
+  left: 2px;
+  transform: scaleX(-1);
 }
 
 .overlay-stage-root:hover .overlay-resize-hint,

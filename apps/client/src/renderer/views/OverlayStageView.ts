@@ -251,9 +251,7 @@ export class OverlayStageView {
           <span class="material-symbols-outlined md-20" style="color: var(--text-muted); opacity: 0.6;">group</span>
           <span>${isAlone ? t('overlay.aloneInChannel') : t('overlay.waitingChannel')}</span>
         </div>
-        <div class="overlay-resize-hint" aria-hidden="true">
-          <span class="material-symbols-outlined md-16">open_in_full</span>
-        </div>
+        ${this.renderResizeHint()}
       </div>
     `;
     this.attachControls();
@@ -279,9 +277,7 @@ export class OverlayStageView {
             </div>
           </div>
           <div class="overlay-cards-container"></div>
-          <div class="overlay-resize-hint" aria-hidden="true">
-            <span class="material-symbols-outlined md-16">open_in_full</span>
-          </div>
+          ${this.renderResizeHint()}
         </div>
       `;
       this.attachControls();
@@ -514,6 +510,23 @@ export class OverlayStageView {
   private applyHoverState(): void {
     const root = this.container.querySelector('.overlay-stage-root');
     if (root) root.classList.toggle('is-hovered', this.isHovered);
+  }
+
+  /**
+   * A resize grip drawn flush in the bottom corner. The overlay window is
+   * frameless and fully transparent, so its OS resize edge is invisible; these
+   * diagonal strokes mimic the native grip and show the user where to grab. It
+   * is aria-hidden and ignores pointer events, so the real (OS-handled) resize
+   * border underneath keeps doing the work (#543).
+   */
+  private renderResizeHint(): string {
+    return `
+      <div class="overlay-resize-hint" aria-hidden="true">
+        <svg viewBox="0 0 16 16" width="14" height="14" fill="none" xmlns="http://www.w3.org/2000/svg">
+          <path d="M15 6 L6 15 M15 10 L10 15 M15 14 L14 15" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" />
+        </svg>
+      </div>
+    `;
   }
 
   /**
