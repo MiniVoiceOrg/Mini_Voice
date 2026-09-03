@@ -86,7 +86,6 @@ export class SettingsStore {
   public overlayPosition: OverlayPosition = 'bottom-right';
   public overlayCardOpacity: number = 85; // 20 - 100%
   public overlayFocusActiveSpeaker: boolean = false;
-  public overlayTransparentBackground: boolean = false;
   public overlayAutoOpenOnLeaveStage: boolean = false;
   public overlayMinimalistMode: boolean = false;
   public overlayHideSelf: boolean = false;
@@ -208,9 +207,6 @@ export class SettingsStore {
         if (typeof this.overlayFocusActiveSpeaker !== 'boolean') {
           this.overlayFocusActiveSpeaker = false;
         }
-        if (typeof this.overlayTransparentBackground !== 'boolean') {
-          this.overlayTransparentBackground = false;
-        }
         if (typeof this.overlayAutoOpenOnLeaveStage !== 'boolean') {
           this.overlayAutoOpenOnLeaveStage = false;
         }
@@ -237,7 +233,6 @@ export class SettingsStore {
       position: this.overlayPosition,
       cardOpacity: this.overlayCardOpacity / 100,
       focusActiveSpeaker: this.overlayFocusActiveSpeaker,
-      transparentBackground: this.overlayTransparentBackground,
       autoOpenOnLeaveStage: this.overlayAutoOpenOnLeaveStage,
       minimalistMode: this.overlayMinimalistMode,
       hideSelf: this.overlayHideSelf,
@@ -254,9 +249,6 @@ export class SettingsStore {
     }
     if (typeof config.focusActiveSpeaker === 'boolean') {
       this.overlayFocusActiveSpeaker = config.focusActiveSpeaker;
-    }
-    if (typeof config.transparentBackground === 'boolean') {
-      this.overlayTransparentBackground = config.transparentBackground;
     }
     if (typeof config.autoOpenOnLeaveStage === 'boolean') {
       this.overlayAutoOpenOnLeaveStage = config.autoOpenOnLeaveStage;
@@ -414,7 +406,6 @@ export class SettingsStore {
         overlayPosition: this.overlayPosition,
         overlayCardOpacity: this.overlayCardOpacity,
         overlayFocusActiveSpeaker: this.overlayFocusActiveSpeaker,
-        overlayTransparentBackground: this.overlayTransparentBackground,
         overlayAutoOpenOnLeaveStage: this.overlayAutoOpenOnLeaveStage,
         overlayMinimalistMode: this.overlayMinimalistMode,
         overlayHideSelf: this.overlayHideSelf,

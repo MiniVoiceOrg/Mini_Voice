@@ -406,6 +406,7 @@ export const ptBR = {
 
   // ── Tela de conexão (ConnectionView.ts) ──────────────────────────────────
   'connection.tagline': 'Comunicação direta, rápida e privada entre amigos',
+  'connection.brandBadge': 'Self-hosted',
   'connection.settingsTitle': 'Configurações',
   'connection.tabJoin': 'Entrar no Servidor',
   'connection.tabHost': 'Meus Servidores',
@@ -1163,8 +1164,6 @@ export const ptBR = {
   'overlay.posTopRight': 'Superior Direito',
   'overlay.posBottomLeft': 'Inferior Esquerdo',
   'overlay.posBottomRight': 'Inferior Direito',
-  'overlay.transparentBackgroundTitle': 'Fundo Transparente',
-  'overlay.transparentBackgroundDesc': 'Cards flutuando diretamente sem caixa de fundo.',
   'overlay.sectionOpacity': 'Opacidade dos Cards',
   'overlay.opacityTranslucent': 'Translúcido',
   'overlay.opacitySolid': 'Sólido',

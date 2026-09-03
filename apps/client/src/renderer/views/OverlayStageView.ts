@@ -140,7 +140,6 @@ export class OverlayStageView {
     const config = this.currentState.config;
     const opacity = typeof config.cardOpacity === 'number' ? config.cardOpacity : 0.85;
     const isFocusSpeaker = config.mode === 'cameras-only' && config.focusActiveSpeaker && !config.minimalistMode;
-    const isTransparentBg = !!config.transparentBackground;
     const isMinimalist = !!config.minimalistMode;
 
     let displayParticipants: OverlayParticipantState[] = [];
@@ -189,7 +188,6 @@ export class OverlayStageView {
     const rootEl = this.container.querySelector('.overlay-stage-root') as HTMLElement | null;
     if (rootEl) {
       rootEl.style.setProperty('--overlay-card-opacity', String(opacity));
-      rootEl.classList.toggle('transparent-bg', isTransparentBg);
       rootEl.classList.toggle('minimalist-mode', isMinimalist);
     }
 

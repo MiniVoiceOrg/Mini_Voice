@@ -1416,15 +1416,7 @@ export class WebSocketServer {
       // this session held in the SFU: the client's own teardown is local, and
       // the producers would stay listed for the next person to join, who would
       // then be told to consume a microphone that left.
-      if (this.sfuManager) {
-        const { closedProducerIds } = this.sfuManager.closeSession(session.sessionId);
-        for (const producerId of closedProducerIds) {
-          this.broadcast({
-            type: MessageType.SFU_PRODUCER_CLOSED,
-            payload: { channelId: previous.channelId, producerId } satisfies SfuProducerClosedPayload,
-          });
-        }
-      }
+      this.closeSfuSession(session.sessionId, previous.channelId);
 
       const leavePayload: VoiceUserLeftPayload = {
         channelId: previous.channelId,
@@ -1896,6 +1888,11 @@ export class WebSocketServer {
       return;
     }
 
+    // Being kicked out of the call is a departure like any other, but the
+    // client only tears itself down locally — it never sends VOICE_LEAVE — so
+    // the SFU has to be reaped from here (#527).
+    this.closeSfuSession(previous.sessionId, previous.channelId);
+
     this.broadcast({ type: MessageType.ADMIN_KICK_VOICE, requestId, payload });
     this.broadcast({
       type: MessageType.VOICE_USER_LEFT,
@@ -1987,6 +1984,10 @@ export class WebSocketServer {
     // Remove the target from any voice channel they were in (one state per device).
     for (const previousVoice of this.signalingService.getSessionsOfUser(targetUserId)) {
       this.signalingService.leaveVoiceChannel(previousVoice.sessionId);
+      // The sessions were already marked as replaced above, which makes
+      // handleDisconnect return early and skip announceVoiceLeave, so this is
+      // the last chance to reap what they held in the SFU (#527).
+      this.closeSfuSession(previousVoice.sessionId, previousVoice.channelId);
       this.broadcast({
         type: MessageType.VOICE_USER_LEFT,
         payload: {
@@ -2108,6 +2109,22 @@ export class WebSocketServer {
   }
 
   /**
+   * Reaps everything one connection held in the SFU and tells the channel that
+   * those producers are gone. Without this, whoever joins next is handed a
+   * producer with nobody behind it and sits there consuming a ghost (#527).
+   */
+  private closeSfuSession(sessionId: string, channelId: string): void {
+    if (!this.sfuManager) return;
+    const { closedProducerIds } = this.sfuManager.closeSession(sessionId);
+    for (const producerId of closedProducerIds) {
+      this.broadcast({
+        type: MessageType.SFU_PRODUCER_CLOSED,
+        payload: { channelId, producerId } satisfies SfuProducerClosedPayload,
+      });
+    }
+  }
+
+  /**
    * Takes one connection out of its voice channel and tells everyone about it.
    *
    * Idempotent: `leaveVoiceChannel` returns null when the session is not in a
@@ -2118,15 +2135,7 @@ export class WebSocketServer {
     const previousVoice = this.signalingService.leaveVoiceChannel(sessionId);
     if (!previousVoice) return;
 
-    if (this.sfuManager) {
-      const { closedProducerIds } = this.sfuManager.closeSession(sessionId);
-      for (const producerId of closedProducerIds) {
-        this.broadcast({
-          type: MessageType.SFU_PRODUCER_CLOSED,
-          payload: { channelId: previousVoice.channelId, producerId } satisfies SfuProducerClosedPayload,
-        });
-      }
-    }
+    this.closeSfuSession(sessionId, previousVoice.channelId);
 
     const leavePayload: VoiceUserLeftPayload = {
       channelId: previousVoice.channelId,

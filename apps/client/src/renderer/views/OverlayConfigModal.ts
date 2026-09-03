@@ -10,7 +10,6 @@ export class OverlayConfigModal {
   private currentPosition: OverlayPosition = 'bottom-right';
   private currentCardOpacity: number = 85;
   private currentFocusActiveSpeaker: boolean = false;
-  private currentTransparentBackground: boolean = false;
   private currentAutoOpenOnLeaveStage: boolean = false;
   private currentMinimalistMode: boolean = false;
   private currentHideSelf: boolean = false;
@@ -24,7 +23,6 @@ export class OverlayConfigModal {
     this.currentPosition = config.position === 'custom' ? 'bottom-right' : config.position;
     this.currentCardOpacity = Math.round(config.cardOpacity * 100);
     this.currentFocusActiveSpeaker = config.focusActiveSpeaker;
-    this.currentTransparentBackground = config.transparentBackground;
     this.currentAutoOpenOnLeaveStage = !!config.autoOpenOnLeaveStage;
     this.currentMinimalistMode = !!config.minimalistMode;
     this.currentHideSelf = !!config.hideSelf;
@@ -180,23 +178,8 @@ export class OverlayConfigModal {
             </div>
           </div>
 
-          <!-- 7. Switch Fundo Transparente -->
-          <div style="display: flex; align-items: center; justify-content: space-between; gap: 12px; background: var(--bg-card); border: 1px solid var(--border-color); border-radius: var(--radius-md); padding: 10px 14px;">
-            <div style="display: flex; align-items: center; gap: 8px;">
-              <span class="material-symbols-outlined md-18" style="color: var(--primary);">opacity</span>
-              <div>
-                <div style="font-size: 12px; font-weight: 600; color: var(--text-primary);">${t('overlay.transparentBackgroundTitle')}</div>
-                <div style="font-size: 11px; color: var(--text-muted);">${t('overlay.transparentBackgroundDesc')}</div>
-              </div>
-            </div>
-            <label class="toggle-switch" aria-label="${t('overlay.transparentBackgroundTitle')}">
-              <input type="checkbox" id="overlay-transparent-bg-cb" ${this.currentTransparentBackground ? 'checked' : ''} />
-              <span class="toggle-slider"></span>
-            </label>
-          </div>
-
-          <!-- 8. Opacidade dos Cards (visível quando Fundo Transparente desmarcado) -->
-          <div id="overlay-opacity-group" style="${this.currentTransparentBackground ? 'display: none;' : 'display: block;'}">
+          <!-- 7. Opacidade dos Cards -->
+          <div id="overlay-opacity-group">
             <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
               <label style="font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px; color: var(--text-muted); margin: 0;">
                 ${t('overlay.sectionOpacity')}
@@ -342,17 +325,6 @@ export class OverlayConfigModal {
       this.syncLiveIfActive();
     });
 
-    // Toggle Fundo Transparente
-    const chkTransparentBg = this.modalEl.querySelector('#overlay-transparent-bg-cb') as HTMLInputElement | null;
-    const opacityGroup = this.modalEl.querySelector('#overlay-opacity-group') as HTMLElement | null;
-    chkTransparentBg?.addEventListener('change', () => {
-      this.currentTransparentBackground = chkTransparentBg.checked;
-      if (opacityGroup) {
-        opacityGroup.style.display = this.currentTransparentBackground ? 'none' : 'block';
-      }
-      this.syncLiveIfActive();
-    });
-
     // Seleção de layout
     const layoutCards = this.modalEl.querySelectorAll('.overlay-option-card[data-layout]');
     layoutCards.forEach((card) => {
@@ -436,7 +408,6 @@ export class OverlayConfigModal {
       position: this.currentPosition,
       cardOpacity: this.currentCardOpacity / 100,
       focusActiveSpeaker: this.currentFocusActiveSpeaker,
-      transparentBackground: this.currentTransparentBackground,
       autoOpenOnLeaveStage: this.currentAutoOpenOnLeaveStage,
       minimalistMode: this.currentMinimalistMode,
       hideSelf: this.currentHideSelf,

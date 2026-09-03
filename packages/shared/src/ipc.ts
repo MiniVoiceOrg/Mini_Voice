@@ -245,7 +245,6 @@ export interface OverlayConfig {
   position: OverlayPosition;
   cardOpacity: number; // 0.2 a 1.0
   focusActiveSpeaker: boolean;
-  transparentBackground: boolean;
   autoOpenOnLeaveStage?: boolean;
   minimalistMode?: boolean;
   hideSelf?: boolean;
