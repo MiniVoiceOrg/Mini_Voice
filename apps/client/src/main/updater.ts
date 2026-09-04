@@ -2,7 +2,10 @@ import { app, BrowserWindow, ipcMain, shell } from 'electron';
 import fs from 'fs';
 import https from 'https';
 import path from 'path';
+import { UpdateOutcome, ReleaseNotesResult } from '@monky/shared';
 import { mt } from './i18n';
+import { beginUpdateInstall, consumeUpdateOutcome } from './updateInstall';
+import { updateLog } from './updateLog';
 import {
   cleanVer,
   feedUrlForTag,
@@ -22,9 +25,17 @@ interface CheckResult {
 
 // electron-updater is loaded lazily (only on Windows/Linux) so that a missing
 // or broken package never prevents the app itself from starting.
+interface UpdaterLogger {
+  info: (message: unknown) => void;
+  warn: (message: unknown) => void;
+  error: (message: unknown) => void;
+  debug?: (message: unknown) => void;
+}
+
 type AutoUpdater = {
   autoDownload: boolean;
   autoInstallOnAppQuit: boolean;
+  logger: UpdaterLogger | null;
   on: (event: string, cb: (arg: unknown) => void) => void;
   setFeedURL: (options: { provider: 'generic'; url: string }) => void;
   checkForUpdates: () => Promise<{ updateInfo?: { version: string } } | null>;
@@ -54,6 +65,17 @@ function loadAutoUpdater(): AutoUpdater | null {
 function msg(e: unknown): string {
   return e instanceof Error ? e.message : String(e);
 }
+
+function delay(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+// How long the "installing…" splash lingers before `quitAndInstall` tears the
+// app down. It needs to be readable, because right after this the app quits so
+// the .exe can be replaced. The NSIS installer (oneClick, non-silent) then
+// shows its own progress window during the install, and this splash is the
+// user's heads-up right before that hand-off (#498, #543).
+const SPLASH_LINGER_MS = 2500;
 
 // ── Update detection via GitHub API (reliable on all platforms) ──────────────
 
@@ -93,6 +115,12 @@ function quitForMacInstall(delayMs: number): void {
     setTimeout(() => app.exit(0), 4000);
   }, delayMs);
 }
+
+/**
+ * Version electron-updater finished downloading, so the install step can name
+ * it on the progress window even when the user triggers it later by hand.
+ */
+let downloadedVersion = '';
 
 /**
  * Tag of the release `checkViaGitHub` decided the user should get. The download
@@ -144,10 +172,21 @@ async function checkViaGitHub(): Promise<CheckResult> {
 
     const version = (rel.tag_name ?? '').replace(/^v/i, '');
     if (!version || !isNewer(version, app.getVersion())) {
+      updateLog('checkViaGitHub: no newer release', {
+        candidate: version,
+        current: app.getVersion(),
+        beta: betaChannel,
+      });
       return { ok: true, available: false, version };
     }
 
     pendingTag = rel.tag_name ?? null;
+    updateLog('checkViaGitHub: update available', {
+      version,
+      tag: pendingTag,
+      current: app.getVersion(),
+      beta: betaChannel,
+    });
 
     // On macOS, record the .dmg matching the current CPU architecture so the
     // download step can fetch it directly.
@@ -243,6 +282,41 @@ async function downloadMacDmg(mainWindow: BrowserWindow): Promise<CheckResult> {
   }
 }
 
+/**
+ * Fetches the GitHub release notes for a version so the renderer can show an
+ * in-app changelog after an update and on demand from Settings (#547).
+ *
+ * Defaults to the running version, which — right after a successful update and
+ * relaunch — is already the version the user just moved to. Done in the main
+ * process to reuse the same User-Agent the rest of the updater uses and to keep
+ * the GitHub call off the renderer.
+ */
+async function fetchReleaseNotes(tag?: string): Promise<ReleaseNotesResult> {
+  const wanted = (tag && tag.trim()) || `v${app.getVersion()}`;
+  const normalized = /^v/i.test(wanted) ? wanted : `v${wanted}`;
+  const headers = { Accept: 'application/vnd.github+json', 'User-Agent': 'Monky-App' };
+  try {
+    const res = await fetch(
+      `https://api.github.com/repos/${GITHUB_REPO}/releases/tags/${encodeURIComponent(normalized)}`,
+      { headers }
+    );
+    if (!res.ok) {
+      updateLog('fetchReleaseNotes: not ok', { tag: normalized, status: res.status });
+      return { ok: false, error: `HTTP ${res.status}` };
+    }
+    const rel = (await res.json()) as { tag_name?: string; body?: string; html_url?: string };
+    return {
+      ok: true,
+      version: (rel.tag_name ?? normalized).replace(/^v/i, ''),
+      body: typeof rel.body === 'string' ? rel.body : '',
+      url: rel.html_url ?? `https://github.com/${GITHUB_REPO}/releases/tag/${normalized}`,
+    };
+  } catch (e) {
+    updateLog('fetchReleaseNotes FAILED', { tag: normalized, error: msg(e) });
+    return { ok: false, error: msg(e) };
+  }
+}
+
 // ── Wiring ───────────────────────────────────────────────────────────────
 
 export function setupUpdater(mainWindow: BrowserWindow): void {
@@ -253,23 +327,56 @@ export function setupUpdater(mainWindow: BrowserWindow): void {
     if (updater) {
       updater.autoDownload = false;
       updater.autoInstallOnAppQuit = true;
+      // Route electron-updater's own internal logging into update-flow.log. Its
+      // NSIS install step and any spawn/relaunch failure are reported here — the
+      // most likely place to catch why a real update silently fails to apply
+      // (#498's "had to close, wait, reopen" report). `debug` is left off so the
+      // per-chunk download noise stays out of the file.
+      updater.logger = {
+        info: (m) => updateLog('eu:info', { m: String(m) }),
+        warn: (m) => updateLog('eu:warn', { m: String(m) }),
+        error: (m) => updateLog('eu:error', { m: String(m) }),
+      };
+      updateLog('setupUpdater: electron-updater ready', {
+        autoDownload: updater.autoDownload,
+        autoInstallOnAppQuit: updater.autoInstallOnAppQuit,
+      });
 
       updater.on('download-progress', (p) => {
         const percent = (p as { percent?: number })?.percent ?? 0;
         mainWindow.webContents.send('updater:progress', Math.round(percent));
       });
-      updater.on('update-downloaded', () => {
+      updater.on('update-downloaded', (info) => {
+        downloadedVersion = cleanVer((info as { version?: string })?.version ?? '');
+        updateLog('update-downloaded', { version: downloadedVersion });
         mainWindow.webContents.send('updater:downloaded', { manual: false });
-        // Install silently and relaunch automatically — no installer wizard.
+        // Run the installer non-silently and relaunch automatically — still no
+        // wizard (oneClick), but now the installer's own progress window covers
+        // the screen during the file replacement instead of leaving it blank,
+        // so there is always something on screen through the update (#498, #543).
+        // The app-side splash takes over first so the user knows why the app is
+        // about to disappear, and knows not to reopen it. `quitAndInstall` waits
+        // until that splash is actually on screen, since firing it in the same
+        // tick killed the window before it ever painted.
         setTimeout(() => {
-          try {
-            updater.quitAndInstall(true, true);
-          } catch (e) {
-            mainWindow.webContents.send('updater:error', msg(e));
-          }
+          beginUpdateInstall(downloadedVersion, mainWindow)
+            .then(() => delay(SPLASH_LINGER_MS))
+            .then(() => {
+              updateLog('calling quitAndInstall', {
+                version: downloadedVersion,
+                isSilent: false,
+                isForceRunAfter: true,
+              });
+              updater.quitAndInstall(false, true);
+            })
+            .catch((e) => {
+              updateLog('quitAndInstall chain FAILED', { error: msg(e) });
+              mainWindow.webContents.send('updater:error', msg(e));
+            });
         }, 1500);
       });
       updater.on('error', (err) => {
+        updateLog('electron-updater error event', { error: msg(err) });
         mainWindow.webContents.send('updater:error', msg(err));
       });
     }
@@ -333,11 +440,15 @@ export function setupUpdater(mainWindow: BrowserWindow): void {
         return { ok: false, error: mt('error.noPendingUpdate') };
       }
       updater.setFeedURL({ provider: 'generic', url: feedUrlForTag(pendingTag) });
+      updateLog('updater:download', { tag: pendingTag, feedUrl: feedUrlForTag(pendingTag) });
       // electron-updater requires its own check before it can download.
       await updater.checkForUpdates();
+      updateLog('checkForUpdates done, starting downloadUpdate');
       await updater.downloadUpdate();
+      updateLog('downloadUpdate resolved');
       return { ok: true };
     } catch (e) {
+      updateLog('updater:download FAILED', { error: msg(e) });
       return { ok: false, error: msg(e) };
     }
   });
@@ -360,7 +471,32 @@ export function setupUpdater(mainWindow: BrowserWindow): void {
       return { ok: false, error: mt('error.updaterUnavailable') };
     }
     // Defer so the IPC reply is delivered before the app quits to install.
-    setImmediate(() => updater.quitAndInstall(true, true));
+    setImmediate(() => {
+      beginUpdateInstall(downloadedVersion || cleanVer(pendingTag ?? ''), mainWindow)
+        .then(() => delay(SPLASH_LINGER_MS))
+        .then(() => {
+          updateLog('updater:install calling quitAndInstall', {
+            version: downloadedVersion || cleanVer(pendingTag ?? ''),
+          });
+          updater.quitAndInstall(false, true);
+        })
+        .catch((e) => {
+          updateLog('updater:install chain FAILED', { error: msg(e) });
+          mainWindow.webContents.send('updater:error', msg(e));
+        });
+    });
     return { ok: true };
+  });
+
+  // Reported once per launch, right after an install: the renderer turns it
+  // into the "updated to X" (or "update did not finish") banner (#498).
+  ipcMain.handle('updater:outcome', async (): Promise<UpdateOutcome | null> => {
+    return consumeUpdateOutcome();
+  });
+
+  // Release notes for the in-app changelog: shown once after an update and on
+  // demand from Settings (#547). Defaults to the running version's release.
+  ipcMain.handle('updater:release-notes', async (_e, tag?: unknown): Promise<ReleaseNotesResult> => {
+    return fetchReleaseNotes(typeof tag === 'string' ? tag : undefined);
   });
 }

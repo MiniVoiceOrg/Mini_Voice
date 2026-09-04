@@ -38,8 +38,14 @@ console.assert(QUALITY_PRESETS.GAMING.name === 'Gaming Mode', 'Preset Gaming Mod
 console.log('✔ Presets de Qualidade verificados');
 
 // Test Protocol Version
-console.assert(PROTOCOL_VERSION === 4, 'Versão do protocolo deve ser 4');
-console.log('✔ Versão do protocolo verificada');
+console.assert(PROTOCOL_VERSION === 6, 'Versão do protocolo deve ser 6');
+console.assert(LIMITS.SFU_DEFAULT_MIN_PORT === 40000, 'Porta mínima padrão SFU');
+console.assert(LIMITS.SFU_DEFAULT_MAX_PORT === 49151, 'Porta máxima padrão SFU');
+console.assert(
+  LIMITS.SFU_DEFAULT_MAX_PORT < LIMITS.TURN_RELAY_MIN_PORT,
+  'Range UDP do SFU não pode invadir o range de relay do coturn (#515)'
+);
+console.log('✔ Versão do protocolo e limites SFU verificados');
 
 console.assert(hasPermission(DEFAULT_PERMISSIONS, Permission.SPEAK) === true, 'Cargo padrão deve poder falar');
 console.assert(hasPermission(DEFAULT_PERMISSIONS, Permission.MANAGE_SERVER) === false, 'Cargo padrão não administra servidor');

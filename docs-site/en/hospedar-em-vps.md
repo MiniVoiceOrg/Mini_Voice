@@ -4,7 +4,7 @@ To keep the server up 24/7, run the server alone on a Linux machine — no
 graphical interface and no repository clone. Everything is done by the **Monky
 CLI**, shipped ready to use in every release.
 
-Requires **Node.js 20 or newer** (CI uses 22).
+Requires **Node.js 22 or newer** (required by mediasoup; CI also uses 22).
 
 ## Step by step
 
@@ -12,7 +12,7 @@ Requires **Node.js 20 or newer** (CI uses 22).
 # 1. Install the CLI from the release
 #    The ready-to-paste command, already on the latest version, is on the
 #    download page: https://monkyorg.github.io/Monky/en/download
-npm install -g https://github.com/MonkyOrg/Monky/releases/download/vX.Y.Z/monky-cli-X.Y.Z.tgz
+npm install -g --allow-scripts=mediasoup https://github.com/MonkyOrg/Monky/releases/download/vX.Y.Z/monky-cli-X.Y.Z.tgz
 
 # 2. Create the server (interactive)
 monky create
@@ -35,13 +35,57 @@ full command reference lives in [Monky CLI](/en/cli).
 | `3000` (or the chosen one) | TCP | Login, chat, channels and signalling | Yes, in the VPS firewall |
 | `41234` | UDP | Local network discovery | No, on a VPS |
 | High dynamic | UDP | P2P voice, video and screen | Usually works through STUN |
+| `40000-49151` | UDP and TCP | WebRTC media in SFU mode (mediasoup) | Only with SFU mode enabled |
 | `3478` | TCP and UDP | TURN relay, if you enable it | Only with the relay on |
 | `49152-65535` | UDP | Media forwarded by the relay | Only with the relay on |
 
 When two members are behind CGNAT they may fail to connect directly. Monky ships
 an **optional TURN relay** (off by default) that forwards that pair's media
-through the server — see [Media relay (TURN)](/en/cli#media-relay-turn). Without
+through the server — see [Media relay (TURN)](/en/turn). Without
 it, the way out for very restricted networks is still a VPN.
+
+### Opening the SFU mode ports
+
+In SFU mode media no longer goes straight between people: it comes into the
+server through that range. Because it is UDP traffic arriving without anyone
+having asked for it first, the `RELATED,ESTABLISHED` rule most distributions
+ship **does not cover it** — the range has to be opened explicitly, and the same
+goes for TCP, which is the way in for anyone on a network that blocks UDP.
+
+```bash
+# Open the SFU media range
+sudo iptables -I INPUT -p udp --dport 40000:49151 -j ACCEPT
+sudo iptables -I INPUT -p tcp --dport 40000:49151 -j ACCEPT
+
+# Persist (survives a reboot)
+sudo netfilter-persistent save
+```
+
+::: tip If you use `ufw` instead of `iptables`
+```bash
+sudo ufw allow 40000:49151/udp
+sudo ufw allow 40000:49151/tcp
+```
+:::
+
+::: warning The provider's firewall is a separate one
+Oracle Cloud, AWS, Azure, GCP and Hetzner have a firewall outside the machine
+that `iptables` cannot reach. The range has to be allowed in the web panel too,
+the same way described in
+[Media relay (TURN)](/en/turn#opening-ports-on-linux) — the examples there are
+for the relay ports, but the path through the panel is the same.
+:::
+
+To check it is in effect, join a voice channel and watch the media arrive:
+
+```bash
+sudo tcpdump -n -i any udp portrange 40000-49151 -c 20
+```
+
+`In` packets from outside the machine mean the range is open. Only `Out`
+traffic, or nothing at all, means something upstream is blocking it — look for a
+`REJECT` rule in the `INPUT` chain above the ones you just inserted
+(`sudo iptables -L INPUT -n -v --line-numbers` shows the order).
 
 ## Maintenance
 
@@ -51,6 +95,25 @@ monky config set port 3010        # changes the port and offers to restart
 monky update --check              # is there a new version?
 monky config set autoUpdate true  # updates itself daily at 4am
 ```
+
+### Upgrading the Node version
+
+PM2 is a long-lived daemon and keeps using the Node it was started with.
+Changing the Node version — especially moving from apt to `nvm` — can leave the
+server in a state where `pm2 status` says `online` but nothing listens on the
+port.
+
+After touching Node, always run:
+
+```bash
+monky update     # rebuilds native modules for the new ABI
+monky restart    # re-pins the interpreter PM2 uses
+pm2 save         # writes the good state to the PM2 dump
+```
+
+If the server still does not come back, `monky restart --fresh` recreates the
+PM2 process registration. Details and diagnostics are in
+[Changing the Node version](/en/cli#changing-the-node-version).
 
 ::: tip More than one server on the same VPS
 Just run `monky create` again with another folder and another port. The CLI

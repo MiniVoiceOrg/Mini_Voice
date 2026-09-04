@@ -1,4 +1,4 @@
-import { ChatMessage, LIMITS, MessageType, Permission } from '@monky/shared';
+import { ChatMessage, EVERYONE_MENTION_TOKENS, LIMITS, MessageType, Permission, hasEveryoneMention } from '@monky/shared';
 import type { AttachmentMeta, StickerEntry, UserSummary } from '@monky/shared';
 import { escapeHtml } from '../utils/html';
 import { appEvents } from '../core/EventBus';
@@ -7,13 +7,14 @@ import { chatStore } from '../stores/chatStore';
 import { serverStore } from '../stores/serverStore';
 import { participantManager } from '../core/ParticipantManager';
 import { userContextMenu } from './UserContextMenu';
+import { contextMenu, ContextMenuItem } from './ContextMenu';
 import { getAvatarUrl } from '../utils/avatar';
 import { renderMarkdown } from '../utils/markdown';
 import { getLanguage, t } from '../i18n';
 import { uploadAttachment, UploadHandle } from '../core/AttachmentUploader';
 import { getAttachmentUrl, formatBytes, fileIconName } from '../utils/attachment';
-import { showAlert } from './Dialog';
-import { lightboxModal, LightboxMedia } from './LightboxModal';
+import { showAlert, showConfirm } from './Dialog';
+import { downloadLightboxFile, lightboxModal, LightboxMedia } from './LightboxModal';
 import { linkPreviewService } from '../core/LinkPreviewService';
 import { initializeCustomVideoPlayers } from '../utils/videoPlayer';
 import { EmojiPicker } from './EmojiPicker';
@@ -39,19 +40,27 @@ interface PendingAttachment {
   handle?: UploadHandle;
 }
 
+/** An entry in the @-mention dropup: a member or the channel-wide token (#464). */
+type MentionCandidate =
+  | { kind: 'user'; user: UserSummary }
+  | { kind: 'everyone'; token: string };
+
 export class ChatView {
   private container: HTMLElement;
   private currentChannelId: string | null = null;
   private unbindEvents: Array<() => void> = [];
   /** Tracks whether the feed is following the end of the conversation (#270). */
   private pinnedToBottom = true;
-  // @-mention autocomplete state (#14)
+  // @-mention autocomplete state (#14). The list may also offer the
+  // channel-wide token (#464), which is not a user.
   private mentionActive = false;
-  private mentionMatches: UserSummary[] = [];
+  private mentionMatches: MentionCandidate[] = [];
   private mentionActiveIndex = 0;
   private mentionAtIndex = -1;
   // Files picked for the next message, keyed by a local id (#11).
   private pending: PendingAttachment[] = [];
+  /** Message currently open in the inline editor, if any (#504). */
+  private editingMessageId: string | null = null;
   private uploadSeq = 0;
   /** Emoji/sticker popover anchored to the composer (#356). */
   private emojiPicker: EmojiPicker | null = null;
@@ -162,6 +171,9 @@ export class ChatView {
     // Read before the feed is replaced: new messages only pull the view down when
     // the user is already reading the end of the conversation (#270).
     const shouldScroll = options.forceScroll === true || this.isFeedAtBottom(feed);
+
+    // The feed is rebuilt from scratch, so any open inline editor goes with it.
+    this.editingMessageId = null;
 
     const messages = chatStore.getMessages(this.currentChannelId);
     if (messages.length === 0) {
@@ -286,6 +298,15 @@ export class ChatView {
         const userId = row.getAttribute('data-user-id');
         if (!userId) return;
 
+        // Editing/deleting acts on this specific message, so it takes
+        // precedence over the per-person menu (#504).
+        const messageActions = this.buildMessageMenuItems(row.getAttribute('data-message-id'));
+        if (messageActions.length > 0) {
+          mouseEvent.preventDefault();
+          contextMenu.open(mouseEvent.clientX, mouseEvent.clientY, messageActions);
+          return;
+        }
+
         const targetUser =
           participantManager.getByUserId(userId)?.user ||
           serverStore.serverDetails?.members.find((m) => m.id === userId);
@@ -299,6 +320,173 @@ export class ChatView {
 
     this.bindMediaInteractions(container);
     initializeCustomVideoPlayers(container);
+  }
+
+  /**
+   * The Edit / Delete entries offered for one message (#504).
+   *
+   * Editing belongs to the author alone and only while the server allows it;
+   * deleting is the author's too, plus anyone with MANAGE_SERVER, who needs to
+   * be able to clean up after other people. Deleted and system messages offer
+   * nothing.
+   */
+  private buildMessageMenuItems(messageId: string | null): ContextMenuItem[] {
+    if (!messageId || !this.currentChannelId) return [];
+    const message = chatStore.getMessages(this.currentChannelId).find((m) => m.id === messageId);
+    if (!message || message.isSystem || message.deletedAt) return [];
+
+    const isAuthor = !!serverStore.currentUser && message.userId === serverStore.currentUser.id;
+    const canModerate = serverStore.hasPermission(Permission.MANAGE_SERVER);
+    const editingAllowed = serverStore.serverDetails?.allowMessageEdit !== false;
+
+    const items: ContextMenuItem[] = [];
+    if (isAuthor && editingAllowed) {
+      items.push({
+        label: t('chat.editMessage'),
+        icon: 'edit',
+        onClick: () => this.startEditingMessage(message.id),
+      });
+    }
+    if (isAuthor || canModerate) {
+      items.push({
+        label: t('chat.deleteMessage'),
+        icon: 'delete',
+        danger: true,
+        onClick: () => void this.confirmDeleteMessage(message.id),
+      });
+    }
+    return items;
+  }
+
+  /** Swaps a message's text for an inline editor (#504). */
+  private startEditingMessage(messageId: string): void {
+    if (!this.currentChannelId) return;
+    const row = document.querySelector<HTMLElement>(
+      `#chat-messages-feed .chat-message-row[data-message-id="${CSS.escape(messageId)}"]`
+    );
+    const message = chatStore.getMessages(this.currentChannelId).find((m) => m.id === messageId);
+    if (!row || !message) return;
+
+    // Only one editor at a time, otherwise leaving one open and starting
+    // another would strand the first without a way back.
+    this.cancelMessageEdit();
+
+    const body = row.querySelector('.chat-message-body');
+    const textEl = row.querySelector<HTMLElement>('.chat-message-text');
+    if (!body) return;
+
+    const editor = document.createElement('div');
+    editor.className = 'chat-message-editor';
+    editor.innerHTML = `
+      <textarea class="chat-message-edit-input" rows="1">${escapeHtml(message.content)}</textarea>
+      <div class="chat-message-edit-hint">${t('chat.editHint')}</div>
+    `;
+
+    if (textEl) textEl.style.display = 'none';
+    body.insertBefore(editor, textEl ? textEl.nextSibling : null);
+    this.editingMessageId = messageId;
+
+    const input = editor.querySelector('textarea') as HTMLTextAreaElement;
+    const autoGrow = () => {
+      input.style.height = 'auto';
+      input.style.height = `${input.scrollHeight}px`;
+    };
+    autoGrow();
+    input.focus();
+    input.setSelectionRange(input.value.length, input.value.length);
+
+    input.addEventListener('input', autoGrow);
+    input.addEventListener('keydown', (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        e.preventDefault();
+        this.cancelMessageEdit();
+        return;
+      }
+      // Shift+Enter keeps inserting line breaks, same as the composer.
+      if (e.key === 'Enter' && !e.shiftKey) {
+        e.preventDefault();
+        this.submitMessageEdit(messageId, input.value);
+      }
+    });
+  }
+
+  private submitMessageEdit(messageId: string, content: string): void {
+    const trimmed = content.trim();
+    const original = this.currentChannelId
+      ? chatStore.getMessages(this.currentChannelId).find((m) => m.id === messageId)
+      : undefined;
+
+    // An empty edit is a deletion in disguise; asking for it explicitly keeps
+    // the two actions distinguishable in the UI (#504).
+    if (trimmed.length === 0) {
+      this.cancelMessageEdit();
+      void this.confirmDeleteMessage(messageId);
+      return;
+    }
+
+    if (!original || trimmed === original.content) {
+      this.cancelMessageEdit();
+      return;
+    }
+
+    networkClient.send(MessageType.CHAT_EDIT, {
+      channelId: original.channelId,
+      messageId,
+      content: trimmed,
+    });
+    this.cancelMessageEdit();
+  }
+
+  /** Closes the inline editor and puts the original text back on screen. */
+  private cancelMessageEdit(): void {
+    if (!this.editingMessageId) return;
+    const row = document.querySelector<HTMLElement>(
+      `#chat-messages-feed .chat-message-row[data-message-id="${CSS.escape(this.editingMessageId)}"]`
+    );
+    this.editingMessageId = null;
+    if (!row) return;
+    row.querySelector('.chat-message-editor')?.remove();
+    const textEl = row.querySelector<HTMLElement>('.chat-message-text');
+    if (textEl) textEl.style.display = '';
+  }
+
+  private async confirmDeleteMessage(messageId: string): Promise<void> {
+    if (!this.currentChannelId) return;
+    const message = chatStore.getMessages(this.currentChannelId).find((m) => m.id === messageId);
+    if (!message) return;
+
+    const confirmed = await showConfirm({
+      title: t('chat.deleteMessageTitle'),
+      message: t('chat.deleteMessageConfirm'),
+      confirmLabel: t('chat.deleteMessage'),
+      variant: 'danger',
+    });
+    if (!confirmed) return;
+
+    networkClient.send(MessageType.CHAT_DELETE, {
+      channelId: message.channelId,
+      messageId,
+    });
+  }
+
+  /** Redraws one row in place after an edit or a deletion (#504). */
+  private replaceMessageRow(msg: ChatMessage): void {
+    const feed = document.getElementById('chat-messages-feed');
+    if (!feed) return;
+    const row = feed.querySelector<HTMLElement>(
+      `.chat-message-row[data-message-id="${CSS.escape(msg.id)}"]`
+    );
+    if (!row) return;
+
+    if (this.editingMessageId === msg.id) this.cancelMessageEdit();
+
+    const wrapper = document.createElement('div');
+    wrapper.innerHTML = this.renderMessageRow(msg);
+    const newRow = wrapper.firstElementChild as HTMLElement | null;
+    if (!newRow) return;
+
+    row.replaceWith(newRow);
+    this.bindMessageElementEvents(newRow);
   }
 
   /** Whether the feed is scrolled close enough to the end to count as "at the end" (#270). */
@@ -453,7 +641,13 @@ export class ChatView {
   }
 
   private isUserMentioned(content: string, currentNickname: string): boolean {
-    if (!content || !currentNickname) return false;
+    if (!content) return false;
+    // `@todos` reaches everyone in the channel, so it highlights the message the
+    // same way a direct mention does (#464).
+    if (serverStore.serverDetails?.allowEveryoneMention !== false && hasEveryoneMention(content)) {
+      return true;
+    }
+    if (!currentNickname) return false;
     const escaped = currentNickname.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
     const regex = new RegExp(`(^|[\\s(])@${escaped}(?=$|[\\s),.!?:;])`, 'i');
     return regex.test(content);
@@ -474,7 +668,7 @@ export class ChatView {
 
     const me = serverStore.currentUser;
     const currentNickname = me?.nickname?.trim();
-    const isMentioned = !m.isSystem && !!currentNickname && this.isUserMentioned(m.content, currentNickname);
+    const isMentioned = !m.isSystem && this.isUserMentioned(m.content, currentNickname ?? '');
 
     const knownNicknames = Array.from(serverStore.knownMembers.values()).map((u) => u.nickname);
     if (currentNickname && !knownNicknames.includes(currentNickname)) {
@@ -482,6 +676,27 @@ export class ChatView {
     }
 
     const avatarSrc = getAvatarUrl(m.userAvatarUrl);
+
+    // A deleted message keeps its place in the conversation with a placeholder
+    // instead of vanishing, so nothing silently reshuffles under the reader
+    // (#504). Its text, stickers, attachments and link previews are all gone.
+    if (m.deletedAt) {
+      return `
+        <div class="chat-message-row chat-message-deleted" data-user-id="${m.userId}" data-message-id="${m.id}">
+          <img class="chat-author-avatar" src="${avatarSrc}" data-fallback="avatar">
+          <div class="chat-message-body">
+            <div class="chat-author-header">
+              <span class="chat-author-name">${escapeHtml(m.userNickname)}</span>
+              <span class="chat-timestamp">${time}</span>
+            </div>
+            <div class="chat-message-deleted-text">
+              <span class="material-symbols-outlined md-14">block</span>
+              <span>${t('chat.messageDeleted')}</span>
+            </div>
+          </div>
+        </div>
+      `;
+    }
     // Attachments flagged as stickers are drawn as fixed-size squares instead of
     // going into the regular media grid (#356). A marker only takes effect when
     // it resolves to an image attachment of this message: anything else (a
@@ -499,7 +714,11 @@ export class ChatView {
 
     const textHtml =
       visibleText && visibleText.trim().length > 0
-        ? `<div class="chat-message-text">${renderMarkdown(visibleText, { currentNickname, knownNicknames })}</div>`
+        ? `<div class="chat-message-text">${renderMarkdown(visibleText, {
+            currentNickname,
+            knownNicknames,
+            everyoneMentionEnabled: serverStore.serverDetails?.allowEveryoneMention !== false,
+          })}</div>`
         : '';
     const stickersHtml = this.renderStickers(stickers);
     const attachmentsHtml = this.renderAttachments(otherAttachments, m);
@@ -507,11 +726,12 @@ export class ChatView {
 
     return `
       <div class="${rowClass}" data-user-id="${m.userId}" data-message-id="${m.id}">
-        <img class="chat-author-avatar" src="${avatarSrc}">
+        <img class="chat-author-avatar" src="${avatarSrc}" data-fallback="avatar">
         <div class="chat-message-body">
           <div class="chat-author-header">
             <span class="chat-author-name">${escapeHtml(m.userNickname)}</span>
             <span class="chat-timestamp">${time}</span>
+            ${m.editedAt ? `<span class="chat-edited-badge" title="${escapeHtml(t('chat.editedAtTitle', { time: this.formatDateTime(m.editedAt) }))}">${t('chat.messageEdited')}</span>` : ''}
           </div>
           ${textHtml}
           ${stickersHtml}
@@ -851,6 +1071,7 @@ export class ChatView {
         charCounter.innerText = `${input.value.length}/${LIMITS.MAX_MESSAGE_LENGTH}`;
       }
       autoResize();
+      this.persistDraft(input.value);
       this.updateMentionDropup(input);
       if (composeLinkTimer) clearTimeout(composeLinkTimer);
       composeLinkTimer = setTimeout(updateComposeLinkPreview, 500);
@@ -860,6 +1081,21 @@ export class ChatView {
     input?.addEventListener('paste', () => {
       setTimeout(updateComposeLinkPreview, 100);
     });
+
+    // A restored draft (#478) has to look exactly like it did before the view
+    // was rebuilt. It is assigned here rather than written into the template
+    // because the HTML parser silently eats a newline right after the opening
+    // `<textarea>` tag, which would swallow the first line of a draft that
+    // starts with a line break.
+    const draft = this.currentChannelId ? chatStore.getDraft(this.currentChannelId) : '';
+    if (input && draft.length > 0) {
+      input.value = draft;
+      if (charCounter) {
+        charCounter.innerText = `${input.value.length}/${LIMITS.MAX_MESSAGE_LENGTH}`;
+      }
+      autoResize();
+      updateComposeLinkPreview();
+    }
 
     const handleSend = () => {
       if (!input || !this.currentChannelId || !serverStore.hasPermission(Permission.SEND_MESSAGES)) return;
@@ -882,6 +1118,7 @@ export class ChatView {
 
       this.clearPending();
       input.value = '';
+      this.persistDraft('');
       input.style.height = 'auto';
       if (charCounter) {
         charCounter.innerText = `0/${LIMITS.MAX_MESSAGE_LENGTH}`;
@@ -1087,7 +1324,13 @@ export class ChatView {
       }
     });
 
-    this.unbindEvents.push(u1, u2, u3, u4);
+    // Only the affected row is redrawn: rebuilding the whole feed would drop
+    // the reader's scroll position and reload every image (#504).
+    const u5 = appEvents.on('chat.message_updated', (msg: ChatMessage) => {
+      if (msg.channelId === this.currentChannelId) this.replaceMessageRow(msg);
+    });
+
+    this.unbindEvents.push(u1, u2, u3, u4, u5);
   }
 
   private scrollToBottom(): void {
@@ -1116,7 +1359,7 @@ export class ChatView {
     this.mentionAtIndex = caret - match[1].length - 1;
 
     const all = serverStore.getMentionableUsers();
-    const matches = (query ? all.filter((u) => u.nickname.toLowerCase().includes(query)) : all)
+    const users = (query ? all.filter((u) => u.nickname.toLowerCase().includes(query)) : all)
       // Prioritize names that start with the query.
       .sort((a, b) => {
         const aStarts = a.nickname.toLowerCase().startsWith(query) ? 0 : 1;
@@ -1124,6 +1367,21 @@ export class ChatView {
         return aStarts - bStarts;
       })
       .slice(0, 8);
+
+    const matches: MentionCandidate[] = users.map((user) => ({ kind: 'user' as const, user }));
+
+    // The channel-wide token leads the list when it matches what is being typed
+    // and the server allows it (#464). Every spelling is accepted on the way in,
+    // so suggesting only the one in the current language is enough.
+    if (serverStore.serverDetails?.allowEveryoneMention !== false) {
+      const suggested = EVERYONE_MENTION_TOKENS.find((token) => token.startsWith(query));
+      const preferred = t('chat.everyoneMentionToken');
+      const token = EVERYONE_MENTION_TOKENS.includes(preferred as typeof EVERYONE_MENTION_TOKENS[number])
+        && preferred.startsWith(query)
+        ? preferred
+        : suggested;
+      if (token) matches.unshift({ kind: 'everyone', token });
+    }
 
     if (matches.length === 0) {
       this.closeMentionDropup();
@@ -1142,11 +1400,22 @@ export class ChatView {
     const el = document.getElementById('mention-dropup');
     if (!el) return;
     el.innerHTML = this.mentionMatches
-      .map((u, i) => {
+      .map((candidate, i) => {
+        const active = i === this.mentionActiveIndex ? 'active' : '';
+        if (candidate.kind === 'everyone') {
+          return `
+            <div class="mention-item ${active}" data-mention-index="${i}">
+              <span class="material-symbols-outlined md-18 mention-everyone-icon">campaign</span>
+              <span class="mention-nick">@${escapeHtml(candidate.token)}</span>
+              <span class="mention-everyone-hint">${escapeHtml(t('chat.everyoneMentionHint'))}</span>
+            </div>
+          `;
+        }
+        const u = candidate.user;
         const online = u.status !== 'DISCONNECTED';
         return `
-          <div class="mention-item ${i === this.mentionActiveIndex ? 'active' : ''}" data-mention-index="${i}">
-            <img class="mention-avatar" src="${getAvatarUrl(u.avatarUrl)}">
+          <div class="mention-item ${active}" data-mention-index="${i}">
+            <img class="mention-avatar" src="${getAvatarUrl(u.avatarUrl)}" data-fallback="avatar">
             <span class="mention-nick">${escapeHtml(u.nickname)}</span>
             <span class="mention-status-dot ${online ? 'online' : 'offline'}"></span>
           </div>
@@ -1174,15 +1443,15 @@ export class ChatView {
 
   private applyMention(index: number): void {
     const input = document.getElementById('chat-message-input') as HTMLTextAreaElement | null;
-    const user = this.mentionMatches[index];
-    if (!input || !user || this.mentionAtIndex < 0) {
+    const candidate = this.mentionMatches[index];
+    if (!input || !candidate || this.mentionAtIndex < 0) {
       this.closeMentionDropup();
       return;
     }
     const caret = input.selectionStart ?? input.value.length;
     const before = input.value.substring(0, this.mentionAtIndex);
     const after = input.value.substring(caret);
-    const insert = `@${user.nickname} `;
+    const insert = candidate.kind === 'everyone' ? `@${candidate.token} ` : `@${candidate.user.nickname} `;
     input.value = `${before}${insert}${after}`;
     const newCaret = before.length + insert.length;
     input.setSelectionRange(newCaret, newCaret);
@@ -1195,6 +1464,17 @@ export class ChatView {
     }
     input.style.height = 'auto';
     input.style.height = `${Math.min(input.scrollHeight, 120)}px`;
+    this.persistDraft(input.value);
+  }
+
+  /**
+   * Keeps the store in sync with the composer so the text is still there after
+   * the view is rebuilt (#478). Called from every place that writes to the
+   * textarea without going through a real `input` event.
+   */
+  private persistDraft(text: string): void {
+    if (!this.currentChannelId) return;
+    chatStore.setDraft(this.currentChannelId, text);
   }
 
   private closeMentionDropup(): void {
@@ -1455,15 +1735,7 @@ export class ChatView {
   }
 
   private async downloadAttachment(url: string, fileName: string): Promise<void> {
-    if (!window.api?.downloadFile) return;
-    const result = await window.api.downloadFile(url, fileName);
-    if (!result.success && result.error) {
-      await showAlert({
-        title: t('chat.downloadFailedTitle'),
-        message: t('chat.downloadFailedMessage', { error: result.error }),
-        variant: 'danger',
-      });
-    }
+    await downloadLightboxFile(url, fileName);
   }
 
   private unbindListeners(): void {

@@ -10,12 +10,16 @@ import { networkClient, type NetworkClient } from './NetworkClient';
 import { participantManager, type ParticipantManager } from './ParticipantManager';
 import { sessionManager } from './SessionManager';
 import { currentEventOrigin } from './sessionRouting';
+import { clientLog } from './ClientLogService';
 import { settingsStore } from '../stores/settingsStore';
 import { serverStore, type ServerStore } from '../stores/serverStore';
 import { voiceStore } from '../stores/voiceStore';
+import { videoService } from './VideoService';
 import { RemoteMediaRouter } from './webrtc/RemoteMediaRouter';
 import { RemoteVadMonitor } from './webrtc/RemoteVadMonitor';
 import { RtcDiagnosticsCollector } from './webrtc/RtcDiagnosticsCollector';
+import { applyVideoCodecPreferences } from './webrtc/codecPreferences';
+import { SfuClientEngine, SfuConsumerTrackEvent } from './webrtc/SfuClientEngine';
 
 export interface PeerSession {
   peerSessionId: string;
@@ -37,6 +41,22 @@ export interface PeerSession {
   watchdogTimer?: any;
   disconnectGraceTimer?: any;
   isRecovering: boolean;
+  /**
+   * Last relay verdict pushed to the participant list, so the periodic sample
+   * only writes (and logs) when the route actually changes (#466).
+   */
+  isRelayed?: boolean;
+  /**
+   * True once an audio track from this peer has been classified as the
+   * microphone (#467).
+   *
+   * The "second audio track is the screen" heuristic below normally reads this
+   * off `remoteStream`, but the microphone of our own other device never lands
+   * there — it is dropped on arrival. Without remembering that it came, the
+   * screen audio that follows would look like the first audio track and be
+   * mistaken for a microphone.
+   */
+  micTrackSeen?: boolean;
 }
 
 /**
@@ -60,10 +80,52 @@ export class WebRtcManager {
    */
   private static readonly PEER_FAILURE_THRESHOLD_MS = 20000;
 
+  /**
+   * How often the route to each connected peer is re-read (#466).
+   *
+   * Cheap enough to keep running for the whole call — `getStats()` on a handful
+   * of peers every few seconds — and short enough that the indicator catches up
+   * with an ICE upgrade well before anyone reads anything into it.
+   */
+  private static readonly RELAY_SAMPLE_INTERVAL_MS = 5000;
+
+  /**
+   * Ceiling for the SFU rejoin backoff.
+   *
+   * Unlike a peer link, the SFU has nothing to degrade to: if it is down the
+   * call is down. So the ladder never gives up while the user sits in the
+   * channel — it backs off to this delay and keeps retrying from there.
+   */
+  private static readonly SFU_RECONNECT_MAX_DELAY_MS = 15000;
+  /**
+   * Failed rejoins before the user is told, which is deliberately later than
+   * the first attempt: a transport that drops and comes straight back should
+   * not raise an alert nobody needs to act on.
+   */
+  private static readonly SFU_RECONNECT_WARN_AFTER = 3;
+
   private peers: Map<string, PeerSession> = new Map();
   private mediaRouter: RemoteMediaRouter;
   private vadMonitor: RemoteVadMonitor;
   private diagnosticsCollector: RtcDiagnosticsCollector;
+  private sfuEngine: SfuClientEngine;
+  private sfuReconnectAttempts: number = 0;
+  private sfuReconnectTimer: any = null;
+  private isSfuJoining: boolean = false;
+  /**
+   * A join was asked for while another was running. The one in flight captured
+   * the channel as it was when it started, so it cannot serve a request made
+   * after the state moved: it runs again once the current one unwinds.
+   */
+  private sfuJoinRequested: boolean = false;
+  /**
+   * Bumped whenever the SFU session is torn down or a new join starts. A join
+   * takes several round-trips, and the user can leave the channel or a newer
+   * join can begin while an older one is still awaiting; comparing the epoch
+   * it started with is what tells the stale join to undo itself instead of
+   * finishing and reviving a session nobody is in.
+   */
+  private sfuJoinEpoch: number = 0;
 
   private screenAudioStreamIds: Set<string> = new Set();
   private screenVideoStreamIds: Set<string> = new Set();
@@ -91,6 +153,8 @@ export class WebRtcManager {
    * working is usually a blip worth waiting out.
    */
   private everConnectedPeers: Set<string> = new Set();
+  /** Interval timers that keep the relay indicator honest, per peer (#466). */
+  private relayMonitors: Map<string, any> = new Map();
   private localAudioTrack: MediaStreamTrack | null = null;
   private localCameraTrack: MediaStreamTrack | null = null;
   /** Local screen video tracks keyed by share id (#253). */
@@ -100,9 +164,11 @@ export class WebRtcManager {
   private localScreenAudioTrack: MediaStreamTrack | null = null;
   private screenAudioStream: MediaStream | null = null;
   private screenAudioStreamId: string | null = null;
-  private currentPreset: QualityPresetType = 'NORMAL';
+  private currentPreset: QualityPresetType = settingsStore.qualityPreset;
   private currentSessionId: string = '';
   private isDeafened: boolean = false;
+  private isMigratingVoiceMode: boolean = false;
+  private migrationDebounceTimer: any = null;
 
   /**
    * ICE servers used for every peer connection.
@@ -145,6 +211,18 @@ export class WebRtcManager {
     };
 
     const hasRelay = iceServers.some((entry) => entry.urls.some((url) => url.startsWith('turn:')));
+    const stunCount = iceServers.filter((e) => e.urls.some((u) => u.startsWith('stun:'))).length;
+    const turnCount = iceServers.filter((e) => e.urls.some((u) => u.startsWith('turn:'))).length;
+    const hasCredentials = iceServers.some((e) => !!e.username && !!e.credential);
+    clientLog.info('WEBRTC', `ICE servers updated (STUN: ${stunCount}, TURN: ${turnCount}, relay ${hasRelay ? 'available' : 'unavailable'})`, {
+      serverCount: iceServers.length,
+      hasRelay,
+      hasCredentials,
+      urls: iceServers.flatMap((e) => e.urls),
+    });
+    if (hasRelay && !hasCredentials) {
+      clientLog.warn('WEBRTC', 'TURN server configured but no credentials provided — relay will not work');
+    }
     console.log(`[WebRTC] ICE servers updated by the server (relay ${hasRelay ? 'available' : 'unavailable'})`);
   }
 
@@ -152,6 +230,16 @@ export class WebRtcManager {
     this.mediaRouter = new RemoteMediaRouter(() => this.voiceParticipants);
     this.vadMonitor = new RemoteVadMonitor(() => this.voiceParticipants);
     this.diagnosticsCollector = new RtcDiagnosticsCollector();
+    this.sfuEngine = new SfuClientEngine(
+      () => this.signalClient,
+      () => this.currentSessionId,
+      {
+        onConsumerTrack: (event) => this.handleSfuConsumerTrack(event),
+        onConsumerClosed: (sessionId, mediaType, shareId) => this.handleSfuConsumerClosed(sessionId, mediaType, shareId),
+        onConnectionFailed: (reason) => this.handleSfuConnectionFailure(reason),
+        onConnected: () => this.handleSfuConnected(),
+      }
+    );
     this.setupSignalListeners();
   }
 
@@ -191,6 +279,9 @@ export class WebRtcManager {
 
   public setQualityPreset(preset: QualityPresetType): void {
     this.currentPreset = preset;
+    videoService.applyQualityPreset(preset).catch((err) => {
+      clientLog.warn('WEBRTC', 'Error applying quality preset to videoService', { error: String(err) });
+    });
     this.applyBitrateConstraints();
   }
 
@@ -215,6 +306,380 @@ export class WebRtcManager {
     appEvents.on('participants.updated', () => {
       this.mediaRouter.applyUserVolumes();
     });
+
+    appEvents.on('server.meta_updated', () => {
+      if (this.migrationDebounceTimer) {
+        clearTimeout(this.migrationDebounceTimer);
+      }
+      this.migrationDebounceTimer = setTimeout(() => {
+        this.migrationDebounceTimer = null;
+        void this.handleVoiceModeUpdate();
+      }, 100);
+    });
+  }
+
+  private async handleVoiceModeUpdate(): Promise<void> {
+    const channelId = voiceStore.currentVoiceChannelId;
+    if (!channelId) return;
+
+    const isSfu = this.voiceServerStore.serverDetails?.voiceMode === 'sfu';
+    const currentlyRunningSfu = this.sfuEngine.isReady() || this.sfuEngine.isChannelConnected();
+    const targetIsSfu = isSfu;
+
+    if (currentlyRunningSfu === targetIsSfu) {
+      return;
+    }
+
+    if (this.isMigratingVoiceMode) {
+      console.log('[WebRTC] Voice mode migration already in flight, skipping duplicate call.');
+      return;
+    }
+
+    this.isMigratingVoiceMode = true;
+    const fromMode = currentlyRunningSfu ? 'SFU' : 'P2P';
+    const toMode = targetIsSfu ? 'SFU' : 'P2P';
+
+    console.log(`[WebRTC] Dynamic voice mode transition starting: ${fromMode} -> ${toMode}. Migrating active call...`);
+    clientLog.info('WEBRTC', `Dynamic voice mode transition starting: ${fromMode} -> ${toMode}`);
+
+    try {
+      // 1. Cleanly tear down previous session connections and media router elements
+      this.closeAllPeers();
+
+      // 2. Clear remote participant media streams so views do not retain closed tracks
+      const participants = this.voiceParticipants.getInVoiceChannel(channelId);
+      for (const p of participants) {
+        const sid = p.user.sessionId || p.user.id;
+        if (sid && sid !== this.currentSessionId) {
+          this.voiceParticipants.setRemoteStream(sid, new MediaStream());
+        }
+      }
+
+      // 3. Pause briefly so both server and remote peers complete their teardown before new handshakes
+      await new Promise((resolve) => setTimeout(resolve, 150));
+
+      // 4. Re-initialize in the new target mode
+      this.resetSfuReconnect();
+      if (targetIsSfu) {
+        await this.initSfuForCurrentChannel();
+      } else {
+        this.connectToAllParticipants();
+      }
+
+      // 5. Notify UI of the mode switch
+      appEvents.emit('voice.mode_switched', { mode: targetIsSfu ? 'sfu' : 'p2p' });
+      console.log(`[WebRTC] Dynamic voice mode transition completed: ${fromMode} -> ${toMode}`);
+    } catch (err) {
+      console.error('[WebRTC] Error during dynamic voice mode migration:', err);
+    } finally {
+      this.isMigratingVoiceMode = false;
+    }
+  }
+
+  public isSfuMode(): boolean {
+    return this.voiceServerStore.serverDetails?.voiceMode === 'sfu';
+  }
+
+  public getVoiceStatus(): {
+    mode: 'SFU' | 'P2P';
+    serverVoiceModeConfig: string;
+    sfuReconnectAttempts: number;
+    channelId: string | null;
+    isSfuReady: boolean;
+    isSfuConnected: boolean;
+    connectedP2pPeers: string[];
+    localAudioTrackId?: string;
+  } {
+    const isSfu = this.isSfuMode();
+    return {
+      mode: isSfu ? 'SFU' : 'P2P',
+      serverVoiceModeConfig: this.voiceServerStore.serverDetails?.voiceMode || 'p2p',
+      sfuReconnectAttempts: this.sfuReconnectAttempts,
+      channelId: voiceStore.currentVoiceChannelId,
+      isSfuReady: this.sfuEngine.isReady(),
+      isSfuConnected: this.sfuEngine.isChannelConnected(),
+      connectedP2pPeers: Array.from(this.peers.keys()),
+      localAudioTrackId: this.localAudioTrack?.id,
+    };
+  }
+
+  public async initSfuForCurrentChannel(): Promise<void> {
+    // A rejoin ladder already owns the connection: joining again from here
+    // would race it and strand a second set of transports on the server. This
+    // path is reached from every `connectToPeer` call, so an SFU that is down
+    // would otherwise get one extra join per participant, ignoring the backoff.
+    if (this.sfuReconnectTimer) return;
+    await this.performSfuJoin();
+  }
+
+  /**
+   * Builds the SFU session for the channel the user is in and publishes
+   * whatever is being captured locally.
+   *
+   * Everything after the first await can outlive what asked for it: joining
+   * takes several round-trips, during which the user can leave the channel,
+   * the server can be switched to P2P, or a rejoin can tear the session down.
+   * A join that resumes into any of those would rebuild transports for a
+   * session nobody is in, leaving the engine reporting itself connected to a
+   * channel that was already left — so it checks the epoch it started with and
+   * undoes itself instead.
+   */
+  private async performSfuJoin(): Promise<void> {
+    const channelId = voiceStore.currentVoiceChannelId;
+    if (!channelId || !this.isSfuMode()) return;
+    // Two joins in flight interleave their assignments inside the engine and
+    // can leave it holding a send transport from one and a recv transport from
+    // the other, whose server-side peer is already gone. The request is not
+    // dropped, though: the running join captured the channel as it was when it
+    // started, so a state change since then may be exactly what it is missing.
+    // Switching voice channels does both at once — the join for the old
+    // channel is still in flight when the join for the new one is asked for —
+    // and dropping the second one left the client in the new channel with no
+    // session at all, because the first then discarded itself for being stale.
+    if (this.isSfuJoining) {
+      this.sfuJoinRequested = true;
+      return;
+    }
+
+    const epoch = ++this.sfuJoinEpoch;
+    this.isSfuJoining = true;
+    try {
+      const ok = await this.sfuEngine.join(channelId);
+      if (this.isSfuJoinStale(epoch, channelId)) {
+        this.sfuEngine.leave();
+        return;
+      }
+      if (!ok) {
+        this.handleSfuConnectionFailure('Could not join the SFU room for this channel');
+        return;
+      }
+
+      if (this.localAudioTrack) {
+        await this.sfuEngine.produceMic(this.localAudioTrack);
+      }
+      if (this.localCameraTrack) {
+        await this.sfuEngine.produceCamera(this.localCameraTrack);
+      }
+      for (const [shareId, track] of this.localScreenTracks.entries()) {
+        await this.sfuEngine.produceScreenVideo(track, shareId);
+      }
+      if (this.localScreenAudioTrack) {
+        await this.sfuEngine.produceScreenAudio(this.localScreenAudioTrack, 'default');
+      }
+
+      if (this.isSfuJoinStale(epoch, channelId)) {
+        this.sfuEngine.leave();
+      }
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      clientLog.error('SFU', 'SFU join threw', { error: message });
+      // Without this the ladder would end here: the throw is what the retry
+      // exists for, and nothing else would schedule the next attempt.
+      if (!this.isSfuJoinStale(epoch, channelId)) {
+        this.handleSfuConnectionFailure(message);
+      }
+    } finally {
+      this.isSfuJoining = false;
+      // Only re-run when the finished join did not already serve the request:
+      // it may well have been for this very channel, and rebuilding a healthy
+      // session closes the producers everyone is consuming — a room-wide audio
+      // gap every time someone new arrives mid-join. The ladder is left alone
+      // for the same reason `initSfuForCurrentChannel` refuses to run under it.
+      const queued = this.sfuJoinRequested;
+      this.sfuJoinRequested = false;
+      if (queued && !this.sfuReconnectTimer && !this.sfuEngine.isReady()) {
+        await this.performSfuJoin();
+      }
+    }
+  }
+
+  /**
+   * Whether the join that started at `epoch` still describes the session the
+   * user is actually in.
+   */
+  private isSfuJoinStale(epoch: number, channelId: string): boolean {
+    return (
+      this.sfuJoinEpoch !== epoch ||
+      voiceStore.currentVoiceChannelId !== channelId ||
+      !this.isSfuMode()
+    );
+  }
+
+  public connectToAllParticipants(): void {
+    const channelId = voiceStore.currentVoiceChannelId;
+    if (!channelId) return;
+    const participants = this.voiceParticipants.getInVoiceChannel(channelId);
+    for (const p of participants) {
+      const sid = p.user.sessionId || p.user.id;
+      if (sid && sid !== this.currentSessionId) {
+        const isInitiator = this.currentSessionId.localeCompare(sid) > 0;
+        void this.connectToPeer(sid, isInitiator);
+      }
+    }
+  }
+
+  private handleSfuConsumerTrack(event: SfuConsumerTrackEvent): void {
+    const { producerSessionId, mediaType, track, shareId, rtpReceiver } = event;
+    console.log(`[SFU Client] Routing consumer track: mediaType=${mediaType}, from session=${producerSessionId}, trackId=${track.id}, enabled=${track.enabled}, readyState=${track.readyState}`);
+
+    if (this.isOwnOtherDevice(producerSessionId) && mediaType === 'mic') {
+      console.log(`[SFU] Dropping microphone from our own other device (${producerSessionId})`);
+      return;
+    }
+
+    if (mediaType === 'mic') {
+      const stream = new MediaStream([track]);
+      console.log(`[SFU Client] Attaching remote mic stream for ${producerSessionId} to RemoteMediaRouter...`);
+      const audioEl = this.mediaRouter.ensureVoiceAudioElement(producerSessionId, stream);
+      console.log(`[SFU Client] Attached remote mic audio element for ${producerSessionId}. Element volume: ${audioEl.volume}, muted: ${audioEl.muted}`);
+      this.vadMonitor.setupRemoteReceiverVad(producerSessionId, () => rtpReceiver);
+    } else if (mediaType === 'camera') {
+      const stream = new MediaStream([track]);
+      this.voiceParticipants.setRemoteStream(producerSessionId, stream);
+
+      const videoEl = document.getElementById(`video-${producerSessionId}-camera`) as HTMLVideoElement;
+      if (videoEl) {
+        videoEl.muted = true;
+        videoEl.srcObject = stream;
+        videoEl.play().catch(() => {});
+      }
+      const miniVideoEl = document.getElementById(`video-mini-${producerSessionId}-camera`) as HTMLVideoElement;
+      if (miniVideoEl) {
+        miniVideoEl.muted = true;
+        miniVideoEl.srcObject = stream;
+        miniVideoEl.play().catch(() => {});
+      }
+    } else if (mediaType === 'screen_video') {
+      this.routeScreenVideoTrack(producerSessionId, track, shareId || 'default');
+    } else if (mediaType === 'screen_audio') {
+      this.routeScreenAudioTrack(producerSessionId, track);
+    }
+  }
+
+  private handleSfuConsumerClosed(producerSessionId: string, mediaType: string, shareId?: string): void {
+    if (mediaType === 'camera') {
+      const current = this.voiceParticipants.get(producerSessionId)?.remoteStream;
+      if (current) {
+        current.getVideoTracks().forEach((t: MediaStreamTrack) => {
+          try { t.stop(); } catch {}
+          current.removeTrack(t);
+        });
+      }
+    } else if (mediaType === 'screen_video') {
+      this.voiceParticipants.removeRemoteScreenStream(producerSessionId, shareId || 'default');
+    } else if (mediaType === 'screen_audio') {
+      // Only the screen audio goes: `cleanupPeerMedia` would also tear down the
+      // peer's voice <audio> element and its amplification pipeline, which is
+      // how ending a screen share used to mute the sharer for everyone else.
+      this.mediaRouter.cleanupScreenAudio(producerSessionId);
+    }
+  }
+
+  /**
+   * The SFU link is down, so rebuild it — there is nothing to fall back to.
+   *
+   * An earlier version dropped the call into a P2P mesh here. It could not
+   * work: only the side whose transport failed switched protocol, while the
+   * other kept answering as an SFU client and discarded the incoming offer in
+   * `connectToPeer`, so the mesh never formed and the call went silent behind
+   * a reassuring "contingency active" notice. Retrying the SFU is both simpler
+   * and honest about what is happening.
+   */
+  private handleSfuConnectionFailure(reason: string): void {
+    if (!this.isSfuMode() || !voiceStore.currentVoiceChannelId) return;
+    // Send and recv transports usually fail together; one ladder covers both.
+    if (this.sfuReconnectTimer) return;
+
+    this.sfuReconnectAttempts++;
+    const attempt = this.sfuReconnectAttempts;
+    const delay = Math.min(
+      WebRtcManager.SFU_RECONNECT_MAX_DELAY_MS,
+      1000 * Math.pow(2, attempt - 1)
+    );
+
+    clientLog.warn('SFU', `SFU connection failed — rejoin #${attempt} in ${delay}ms`, { reason });
+    console.warn(`[SFU] Connection failed (${reason}). Rejoin #${attempt} in ${delay}ms.`);
+    this.markSfuParticipantsConnecting(true);
+
+    if (attempt === WebRtcManager.SFU_RECONNECT_WARN_AFTER) {
+      appEvents.emit('sfu.reconnecting', { reason });
+    }
+
+    this.sfuReconnectTimer = setTimeout(() => {
+      this.sfuReconnectTimer = null;
+      void this.rejoinSfu();
+    }, delay);
+  }
+
+  /** Tears the SFU session down and builds it again from scratch. */
+  private async rejoinSfu(): Promise<void> {
+    if (!voiceStore.currentVoiceChannelId || !this.isSfuMode()) return;
+    // A join from an earlier rung is still running. Cutting it off here would
+    // leave nobody to schedule the next one, so let it finish and take the
+    // following rung instead.
+    if (this.isSfuJoining) {
+      this.handleSfuConnectionFailure('A previous SFU join is still in flight');
+      return;
+    }
+
+    this.abandonSfuSession();
+    // Calls the inner join directly: it schedules the next rung on its own if
+    // this attempt fails.
+    await this.performSfuJoin();
+  }
+
+  /** Closes the ladder once media is flowing again. */
+  private handleSfuConnected(): void {
+    if (this.sfuReconnectTimer) {
+      clearTimeout(this.sfuReconnectTimer);
+      this.sfuReconnectTimer = null;
+    }
+    const wasRecovering = this.sfuReconnectAttempts > 0;
+    this.sfuReconnectAttempts = 0;
+    this.markSfuParticipantsConnecting(false);
+    if (wasRecovering) {
+      clientLog.info('SFU', 'SFU connection restored');
+      appEvents.emit('sfu.reconnected', {});
+    }
+  }
+
+  /**
+   * Drops the SFU session and disowns any join still in flight, so one that
+   * resumes afterwards undoes itself rather than rebuilding what was just
+   * torn down.
+   */
+  private abandonSfuSession(): void {
+    this.sfuJoinEpoch++;
+    this.sfuEngine.leave();
+  }
+
+  /**
+   * Stops the reconnection ladder. It deliberately does not touch
+   * `isSfuJoining`: clearing a mutex a running join still owns is how two of
+   * them end up interleaved.
+   */
+  private resetSfuReconnect(): void {
+    if (this.sfuReconnectTimer) {
+      clearTimeout(this.sfuReconnectTimer);
+      this.sfuReconnectTimer = null;
+    }
+    this.sfuReconnectAttempts = 0;
+  }
+
+  /**
+   * Mirrors the P2P "connecting" indicator while the SFU is being rebuilt: in
+   * SFU mode every remote voice is carried by that one link, so its loss is
+   * what the indicator has to report (#433).
+   */
+  private markSfuParticipantsConnecting(connecting: boolean): void {
+    const channelId = voiceStore.currentVoiceChannelId;
+    if (!channelId) return;
+    for (const p of this.voiceParticipants.getInVoiceChannel(channelId)) {
+      const sid = p.user.sessionId || p.user.id;
+      if (sid && sid !== this.currentSessionId) {
+        this.voiceParticipants.setPeerConnecting(sid, connecting);
+      }
+    }
   }
 
   /**
@@ -318,6 +783,7 @@ export class WebRtcManager {
       const state = session.pc.connectionState;
       const iceState = session.pc.iceConnectionState;
       if (state !== 'connected' && state !== 'closed') {
+        clientLog.warn('WEBRTC', `Watchdog timeout (${timeoutMs}ms) for peer ${session.peerSessionId}`, { state, iceState });
         console.warn(
           `[WebRTC] Watchdog timeout (${timeoutMs}ms) for peer ${session.peerSessionId} (state=${state}, iceState=${iceState}). Triggering recovery.`
         );
@@ -333,6 +799,7 @@ export class WebRtcManager {
 
     session.isRecovering = true;
     session.iceRestartAttempts++;
+    clientLog.warn('WEBRTC', `ICE restart #${session.iceRestartAttempts} for peer ${session.peerSessionId}`, { reason });
     console.log(
       `[WebRTC] Attempting ICE restart #${session.iceRestartAttempts} for peer ${session.peerSessionId} (reason: ${reason})`
     );
@@ -348,6 +815,9 @@ export class WebRtcManager {
       await this.sendOffer(session, true);
       this.startConnectionWatchdog(session, 10000);
     } catch (err) {
+      clientLog.error('WEBRTC', `ICE restart failed for ${session.peerSessionId}`, {
+        error: err instanceof Error ? err.message : String(err),
+      });
       console.warn(`[WebRTC] ICE restart failed for ${session.peerSessionId}:`, err);
       await this.hardReconnectPeer(session.peerSessionId);
     } finally {
@@ -360,15 +830,18 @@ export class WebRtcManager {
     const attempts = (existing?.reconnectAttempts || 0) + 1;
 
     if (attempts > 3) {
+      clientLog.error('WEBRTC', `Max hard reconnect attempts (3) reached for peer ${peerSessionId} — giving up`);
       console.warn(`[WebRTC] Max hard reconnect attempts reached for peer ${peerSessionId}. Aborting recovery.`);
       this.markPeerFailed(peerSessionId, existing);
       return;
     }
 
+    clientLog.warn('WEBRTC', `Hard reconnect #${attempts} for peer ${peerSessionId}`);
     console.log(`[WebRTC] Performing Hard Reconnect #${attempts} for peer ${peerSessionId}...`);
 
     if (existing) {
       this.clearPeerTimers(existing);
+      this.stopRelayMonitor(peerSessionId);
       this.vadMonitor.cleanupRemoteVad(peerSessionId);
       try {
         existing.pc.close();
@@ -404,6 +877,12 @@ export class WebRtcManager {
   }
 
   private recoverPeerConnection(session: PeerSession, reason: string): void {
+    clientLog.warn('WEBRTC', `Recovery triggered for peer ${session.peerSessionId}`, {
+      reason,
+      iceRestartAttempts: session.iceRestartAttempts,
+      connectionState: session.pc.connectionState,
+      iceState: session.pc.iceConnectionState,
+    });
     // Any degradation reopens the window that decides whether to warn the user,
     // so a peer that drops long after connecting is reported too (#426).
     this.beginPeerFailureCountdown(session.peerSessionId);
@@ -456,6 +935,12 @@ export class WebRtcManager {
    */
   private markPeerFailed(peerSessionId: string, session: PeerSession | undefined): void {
     if (this.failedPeers.has(peerSessionId)) return;
+    clientLog.error('WEBRTC', `Peer ${peerSessionId} marked as unreachable`, {
+      connectionState: session?.pc.connectionState,
+      iceState: session?.pc.iceConnectionState,
+      iceRestartAttempts: session?.iceRestartAttempts,
+      reconnectAttempts: session?.reconnectAttempts,
+    });
     this.failedPeers.add(peerSessionId);
     this.clearPeerFailureCountdown(peerSessionId);
     this.voiceParticipants.setPeerConnecting(peerSessionId, false);
@@ -485,9 +970,20 @@ export class WebRtcManager {
     appEvents.emit('remote.peer_recovered', { sessionId: peerSessionId });
   }
 
+  /**
+   * Wipes everything this manager knows about a peer link (#466).
+   *
+   * The indicators describe a link, not a person, so they have to go the moment
+   * the link does. Leaving them behind is what kept the relay badge on somebody
+   * after the call ended, and showed "no direct connection" next to a person
+   * sitting in a different voice channel — where there is no link at all.
+   */
   private forgetPeerFailureState(peerSessionId: string): void {
     this.clearPeerFailureCountdown(peerSessionId);
+    this.stopRelayMonitor(peerSessionId);
     this.voiceParticipants.setPeerConnecting(peerSessionId, false);
+    this.voiceParticipants.setPeerConnectionFailed(peerSessionId, false);
+    this.voiceParticipants.setPeerRelayed(peerSessionId, false);
     this.failedPeers.delete(peerSessionId);
     this.everConnectedPeers.delete(peerSessionId);
   }
@@ -496,35 +992,126 @@ export class WebRtcManager {
    * Checks whether the established link is going through a TURN relay (#425).
    *
    * ICE picks the relay on its own, and only when no direct path exists, so
-   * this is read from the succeeded candidate pair rather than assumed from
-   * whether a TURN server was offered. Either endpoint being of type `relay`
-   * means the media is being forwarded by the server.
+   * this is read from the candidate pair actually carrying media rather than
+   * assumed from whether a TURN server was offered. Either endpoint being of
+   * type `relay` means the media is being forwarded by the server.
+   *
+   * Sampled repeatedly rather than once, because the first pair to succeed is
+   * frequently not the final one: relay pairs have the lowest priority but the
+   * shortest round trip, so ICE regularly connects through the relay and then
+   * promotes the direct pair a moment later. Reading it once at `connected`
+   * froze that first instant and left calls that had gone direct permanently
+   * labelled as relayed (#466).
    */
-  private async detectRelayUsage(peerSessionId: string, session: PeerSession): Promise<void> {
+  private async sampleRelayUsage(peerSessionId: string, session: PeerSession): Promise<void> {
     try {
       const stats = await session.pc.getStats();
+      const pair = WebRtcManager.selectedCandidatePair(stats);
+      if (!pair) return;
 
-      for (const report of stats.values()) {
-        if (report.type !== 'candidate-pair' || !report.nominated || report.state !== 'succeeded') continue;
+      const local = pair.localCandidateId ? stats.get(pair.localCandidateId) : undefined;
+      const remote = pair.remoteCandidateId ? stats.get(pair.remoteCandidateId) : undefined;
+      if (!local && !remote) return;
 
-        const local = report.localCandidateId ? stats.get(report.localCandidateId) : undefined;
-        const remote = report.remoteCandidateId ? stats.get(report.remoteCandidateId) : undefined;
-        const relayed = local?.candidateType === 'relay' || remote?.candidateType === 'relay';
+      const relayed = local?.candidateType === 'relay' || remote?.candidateType === 'relay';
+      if (session.isRelayed === relayed) return;
+      session.isRelayed = relayed;
+      this.voiceParticipants.setPeerRelayed(peerSessionId, relayed);
 
-        this.voiceParticipants.setPeerRelayed(peerSessionId, relayed);
-        if (relayed) {
-          console.log(`[WebRTC] Peer ${peerSessionId} is connected through the TURN relay.`);
-        }
-        return;
-      }
+      clientLog.info(
+        'WEBRTC',
+        relayed
+          ? `Peer ${peerSessionId} is going through the TURN relay`
+          : `Peer ${peerSessionId} is connected directly (P2P)`,
+        { localType: local?.candidateType, remoteType: remote?.candidateType }
+      );
+      console.log(
+        `[WebRTC] Peer ${peerSessionId} route: ${relayed ? 'TURN relay' : 'direct'} (${local?.candidateType} / ${remote?.candidateType})`
+      );
     } catch (error) {
+      clientLog.warn('WEBRTC', `Failed to detect relay usage for peer ${peerSessionId}`, {
+        error: error instanceof Error ? error.message : String(error),
+      });
       console.warn('[WebRTC] Failed to determine whether the peer is relayed:', error);
     }
   }
 
   /**
+   * The candidate pair currently carrying media, or undefined while ICE has not
+   * settled on one.
+   *
+   * `transport.selectedCandidatePairId` is the authoritative answer. The
+   * `nominated` fallback exists for engines that omit it, but it is a weaker
+   * signal: nomination shows up in the stats at different moments on each side
+   * of a call, which is how the very same link ended up flagged as relayed on
+   * one machine and as direct on the other (#466).
+   */
+  private static selectedCandidatePair(stats: RTCStatsReport): any | undefined {
+    for (const report of stats.values()) {
+      if (report.type === 'transport' && report.selectedCandidatePairId) {
+        const pair = stats.get(report.selectedCandidatePairId);
+        if (pair) return pair;
+      }
+    }
+    for (const report of stats.values()) {
+      if (report.type === 'candidate-pair' && report.state === 'succeeded' && (report.selected || report.nominated)) {
+        return report;
+      }
+    }
+    return undefined;
+  }
+
+  /** Keeps the relay indicator following the route ICE is actually using (#466). */
+  private startRelayMonitor(peerSessionId: string, session: PeerSession): void {
+    // A recovery throws the RTCPeerConnection away and builds a new one under
+    // the same key, so this always rebinds to the session that just connected
+    // rather than leaving the indicator tied to a connection that is gone.
+    this.stopRelayMonitor(peerSessionId);
+    void this.sampleRelayUsage(peerSessionId, session);
+
+    const timer = setInterval(() => {
+      if (this.peers.get(peerSessionId) !== session || session.pc.connectionState === 'closed') {
+        clearInterval(timer);
+        if (this.relayMonitors.get(peerSessionId) === timer) {
+          this.relayMonitors.delete(peerSessionId);
+        }
+        return;
+      }
+      void this.sampleRelayUsage(peerSessionId, session);
+    }, WebRtcManager.RELAY_SAMPLE_INTERVAL_MS);
+
+    this.relayMonitors.set(peerSessionId, timer);
+  }
+
+  private stopRelayMonitor(peerSessionId: string): void {
+    const timer = this.relayMonitors.get(peerSessionId);
+    if (timer) {
+      clearInterval(timer);
+      this.relayMonitors.delete(peerSessionId);
+    }
+  }
+
+  /**
+   * Whether this peer is in the very call we are in right now (#466).
+   *
+   * The server relays RTC signals by session id alone, without checking voice
+   * channels, so this is the only place that can tell an offer belonging to our
+   * call apart from one left over from a call that has already moved on.
+   * Requiring a known voice state on our own channel is safe because the join
+   * broadcast always reaches us before any signal from that peer: both travel
+   * the same socket, and the server queues the broadcast while handling the
+   * join, before the peer could even send its first offer.
+   */
+  private isPeerInOurCall(peerSessionId: string): boolean {
+    const channelId = voiceStore.currentVoiceChannelId;
+    if (!channelId) return false;
+    return this.voiceParticipants.get(peerSessionId)?.voiceState?.channelId === channelId;
+  }
+
+  /**
    * Another device of our own in the same call. We still link up with it so
-   * camera and screen share work, but its audio is dropped: playing it would
+   * camera and screen share work, and its screen audio is played like anyone
+   * else's (#467) — only the microphone is dropped, since playing it would
    * feed the speakers of one device into the microphone of the other (#309).
    */
   private isOwnOtherDevice(peerSessionId: string): boolean {
@@ -534,12 +1121,22 @@ export class WebRtcManager {
   }
 
   public async connectToPeer(peerSessionId: string, isInitiator: boolean): Promise<void> {
+    if (this.isSfuMode()) {
+      if (!this.sfuEngine.isReady()) {
+        await this.initSfuForCurrentChannel();
+      }
+      return;
+    }
+    clientLog.info('WEBRTC', `Connecting to peer ${peerSessionId} (initiator: ${isInitiator})`, {
+      iceServersCount: this.rtcConfig.iceServers?.length ?? 0,
+    });
     const existingSession = this.peers.get(peerSessionId);
     if (existingSession) {
       if (existingSession.pc.connectionState !== 'closed' && existingSession.pc.connectionState !== 'failed') {
         return;
       }
       this.clearPeerTimers(existingSession);
+      this.stopRelayMonitor(peerSessionId);
       try {
         existingSession.pc.close();
       } catch (e) {}
@@ -613,9 +1210,16 @@ export class WebRtcManager {
       session.screenAudioSender = pc.addTrack(this.localScreenAudioTrack, this.screenAudioStream);
     }
 
+    applyVideoCodecPreferences(pc);
+
     // ICE Candidate handler
     pc.onicecandidate = (event) => {
       if (event.candidate) {
+        clientLog.info('WEBRTC', `ICE candidate generated for ${peerSessionId}`, {
+          type: event.candidate.type,
+          protocol: event.candidate.protocol,
+          address: event.candidate.address ? '***' : null,
+        });
         this.signalClient.send(MessageType.RTC_SIGNAL, {
           targetSessionId: peerSessionId,
           fromSessionId: this.currentSessionId,
@@ -629,18 +1233,11 @@ export class WebRtcManager {
     pc.ontrack = (event) => {
       console.log(`[WebRTC] Received remote track (${event.track.kind}) from ${peerSessionId}`);
 
-      // Our own other device: keep the video, drop every audio track before it
-      // can reach a speaker and loop back through the other mic (#309).
-      if (event.track.kind === 'audio' && this.isOwnOtherDevice(peerSessionId)) {
-        console.log(`[WebRTC] Dropping audio from our own other device (${peerSessionId})`);
-        return;
-      }
-
       // Check if this is a screen audio track — either by known stream ID
       // or by detecting it as a 2nd audio track (the first is the mic).
       const incomingStreamId = event.streams?.[0]?.id;
       const isKnownScreenAudio = event.track.kind === 'audio' && incomingStreamId && this.screenAudioStreamIds.has(incomingStreamId);
-      const existingMicAudio = remoteStream.getAudioTracks().length > 0;
+      const existingMicAudio = remoteStream.getAudioTracks().length > 0 || session.micTrackSeen === true;
       const isExtraAudioTrack = event.track.kind === 'audio' && existingMicAudio && incomingStreamId && !remoteStream.getTrackById(event.track.id);
 
       if (isKnownScreenAudio || isExtraAudioTrack) {
@@ -651,6 +1248,19 @@ export class WebRtcManager {
         }
         this.routeScreenAudioTrack(peerSessionId, event.track);
         return;
+      }
+
+      // What is left of the audio is the microphone. Coming from our own other
+      // device it has to be dropped, or the speakers of one device feed the
+      // microphone of the other (#309) — but only the microphone: the screen
+      // audio classified above is a broadcast like anyone else's and is worth
+      // hearing from the machine sharing it (#467).
+      if (event.track.kind === 'audio') {
+        session.micTrackSeen = true;
+        if (this.isOwnOtherDevice(peerSessionId)) {
+          console.log(`[WebRTC] Dropping microphone from our own other device (${peerSessionId})`);
+          return;
+        }
       }
 
       // Check if this is a screen VIDEO track — either by known stream ID or by
@@ -716,21 +1326,7 @@ export class WebRtcManager {
       event.track.onunmute = () => {
         this.voiceParticipants.setRemoteStream(peerSessionId, remoteStream);
         if (event.track.kind === 'audio') {
-          const audioEl = this.mediaRouter.getAudioElement(peerSessionId);
-          if (audioEl) {
-            audioEl.muted = this.isDeafened || voiceStore.getEffectiveDeafened();
-            // Only (re)assign srcObject if it actually changed: reassigning the
-            // same stream can reset the element's audio output sink back to the
-            // OS default in Chromium, sending voice to the wrong device (#46).
-            if (audioEl.srcObject !== remoteStream) {
-              audioEl.srcObject = remoteStream;
-            }
-            // Force-reapply the selected speaker before playing, since a track
-            // (re)unmute after rejoining can drop the previously set sink.
-            this.mediaRouter.applySinkToElement(audioEl, undefined, true).finally(() => {
-              audioEl.play().catch(() => {});
-            });
-          }
+          this.mediaRouter.ensureVoiceAudioElement(peerSessionId, remoteStream);
         } else if (event.track.kind === 'video') {
           const videoEl = document.getElementById(`video-${peerSessionId}-camera`) as HTMLVideoElement;
           if (videoEl) {
@@ -750,6 +1346,7 @@ export class WebRtcManager {
 
     pc.oniceconnectionstatechange = () => {
       const iceState = pc.iceConnectionState;
+      clientLog.info('WEBRTC', `Peer ${peerSessionId} ICE state: ${iceState}`);
       console.log(`[WebRTC] Peer ${peerSessionId} ICE state: ${iceState}`);
 
       if (iceState === 'connected' || iceState === 'completed') {
@@ -769,6 +1366,7 @@ export class WebRtcManager {
       } else if (iceState === 'failed') {
         this.clearPeerTimers(session);
         console.warn(`[WebRTC] Peer ${peerSessionId} ICE state failed. Recovering immediately.`);
+        clientLog.error('WEBRTC', `ICE state failed for peer ${peerSessionId}`);
         this.reportIfNeverConnected(peerSessionId, session);
         this.recoverPeerConnection(session, 'ice_failed');
       }
@@ -776,6 +1374,7 @@ export class WebRtcManager {
 
     pc.onconnectionstatechange = () => {
       const state = pc.connectionState;
+      clientLog.info('WEBRTC', `Peer ${peerSessionId} connection state: ${state}`);
       console.log(`[WebRTC] Peer ${peerSessionId} state: ${state}`);
 
       if (state === 'connected') {
@@ -787,7 +1386,7 @@ export class WebRtcManager {
         this.voiceParticipants.setRemoteStream(peerSessionId, remoteStream);
         this.everConnectedPeers.add(peerSessionId);
         this.markPeerReachable(peerSessionId);
-        void this.detectRelayUsage(peerSessionId, session);
+        this.startRelayMonitor(peerSessionId, session);
       } else if (state === 'failed') {
         this.clearPeerTimers(session);
         appEvents.emit('remote.peer_degraded', { sessionId: peerSessionId });
@@ -820,6 +1419,7 @@ export class WebRtcManager {
     if (session.pc.connectionState === 'closed') return;
     try {
       session.makingOffer = true;
+      applyVideoCodecPreferences(session.pc);
       const offer = await session.pc.createOffer({
         offerToReceiveAudio: true,
         offerToReceiveVideo: true,
@@ -834,6 +1434,9 @@ export class WebRtcManager {
         sdp: session.pc.localDescription?.toJSON ? session.pc.localDescription.toJSON() : session.pc.localDescription,
       });
     } catch (err) {
+      clientLog.error('WEBRTC', `Error sending offer to ${session.peerSessionId}`, {
+        error: err instanceof Error ? err.message : String(err),
+      });
       console.error(`[WebRTC] Error sending offer to ${session.peerSessionId}:`, err);
     } finally {
       session.makingOffer = false;
@@ -875,6 +1478,19 @@ export class WebRtcManager {
 
     let session = this.peers.get(fromSessionId);
     if (!session && signalType === 'offer') {
+      // An offer is the one signal that builds a link out of nothing, so it is
+      // also the one that has to be checked against the call we are actually
+      // in. Signalling is asynchronous: an offer sent just before somebody left
+      // the channel — or before we left it — still lands here afterwards, and
+      // answering it opened a peer connection nobody was on the other end of.
+      // That connection then sat there until the 20s countdown expired and
+      // pinned "no direct connection" on a person sitting in a different voice
+      // channel, where there is no link to fail in the first place (#466).
+      if (!this.isPeerInOurCall(fromSessionId)) {
+        clientLog.info('WEBRTC', `Ignoring offer from ${fromSessionId}: not in our voice channel`);
+        console.log(`[WebRTC] Ignoring stale offer from ${fromSessionId} — not in our call.`);
+        return;
+      }
       await this.connectToPeer(fromSessionId, false);
       session = this.peers.get(fromSessionId);
     }
@@ -944,6 +1560,8 @@ export class WebRtcManager {
           session.videoSender = session.pc.addTrack(cameraTrack, new MediaStream([cameraTrack]));
         }
 
+        applyVideoCodecPreferences(session.pc);
+
         const answer = await session.pc.createAnswer();
         await session.pc.setLocalDescription(answer);
 
@@ -987,12 +1605,26 @@ export class WebRtcManager {
         }
       }
     } catch (err) {
+      clientLog.error('WEBRTC', `Signal handling error from ${fromSessionId}`, {
+        signalType,
+        error: err instanceof Error ? err.message : String(err),
+      });
       console.error(`[WebRTC] Signal handling error from ${fromSessionId}:`, err);
     }
   }
 
   public async setLocalAudioTrack(track: MediaStreamTrack | null): Promise<void> {
     this.localAudioTrack = track;
+    if (this.isSfuMode()) {
+      if (!this.sfuEngine.isReady()) {
+        await this.initSfuForCurrentChannel();
+      } else if (track) {
+        await this.sfuEngine.produceMic(track);
+      } else {
+        this.sfuEngine.closeProducer('mic');
+      }
+      return;
+    }
     for (const session of this.peers.values()) {
       try {
         const transceivers = session.pc.getTransceivers();
@@ -1022,6 +1654,16 @@ export class WebRtcManager {
 
   public async setLocalCameraTrack(track: MediaStreamTrack | null): Promise<void> {
     this.localCameraTrack = track;
+    if (this.isSfuMode()) {
+      if (!this.sfuEngine.isReady()) {
+        await this.initSfuForCurrentChannel();
+      } else if (track) {
+        await this.sfuEngine.produceCamera(track);
+      } else {
+        this.sfuEngine.closeProducer('camera');
+      }
+      return;
+    }
     // Camera rides the primary video sender only; screen share has its own
     // dedicated sender so both can be sent at once (#26).
     await this.updateVideoTrackAcrossPeers(track);
@@ -1042,6 +1684,11 @@ export class WebRtcManager {
     const shareId = stream.id;
     this.localScreenTracks.set(shareId, track);
     this.localScreenStreams.set(shareId, stream);
+
+    if (this.isSfuMode()) {
+      await this.sfuEngine.produceScreenVideo(track, shareId);
+      return;
+    }
 
     // Announce stream ID to all peers BEFORE adding the track.
     for (const session of this.peers.values()) {
@@ -1081,6 +1728,11 @@ export class WebRtcManager {
   public async removeLocalScreenTrack(shareId: string): Promise<void> {
     this.localScreenTracks.delete(shareId);
     this.localScreenStreams.delete(shareId);
+
+    if (this.isSfuMode()) {
+      this.sfuEngine.closeProducer(`screen_video:${shareId}`);
+      return;
+    }
 
     for (const session of this.peers.values()) {
       const sender = session.screenVideoSenders.get(shareId);
@@ -1123,6 +1775,15 @@ export class WebRtcManager {
    */
   public async setLocalScreenAudioTrack(track: MediaStreamTrack | null): Promise<void> {
     this.localScreenAudioTrack = track;
+
+    if (this.isSfuMode()) {
+      if (track) {
+        await this.sfuEngine.produceScreenAudio(track, 'default');
+      } else {
+        this.sfuEngine.closeProducer('screen_audio:default');
+      }
+      return;
+    }
 
     if (track) {
       // Wrap in a dedicated MediaStream so receivers can identify it.
@@ -1207,12 +1868,16 @@ export class WebRtcManager {
     this.mediaRouter.setDeafened(deafened);
   }
 
+  public setScreenAudioMuted(peerSessionId: string, muted: boolean): void {
+    this.mediaRouter.setScreenAudioMuted(peerSessionId, muted);
+  }
+
   public async setSpeakerDeviceId(deviceId: string): Promise<void> {
     await this.mediaRouter.setSpeakerDeviceId(deviceId);
   }
 
   private async applyBitrateConstraints(): Promise<void> {
-    const profile = this.currentPreset === 'CUSTOM' ? settingsStore.customProfile : QUALITY_PRESETS[this.currentPreset];
+    const profile = this.currentPreset === 'CUSTOM' ? settingsStore.customProfile : (QUALITY_PRESETS[this.currentPreset] || QUALITY_PRESETS.NORMAL);
     for (const session of this.peers.values()) {
       for (const sender of session.pc.getSenders()) {
         if (!sender.track) continue;
@@ -1229,13 +1894,15 @@ export class WebRtcManager {
             const isScreen = this.isLocalScreenTrack(sender.track);
             params.encodings[0].maxBitrate =
               (isScreen ? profile.screenBitrateKbps : profile.cameraBitrateKbps) * 1000;
+            params.encodings[0].maxFramerate = isScreen ? profile.screenFps : profile.cameraFps;
 
-            // Gaming favors fluid motion (drop resolution before framerate);
-            // desktop/camera favors sharpness (drop framerate before resolution).
-            (params as any).degradationPreference =
-              isScreen && this.currentPreset === 'GAMING'
-                ? 'maintain-framerate'
-                : 'maintain-resolution';
+            if (this.currentPreset === 'GAMING') {
+              // Gaming mode prioritizes fluid motion (drops resolution before framerate)
+              params.degradationPreference = 'maintain-framerate';
+            } else {
+              // Ultra, High, Custom and Normal prioritize resolution fidelity (maintains resolution without downscaling)
+              params.degradationPreference = 'maintain-resolution';
+            }
           }
 
           await sender.setParameters(params);
@@ -1249,6 +1916,9 @@ export class WebRtcManager {
   }
 
   public async getAverageP2pPing(): Promise<number | null> {
+    if (this.isSfuMode()) {
+      return this.sfuEngine.getPing();
+    }
     return this.diagnosticsCollector.getAverageP2pPing(this.peers);
   }
 
@@ -1266,10 +1936,31 @@ export class WebRtcManager {
    * share separately instead of merging both into the connection's totals.
    */
   public getScreenSendersForShare(shareId: string): RTCRtpSender[] {
+    if (this.isSfuMode()) {
+      const sender = this.sfuEngine.getScreenSender(shareId);
+      return sender ? [sender] : [];
+    }
     const senders: RTCRtpSender[] = [];
     for (const session of this.peers.values()) {
       const sender = session.screenVideoSenders.get(shareId);
       if (sender) senders.push(sender);
+    }
+    return senders;
+  }
+
+  /**
+   * Every sender publishing the local camera — one per peer. Same reasoning as
+   * `getScreenSendersForShare`: scoping `getStats()` to the camera senders
+   * keeps the screen shares out of the camera tile's numbers (#493).
+   */
+  public getCameraSenders(): RTCRtpSender[] {
+    if (this.isSfuMode()) {
+      const sender = this.sfuEngine.getCameraSender();
+      return sender ? [sender] : [];
+    }
+    const senders: RTCRtpSender[] = [];
+    for (const session of this.peers.values()) {
+      if (session.videoSender) senders.push(session.videoSender);
     }
     return senders;
   }
@@ -1280,6 +1971,9 @@ export class WebRtcManager {
    * their camera (#340).
    */
   public getReceiverForTrack(peerSessionId: string, trackId: string): RTCRtpReceiver | null {
+    if (this.isSfuMode()) {
+      return this.sfuEngine.getReceiverForTrack(trackId);
+    }
     const session = this.peers.get(peerSessionId);
     if (!session) return null;
     return session.pc.getReceivers().find((receiver) => receiver.track?.id === trackId) ?? null;
@@ -1291,6 +1985,19 @@ export class WebRtcManager {
 
   public applyUserVolumes(): void {
     this.mediaRouter.applyUserVolumes();
+  }
+
+  public async reapplyCodecPreferences(): Promise<void> {
+    for (const session of this.peers.values()) {
+      try {
+        applyVideoCodecPreferences(session.pc);
+        if (session.pc.signalingState === 'stable' && (this.localCameraTrack || this.localScreenTracks.size > 0)) {
+          await this.sendOffer(session);
+        }
+      } catch (err) {
+        console.warn(`[WebRTC] Error reapplying codec preferences for ${session.peerSessionId}:`, err);
+      }
+    }
   }
 
   public removePeer(peerSessionId: string): void {
@@ -1331,6 +2038,10 @@ export class WebRtcManager {
   }
 
   public closeAllPeers(): void {
+    this.abandonSfuSession();
+    this.resetSfuReconnect();
+    const peerCount = this.peers.size;
+    clientLog.info('WEBRTC', `Closing all peers (${peerCount} active)`);
     for (const [peerSessionId] of Array.from(this.peers.entries())) {
       this.removePeer(peerSessionId);
     }
@@ -1343,6 +2054,11 @@ export class WebRtcManager {
     this.peerFailureTimers.clear();
     this.failedPeers.clear();
     this.everConnectedPeers.clear();
+
+    for (const timer of this.relayMonitors.values()) {
+      clearInterval(timer);
+    }
+    this.relayMonitors.clear();
 
     // Stop any remaining pending tracks
     for (const item of this.pendingScreenAudioTracks.values()) {

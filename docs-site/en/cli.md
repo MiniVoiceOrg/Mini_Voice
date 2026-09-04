@@ -12,7 +12,7 @@ uses it to know which server each command applies to.
 
 ## Installation
 
-Requires **Node.js 20 or newer**.
+Requires **Node.js 22 or newer** (required by mediasoup, used in SFU mode).
 
 ```bash
 curl -fsSL https://monkyorg.github.io/install.sh | bash
@@ -31,8 +31,14 @@ Download the `.tgz` for the desired version from
 [Releases](https://github.com/MonkyOrg/Monky/releases) and install with:
 
 ```bash
-npm install -g https://github.com/MonkyOrg/Monky/releases/download/vX.Y.Z/monky-cli-X.Y.Z.tgz
+npm install -g --allow-scripts=mediasoup https://github.com/MonkyOrg/Monky/releases/download/vX.Y.Z/monky-cli-X.Y.Z.tgz
 ```
+
+`--allow-scripts=mediasoup` permits mediasoup's `postinstall`, which builds the
+SFU worker. From npm 12 on, install scripts are blocked by default, and without
+that binary the server still starts but SFU mode does not work: calls carry no
+media and the client keeps retrying until the worker comes up. On npm older
+than 11.16 the flag is unnecessary and can be omitted.
 
 </details>
 
@@ -135,6 +141,7 @@ It then prints a summary, asks for confirmation and offers to start the server.
 | `--port <n>` | Server port | `3000` |
 | `--password <password>` | Server password (empty = no password) | asked |
 | `--max-users <n>` | Registered member limit (`0` = no limit) | asked |
+| `--voice-mode <p2p|sfu>` | Voice and media mode (`p2p` or `sfu`) | `p2p` |
 
 The identity password is never accepted as an option: it is always typed
 hidden in the terminal.
@@ -178,22 +185,28 @@ Work       stopped  3100   /srv/monky-work
 Starts an **existing** server as a PM2 daemon.
 
 ```bash
-monky start [--port <n>]
+monky start [--port <n>] [--fresh]
 ```
 
 If the machine has no server, the command fails and points at `monky create` —
 it never creates a server on its own.
 
 The `ecosystem.config.cjs` file is rewritten before starting, so the current
-port and name take effect from then on.
+port and name take effect from then on. It also pins the absolute path of the
+Node that ran the command (see [Changing the Node version](#changing-the-node-version)).
 
 ### Options
 
 | Option | Description | Default |
 |---|---|---|
 | `--port <n>` | Port for this run only | value in `monky.json`, or `3000` |
+| `--fresh` | Drops the PM2 process registration and recreates it from scratch | off |
 
 To change the port permanently use `monky config set port`.
+
+`--fresh` is rarely needed: the CLI detects a stale registration on its own and
+recreates the process. It exists to force that by hand. Logs under
+`~/.pm2/logs` are **not** deleted.
 
 ::: warning Removed options
 `--password`, `--max-users`, `--name`, `--voice-channel` and `--text-channel`
@@ -227,7 +240,7 @@ terminal (scripts, cron) the warning is printed and the stop goes ahead.
 Restarts the server applying the current configuration.
 
 ```bash
-monky restart [--port <n>]
+monky restart [--port <n>] [--fresh]
 ```
 
 `ecosystem.config.cjs` is rewritten before the restart, so a port or name
@@ -235,6 +248,9 @@ changed since the last `start` takes effect.
 
 Just like `stop`, if anyone is connected the CLI warns and asks for confirmation
 before restarting.
+
+`--fresh` works the same as in `monky start`: it drops the PM2 process
+registration before bringing the server back up.
 
 ---
 
@@ -259,10 +275,83 @@ uptime: 2026-08-27T18:02:11.000Z
 restarts: 0
 memória: 88 MB
 cpu: 0%
+node: 24.20.0
+```
+
+`status` does not just echo what PM2 says: the port is actually probed. PM2
+reports the state it *intends* to keep, not one it verified — a process that
+failed to start still shows up as `online`. When PM2's claim does not match
+reality, a diagnostics block appears:
+
+```
+Diagnostics
+⚠ PM2 is running the server on Node 20.20.2, but Monky requires Node 22+.
+  Upgrade Node, then run "monky update" to rebuild native modules and "monky restart" to apply it.
+⚠ PM2 reports the process as "online", but it has no PID — it never actually started.
+  This usually means PM2 is trying to use a Node that no longer exists. Run "monky restart --fresh" to re-register the process.
 ```
 
 With several servers and no `--data`, it prints the same table as `monky list` —
 a read-only query has no side effects, so asking would be busywork.
+
+---
+
+## Changing the Node version {#changing-the-node-version}
+
+PM2 runs as a **long-lived daemon** and holds on to the Node it was started
+with. Upgrading Node does not upgrade PM2 along with it, and that is where most
+post-upgrade trouble comes from.
+
+What breaks is not upgrading Node itself, but the **binary path changing or
+disappearing**:
+
+| Situation | What happens |
+|---|---|
+| In-place upgrade (apt/NodeSource, stays at `/usr/bin/node`) | Keeps working: the path exists and now points at the new Node |
+| Switching package manager (apt → nvm) and removing the old one | **Breaks**: PM2 points at a binary that no longer exists and cannot start the process |
+| `nvm use` another version, without removing the old one | **Silent**: the server keeps running on the **old** Node |
+
+In the second case PM2 shows `status: online` with `pid: N/A`, and nothing
+listens on the port — the client complains that "the computer is online, but no
+Monky server is active on the port". `monky status` calls this out in the
+diagnostics block.
+
+Since version 8.1 `ecosystem.config.cjs` pins the **absolute path** of the Node
+that ran `monky start`, instead of letting PM2 resolve `node` from the daemon's
+environment. Because the file is rewritten on every `start` and `restart`, it
+re-adjusts itself.
+
+### Recommended procedure
+
+After changing the Node version:
+
+```bash
+monky update     # rebuilds native modules for the new ABI
+monky restart    # re-pins the interpreter in the ecosystem file
+pm2 save         # writes the good state to the PM2 dump
+```
+
+::: tip Use `monky restart`, not `pm2 restart`
+Only `monky` rewrites `ecosystem.config.cjs`. `pm2 restart` reuses the previous
+registration, with the stale interpreter.
+:::
+
+::: warning `pm2 update` alone does not fix it
+`pm2 update` restores processes from `~/.pm2/dump.pm2`, and the dump carries the
+old interpreter. If the server does not come back, recreate the registration:
+
+```bash
+monky restart --fresh
+```
+
+That drops the PM2 process and registers it again. Files under `~/.pm2/logs` are
+preserved.
+:::
+
+Native modules are a **separate** concern: `better-sqlite3` and the mediasoup
+worker are compiled against the Node ABI (20 = 115, 22 = 127, 24 = 137). Any
+major version change requires reinstalling the CLI, which is what
+`monky update` does.
 
 ---
 
@@ -367,13 +456,16 @@ monky config set <key> [value]     # change it directly
 | `icon` | Path to an image, copied into the data directory. Empty or `clear` removes it | no icon |
 | `maxUsers` | Maximum registered members. `0` removes the limit | `20` |
 | `allowSoundboard` | Allows the soundboard (`true`/`false`) | `true` |
+| `allowEveryoneMention` | Allows `@everyone`/`@todos` in chat (`true`/`false`) | `true` |
 | `maxAttachmentFileBytes` | Maximum size per attachment, in bytes | no limit |
 | `maxAttachmentStorageBytes` | Total attachment storage, in bytes | no limit |
+| `voiceMode` | Voice mode: `p2p` (direct mesh) or `sfu` (Selective Forwarding Unit) | `p2p` |
 | `autoUpdate` | Enables the daily automatic update (`true`/`false`) | `false` |
 | `turn` | Enables the TURN media relay (`true`/`false`). Linux only, requires coturn installed | `false` |
 
 Changing `port` with the server running offers to restart right away.
 Changing `turn` requires a manual `monky restart`.
+Changing `voiceMode` applies dynamically and notifies all connected clients.
 
 ### Examples
 
@@ -392,25 +484,15 @@ monky config set turn true          # see "Media relay (TURN)" below
 ## Media relay (TURN)
 
 By default Monky's voice and video travel **straight between participants**
-(P2P). The server only handles the introductions. That is a good thing: less
-latency, and almost no bandwidth for whoever hosts.
+(P2P). When two members sit behind **CGNAT**, they cannot see each other and the
+call does not connect. TURN fixes it by having the server **forward the media**
+for that pair.
 
-The problem shows up when two members sit behind **CGNAT** — common on mobile
-networks and at many residential ISPs. In that case both sides may simply be
-unable to see each other, and the call between them never connects, even though
-each of them connects fine with everyone else.
-
-TURN fixes it by having the server **forward the media** for that specific pair.
-It is a last resort: WebRTC always tries the direct route first and only falls
-back to the relay when there is no alternative.
-
-### Requirements
-
-- A **Linux** host with a public IP (a typical VPS). No coturn package exists
-  for Windows or macOS, so the relay is unavailable on those platforms.
-- Open ports: `3478/tcp`, `3478/udp` and the `49152-65535/udp` range.
-- Bandwidth on the host: every relayed pair uses the server's upload **and**
-  download.
+::: tip Full guide
+See the [dedicated TURN Relay page](/en/turn) with detailed instructions on
+ports, firewalls (Oracle Cloud, AWS, iptables, ufw), verification and
+troubleshooting.
+:::
 
 ### Enabling it
 
@@ -419,34 +501,24 @@ monky config set turn true
 monky restart
 ```
 
-coturn is installed **automatically** from your distro the first time you turn
-the relay on. That applies both to the command above and to the switch under
-Server Settings → Voice and Video in the app.
+coturn is installed **automatically** from your distro. If the server does not
+run as root, run once: `sudo bash scripts/install-turn.sh`
 
-Installing a package requires root. If the server runs neither as root nor with
-passwordless `sudo`, Monky cannot do it on its own and says so — in that case,
-run this once:
+### Required ports
+
+| Port | Protocol | Purpose |
+|---|---|---|
+| `3478` | TCP and UDP | TURN signaling |
+| `49152-65535` | UDP | Media relay |
+
+Must be open **both in the Linux firewall and the provider's panel** (Oracle
+Cloud, AWS, etc.).
+
+### Checking
 
 ```bash
-sudo bash scripts/install-turn.sh
+monky status    # should show ✔ accessible
 ```
-
-The installation disables coturn's system service on purpose: Monky itself
-starts and configures the process, and two instances would fight over port 3478.
-
-::: warning Do not forget your provider's firewall
-Opening the ports in `ufw`/`iptables` is not enough if your VPS has a firewall
-in the provider's panel (Oracle Cloud, AWS, Azure and GCP do). The relay looks
-enabled and still nobody connects.
-:::
-
-### Checking that it works
-
-In the app, a participant connected through the relay gets an amber
-`swap_horiz` icon next to their name, both on the stage and in the voice channel
-list. If nobody shows the icon, either everyone is connecting directly (the
-ideal case) or the relay did not start — check with `monky logs`, which records
-coturn's output.
 
 ### Disabling it
 
@@ -454,6 +526,30 @@ coturn's output.
 monky config set turn false
 monky restart
 ```
+
+---
+
+## SFU Mode (Selective Forwarding Unit)
+
+By default, Monky operates in **P2P Mesh**: each participant broadcasts audio and video directly to all other peers. However, streaming 1080p 60fps screen share to 20 users would require ~120 Mbps continuous upstream bandwidth from the host.
+
+**SFU mode** centralizes media forwarding via `mediasoup`. The broadcaster uploads streams **once** to the host server, which forwards them to subscribers.
+
+### Enabling via CLI
+
+```bash
+monky config set voiceMode sfu
+```
+
+The CLI automatically computes and displays a **capacity estimate** based on available CPU cores, RAM, and upload speed.
+
+### Required ports for SFU
+
+| Port | Protocol | Purpose |
+|---|---|---|
+| `40000-49151` | UDP and TCP | mediasoup worker WebRTC media ports |
+
+The range must be open in your server firewall (Oracle Cloud Security List, AWS Security Group, iptables/ufw) — on UDP and on TCP too, which is the way in for anyone on a network that blocks UDP. Ready-to-run commands and how to check them are in [Opening the SFU mode ports](/en/hospedar-em-vps#opening-the-sfu-mode-ports).
 
 ---
 

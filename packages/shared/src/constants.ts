@@ -1,4 +1,12 @@
-export const PROTOCOL_VERSION = 4;
+export const PROTOCOL_VERSION = 6;
+
+/**
+ * Default size of the floating overlay window (#169). Shared so the renderer can
+ * tell whether the user resized it away from the default — the "reset size"
+ * control is only worth showing once the size actually changed (#543).
+ */
+export const OVERLAY_DEFAULT_WIDTH = 340;
+export const OVERLAY_DEFAULT_HEIGHT = 240;
 
 export const LIMITS = {
   MAX_MESSAGE_LENGTH: 2000,
@@ -16,6 +24,24 @@ export const LIMITS = {
   MIN_PORT: 1024,
   MAX_PORT: 65535,
   DEFAULT_PORT: 3000,
+  // Lowest Node.js major the server runs on, because mediasoup requires it
+  // (#515). The published CLI declares the same floor in its `engines` field,
+  // but npm only *warns* on a mismatch, so the runtime has to be able to check
+  // it too: PM2 spawns the server with the daemon's Node, which can be older
+  // than the one the operator installed (#522).
+  MIN_NODE_MAJOR: 22,
+  // Default UDP media port range for SFU (Selective Forwarding Unit) (#515)
+  SFU_DEFAULT_MIN_PORT: 40000,
+  // Stops one below the coturn relay range (49152-65535). The two allocate UDP
+  // ports independently, so an overlap would let them race for the same port
+  // and fail intermittently once both are enabled.
+  SFU_DEFAULT_MAX_PORT: 49151,
+  // coturn's listening port and relay range. They live here, and not only in
+  // CoturnManager, so the SFU can check its own range against them without
+  // depending on the TURN module.
+  TURN_LISTENING_PORT: 3478,
+  TURN_RELAY_MIN_PORT: 49152,
+  TURN_RELAY_MAX_PORT: 65535,
   MAX_HISTORY_MESSAGES_INITIAL: 100,
   RATE_LIMIT_MAX_MESSAGES: 10,
   RATE_LIMIT_WINDOW_MS: 5000,
@@ -58,7 +84,32 @@ export const LIMITS = {
 
 export const RECONNECT_DELAYS_MS = [1000, 2000, 3000, 5000] as const;
 
-export type QualityPresetType = 'ECONOMIC' | 'NORMAL' | 'HIGH' | 'GAMING' | 'CUSTOM';
+/**
+ * Tokens that mention everyone in a channel (#464).
+ *
+ * Both languages are always accepted, not just the sender's: a message written
+ * in one language has to reach the person reading the app in the other.
+ * `EVERYONE_MENTION_TOKENS[0]` is the canonical form suggested by the composer.
+ */
+export const EVERYONE_MENTION_TOKENS = ['todos', 'everyone'] as const;
+
+/** True when the text contains an `@todos` / `@everyone` token. */
+export function hasEveryoneMention(content: string): boolean {
+  const lower = content.toLowerCase();
+  return EVERYONE_MENTION_TOKENS.some((token) => {
+    let index = lower.indexOf(`@${token}`);
+    while (index !== -1) {
+      // The token must not be a prefix of a longer word, otherwise "@todosaqui"
+      // (or a nickname starting with "todos") would ping the whole channel.
+      const after = lower[index + token.length + 1];
+      if (after === undefined || !/[\p{L}\p{N}_-]/u.test(after)) return true;
+      index = lower.indexOf(`@${token}`, index + 1);
+    }
+    return false;
+  });
+}
+
+export type QualityPresetType = 'ECONOMIC' | 'NORMAL' | 'HIGH' | 'GAMING' | 'ULTRA' | 'CUSTOM';
 
 export interface QualityProfile {
   name: string;
@@ -121,6 +172,18 @@ export const QUALITY_PRESETS: Record<Exclude<QualityPresetType, 'CUSTOM'>, Quali
     screenHeight: 1080,
     screenFps: 60,
     screenBitrateKbps: 6000,
+  },
+  ULTRA: {
+    name: 'Ultra',
+    audioBitrateKbps: 64,
+    cameraWidth: 1920,
+    cameraHeight: 1080,
+    cameraFps: 60,
+    cameraBitrateKbps: 4000,
+    screenWidth: 1920,
+    screenHeight: 1080,
+    screenFps: 60,
+    screenBitrateKbps: 8000,
   },
 };
 

@@ -1,4 +1,4 @@
-import { app, BrowserWindow, desktopCapturer, dialog, globalShortcut, ipcMain, shell, systemPreferences } from 'electron';
+import { app, BrowserWindow, desktopCapturer, dialog, globalShortcut, ipcMain, screen, shell, systemPreferences } from 'electron';
 import { execFile } from 'child_process';
 import fs from 'fs';
 import http from 'http';
@@ -8,11 +8,13 @@ import path from 'path';
 import { LanDiscovery } from './lanDiscovery';
 import { globalInputHook } from './globalInputHook';
 import { exportIdentity, getClientId, getIdentity, hasIdentity, importIdentity, signChallenge } from './identityService';
+import { BACKUP_ENVELOPE_PREFIX, openEnvelope, sealEnvelope } from './secretEnvelope';
 import { HostServerOptions, ServerManager } from './serverManager';
 import { mt, setMainLanguage } from './i18n';
 import { fetchLinkPreview } from './linkPreview';
 import { TrayManager, VoiceStatus } from './trayManager';
-import type { PttConfig } from '@monky/shared';
+import type { DesktopSource, OverlayBounds, OverlayConfig, OverlaySignalPayload, OverlaySyncState, PttConfig } from '@monky/shared';
+import { OverlayManager } from './overlayManager';
 import {
   HOME_MIN_HEIGHT,
   HOME_MIN_WIDTH,
@@ -106,6 +108,30 @@ async function downloadToFile(url: string, destPath: string): Promise<void> {
 /** Extensões que a soundboard aceita, na listagem e na leitura de um som. */
 const SOUNDBOARD_EXTENSIONS = new Set(['.mp3', '.wav', '.ogg', '.m4a', '.aac', '.webm']);
 
+interface NativeWindowOwner {
+  windowId: number;
+  pid: number;
+  bundlePath: string;
+  appName: string;
+}
+
+interface NativeWindowInfo {
+  hwnd: number;
+  title: string;
+  processId: number;
+  processPath: string;
+  isIconic: boolean;
+  isVisible: boolean;
+  isCloaked: boolean;
+  isToolWindow: boolean;
+  isLayered: boolean;
+  isTransparent: boolean;
+  isNoActivate: boolean;
+  isAppWindow: boolean;
+  width: number;
+  height: number;
+}
+
 // Screen audio native module (compiled only on CI — graceful fallback)
 let screenAudio: {
   isSupported: () => boolean;
@@ -113,6 +139,9 @@ let screenAudio: {
   stop: () => { success: boolean };
   getLastError: () => string;
   getStatus: () => number;
+  listWindowOwners?: () => NativeWindowOwner[];
+  listWindows?: () => NativeWindowInfo[];
+  restoreWindow?: (hwnd: number) => boolean;
 } | null = null;
 try {
   screenAudio = require('@monky/screen-audio');
@@ -121,8 +150,120 @@ try {
   screenAudio = null;
 }
 
+// Icones de app nao mudam enquanto o app roda, e ler o bundle do disco a cada
+// abertura do seletor de tela seria desperdicio.
+const appIconCache = new Map<string, string | null>();
+
+/** Extrai o id nativo de `window:<id nativo>:<id do webContents>`. */
+function nativeWindowIdFromSourceId(sourceId: string): number | null {
+  const parts = sourceId.split(':');
+  if (parts[0] !== 'window') return null;
+  const nativeId = Number(parts[1]);
+  return Number.isFinite(nativeId) ? nativeId : null;
+}
+
+/**
+ * No macOS o Electron devolve `appIcon` vazio para janelas, mesmo com
+ * `fetchWindowIcons: true` (#455). Descobrimos o app dono de cada janela pelo
+ * modulo nativo e lemos o icone do proprio bundle.
+ */
+async function resolveMacAppIcons(sourceIds: string[]): Promise<Map<string, string>> {
+  const iconsBySourceId = new Map<string, string>();
+  if (process.platform !== 'darwin' || !screenAudio?.listWindowOwners) return iconsBySourceId;
+
+  let owners: NativeWindowOwner[];
+  try {
+    owners = screenAudio.listWindowOwners();
+  } catch (e) {
+    console.warn('[ScreenShare:Main] Falha ao listar donos de janela:', (e as Error).message);
+    return iconsBySourceId;
+  }
+
+  const bundlePathByWindowId = new Map<number, string>();
+  for (const owner of owners) bundlePathByWindowId.set(owner.windowId, owner.bundlePath);
+
+  for (const sourceId of sourceIds) {
+    const nativeId = nativeWindowIdFromSourceId(sourceId);
+    if (nativeId === null) continue;
+    const bundlePath = bundlePathByWindowId.get(nativeId);
+    if (!bundlePath) continue;
+
+    let dataUrl = appIconCache.get(bundlePath);
+    if (dataUrl === undefined) {
+      try {
+        const icon = await app.getFileIcon(bundlePath, { size: 'normal' });
+        dataUrl = icon.isEmpty() ? null : icon.toDataURL();
+      } catch (e) {
+        console.warn(`[ScreenShare:Main] Sem icone para ${bundlePath}:`, (e as Error).message);
+        dataUrl = null;
+      }
+      appIconCache.set(bundlePath, dataUrl);
+    }
+    if (dataUrl) iconsBySourceId.set(sourceId, dataUrl);
+  }
+
+  return iconsBySourceId;
+}
+
+/** Enumera as janelas nativas do Windows; vazio nas outras plataformas ou sem o modulo. */
+function listNativeWindows(): NativeWindowInfo[] {
+  if (process.platform !== 'win32' || !screenAudio?.listWindows) return [];
+  try {
+    return screenAudio.listWindows();
+  } catch (e) {
+    console.warn('[ScreenShare:Main] Falha ao enumerar janelas nativas:', (e as Error).message);
+    return [];
+  }
+}
+
+/**
+ * O capturador WGC do Electron 34 parou de filtrar janelas de overlay/ferramenta,
+ * entao elas vazam para o seletor como se fossem janelas reais (Medal Overlay,
+ * helpers do Raycast, Radmin VPN na bandeja...). O discriminador abaixo foi
+ * validado contra janelas reais: nenhuma janela legitima dispara qualquer uma das
+ * combinacoes, enquanto todo overlay dispara pelo menos uma (#560).
+ */
+function isGhostWindow(w: NativeWindowInfo): boolean {
+  if (w.isCloaked) return true;
+  if (w.isToolWindow) return true;
+  if (w.isLayered && w.isTransparent) return true;
+  if (w.isLayered && w.isNoActivate) return true;
+  return false;
+}
+
+/**
+ * Icones das janelas minimizadas que reexibimos: o `getSources` nao as devolve,
+ * entao lemos o icone direto do executavel do processo dono. Reaproveita o
+ * `appIconCache` (chaveado por caminho absoluto, sem colisao com os bundles mac).
+ */
+async function resolveWindowsAppIcons(processPaths: string[]): Promise<Map<string, string>> {
+  const icons = new Map<string, string>();
+  if (process.platform !== 'win32') return icons;
+
+  for (const processPath of processPaths) {
+    if (!processPath || icons.has(processPath)) continue;
+
+    let dataUrl = appIconCache.get(processPath);
+    if (dataUrl === undefined) {
+      try {
+        const icon = await app.getFileIcon(processPath, { size: 'normal' });
+        dataUrl = icon.isEmpty() ? null : icon.toDataURL();
+      } catch (e) {
+        console.warn(`[ScreenShare:Main] Sem icone para ${processPath}:`, (e as Error).message);
+        dataUrl = null;
+      }
+      appIconCache.set(processPath, dataUrl);
+    }
+    if (dataUrl) icons.set(processPath, dataUrl);
+  }
+
+  return icons;
+}
+
 export interface SetupIpcOptions {
   setMinimizeToTray?: (enabled: boolean) => void;
+  clientLogger?: import('./clientLogger').ClientLogger;
+  overlayManager?: OverlayManager;
 }
 
 /**
@@ -208,6 +349,44 @@ export function setupIpcHandlers(
 ): void {
   const lanDiscovery = new LanDiscovery(mainWindow);
   globalInputHook.init(mainWindow);
+  const overlayManager = options?.overlayManager || new OverlayManager(mainWindow);
+
+  // Overlay (#169)
+  ipcMain.handle('overlay:open', (_event, config: OverlayConfig) => {
+    return { success: overlayManager.open(config) };
+  });
+
+  ipcMain.handle('overlay:close', () => {
+    return { success: overlayManager.close() };
+  });
+
+  ipcMain.handle('overlay:is-open', () => {
+    return overlayManager.isOpen();
+  });
+
+  ipcMain.handle('overlay:get-config', () => {
+    return overlayManager.getConfig();
+  });
+
+  ipcMain.handle('overlay:set-config', (_event, config: Partial<OverlayConfig>) => {
+    overlayManager.setConfig(config);
+  });
+
+  ipcMain.handle('overlay:save-bounds', (_event, bounds: OverlayBounds) => {
+    overlayManager.setConfig({ bounds, position: 'custom' });
+  });
+
+  ipcMain.handle('overlay:reset-bounds', () => {
+    overlayManager.resetBounds();
+  });
+
+  ipcMain.handle('overlay:send-signal', (_event, payload: OverlaySignalPayload) => {
+    overlayManager.sendSignal(payload);
+  });
+
+  ipcMain.handle('overlay:send-sync-state', (_event, state: OverlaySyncState) => {
+    overlayManager.sendSyncState(state);
+  });
 
   ipcMain.handle('tray:update-voice-status', (_, status: VoiceStatus) => {
     trayManager?.updateVoiceStatus(status);
@@ -232,8 +411,79 @@ export function setupIpcHandlers(
   ipcMain.handle('identity:get', async () => getIdentity(true));
   ipcMain.handle('identity:get-client-id', async () => getClientId());
   ipcMain.handle('identity:sign-challenge', async (_event, nonceHex: string) => signChallenge(nonceHex));
-  ipcMain.handle('identity:export', async (_event, password: string) => exportIdentity(password));
+  ipcMain.handle('identity:export', async (_event, password: string, extras?: string) =>
+    exportIdentity(password, typeof extras === 'string' ? extras : undefined)
+  );
   ipcMain.handle('identity:import', async (_event, exportedIdentity: string, password: string) => importIdentity(exportedIdentity, password));
+
+  // Backup of saved servers and app settings (#472). The renderer owns the
+  // content (it all lives in localStorage); the main process only picks the
+  // path, seals the file with the user's password and touches the disk.
+  //
+  // The backup carries the passwords of saved servers, so it gets the very same
+  // protection as the identity export instead of landing on disk as plain JSON.
+  ipcMain.handle('backup:encrypt', async (_event, contents: string, password: string) => {
+    if (typeof contents !== 'string' || !contents) {
+      return { success: false, error: 'Conteúdo de backup inválido.' };
+    }
+    try {
+      return { success: true, payload: sealEnvelope(contents, password, BACKUP_ENVELOPE_PREFIX) };
+    } catch (error) {
+      return { success: false, error: error instanceof Error ? error.message : 'Unknown error' };
+    }
+  });
+
+  ipcMain.handle('backup:decrypt', async (_event, payload: string, password: string) => {
+    if (typeof payload !== 'string' || !payload) {
+      return { success: false, error: 'Arquivo de backup inválido.' };
+    }
+    try {
+      const contents = openEnvelope(
+        payload,
+        password,
+        BACKUP_ENVELOPE_PREFIX,
+        'Arquivo de backup inválido.',
+        'Senha incorreta ou backup corrompido.'
+      );
+      return { success: true, contents };
+    } catch (error) {
+      return { success: false, error: error instanceof Error ? error.message : 'Unknown error' };
+    }
+  });
+
+  ipcMain.handle('backup:save-file', async (_event, contents: string, suggestedName: string) => {
+    if (typeof contents !== 'string' || !contents) {
+      return { success: false, error: 'Conteúdo de backup inválido.' };
+    }
+    try {
+      const safeName = sanitizeDownloadFileName(suggestedName || 'monky-backup.monkybackup');
+      const result = await dialog.showSaveDialog(mainWindow, {
+        title: mt('dialog.saveBackup'),
+        defaultPath: path.join(app.getPath('documents'), safeName),
+        filters: [{ name: 'Monky', extensions: ['monkybackup', 'json'] }],
+      });
+      if (result.canceled || !result.filePath) return { success: false };
+      await fs.promises.writeFile(result.filePath, contents, 'utf8');
+      return { success: true, filePath: result.filePath };
+    } catch (error) {
+      return { success: false, error: error instanceof Error ? error.message : 'Unknown error' };
+    }
+  });
+
+  ipcMain.handle('backup:open-file', async () => {
+    try {
+      const result = await dialog.showOpenDialog(mainWindow, {
+        title: mt('dialog.openBackup'),
+        filters: [{ name: 'Monky', extensions: ['monkybackup', 'json'] }],
+        properties: ['openFile'],
+      });
+      if (result.canceled || result.filePaths.length === 0) return { success: false };
+      const contents = await fs.promises.readFile(result.filePaths[0], 'utf8');
+      return { success: true, contents };
+    } catch (error) {
+      return { success: false, error: error instanceof Error ? error.message : 'Unknown error' };
+    }
+  });
 
   // Local Server Management
   ipcMain.handle('server-host:start', async (_, options: HostServerOptions) => {
@@ -287,13 +537,79 @@ export function setupIpcHandlers(
       fetchWindowIcons: true,
     });
 
-    return sources.map((s) => ({
-      id: s.id,
-      name: s.name,
-      type: s.id.startsWith('screen:') ? 'screen' : 'window',
-      thumbnailDataUrl: s.thumbnail.toDataURL(),
-      appIconDataUrl: s.appIcon ? s.appIcon.toDataURL() : null,
-    }));
+    const nativeWindows = listNativeWindows();
+    const nativeByHwnd = new Map<number, NativeWindowInfo>();
+    for (const w of nativeWindows) nativeByHwnd.set(w.hwnd, w);
+
+    const macIcons = await resolveMacAppIcons(sources.map((s) => s.id));
+
+    // 1) Remove os overlays/tool windows que o capturador WGC passou a vazar. Sem
+    //    dados nativos (outra plataforma ou janela que fechou no meio) mantemos a
+    //    fonte para nao esconder algo legitimo por engano.
+    const realSources = sources.filter((s) => {
+      if (!s.id.startsWith('window:')) return true;
+      const hwnd = nativeWindowIdFromSourceId(s.id);
+      const info = hwnd === null ? undefined : nativeByHwnd.get(hwnd);
+      return info ? !isGhostWindow(info) : true;
+    });
+
+    const result: DesktopSource[] = realSources.map((s) => {
+      const electronIcon = s.appIcon && !s.appIcon.isEmpty() ? s.appIcon.toDataURL() : null;
+      return {
+        id: s.id,
+        name: s.name,
+        type: s.id.startsWith('screen:') ? 'screen' : 'window',
+        thumbnailDataUrl: s.thumbnail.toDataURL(),
+        appIconDataUrl: electronIcon ?? macIcons.get(s.id) ?? null,
+      };
+    });
+
+    // 2) Reexibe janelas minimizadas que o WGC omite — tipicamente um jogo em tela
+    //    cheia que minimizou quando o usuario deu alt-tab para abrir este seletor
+    //    (#560). Sem preview ao vivo (a janela esta minimizada), a UI mostra um
+    //    tile de fallback; a captura passa a exibir o jogo assim que ele volta ao
+    //    primeiro plano.
+    const presentHwnds = new Set<number>();
+    for (const s of sources) {
+      const hwnd = nativeWindowIdFromSourceId(s.id);
+      if (hwnd !== null) presentHwnds.add(hwnd);
+    }
+    const minimizedExtras = nativeWindows.filter(
+      (w) =>
+        w.isIconic &&
+        !presentHwnds.has(w.hwnd) &&
+        !isGhostWindow(w) &&
+        w.width >= 240 &&
+        w.height >= 160,
+    );
+    const extraIcons = await resolveWindowsAppIcons(minimizedExtras.map((w) => w.processPath));
+    for (const w of minimizedExtras) {
+      result.push({
+        id: `window:${w.hwnd}:0`,
+        name: w.title,
+        type: 'window',
+        thumbnailDataUrl: '',
+        appIconDataUrl: extraIcons.get(w.processPath) ?? null,
+      });
+    }
+
+    return result;
+  });
+
+  // Restaura uma janela minimizada antes da captura (#560). O capturador WGC nao
+  // consegue iniciar numa janela minimizada, entao o jogo em tela cheia que
+  // minimizou no alt-tab precisa voltar ao primeiro plano antes do getUserMedia.
+  ipcMain.handle('screen-share:prepare-window', (_event, sourceId: string) => {
+    if (process.platform !== 'win32' || !screenAudio?.restoreWindow) return false;
+    if (typeof sourceId !== 'string') return false;
+    const hwnd = nativeWindowIdFromSourceId(sourceId);
+    if (hwnd === null) return false;
+    try {
+      return screenAudio.restoreWindow(hwnd);
+    } catch (e) {
+      console.warn('[ScreenShare:Main] Falha ao restaurar janela:', (e as Error).message);
+      return false;
+    }
   });
 
   // Avatar Image Selection Dialog
@@ -719,6 +1035,33 @@ export function setupIpcHandlers(
     mainWindow.close();
   });
 
+  // The connection screen must never need scrolling: it grows to whatever the
+  // card measures, error banner included, and only stops at the display's work
+  // area so the window can't outgrow the monitor (#536).
+  ipcMain.handle('window:fit-home-content', (_event, contentHeight: number) => {
+    if (!Number.isFinite(contentHeight) || contentHeight <= 0) return;
+    if (mainWindow.isDestroyed() || mainWindow.isMaximized() || mainWindow.isFullScreen()) return;
+
+    const bounds = mainWindow.getBounds();
+    const [, currentContentHeight] = mainWindow.getContentSize();
+    // Title bar and borders are not part of the measured content.
+    const chrome = bounds.height - currentContentHeight;
+    const workArea = screen.getDisplayMatching(bounds).workArea;
+    const desired = Math.ceil(contentHeight) + chrome;
+    const target = Math.max(HOME_MIN_HEIGHT, Math.min(desired, workArea.height));
+
+    mainWindow.setMinimumSize(HOME_MIN_WIDTH, target);
+
+    // Only ever grow: shrinking would fight a user who deliberately enlarged
+    // the window, and a taller window never causes the scrollbar this fixes.
+    if (bounds.height >= target) return;
+
+    // Growing downwards past the taskbar would push the card off-screen, so the
+    // window slides up just enough to stay inside the work area.
+    const y = Math.max(workArea.y, Math.min(bounds.y, workArea.y + workArea.height - target));
+    mainWindow.setBounds({ ...bounds, y, height: target });
+  });
+
   // App version (for update checks)
   ipcMain.handle('app:get-version', () => app.getVersion());
 
@@ -915,6 +1258,23 @@ export function setupIpcHandlers(
     if (!screenAudio) return { success: false };
     return screenAudio.stop();
   });
+
+  // Client Logging (#444)
+  const logger = options?.clientLogger;
+  if (logger) {
+    ipcMain.handle('client-log:write', (_, entry) => {
+      logger.write(entry);
+    });
+    ipcMain.handle('client-log:get-config', () => logger.getConfig());
+    ipcMain.handle('client-log:set-config', (_, config) => {
+      logger.setConfig(config);
+    });
+    ipcMain.handle('client-log:export', () => logger.exportLogs());
+    ipcMain.handle('client-log:get-size', () => logger.getTotalSize());
+    ipcMain.handle('client-log:clear', () => {
+      logger.clearLogs();
+    });
+  }
 
   mainWindow.on('closed', () => {
     clearAudioBufferAccumulator();

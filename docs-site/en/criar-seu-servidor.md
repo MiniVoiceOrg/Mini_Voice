@@ -16,13 +16,21 @@ Inside the server, click the **server name** › **Invite Friends**. The app sho
 | Different internet connection | Your public IP + forwarded router port |
 | Without touching the router | VPN IP, such as Radmin VPN, Hamachi, ZeroTier or Tailscale |
 
+## Voice & Media Modes (P2P Mesh vs SFU)
+
+When creating or managing a server, you choose the media topology:
+- **P2P Mesh (Default):** Audio and video travel directly between participants. The server only handles signaling, without consuming transcoding CPU or media bandwidth.
+- **Centralized SFU (mediasoup):** Each broadcaster sends media tracks once to the server, which forwards them to viewers. Saves CPU and upstream bandwidth when sharing 1080p60 screens. The app and CLI include a built-in **Capacity Estimator** to plan host requirements.
+
 ## Open access over the internet
 
-Allow the port through the firewall, forward port `3000` (or the one you chose) to the PC's local IP, and use a VPN if the ISP is behind CGNAT.
+- **Primary TCP Port:** Allow port `3000` (or your chosen port) in your firewall and configure router port forwarding.
+- **Ports for SFU (mediasoup):** If using SFU mode, also forward/allow the `40000-49151` range — on UDP and on TCP. On a VPS, see [Opening the SFU mode ports](/en/hospedar-em-vps#opening-the-sfu-mode-ports).
+- **Without touching the router:** Use a virtual network/VPN such as Radmin VPN, Hamachi, ZeroTier, or Tailscale.
 
 ## Administer
 
-Under **Server Settings** you can rename the server, change/remove the password, set or remove the member limit and allow or block the soundboard. Channel headers have **+** to create and a bin icon to delete.
+Under **Server Settings** you can rename the server, change/remove the password, toggle voice mode (P2P / SFU), set or remove the member limit and allow or block the soundboard. Channel headers have **+** to create and a bin icon to delete.
 
 The limit counts **registered members**, not who is online: a person takes the seat from their first join onwards, even while disconnected. To free the seat, kick the member. With the limit off, the server accepts as many people as want to join.
 

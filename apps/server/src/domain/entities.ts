@@ -1,4 +1,4 @@
-import { ChannelType, UserStatus } from '@monky/shared';
+import { ChannelType, UserStatus, VoiceMode } from '@monky/shared';
 
 export interface ServerRecord {
   id: string;
@@ -8,6 +8,16 @@ export interface ServerRecord {
   maxUsers: number;
   ownerUserId?: string | null;
   allowSoundboard?: boolean;
+  /** Whether `@todos` / `@everyone` pings the whole channel (#464). */
+  allowEveryoneMention?: boolean;
+  allowMessageEdit?: boolean;
+  /**
+   * Whether role badges in the member list are shown to everyone (#530).
+   * When off, a badge is only visible to members who hold that same role.
+   */
+  showRoleBadgesToEveryone?: boolean;
+  /** Voice mode ('p2p' | 'sfu') (#515). */
+  voiceMode?: VoiceMode;
   iconPath?: string | null;
   // Attachment storage limits in bytes (#11); null → shared defaults.
   maxAttachmentFileBytes?: number | null;
@@ -54,6 +64,10 @@ export interface MessageRecord {
   content: string;
   createdAt: number;
   isSystem?: boolean;
+  /** Set when the author rewrote the message (#504). */
+  editedAt?: number | null;
+  /** Set when the message was deleted; its content is blanked at the same time (#504). */
+  deletedAt?: number | null;
 }
 
 export interface MentionRecord {

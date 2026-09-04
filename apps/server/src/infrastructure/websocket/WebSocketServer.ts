@@ -14,12 +14,17 @@ import {
   ChannelCreatedPayload,
   ChannelDeletePayload,
   ChannelDeletedPayload,
+  ChannelReorderPayload,
+  ChannelsReorderedPayload,
   ChannelUpdatePayload,
   ChannelUpdatedPayload,
+  ChatDeletePayload,
+  ChatEditPayload,
   ChatHistoryPayload,
   ChatLoadHistoryPayload,
   ChatMentionsReadPayload,
   ChatMessage,
+  ChatMessageUpdatedPayload,
   ChatRequestUploadTokenPayload,
   ChatSendPayload,
   ChatUploadTokenPayload,
@@ -41,6 +46,8 @@ import {
   ServerSettingsUpdatedPayload,
   ServerUpdateSettingsPayload,
   SoundboardPlayPayload,
+  SoundboardStopPayload,
+  SoundboardStoppedPayload,
   SoundboardPlayedPayload,
   UserChangeNicknamePayload,
   UserJoinedPayload,
@@ -57,6 +64,21 @@ import {
   VoiceUserLeftPayload,
   WebRtcSignalPayload,
   RtcDiagnosticsReportPayload,
+  SfuGetRouterRtpCapabilitiesPayload,
+  SfuRouterRtpCapabilitiesPayload,
+  SfuCreateWebRtcTransportPayload,
+  SfuWebRtcTransportCreatedPayload,
+  SfuConnectWebRtcTransportPayload,
+  SfuProducePayload,
+  SfuProducedPayload,
+  SfuConsumePayload,
+  SfuConsumedPayload,
+  SfuProducerClosedPayload,
+  SfuConsumerClosedPayload,
+  SfuConsumerSetPausedPayload,
+  SfuNewProducerPayload,
+  SfuGetProducersPayload,
+  SfuProducersListPayload,
   canAccessChannel,
 } from '@monky/shared';
 import { AuthService } from '../../application/services/AuthService';
@@ -70,6 +92,8 @@ import { UserService } from '../../application/services/UserService';
 import { IServerRepository } from '../../domain/repositories';
 import { scanServerNetworkInterfaces } from '../discovery/ServerIpScanner';
 import { CoturnManager } from '../turn/CoturnManager';
+import { describeSfuPortProblem, SfuManager } from '../sfu/SfuManager';
+import { checkSfuPreflight, formatSfuPreflightForLog } from '../sfu/SfuPreflight';
 import { Logger } from '../logger/Logger';
 import { RateLimiter } from '../security/RateLimiter';
 
@@ -127,7 +151,10 @@ export class WebSocketServer {
     private permissionService: PermissionService,
     private roleService: RoleService,
     private coturnManager: CoturnManager,
-    private rateLimiter: RateLimiter
+    private rateLimiter: RateLimiter,
+    // Kept last: it is the only one with a default, and TypeScript requires a
+    // parameter with an initialiser to come after every required one.
+    private sfuManager: SfuManager = new SfuManager()
   ) {
     // Without a ceiling the ws default of 100 MiB applies, so an
     // unauthenticated client could have the server buffer and JSON.parse a
@@ -135,6 +162,30 @@ export class WebSocketServer {
     this.wss = new WSServer({ server: this.server, maxPayload: LIMITS.WS_MAX_PAYLOAD_BYTES });
     this.setupWss();
     this.startHeartbeat();
+    void this.initSfuIfConfigured();
+  }
+
+  private async initSfuIfConfigured(): Promise<void> {
+    try {
+      const server = await this.serverRepo.getServer();
+      if (server?.voiceMode === 'sfu') {
+        const ok = await this.sfuManager.init();
+        if (!ok) {
+          // Silently downgrading a mode the operator deliberately configured
+          // is an error, not a warning — the preflight names the part of the
+          // environment that is missing instead of only echoing the throw.
+          const preflight = checkSfuPreflight();
+          const diagnosis = preflight.ok ? '' : ` ${formatSfuPreflightForLog(preflight)}`;
+          Logger.error(
+            'SFU',
+            `voiceMode is "sfu" but the SFU worker failed to start: ${this.sfuManager.getLastError()}.${diagnosis} ` +
+              'Clients will keep retrying until it comes up.'
+          );
+        }
+      }
+    } catch (e: any) {
+      Logger.warn('SFU', `Error checking SFU configuration on startup: ${e?.message}`);
+    }
   }
 
   /** Live connections keyed by sessionId — one person may hold several (#309). */
@@ -292,6 +343,17 @@ export class WebSocketServer {
         await this.handleChatLoadHistory(session, payload as ChatLoadHistoryPayload, requestId);
         break;
 
+      case MessageType.CHAT_EDIT:
+        if (!(await this.requirePermission(session, Permission.SEND_MESSAGES, requestId))) return;
+        if (!(await this.requireChannelAccess(session, (payload as ChatEditPayload)?.channelId, requestId))) return;
+        await this.handleChatEdit(session, payload as ChatEditPayload, requestId);
+        break;
+
+      case MessageType.CHAT_DELETE:
+        if (!(await this.requireChannelAccess(session, (payload as ChatDeletePayload)?.channelId, requestId))) return;
+        await this.handleChatDelete(session, payload as ChatDeletePayload, requestId);
+        break;
+
       case MessageType.CHAT_MENTIONS_READ:
         await this.handleChatMentionsRead(session, payload as ChatMentionsReadPayload);
         break;
@@ -315,6 +377,11 @@ export class WebSocketServer {
       case MessageType.CHANNEL_DELETE:
         if (!(await this.requirePermission(session, Permission.MANAGE_CHANNELS, requestId))) return;
         await this.handleChannelDelete(session, payload as ChannelDeletePayload, requestId);
+        break;
+
+      case MessageType.CHANNEL_REORDER:
+        if (!(await this.requirePermission(session, Permission.MANAGE_CHANNELS, requestId))) return;
+        await this.handleChannelReorder(session, payload as ChannelReorderPayload, requestId);
         break;
 
       case MessageType.USER_CHANGE_NICKNAME:
@@ -372,10 +439,55 @@ export class WebSocketServer {
         this.handleRtcDiagnosticsReport(session, payload as RtcDiagnosticsReportPayload);
         break;
 
+      case MessageType.SFU_GET_ROUTER_RTP_CAPABILITIES:
+        if (!(await this.requireSfuMode(session, requestId))) return;
+        await this.handleSfuGetRouterRtpCapabilities(session, payload as SfuGetRouterRtpCapabilitiesPayload, requestId);
+        break;
+
+      case MessageType.SFU_CREATE_WEBRTC_TRANSPORT:
+        if (!(await this.requireSfuMode(session, requestId))) return;
+        await this.handleSfuCreateWebRtcTransport(session, payload as SfuCreateWebRtcTransportPayload, requestId);
+        break;
+
+      case MessageType.SFU_CONNECT_WEBRTC_TRANSPORT:
+        if (!(await this.requireSfuMode(session, requestId))) return;
+        await this.handleSfuConnectWebRtcTransport(session, payload as SfuConnectWebRtcTransportPayload, requestId);
+        break;
+
+      case MessageType.SFU_PRODUCE:
+        if (!(await this.requireSfuMode(session, requestId))) return;
+        await this.handleSfuProduce(session, payload as SfuProducePayload, requestId);
+        break;
+
+      case MessageType.SFU_CONSUME:
+        if (!(await this.requireSfuMode(session, requestId))) return;
+        await this.handleSfuConsume(session, payload as SfuConsumePayload, requestId);
+        break;
+
+      case MessageType.SFU_PRODUCER_CLOSED:
+        if (!(await this.requireSfuMode(session, requestId))) return;
+        this.handleSfuProducerClosed(session, payload as SfuProducerClosedPayload);
+        break;
+
+      case MessageType.SFU_GET_PRODUCERS:
+        if (!(await this.requireSfuMode(session, requestId))) return;
+        await this.handleSfuGetProducers(session, payload as SfuGetProducersPayload, requestId);
+        break;
+
+      case MessageType.SFU_CONSUMER_SET_PAUSED:
+        if (!(await this.requireSfuMode(session, requestId))) return;
+        await this.handleSfuConsumerSetPaused(session, payload as SfuConsumerSetPausedPayload);
+        break;
+
       case MessageType.SOUNDBOARD_PLAY:
         if (!(await this.requirePermission(session, Permission.SPEAK, requestId))) return;
         if (!(await this.requireChannelAccess(session, (payload as SoundboardPlayPayload)?.channelId, requestId))) return;
         await this.handleSoundboardPlay(session, payload as SoundboardPlayPayload, requestId);
+        break;
+
+      case MessageType.SOUNDBOARD_STOP:
+        if (!(await this.requireChannelAccess(session, (payload as SoundboardStopPayload)?.channelId, requestId))) return;
+        this.handleSoundboardStop(session, payload as SoundboardStopPayload, requestId);
         break;
 
       case MessageType.ADMIN_MUTE_USER:
@@ -589,7 +701,18 @@ export class WebSocketServer {
         Logger.warn('NETWORK', 'TURN relay enabled without a shared secret; leaving it off.');
         return;
       }
-      await this.coturnManager.start(server.turnSecret);
+      const started = await this.coturnManager.start(server.turnSecret);
+      if (!started) return;
+
+      // Verify the relay is actually reachable. A VPS whose firewall blocks
+      // port 3478 will silently swallow TURN allocations, and the only sign is
+      // that members behind CGNAT never connect — exactly the bug #425
+      // reported. Checking right after start catches the most common
+      // misconfiguration before anyone tries to call.
+      const portProblem = await CoturnManager.checkPortReachability();
+      if (portProblem) {
+        Logger.warn('NETWORK', `TURN relay started but may not work: ${portProblem}`);
+      }
     } catch (error) {
       Logger.error('NETWORK', 'Failed to apply the TURN relay state', error);
     }
@@ -628,10 +751,13 @@ export class WebSocketServer {
   private async buildIceServersFor(userId: string, session: ClientSession) {
     try {
       const server = await this.serverRepo.getServer();
+      // In SFU mode the server is already the relay, so handing out TURN
+      // credentials would advertise a second one that nothing uses (#515).
+      const secret = server?.voiceMode === 'sfu' ? null : server?.turnSecret ?? null;
       return this.coturnManager.buildIceServers(
         userId,
         session.requestHost ?? null,
-        server?.turnSecret ?? null
+        secret
       );
     } catch (error) {
       Logger.warn('NETWORK', 'Failed to build the ICE server list; sending STUN only.', error);
@@ -666,6 +792,79 @@ export class WebSocketServer {
       type: MessageType.CHAT_MESSAGE,
       requestId,
       payload: result.message,
+    });
+  }
+
+  private async handleChatEdit(
+    session: ClientSession,
+    payload: ChatEditPayload,
+    requestId?: string
+  ): Promise<void> {
+    if (!session.user) return;
+    if (!payload?.messageId || !payload?.channelId) {
+      this.sendError(session.ws, ProtocolErrorCode.BAD_REQUEST, 'Mensagem inválida', requestId);
+      return;
+    }
+
+    const result = await this.chatService.editMessage(
+      session.user.id,
+      payload.channelId,
+      payload.messageId,
+      payload.content
+    );
+    if (!result.success || !result.message) {
+      this.sendError(
+        session.ws,
+        result.errorCode || ProtocolErrorCode.BAD_REQUEST,
+        result.errorMessage || 'Erro ao editar mensagem',
+        requestId
+      );
+      return;
+    }
+
+    await this.broadcastChatMessageUpdated(result.message, requestId);
+  }
+
+  private async handleChatDelete(
+    session: ClientSession,
+    payload: ChatDeletePayload,
+    requestId?: string
+  ): Promise<void> {
+    if (!session.user) return;
+    if (!payload?.messageId || !payload?.channelId) {
+      this.sendError(session.ws, ProtocolErrorCode.BAD_REQUEST, 'Mensagem inválida', requestId);
+      return;
+    }
+
+    // Moderators clean up after anyone; everybody else only after themselves.
+    const canModerate = await this.permissionService.checkPermission(session.user.id, Permission.MANAGE_SERVER);
+
+    const result = await this.chatService.deleteMessage(
+      session.user.id,
+      payload.channelId,
+      payload.messageId,
+      canModerate
+    );
+    if (!result.success || !result.message) {
+      this.sendError(
+        session.ws,
+        result.errorCode || ProtocolErrorCode.BAD_REQUEST,
+        result.errorMessage || 'Erro ao apagar mensagem',
+        requestId
+      );
+      return;
+    }
+
+    await this.broadcastChatMessageUpdated(result.message, requestId);
+  }
+
+  /** Sends the new state of an edited/deleted message to the channel (#504). */
+  private async broadcastChatMessageUpdated(message: ChatMessage, requestId?: string): Promise<void> {
+    const updatedPayload: ChatMessageUpdatedPayload = { message };
+    await this.broadcastToChannel(message.channelId, {
+      type: MessageType.CHAT_MESSAGE_UPDATED,
+      requestId,
+      payload: updatedPayload,
     });
   }
 
@@ -797,6 +996,50 @@ export class WebSocketServer {
     await this.reconcileChannelVisibility();
   }
 
+  /**
+   * Applies a new channel order and tells everyone (#471).
+   *
+   * Each recipient only gets the positions of the channels they can already
+   * see: sending the whole list would leak the existence of private channels
+   * they have no access to.
+   */
+  private async handleChannelReorder(
+    session: ClientSession,
+    payload: ChannelReorderPayload,
+    requestId?: string
+  ): Promise<void> {
+    const result = await this.channelService.reorderChannels(payload);
+    if (!result.success || !result.positions) {
+      this.sendError(
+        session.ws,
+        result.errorCode || ProtocolErrorCode.BAD_REQUEST,
+        result.errorMessage || 'Erro ao reordenar canais',
+        requestId
+      );
+      return;
+    }
+
+    const positions = result.positions;
+    const visibleTo = (peer: ClientSession) =>
+      positions.filter((p) => peer.visibleChannelIds?.has(p.channelId));
+
+    this.send(session.ws, {
+      type: MessageType.CHANNELS_REORDERED,
+      requestId,
+      payload: { positions: visibleTo(session) } satisfies ChannelsReorderedPayload,
+    });
+
+    for (const [ws, peer] of this.sessions.entries()) {
+      if (ws === session.ws || !peer.user || ws.readyState !== WebSocket.OPEN) continue;
+      const mine = visibleTo(peer);
+      if (mine.length === 0) continue;
+      this.send(ws, {
+        type: MessageType.CHANNELS_REORDERED,
+        payload: { positions: mine } satisfies ChannelsReorderedPayload,
+      });
+    }
+  }
+
   private async handleChannelDelete(
     session: ClientSession,
     payload: ChannelDeletePayload,
@@ -909,11 +1152,45 @@ export class WebSocketServer {
     // itself when it is missing rather than sending the operator to a terminal
     // (#431). Only a relay that truly cannot run is rejected, so the toggle
     // never shows "on" while nothing is actually relaying (#425).
-    if (payload.turnEnabled === true) {
+    //
+    // A save that enters SFU is exempt: the relay flag rides along because the
+    // desktop submits the whole form, but `resolveTurnSfuExclusion` is about to
+    // discard it. Acting on it here would install coturn (a multi-minute
+    // apt-get) only to switch it off moments later — or, on a host that cannot
+    // run a relay at all, refuse the SFU switch outright (#515).
+    if (payload.turnEnabled === true && payload.voiceMode !== 'sfu') {
       const blocked = await this.ensureRelayCanRun(session);
       if (blocked) {
         this.sendError(session.ws, ProtocolErrorCode.TURN_UNAVAILABLE, blocked, requestId);
         return;
+      }
+    }
+
+    // Same contract for the SFU: a mode the host cannot serve is refused up
+    // front, because accepting it would only surface later as a call that
+    // quietly fell back to P2P (#515).
+    //
+    // Only an actual switch is probed. The desktop submits the current voice
+    // mode on every save, so probing on `payload.voiceMode === 'sfu'` alone
+    // would bind UDP ports on every rename or password change — and a worker
+    // already serving a call legitimately holds ports in this range, so the
+    // probe would report the admin's own SFU as a blocked firewall. Comparing
+    // against the stored mode is what excludes that case; the worker's own
+    // state is not a substitute, since creating it binds no RTC port and so
+    // proves nothing about the range.
+    if (payload.voiceMode === 'sfu') {
+      const current = await this.serverRepo.getServer();
+      if (current?.voiceMode !== 'sfu') {
+        const portProblem = await this.sfuManager.checkPortAvailability();
+        if (portProblem) {
+          this.sendError(
+            session.ws,
+            ProtocolErrorCode.SFU_UNAVAILABLE,
+            describeSfuPortProblem(portProblem),
+            requestId
+          );
+          return;
+        }
       }
     }
 
@@ -928,7 +1205,45 @@ export class WebSocketServer {
       return;
     }
 
-    if (payload.turnEnabled !== undefined) {
+    if (payload.voiceMode === 'sfu') {
+      const ok = await this.sfuManager.init();
+      if (!ok) {
+        // The admin is watching this switch right now, so the reason travels
+        // to the client instead of staying in the server log. Nothing is
+        // downgraded here: clients keep retrying the SFU on their own until
+        // the worker comes up.
+        const preflight = checkSfuPreflight();
+        const diagnosis = preflight.ok ? '' : ` ${formatSfuPreflightForLog(preflight)}`;
+        Logger.error(
+          'SFU',
+          `SFU initialization failed on mode change: ${this.sfuManager.getLastError()}.${diagnosis}`
+        );
+        const reason =
+          `${this.sfuManager.getLastError() || 'SFU worker failed to initialize'}${diagnosis}`.trim();
+        // Deliberately uncorrelated: the settings change itself succeeded and
+        // is confirmed by the broadcast below, so tying this to the requestId
+        // would fail the very request that worked.
+        this.sendError(session.ws, ProtocolErrorCode.SFU_UNAVAILABLE, reason);
+      }
+    } else if (payload.voiceMode === 'p2p') {
+      // When switching to P2P, cleanly terminate any active SFU channels and evict call participants
+      this.sfuManager.close();
+      const evictedStates = this.signalingService.clearAllVoiceStates();
+      for (const vs of evictedStates) {
+        this.broadcast({
+          type: MessageType.VOICE_USER_LEFT,
+          payload: {
+            channelId: vs.channelId,
+            userId: vs.userId,
+            sessionId: vs.sessionId,
+          },
+        });
+      }
+    }
+
+    if (payload.turnEnabled !== undefined || payload.voiceMode !== undefined) {
+      // Also runs on a plain mode change: switching to SFU forces the relay off
+      // in AuthService, and coturn has to actually stop (#515).
       await this.applyTurnState(Boolean(result.turnEnabled));
     }
 
@@ -936,14 +1251,14 @@ export class WebSocketServer {
       name: result.name!,
       hasPassword: result.hasPassword!,
       allowSoundboard: result.allowSoundboard,
+      allowEveryoneMention: result.allowEveryoneMention,
+      allowMessageEdit: result.allowMessageEdit,
+      showRoleBadgesToEveryone: result.showRoleBadgesToEveryone,
+      voiceMode: result.voiceMode,
       iconUrl: result.iconUrl,
       attachmentStorage: result.attachmentStorage,
       maxUsers: result.maxUsers,
       turnEnabled: result.turnEnabled,
-      // Installing coturn changes the answer to "can this host relay?", and the
-      // clients still hold the one from login. Sending it back is what keeps
-      // the settings screen from offering to install what is already there
-      // (#438).
       turnAvailability: CoturnManager.describeAvailability(),
     };
 
@@ -958,8 +1273,38 @@ export class WebSocketServer {
       'INFO',
       `Configurações do servidor atualizadas (Nome: ${result.name}, Senha: ${
         result.hasPassword ? 'Ativa' : 'Sem Senha'
-      }, Soundboard: ${result.allowSoundboard ? 'Habilitado' : 'Desabilitado'})`
+      }, Modo de Voz: ${result.voiceMode ?? 'p2p'}, Soundboard: ${result.allowSoundboard ? 'Habilitado' : 'Desabilitado'})`
     );
+  }
+
+  /**
+   * Relays "stop my sound" to the channel (#499). No permission gate beyond
+   * channel access: the payload carries no audio and the server only ever
+   * silences the sound of the very session that asked, so the worst a caller
+   * can do is cut their own playback short.
+   */
+  private handleSoundboardStop(
+    session: ClientSession,
+    payload: SoundboardStopPayload,
+    requestId?: string
+  ): void {
+    if (!session.user) return;
+    if (!payload || !payload.channelId) {
+      this.sendError(session.ws, ProtocolErrorCode.BAD_REQUEST, 'Canal inválido', requestId);
+      return;
+    }
+
+    const stoppedPayload: SoundboardStoppedPayload = {
+      channelId: payload.channelId,
+      userId: session.user.id,
+    };
+
+    for (const p of this.signalingService.getParticipantsInChannel(payload.channelId)) {
+      const sock = this.sessionSockets.get(p.sessionId);
+      if (sock && sock.readyState === WebSocket.OPEN) {
+        this.send(sock, { type: MessageType.SOUNDBOARD_STOPPED, requestId, payload: stoppedPayload });
+      }
+    }
   }
 
   private async handleSoundboardPlay(
@@ -1062,6 +1407,23 @@ export class WebSocketServer {
       voiceState: result.voiceState,
     };
 
+    // Whatever this session had in another channel is over: switching channels
+    // on the same server sends no VOICE_LEAVE, and the client's own teardown is
+    // local, so nothing else would ever close those transports — they would sit
+    // on their port pairs until the socket dropped.
+    if (this.sfuManager) {
+      const { closedProducerIds } = this.sfuManager.closeSessionExcept(
+        session.sessionId,
+        payload.channelId
+      );
+      for (const { channelId, producerId } of closedProducerIds) {
+        this.broadcast({
+          type: MessageType.SFU_PRODUCER_CLOSED,
+          payload: { channelId, producerId } satisfies SfuProducerClosedPayload,
+        });
+      }
+    }
+
     // Scoped to the channel's audience so a private room's activity does not
     // reach members who cannot see it (#384).
     await this.broadcastToChannel(payload.channelId, {
@@ -1080,6 +1442,12 @@ export class WebSocketServer {
 
     const previous = this.signalingService.leaveVoiceChannel(session.sessionId);
     if (previous) {
+      // Hanging up keeps the socket open, so nothing else would ever reap what
+      // this session held in the SFU: the client's own teardown is local, and
+      // the producers would stay listed for the next person to join, who would
+      // then be told to consume a microphone that left.
+      this.closeSfuSession(session.sessionId, previous.channelId);
+
       const leavePayload: VoiceUserLeftPayload = {
         channelId: previous.channelId,
         userId: session.user.id,
@@ -1141,6 +1509,254 @@ export class WebSocketServer {
         payload,
       });
     }
+  }
+
+  // SFU Handlers (#515)
+  private async handleSfuGetRouterRtpCapabilities(
+    session: ClientSession,
+    payload: SfuGetRouterRtpCapabilitiesPayload,
+    requestId?: string
+  ): Promise<void> {
+    if (!session.user || !session.sessionId) return;
+    try {
+      console.log(`[SFU Server:WS] User ${session.user.nickname} (${session.sessionId}) requested router capabilities for channel ${payload.channelId}`);
+      if (!this.sfuManager.isReady()) {
+        await this.sfuManager.init();
+      }
+      const rtpCapabilities = await this.sfuManager.getRouterRtpCapabilities(payload.channelId);
+      this.send(session.ws, {
+        type: MessageType.SFU_ROUTER_RTP_CAPABILITIES,
+        requestId,
+        payload: {
+          channelId: payload.channelId,
+          rtpCapabilities,
+        } satisfies SfuRouterRtpCapabilitiesPayload,
+      });
+    } catch (err: any) {
+      console.error(`[SFU Server:WS] Error getting router capabilities for ${session.user.nickname}:`, err);
+      this.sendError(session.ws, ProtocolErrorCode.INTERNAL_ERROR, err?.message || 'Erro ao obter capacidades do roteador SFU', requestId);
+    }
+  }
+
+  private async handleSfuCreateWebRtcTransport(
+    session: ClientSession,
+    payload: SfuCreateWebRtcTransportPayload,
+    requestId?: string
+  ): Promise<void> {
+    if (!session.user || !session.sessionId) return;
+    try {
+      if (!this.sfuManager.isReady()) {
+        await this.sfuManager.init();
+      }
+      console.log(`[SFU Server:WS] User ${session.user.nickname} (${session.sessionId}) creating ${payload.direction} transport for channel ${payload.channelId}`);
+      // A client asking for a transport it already has is rejoining after a
+      // failure. Its previous one is never coming back, and nothing else would
+      // ever close it, so it goes now — along with the producers other clients
+      // would otherwise keep trying to consume.
+      const { closedProducerIds } = this.sfuManager.closeTransportsFor(
+        session.sessionId,
+        payload.channelId,
+        payload.direction
+      );
+      for (const producerId of closedProducerIds) {
+        this.broadcast({
+          type: MessageType.SFU_PRODUCER_CLOSED,
+          payload: { channelId: payload.channelId, producerId } satisfies SfuProducerClosedPayload,
+        });
+      }
+      // Whatever this session still holds in another channel is over too. The
+      // join it belonged to may only have reached this point *after* the
+      // VOICE_JOIN for the new channel was handled — clicking straight from one
+      // channel to another starts a join for the old one that is only abandoned
+      // once its first round-trip returns — and joins are serialised, so a
+      // transport for another channel arriving here is always the older one.
+      const abandoned = this.sfuManager.closeSessionExcept(
+        session.sessionId,
+        payload.channelId
+      );
+      for (const { channelId, producerId } of abandoned.closedProducerIds) {
+        this.broadcast({
+          type: MessageType.SFU_PRODUCER_CLOSED,
+          payload: { channelId, producerId } satisfies SfuProducerClosedPayload,
+        });
+      }
+      const transportOptions = await this.sfuManager.createWebRtcTransport(
+        session.sessionId,
+        payload.channelId,
+        payload.direction,
+        session.requestHost
+      );
+      this.send(session.ws, {
+        type: MessageType.SFU_WEBRTC_TRANSPORT_CREATED,
+        requestId,
+        payload: {
+          channelId: payload.channelId,
+          direction: payload.direction,
+          transportOptions,
+        } satisfies SfuWebRtcTransportCreatedPayload,
+      });
+    } catch (err: any) {
+      console.error(`[SFU Server:WS] Error creating transport for ${session.user.nickname}:`, err);
+      this.sendError(session.ws, ProtocolErrorCode.INTERNAL_ERROR, err?.message || 'Erro ao criar transporte SFU', requestId);
+    }
+  }
+
+  private async handleSfuConnectWebRtcTransport(
+    session: ClientSession,
+    payload: SfuConnectWebRtcTransportPayload,
+    requestId?: string
+  ): Promise<void> {
+    if (!session.user || !session.sessionId) return;
+    try {
+      console.log(`[SFU Server:WS] User ${session.user.nickname} (${session.sessionId}) connecting transport ${payload.transportId}`);
+      await this.sfuManager.connectWebRtcTransport(payload.transportId, payload.dtlsParameters);
+      this.send(session.ws, {
+        type: MessageType.SFU_WEBRTC_TRANSPORT_CONNECTED,
+        requestId,
+        payload: {
+          channelId: payload.channelId,
+          transportId: payload.transportId,
+        },
+      });
+    } catch (err: any) {
+      console.error(`[SFU Server:WS] Error connecting transport ${payload.transportId} for ${session.user.nickname}:`, err);
+      this.sendError(session.ws, ProtocolErrorCode.INTERNAL_ERROR, err?.message || 'Erro ao conectar transporte SFU', requestId);
+    }
+  }
+
+  private async handleSfuProduce(
+    session: ClientSession,
+    payload: SfuProducePayload,
+    requestId?: string
+  ): Promise<void> {
+    if (!session.user || !session.sessionId) return;
+    try {
+      console.log(`[SFU Server:WS] User ${session.user.nickname} (${session.sessionId}) producing ${payload.kind} (${payload.appData?.mediaType}) in channel ${payload.channelId}`);
+      const { id } = await this.sfuManager.produce(
+        session.sessionId,
+        payload.channelId,
+        payload.transportId,
+        payload.kind,
+        payload.rtpParameters,
+        payload.appData || {}
+      );
+
+      this.send(session.ws, {
+        type: MessageType.SFU_PRODUCED,
+        requestId,
+        payload: {
+          channelId: payload.channelId,
+          id,
+        } satisfies SfuProducedPayload,
+      });
+
+      // Notify other participants in the channel about the new producer
+      const newProducerPayload: SfuNewProducerPayload = {
+        channelId: payload.channelId,
+        producerId: id,
+        producerSessionId: session.sessionId,
+        kind: payload.kind,
+        appData: payload.appData || {},
+      };
+
+      const participants = this.signalingService.getParticipantsInChannel(payload.channelId);
+      console.log(`[SFU Server:WS] Broadcasting SFU_NEW_PRODUCER to ${participants.length - 1} other participants in channel ${payload.channelId}`);
+      for (const p of participants) {
+        if (p.sessionId === session.sessionId) continue;
+        const sock = this.sessionSockets.get(p.sessionId);
+        if (sock && sock.readyState === WebSocket.OPEN) {
+          this.send(sock, {
+            type: MessageType.SFU_NEW_PRODUCER,
+            payload: newProducerPayload,
+          });
+        }
+      }
+    } catch (err: any) {
+      console.error(`[SFU Server:WS] Error producing for ${session.user.nickname}:`, err);
+      this.sendError(session.ws, ProtocolErrorCode.INTERNAL_ERROR, err?.message || 'Erro ao produzir mídia no SFU', requestId);
+    }
+  }
+
+  private async handleSfuConsume(
+    session: ClientSession,
+    payload: SfuConsumePayload,
+    requestId?: string
+  ): Promise<void> {
+    if (!session.user || !session.sessionId) return;
+    try {
+      console.log(`[SFU Server:WS] User ${session.user.nickname} (${session.sessionId}) consuming producer ${payload.producerId}`);
+      const consumed = await this.sfuManager.consume(
+        session.sessionId,
+        payload.channelId,
+        payload.transportId,
+        payload.producerId,
+        payload.rtpCapabilities
+      );
+
+      this.send(session.ws, {
+        type: MessageType.SFU_CONSUMED,
+        requestId,
+        payload: {
+          channelId: payload.channelId,
+          ...consumed,
+        } satisfies SfuConsumedPayload,
+      });
+    } catch (err: any) {
+      console.error(`[SFU Server:WS] Error consuming producer ${payload.producerId} for ${session.user.nickname}:`, err);
+      this.sendError(session.ws, ProtocolErrorCode.INTERNAL_ERROR, err?.message || 'Erro ao consumir mídia no SFU', requestId);
+    }
+  }
+
+  private handleSfuProducerClosed(
+    session: ClientSession,
+    payload: SfuProducerClosedPayload
+  ): void {
+    if (!session.user || !session.sessionId) return;
+    console.log(`[SFU Server:WS] User ${session.user.nickname} closed producer ${payload.producerId}`);
+    this.sfuManager.closeProducer(payload.producerId);
+    void this.broadcastToChannel(payload.channelId, {
+      type: MessageType.SFU_PRODUCER_CLOSED,
+      payload,
+    });
+  }
+
+  private async handleSfuGetProducers(
+    session: ClientSession,
+    payload: SfuGetProducersPayload,
+    requestId?: string
+  ): Promise<void> {
+    if (!session.user || !session.sessionId) return;
+    try {
+      const channelProducers = this.sfuManager.getProducersInChannel(payload.channelId);
+      console.log(`[SFU Server:WS] User ${session.user.nickname} requested producers list for channel ${payload.channelId} (found ${channelProducers.length})`);
+      const producers: SfuNewProducerPayload[] = channelProducers.map((p) => ({
+        channelId: payload.channelId,
+        producerId: p.producerId,
+        producerSessionId: p.producerSessionId,
+        kind: p.kind,
+        appData: p.appData,
+      }));
+
+      this.send(session.ws, {
+        type: MessageType.SFU_PRODUCERS_LIST,
+        requestId,
+        payload: {
+          channelId: payload.channelId,
+          producers,
+        } satisfies SfuProducersListPayload,
+      });
+    } catch (err: any) {
+      console.error(`[SFU Server:WS] Error listing producers for ${session.user.nickname}:`, err);
+      this.sendError(session.ws, ProtocolErrorCode.INTERNAL_ERROR, err?.message || 'Erro ao listar produtores SFU', requestId);
+    }
+  }
+
+  private async handleSfuConsumerSetPaused(
+    session: ClientSession,
+    payload: SfuConsumerSetPausedPayload
+  ): Promise<void> {
+    if (!session.user || !session.sessionId) return;
+    await this.sfuManager.setConsumerPaused(payload.consumerId, payload.paused);
   }
 
   private handleRtcDiagnosticsReport(
@@ -1302,6 +1918,11 @@ export class WebSocketServer {
       return;
     }
 
+    // Being kicked out of the call is a departure like any other, but the
+    // client only tears itself down locally — it never sends VOICE_LEAVE — so
+    // the SFU has to be reaped from here (#527).
+    this.closeSfuSession(previous.sessionId, previous.channelId);
+
     this.broadcast({ type: MessageType.ADMIN_KICK_VOICE, requestId, payload });
     this.broadcast({
       type: MessageType.VOICE_USER_LEFT,
@@ -1393,6 +2014,10 @@ export class WebSocketServer {
     // Remove the target from any voice channel they were in (one state per device).
     for (const previousVoice of this.signalingService.getSessionsOfUser(targetUserId)) {
       this.signalingService.leaveVoiceChannel(previousVoice.sessionId);
+      // The sessions were already marked as replaced above, which makes
+      // handleDisconnect return early and skip announceVoiceLeave, so this is
+      // the last chance to reap what they held in the SFU (#527).
+      this.closeSfuSession(previousVoice.sessionId, previousVoice.channelId);
       this.broadcast({
         type: MessageType.VOICE_USER_LEFT,
         payload: {
@@ -1467,6 +2092,19 @@ export class WebSocketServer {
       this.sessionSockets.delete(sessionId);
     }
 
+    // A call cannot outlive the socket that carries its signalling: once this
+    // connection is gone the person can no longer be heard, WebRTC has nowhere
+    // to renegotiate and nobody can move them out of the channel. So leaving
+    // voice is immediate for every kind of disconnect — closing the app,
+    // crashing or dropping the network — and everyone still in the channel gets
+    // the departure (and its sound) right away instead of after the 20 s
+    // reconnection grace period (#458).
+    //
+    // Presence in the member list keeps that grace period (#44): the person is
+    // still shown as "reconnecting", and the client rejoins the voice channel by
+    // itself as soon as it reconnects.
+    this.announceVoiceLeave(user, sessionId);
+
     // Graceful logout (user clicked disconnect / switched servers): remove them
     // immediately. Otherwise treat it as a possible temporary connection loss
     // and give them a grace period to reconnect before announcing USER_LEFT.
@@ -1501,26 +2139,55 @@ export class WebSocketServer {
   }
 
   /**
+   * Reaps everything one connection held in the SFU and tells the channel that
+   * those producers are gone. Without this, whoever joins next is handed a
+   * producer with nobody behind it and sits there consuming a ghost (#527).
+   */
+  private closeSfuSession(sessionId: string, channelId: string): void {
+    if (!this.sfuManager) return;
+    const { closedProducerIds } = this.sfuManager.closeSession(sessionId);
+    for (const producerId of closedProducerIds) {
+      this.broadcast({
+        type: MessageType.SFU_PRODUCER_CLOSED,
+        payload: { channelId, producerId } satisfies SfuProducerClosedPayload,
+      });
+    }
+  }
+
+  /**
+   * Takes one connection out of its voice channel and tells everyone about it.
+   *
+   * Idempotent: `leaveVoiceChannel` returns null when the session is not in a
+   * channel, so calling it twice (a socket that reports both `error` and
+   * `close`, for instance) announces the departure only once.
+   */
+  private announceVoiceLeave(user: UserSummary, sessionId: string): void {
+    const previousVoice = this.signalingService.leaveVoiceChannel(sessionId);
+    if (!previousVoice) return;
+
+    this.closeSfuSession(sessionId, previousVoice.channelId);
+
+    const leavePayload: VoiceUserLeftPayload = {
+      channelId: previousVoice.channelId,
+      userId: user.id,
+      sessionId,
+    };
+    this.broadcast({
+      type: MessageType.VOICE_USER_LEFT,
+      payload: leavePayload,
+    });
+  }
+
+  /**
    * Removes one connection from voice, announces USER_LEFT for it and logs the
    * departure. Used both for graceful logouts and when the reconnection grace
    * period expires. The person may still be online from another device, which
    * the client resolves from the `sessionId` carried in the payload (#309).
    */
   private finalizeSessionLeave(user: UserSummary, sessionId: string): void {
-    // Leave voice channel if in one
-    const previousVoice = this.signalingService.leaveVoiceChannel(sessionId);
-    if (previousVoice) {
-      const leavePayload: VoiceUserLeftPayload = {
-        channelId: previousVoice.channelId,
-        userId: user.id,
-        sessionId,
-      };
-      this.broadcast({
-        type: MessageType.VOICE_USER_LEFT,
-        payload: leavePayload,
-      });
-    }
-
+    // Normally already done by handleDisconnect; kept for the paths that
+    // finalize a session without going through it.
+    this.announceVoiceLeave(user, sessionId);
     const userLeftPayload: UserLeftPayload = {
       userId: user.id,
       sessionId,
@@ -1622,6 +2289,35 @@ export class WebSocketServer {
    * access" would confirm that a private channel with that id exists, which is
    * exactly what hiding it is meant to prevent (#384).
    */
+  /**
+   * Refuses SFU traffic on a server that is not in SFU mode (#515).
+   *
+   * Sits at dispatch because two of these handlers are self-sufficient:
+   * `SFU_GET_ROUTER_RTP_CAPABILITIES` and `SFU_CREATE_WEBRTC_TRANSPORT` both
+   * boot the mediasoup worker on demand, and the latter goes further and
+   * allocates a UDP/TCP port pair per call. Without this any authenticated
+   * member could spawn a worker — and burn ports — on a server the operator
+   * deliberately left in P2P. Guarding only the handshake entry point would
+   * miss the shorter and more expensive path.
+   */
+  private async requireSfuMode(session: ClientSession, requestId?: string): Promise<boolean> {
+    const server = await this.serverRepo.getServer();
+    if (server?.voiceMode === 'sfu') return true;
+
+    // Not SFU_UNAVAILABLE: that code means the host cannot carry SFU media and
+    // the client surfaces it to the admin with the reason attached. This is an
+    // ordinary request arriving for the wrong mode — a client still closing
+    // producers while the server is switched to P2P hits it on the normal
+    // path, and it must not raise an alarm at everyone in the call.
+    this.sendError(
+      session.ws,
+      ProtocolErrorCode.BAD_REQUEST,
+      'Este servidor não está no modo SFU.',
+      requestId
+    );
+    return false;
+  }
+
   private async requireChannelAccess(
     session: ClientSession,
     channelId: string | undefined,
@@ -1805,6 +2501,7 @@ export class WebSocketServer {
       }
     }, LIMITS.SHUTDOWN_GRACE_MS);
     forceClose.unref?.();
+    this.sfuManager?.close();
     this.wss.close();
   }
 }

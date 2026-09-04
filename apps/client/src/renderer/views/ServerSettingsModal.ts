@@ -12,9 +12,11 @@ import { setButtonLoading } from '../utils/buttonLoading';
 import { serverStore } from '../stores/serverStore';
 import { settingsStore, ChatSoundMode } from '../stores/settingsStore';
 import { t } from '../i18n';
-import logoUrl from '../assets/logo.png';
+import { enableBackdropClose } from '../utils/modal';
+import logoUrl from '../assets/Logo.png';
 import { pickAndCropImage } from './ImageCropModal';
 import { attachInputEmojiPicker } from '../utils/inputEmojiPicker';
+import { showConfirm } from './Dialog';
 import { ServerGeneralTab } from './serverSettings/tabs/ServerGeneralTab';
 import { ServerSecurityTab } from './serverSettings/tabs/ServerSecurityTab';
 import { ServerVoiceVideoTab } from './serverSettings/tabs/ServerVoiceVideoTab';
@@ -200,6 +202,9 @@ export class ServerSettingsModal {
     const inputName = this.modalEl.querySelector('#input-server-name') as HTMLInputElement;
     const inputPass = this.modalEl.querySelector('#input-server-pass') as HTMLInputElement;
     const checkboxAllowSoundboard = this.modalEl.querySelector('#checkbox-allow-soundboard') as HTMLInputElement | null;
+    const checkboxAllowEveryoneMention = this.modalEl.querySelector('#checkbox-allow-everyone-mention') as HTMLInputElement | null;
+    const checkboxAllowMessageEdit = this.modalEl.querySelector('#checkbox-allow-message-edit') as HTMLInputElement | null;
+    const checkboxShowRoleBadges = this.modalEl.querySelector('#checkbox-show-role-badges') as HTMLInputElement | null;
     const checkboxTurnEnabled = this.modalEl.querySelector('#checkbox-turn-enabled') as HTMLInputElement | null;
     const passHelpText = this.modalEl.querySelector('#pass-help-text') as HTMLElement | null;
     const statusDesc = this.modalEl.querySelector('#password-status-desc') as HTMLElement | null;
@@ -207,6 +212,7 @@ export class ServerSettingsModal {
 
     btnClose?.addEventListener('click', () => this.close());
     btnCancel?.addEventListener('click', () => this.close());
+    enableBackdropClose(this.modalEl, () => { if (!this.installingRelay) this.close(); });
 
     this.detachGeneralTab = this.generalTab.attach(this.modalEl);
 
@@ -314,6 +320,18 @@ export class ServerSettingsModal {
         allowSoundboard,
       };
 
+      if (checkboxAllowEveryoneMention) {
+        payload.allowEveryoneMention = checkboxAllowEveryoneMention.checked;
+      }
+
+      if (checkboxAllowMessageEdit) {
+        payload.allowMessageEdit = checkboxAllowMessageEdit.checked;
+      }
+
+      if (checkboxShowRoleBadges) {
+        payload.showRoleBadgesToEveryone = checkboxShowRoleBadges.checked;
+      }
+
       // Only sent when the host can actually run the relay: the checkbox is
       // disabled otherwise, and submitting `false` would be indistinguishable
       // from the operator turning it off (#425).
@@ -329,6 +347,26 @@ export class ServerSettingsModal {
 
       if (this.pendingIconBase64 !== undefined) {
         payload.iconBase64 = this.pendingIconBase64;
+      }
+
+      const inputVoiceMode = (this.modalEl?.querySelector('#input-server-voice-mode') as HTMLInputElement | null) ||
+        (this.modalEl?.querySelector('input[name="server-voice-mode"]:checked') as HTMLInputElement | null);
+      if (inputVoiceMode) {
+        payload.voiceMode = inputVoiceMode.value as 'p2p' | 'sfu';
+      }
+
+      const previousVoiceMode = serverStore.serverDetails?.voiceMode || 'p2p';
+      if (previousVoiceMode === 'sfu' && payload.voiceMode === 'p2p') {
+        const confirmed = await showConfirm({
+          title: t('serverSettings.voiceModeDisconnectTitle'),
+          message: t('serverSettings.voiceModeDisconnectMessage'),
+          confirmLabel: t('serverSettings.voiceModeDisconnectConfirm'),
+          cancelLabel: t('common.cancel'),
+          variant: 'warning',
+        });
+        if (!confirmed) {
+          return;
+        }
       }
 
       // Attachment storage limits

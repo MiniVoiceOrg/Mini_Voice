@@ -7,6 +7,7 @@
 import { escapeHtml } from '../src/renderer/utils/html';
 import { renderMarkdown } from '../src/renderer/utils/markdown';
 import { formatBytes, fileIconName } from '../src/renderer/utils/attachment';
+import { avatarFileExtension } from '../src/renderer/utils/avatar';
 import { EventBus } from '../src/renderer/core/EventBus';
 import { normalizeSearchString, matchesSearch } from '../src/renderer/utils/search';
 import { compareVersions, feedUrlForTag, isNewer, pickBestRelease } from '../src/main/updateVersions';
@@ -263,6 +264,7 @@ function runTests() {
       'sess-1': 75,
       'sess-2': 150,
       'sess-3': -20,
+      'sess-4': 250,
     },
     screenAudioVolumes: {
       'sess-screen': 100,
@@ -273,14 +275,17 @@ function runTests() {
   assert(store3.inputMode === 'voice_activity', 'inputMode inválido é sanitizado para fallback "voice_activity"');
   assert(store3.pttReleaseDelay === 0, 'pttReleaseDelay negativo é sanitizado para mínimo 0');
   assert(store3.getUserVolume('sess-1') === 75, 'Volume de usuário 75% lido corretamente');
-  assert(store3.getUserVolume('sess-2') === 100, 'Volume de usuário > 100% clamped para 100%');
+  assert(store3.getUserVolume('sess-2') === 150, 'Volume de usuário 150% (amplificado) lido corretamente');
   assert(store3.getUserVolume('sess-3') === 0, 'Volume de usuário < 0% clamped para 0%');
+  assert(store3.getUserVolume('sess-4') === 200, 'Volume de usuário > 200% clamped para 200%');
   assert(store3.getScreenAudioVolume('sess-screen') === 100, 'Volume de screen audio 100% lido corretamente');
 
   store3.setUserVolume('sess-test', 80);
   assert(store3.getUserVolume('sess-test') === 80, 'setUserVolume aceita 80%');
-  store3.setUserVolume('sess-test-overflow', 150);
-  assert(store3.getUserVolume('sess-test-overflow') === 100, 'setUserVolume 150% é clamped para 100%');
+  store3.setUserVolume('sess-test-amp', 175);
+  assert(store3.getUserVolume('sess-test-amp') === 175, 'setUserVolume aceita 175% (amplificado)');
+  store3.setUserVolume('sess-test-overflow', 250);
+  assert(store3.getUserVolume('sess-test-overflow') === 200, 'setUserVolume 250% é clamped para 200%');
 
   // --- Seleção de release do atualizador automático (#354) ---
   console.log('\n--- Testando seleção de release do atualizador ---');
@@ -574,6 +579,153 @@ function runTests() {
   assert(conexao.createdServers[0].name === 'Nome Novo', 'Nome vazio não apaga o que já estava lá');
   conexao.updateSavedServerMeta('192.168.0.1', 3000, { name: 'Inexistente' });
   assert(conexao.savedServers.length === 2, 'Servidor que não está na lista não cria entrada nova');
+
+  // Extensão do avatar ao salvar a foto ampliada (#406)
+  console.log('\n--- Testando extensão do avatar (#406) ---');
+  assert(avatarFileExtension('/avatars/abc.png') === 'png', 'PNG é reconhecido');
+  assert(avatarFileExtension('/avatars/abc.jpeg') === 'jpeg', 'JPEG não vira png no download');
+  assert(avatarFileExtension('/avatars/abc.webp?v=2') === 'webp', 'Query string não engole a extensão');
+  assert(avatarFileExtension('/avatars/sem-extensao') === 'png', 'Sem extensão cai no padrão');
+  assert(avatarFileExtension(null) === 'png', 'Avatar ausente cai no padrão sem quebrar');
+
+  // Sincronização de Presets de Qualidade de Vídeo e Compartilhamento de Tela (#474)
+  console.log('\n--- Testando sincronização de presets de qualidade de tela (#474) ---');
+  const { videoService } = require('../src/renderer/core/VideoService');
+  const { settingsStore: globalSettingsStore } = require('../src/renderer/stores/settingsStore');
+
+  // Testar ULTRA preset
+  globalSettingsStore.qualityPreset = 'ULTRA';
+  videoService.applyQualityPreset('ULTRA');
+  const ultraProfile = videoService.getProfile();
+  assert(ultraProfile.screenWidth === 1920, 'ULTRA preset define resolução de tela 1920 de largura');
+  assert(ultraProfile.screenHeight === 1080, 'ULTRA preset define resolução de tela 1080 de altura');
+  assert(ultraProfile.screenFps === 60, 'ULTRA preset define 60 fps para tela');
+  assert(ultraProfile.screenBitrateKbps === 8000, 'ULTRA preset define 8000 kbps para tela');
+
+  // Testar GAMING preset
+  globalSettingsStore.qualityPreset = 'GAMING';
+  videoService.applyQualityPreset('GAMING');
+  const gamingProfile = videoService.getProfile();
+  assert(gamingProfile.screenWidth === 1920 && gamingProfile.screenHeight === 1080, 'GAMING preset é 1080p');
+  assert(gamingProfile.screenFps === 60, 'GAMING preset é 60 fps');
+  assert(gamingProfile.screenBitrateKbps === 6000, 'GAMING preset define 6000 kbps');
+
+  // Testar ECONOMIC preset
+  globalSettingsStore.qualityPreset = 'ECONOMIC';
+  videoService.applyQualityPreset('ECONOMIC');
+  const economicProfile = videoService.getProfile();
+  assert(economicProfile.screenWidth === 854 && economicProfile.screenHeight === 480, 'ECONOMIC preset é 480p');
+  assert(economicProfile.screenFps === 15, 'ECONOMIC preset capa em 15 fps');
+  assert(economicProfile.screenBitrateKbps === 900, 'ECONOMIC preset capa bitrate em 900 kbps');
+
+  // Testar CUSTOM preset
+  globalSettingsStore.qualityPreset = 'CUSTOM';
+  globalSettingsStore.customProfile = {
+    name: 'Personalizado',
+    audioBitrateKbps: 48,
+    cameraWidth: 1920,
+    cameraHeight: 1080,
+    cameraFps: 60,
+    cameraBitrateKbps: 4000,
+    screenWidth: 2560,
+    screenHeight: 1440,
+    screenFps: 60,
+    screenBitrateKbps: 48000,
+  };
+  videoService.applyQualityPreset('CUSTOM');
+  const customProfile = videoService.getProfile();
+  assert(customProfile.screenWidth === 2560 && customProfile.screenHeight === 1440, 'CUSTOM preset aceita 1440p personalizado');
+  assert(customProfile.screenFps === 60, 'CUSTOM preset aceita 60 fps');
+  assert(customProfile.screenBitrateKbps === 48000, 'CUSTOM preset aceita 48000 kbps de bitrate');
+
+  // Priorização de Codecs de Vídeo WebRTC (AV1 > VP9 > VP8 > H264)
+  console.log('\n--- Testando priorização de codecs de vídeo WebRTC ---');
+  const { sortVideoCodecs } = require('../src/renderer/core/webrtc/codecPreferences');
+
+  const mockCodecs = [
+    { mimeType: 'video/H264', clockRate: 90000 },
+    { mimeType: 'video/rtx', clockRate: 90000 },
+    { mimeType: 'video/VP8', clockRate: 90000 },
+    { mimeType: 'video/AV1', clockRate: 90000 },
+    { mimeType: 'video/VP9', clockRate: 90000 },
+    { mimeType: 'video/ulpfec', clockRate: 90000 },
+  ];
+
+  const sorted = sortVideoCodecs(mockCodecs);
+  const mimeOrder = sorted.map((c: any) => c.mimeType);
+
+  assert(mimeOrder[0] === 'video/AV1', 'AV1 é o codec de maior prioridade');
+  assert(mimeOrder[1] === 'video/VP9', 'VP9 é o segundo codec prioritário');
+  assert(mimeOrder[2] === 'video/VP8', 'VP8 é o terceiro codec prioritário');
+  assert(mimeOrder[3] === 'video/H264', 'H.264 é o quarto codec prioritário');
+  assert(mimeOrder.includes('video/rtx') && mimeOrder.includes('video/ulpfec'), 'Codecs auxiliares são preservados na lista');
+  assert(sorted.length === mockCodecs.length, 'Nenhum codec é perdido na ordenação');
+
+  // Testar subconjunto sem AV1
+  const subset = sortVideoCodecs([
+    { mimeType: 'video/H264' },
+    { mimeType: 'video/VP8' },
+  ]);
+  assert(subset[0].mimeType === 'video/VP8', 'VP8 supera H264 quando AV1 e VP9 não estão presentes');
+  assert(subset[1].mimeType === 'video/H264', 'H264 fica como fallback');
+
+  // Testar preferência personalizada do usuário
+  const prefH264 = sortVideoCodecs(mockCodecs, 'h264');
+  assert(prefH264[0].mimeType === 'video/H264', 'H.264 passa a ser o primeiro quando selecionado pelo usuário');
+  assert(prefH264[1].mimeType === 'video/AV1', 'AV1 permanece como segundo fallback na preferência H.264');
+
+  const prefVp9 = sortVideoCodecs(mockCodecs, 'vp9');
+  assert(prefVp9[0].mimeType === 'video/VP9', 'VP9 passa a ser o primeiro quando selecionado pelo usuário');
+
+  const prefVp8 = sortVideoCodecs(mockCodecs, 'vp8');
+  assert(prefVp8[0].mimeType === 'video/VP8', 'VP8 passa a ser o primeiro quando selecionado pelo usuário');
+
+  // Testar persistência de preferredVideoCodec na SettingsStore
+  const storeCodec = new SettingsStore();
+  assert(storeCodec.preferredVideoCodec === 'auto', 'preferredVideoCodec tem valor padrão "auto"');
+  storeCodec.preferredVideoCodec = 'h264';
+  storeCodec.save();
+  assert(storeCodec.preferredVideoCodec === 'h264', 'preferredVideoCodec foi atualizado e salvo');
+
+  // Testar ServerStore com VoiceMode
+  console.log('\n--- Testando ServerStore com voiceMode ---');
+  const { createServerStore } = require('../src/renderer/stores/serverStore');
+  const sStore = createServerStore();
+  sStore.setServerDetails({
+    id: 'test-srv-sfu',
+    name: 'Servidor SFU',
+    createdAt: Date.now(),
+    channels: [],
+    members: [],
+    voiceMode: 'sfu',
+  }, { id: 'u1', nickname: 'TestUser', status: 'ONLINE' });
+  assert(sStore.serverDetails?.voiceMode === 'sfu', 'ServerStore armazena voiceMode: "sfu"');
+  sStore.updateServerMeta('Servidor P2P', false, true, undefined, undefined, undefined, undefined, true, true, 'p2p');
+  assert(sStore.serverDetails?.voiceMode === 'p2p', 'updateServerMeta atualiza voiceMode para "p2p"');
+
+  // Testar SfuClientEngine
+  console.log('\n--- Testando SfuClientEngine ---');
+  const { SfuClientEngine } = require('../src/renderer/core/webrtc/SfuClientEngine');
+  const mockSignalClient = {
+    sendRequest: async (type: string, payload: any) => ({ success: true }),
+    send: (type: string, payload: any) => {},
+    on: () => () => {},
+  };
+  let connectionFailedCalled = false;
+  const sfuEngine = new SfuClientEngine(mockSignalClient as any, {
+    onConsumerTrack: () => {},
+    onConsumerClosed: () => {},
+    onConnectionFailed: () => { connectionFailedCalled = true; },
+    onConnected: () => {},
+  });
+  assert(typeof sfuEngine.join === 'function', 'SfuClientEngine possui método join');
+  assert(typeof sfuEngine.produceMic === 'function', 'SfuClientEngine possui método produceMic');
+  assert(typeof sfuEngine.produceCamera === 'function', 'SfuClientEngine possui método produceCamera');
+  assert(typeof sfuEngine.produceScreenVideo === 'function', 'SfuClientEngine possui método produceScreenVideo');
+  assert(typeof sfuEngine.produceScreenAudio === 'function', 'SfuClientEngine possui método produceScreenAudio');
+  assert(sfuEngine.isReady() === false, 'SfuClientEngine nasce com isReady() === false antes do join');
+  sfuEngine.leave();
+  assert(sfuEngine.isReady() === false, 'SfuClientEngine.leave() limpa o estado com segurança');
 
   // Alvos da pré-visualização de link (#372)
   console.log('\n--- Endereços recusados pela pré-visualização de link ---');

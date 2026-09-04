@@ -8,7 +8,7 @@ import {
   DEFAULT_OWNER_NICKNAME,
   DEFAULT_SERVER_NAME,
 } from '../constants';
-import { ask, confirm, promptPassword } from '../prompts';
+import { ask, askChoice, confirm, promptPassword } from '../prompts';
 import {
   CliContext,
   GlobalArgs,
@@ -19,9 +19,12 @@ import {
   writeLocalConfig,
 } from '../context';
 import { DecryptedIdentity, decryptIdentityExport } from '../identity';
-import { parseOption, parseMemberLimit, parsePositiveInt } from '../formatters';
+import { t } from '../i18n/index';
+import { describeSfuPortProblem, parseOption, parseMemberLimit, parsePositiveInt, printSfuPreflight, printVoiceModeComparisonTable } from '../formatters';
+import { estimateHostCapacity, printCapacityEstimate } from '../capacity';
 import { hasServerDatabase, registerServer } from '../registry';
 import { setConfig } from './config';
+import { checkSfuPreflight } from '../../infrastructure/sfu/SfuPreflight';
 import { startServerCommand } from './serverLifecycle';
 
 export async function findUserByPublicIdentity(ctx: CliContext, identity: DecryptedIdentity): Promise<UserRecord | null> {
@@ -53,13 +56,13 @@ export async function applyBootstrap(
   const identity = decryptIdentityExport(identityCode, identityPassword);
   const server = await ctx.serverRepo.getServer();
   if (!server) {
-    throw new Error('Servidor não encontrado.');
+    throw new Error(t('create.serverNotFound'));
   }
 
   let user = await findUserByPublicIdentity(ctx, identity);
 
   if (server.ownerUserId && server.ownerUserId !== user?.id) {
-    throw new Error('Este servidor já possui um owner configurado.');
+    throw new Error(t('create.alreadyHasOwner'));
   }
 
   if (!user) {
@@ -83,7 +86,7 @@ export async function applyBootstrap(
     });
     user = await ctx.userRepo.findById(user.id);
     if (!user) {
-      throw new Error('Falha ao atualizar o usuário bootstrap.');
+      throw new Error(t('create.bootstrapFailed'));
     }
   }
 
@@ -94,13 +97,13 @@ export async function applyBootstrap(
 
   const adminRole = await ctx.roleRepo.findByName('Admin');
   if (!adminRole) {
-    throw new Error('Cargo Admin não encontrado.');
+    throw new Error(t('create.adminRoleNotFound'));
   }
 
   await ctx.roleRepo.assignRole(user.id, adminRole.id);
   await ctx.serverRepo.updateServer({ ownerUserId: user.id });
 
-  console.log(color('Dono do servidor configurado com sucesso.', ANSI.green));
+  console.log(color(t('create.ownerConfigured'), ANSI.green));
   console.log(`nickname: ${user.nickname}`);
   console.log(`userId: ${user.id}`);
   console.log(`clientId: ${user.clientId}`);
@@ -119,13 +122,13 @@ async function askDataDir(globalArgs: GlobalArgs): Promise<string> {
   }
 
   while (true) {
-    const answer = await ask('Onde guardar os dados do servidor', formatDataDirForPrompt(globalArgs.dataDir));
+    const answer = await ask(t('create.askDataDir'), formatDataDirForPrompt(globalArgs.dataDir));
     const resolved = resolveInputPath(answer);
     if (!hasServerDatabase(resolved)) {
       return resolved;
     }
-    console.log(color(`Já existe um servidor Monky em: ${resolved}`, ANSI.yellow));
-    console.log(color('Escolha outra pasta ou use "monky destroy" para apagar o servidor existente.', ANSI.dim));
+    console.log(color(t('create.alreadyExists', { path: resolved }), ANSI.yellow));
+    console.log(color(t('create.chooseAnother'), ANSI.dim));
   }
 }
 
@@ -141,17 +144,17 @@ async function askMemberLimit(args: string[]): Promise<number> {
     return parseMemberLimit('max-users', fromFlag);
   }
 
-  const wantsLimit = await confirm('Deseja limitar o número de membros do servidor?', false);
+  const wantsLimit = await confirm(t('create.askMemberLimit'), false);
   if (!wantsLimit) {
     return LIMITS.MAX_USERS_UNLIMITED;
   }
 
   while (true) {
-    const answer = await ask('Limite de membros', String(LIMITS.MAX_USERS_DEFAULT));
+    const answer = await ask(t('create.memberLimit'), String(LIMITS.MAX_USERS_DEFAULT));
     try {
       const parsed = parseMemberLimit('max-users', answer);
       if (parsed > LIMITS.MAX_USERS_UNLIMITED) return parsed;
-      console.log(color('Informe um número maior que zero.', ANSI.yellow));
+      console.log(color(t('create.invalidLimit'), ANSI.yellow));
     } catch (error) {
       console.log(color(error instanceof Error ? error.message : String(error), ANSI.yellow));
     }
@@ -163,31 +166,57 @@ export async function createCommand(globalArgs: GlobalArgs, args: string[]): Pro
 
   if (hasServerDatabase(dataDir)) {
     throw new Error(
-      `Já existe um servidor Monky em: ${dataDir}\n` +
-        'Use "monky config" para ajustá-lo ou "monky destroy" para apagá-lo.'
+      `${t('create.alreadyExists', { path: dataDir })}\nUse "monky config" to adjust it or "monky destroy" to remove it.`
     );
   }
 
-  const identityCode = parseOption(args, '--identity') || (await ask('Código de identidade do dono (MONKY-ID:...)'));
-  const identityPassword = await promptPassword('Senha da identidade: ');
-  const serverName = parseOption(args, '--name') || (await ask('Nome do servidor', DEFAULT_SERVER_NAME));
-  const portValue = parseOption(args, '--port') || (await ask('Porta do servidor', String(DEFAULT_BOOTSTRAP_PORT)));
-  const serverPassword = parseOption(args, '--password') ?? (await promptPassword('Senha do servidor (deixe vazio para sem senha): '));
+  const identityCode = parseOption(args, '--identity') || (await ask(t('create.identityCode')));
+  const identityPassword = await promptPassword(t('create.identityPassword'));
+  const serverName = parseOption(args, '--name') || (await ask(t('create.serverName'), DEFAULT_SERVER_NAME));
+  const portValue = parseOption(args, '--port') || (await ask(t('create.serverPort'), String(DEFAULT_BOOTSTRAP_PORT)));
+  const serverPassword = parseOption(args, '--password') ?? (await promptPassword(t('create.serverPassword')));
   const port = parsePositiveInt('port', portValue);
   const maxUsers = await askMemberLimit(args);
 
+  const rawVoiceMode = parseOption(args, '--voice-mode');
+  let voiceMode: 'p2p' | 'sfu';
+  if (rawVoiceMode === 'sfu' || rawVoiceMode === 'p2p') {
+    voiceMode = rawVoiceMode;
+  } else {
+    printVoiceModeComparisonTable();
+    voiceMode = (await askChoice(t('create.voiceModeChoice'), ['p2p', 'sfu'])) as 'p2p' | 'sfu';
+  }
+
+  if (voiceMode === 'sfu') {
+    const { SfuManager } = await import('../../infrastructure/sfu/SfuManager');
+    const portProblem = await new SfuManager().checkPortAvailability();
+    if (portProblem) {
+      // A warning rather than a hard stop: the server does not exist yet, so
+      // the operator can still open the range before starting it (#515).
+      console.log();
+      console.log(color('⚠ ' + describeSfuPortProblem(portProblem), ANSI.yellow));
+    } else {
+      console.log(color(t('config.sfuPortOk'), ANSI.green));
+    }
+
+    const report = await estimateHostCapacity();
+    printCapacityEstimate(report);
+    printSfuPreflight(checkSfuPreflight());
+  }
+
   console.log();
-  console.log(color('Resumo do novo servidor', ANSI.bold));
+  console.log(color(t('create.summary'), ANSI.bold));
   console.log(`dataDir: ${dataDir}`);
   console.log(`serverName: ${serverName}`);
   console.log(`port: ${port}`);
-  console.log(`serverPassword: ${serverPassword ? 'definida' : 'sem senha'}`);
-  console.log(`limite de membros: ${maxUsers > LIMITS.MAX_USERS_UNLIMITED ? maxUsers : 'sem limite'}`);
+  console.log(`voiceMode: ${voiceMode}`);
+  console.log(`serverPassword: ${serverPassword ? t('create.passwordSet') : t('create.noPassword')}`);
+  console.log(`${t('create.memberLimit')}: ${maxUsers > LIMITS.MAX_USERS_UNLIMITED ? maxUsers : t('create.noLimit')}`);
   console.log(`identity: ${identityCode.slice(0, Math.min(identityCode.length, 40))}${identityCode.length > 40 ? '...' : ''}`);
 
-  const accepted = await confirm('Confirma?', true);
+  const accepted = await confirm(t('create.confirm'), true);
   if (!accepted) {
-    console.log(color('Criação cancelada.', ANSI.yellow));
+    console.log(color(t('create.cancelled'), ANSI.yellow));
     return;
   }
 
@@ -196,6 +225,7 @@ export async function createCommand(globalArgs: GlobalArgs, args: string[]): Pro
     await setConfig(ctx, 'name', serverName);
     await setConfig(ctx, 'password', serverPassword);
     await setConfig(ctx, 'maxUsers', String(maxUsers));
+    await setConfig(ctx, 'voiceMode', voiceMode, { skipSfuDiagnostics: true });
   });
 
   const config = readLocalConfig(dataDir);
@@ -206,7 +236,7 @@ export async function createCommand(globalArgs: GlobalArgs, args: string[]): Pro
   // later from any directory.
   registerServer(dataDir, { name: serverName, port });
 
-  if (await confirm('Deseja iniciar o servidor agora?', true)) {
+  if (await confirm(t('create.startNow'), true)) {
     await startServerCommand({ ...globalArgs, dataDir, dataDirSpecified: true }, ['--port', String(port)]);
   }
 }

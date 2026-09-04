@@ -258,7 +258,10 @@ export class ServerRailView {
     const live = sessionManager.get(url);
     const background = !isCurrent && live?.client.getStatus() === 'CONNECTED' ? live : undefined;
     const hasCall = voiceStore.voiceSessionKey === url;
-    const hasUnread = !!background?.chatStore.hasAnyUnread();
+    // A mention outranks a plain unread, so the row shows the red dot instead
+    // of the white one when both are pending (#479).
+    const hasMention = !!background?.chatStore.hasAnyMention();
+    const hasUnread = !hasMention && !!background?.chatStore.hasAnyUnread();
     const initial = (srv.name || srv.host || '?').trim().charAt(0).toUpperCase();
     // Read from the session that owns this row, never from the proxied store:
     // a render triggered inside a background event would otherwise paint that
@@ -276,9 +279,11 @@ export class ServerRailView {
         : label;
     const badge = hasCall
       ? `<span class="server-rail-badge" data-kind="call" title="${escapeHtml(t('main.callHereTooltip'))}"><span class="material-symbols-outlined md-14">graphic_eq</span></span>`
-      : hasUnread
-        ? `<span class="server-rail-badge" data-kind="unread" title="${escapeHtml(t('main.unreadHereTooltip'))}"></span>`
-        : '';
+      : hasMention
+        ? `<span class="server-rail-badge" data-kind="mention" title="${escapeHtml(t('main.mentionHereTooltip'))}"></span>`
+        : hasUnread
+          ? `<span class="server-rail-badge" data-kind="unread" title="${escapeHtml(t('main.unreadHereTooltip'))}"></span>`
+          : '';
 
     return `
       <div
@@ -300,7 +305,7 @@ export class ServerRailView {
           ${busy ? 'disabled' : ''}
           style="padding: 0;"
         >
-          ${iconUrl ? `<img src="${escapeHtml(iconUrl)}" style="width: 100%; height: 100%; object-fit: cover; border-radius: inherit; display: block;">` : `<span>${escapeHtml(initial)}</span>`}
+          ${iconUrl ? `<img src="${escapeHtml(iconUrl)}" data-fallback="initial" data-fallback-initial="${escapeHtml(initial)}" style="width: 100%; height: 100%; object-fit: cover; border-radius: inherit; display: block;">` : `<span>${escapeHtml(initial)}</span>`}
           <span class="server-rail-status-dot" data-status="${isCurrent || background ? 'online' : 'checking'}"></span>
           ${badge}
         </button>

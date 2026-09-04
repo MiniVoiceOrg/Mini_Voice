@@ -18,6 +18,16 @@ Whoever broadcasts shows a **LIVE** badge. Click the card to spotlight it or use
 
 Each text channel has history saved on the server, avatars, timestamps, basic formatting and an anti-flood limit of 10 messages every 5 seconds.
 
+A message you started but haven't sent stays with the channel you were typing in. Jumping to the voice stage, opening another channel and coming back does not wipe the text — each channel keeps its own draft, which only goes away when you send the message or leave the server.
+
+## Mentions
+
+Typing `@` in the message box opens the member list: pick someone to insert `@nickname`. Whoever is mentioned gets the highlight on the message, the channel badge and the mention sound.
+
+The first entry on the list is `@everyone` (or `@todos` — both tokens work in any language), which notifies everybody who can see that channel. Private channels stay private: people without access are not notified.
+
+Server admins can turn this off under **Server settings → General → Allow everyone mention**, or through the CLI with the `allowEveryoneMention` key. It is on by default.
+
 ## Code blocks
 
 The `< >` button, next to the smiley, opens a window for pasting code. Pick the language from the list (or leave it on *Plain text*) and send it with the button or with `Ctrl+Enter`.

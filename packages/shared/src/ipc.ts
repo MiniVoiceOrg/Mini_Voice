@@ -3,7 +3,7 @@
  * Define as mensagens e eventos trafegados entre o Main Process e o Renderer Process.
  */
 
-import type { LogEntry } from './logging.js';
+import type { ClientLogConfig, ClientLogEntry, LogEntry } from './logging.js';
 
 export interface DesktopSource {
   id: string;
@@ -141,6 +141,29 @@ export interface UpdateSimpleResult {
   error?: string;
 }
 
+/**
+ * Result of the update install that ran between two launches (#498). Reported
+ * once, on the first launch after the installer took over.
+ */
+export type UpdateOutcome =
+  | { status: 'success'; version: string; fromVersion: string }
+  | { status: 'failed'; version: string };
+
+/**
+ * Release notes for a version, fetched from the GitHub Releases API so the
+ * client can show an in-app changelog after updating and on demand (#547).
+ */
+export interface ReleaseNotesResult {
+  ok: boolean;
+  /** Clean version the notes belong to (e.g. "8.2.8" or "8.2.8-beta"). */
+  version?: string;
+  /** Raw markdown body of the GitHub release. */
+  body?: string;
+  /** URL of the release page, for a "view on GitHub" link. */
+  url?: string;
+  error?: string;
+}
+
 export interface DiscoveredLanServer {
   host: string;
   port: number;
@@ -161,6 +184,10 @@ export interface HostServerOptions {
    * very first boot, when the database is seeded; restarts ignore it.
    */
   maxUsers?: number;
+  /**
+   * Voice mode ('p2p' | 'sfu') chosen when the server was created (#515).
+   */
+  voiceMode?: 'p2p' | 'sfu';
 }
 
 /**
@@ -188,6 +215,86 @@ export interface AppIdentityResult {
 }
 
 /**
+ * Import result. `extras` carries the opaque servers/settings backup that may
+ * have been exported alongside the identity (#472); only the renderer knows how
+ * to read it.
+ */
+export interface AppIdentityImportResult extends AppIdentityResult {
+  extras?: string;
+}
+
+export interface BackupSaveResult {
+  success: boolean;
+  filePath?: string;
+  error?: string;
+}
+
+export interface BackupOpenResult {
+  success: boolean;
+  contents?: string;
+  error?: string;
+}
+
+/** Result of sealing a backup with the user's password (#472). */
+export interface BackupCryptoResult {
+  success: boolean;
+  payload?: string;
+  contents?: string;
+  error?: string;
+}
+
+export interface OverlayBounds {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+}
+
+export type OverlayMode = 'cameras-only' | 'cameras-and-screens';
+export type OverlayLayout = 'grid' | 'vertical' | 'horizontal';
+export type OverlayPosition = 'top-left' | 'top-right' | 'bottom-left' | 'bottom-right' | 'custom';
+
+export interface OverlayConfig {
+  mode: OverlayMode;
+  layout: OverlayLayout;
+  position: OverlayPosition;
+  cardOpacity: number; // 0.2 a 1.0
+  focusActiveSpeaker: boolean;
+  autoOpenOnLeaveStage?: boolean;
+  minimalistMode?: boolean;
+  hideSelf?: boolean;
+  bounds?: OverlayBounds;
+}
+
+export interface OverlayParticipantState {
+  sessionId: string;
+  userId: string;
+  displayName: string;
+  avatarUrl: string | null;
+  isSpeaking: boolean;
+  isMuted: boolean;
+  isDeafened: boolean;
+  isCameraOn: boolean;
+  screenShareIds: string[];
+  isLocal: boolean;
+  videoSlotIndex?: number;
+  screenSlotIndexes?: Record<string, number>;
+}
+
+export interface OverlaySyncState {
+  channelId: string | null;
+  channelName: string;
+  participants: OverlayParticipantState[];
+  activeSpeakerSessionId: string | null;
+  config: OverlayConfig;
+}
+
+export interface OverlaySignalPayload {
+  target: 'main' | 'overlay';
+  signal: string; // JSON com Offer/Answer/Candidate
+}
+
+/**
  * Mapeamento de Canais Bidirecionais (Invoke / Handle)
  */
 export interface IpcInvokeChannels {
@@ -196,7 +303,19 @@ export interface IpcInvokeChannels {
   'window:maximize': { args: []; returnType: void };
   'window:toggle-maximize': { args: []; returnType: void };
   'window:set-in-server': { args: [inServer: boolean]; returnType: void };
+  'window:fit-home-content': { args: [contentHeight: number]; returnType: void };
   'window:close': { args: []; returnType: void };
+
+  // Sobreposição de Tela (Overlay) (#169)
+  'overlay:open': { args: [config: OverlayConfig]; returnType: { success: boolean } };
+  'overlay:close': { args: []; returnType: { success: boolean } };
+  'overlay:is-open': { args: []; returnType: boolean };
+  'overlay:get-config': { args: []; returnType: OverlayConfig | null };
+  'overlay:set-config': { args: [config: Partial<OverlayConfig>]; returnType: void };
+  'overlay:save-bounds': { args: [bounds: OverlayBounds]; returnType: void };
+  'overlay:reset-bounds': { args: []; returnType: void };
+  'overlay:send-signal': { args: [payload: OverlaySignalPayload]; returnType: void };
+  'overlay:send-sync-state': { args: [state: OverlaySyncState]; returnType: void };
 
   // Sistema / App
   'app:set-language': { args: [language: string]; returnType: void };
@@ -206,14 +325,22 @@ export interface IpcInvokeChannels {
   'app:set-auto-start': { args: [enabled: boolean]; returnType: void };
   'app:set-minimize-to-tray': { args: [enabled: boolean]; returnType: void };
   'app:download-file': { args: [url: string, fileName: string]; returnType: { success: boolean; error?: string } };
+  // Ack do renderer ao 'app:before-quit': confirma que ja saiu das chamadas (#458)
+  'app:leave-complete': { args: []; returnType: void };
 
   // Identidade
   'identity:has': { args: []; returnType: boolean };
   'identity:get': { args: []; returnType: AppIdentityResult };
   'identity:get-client-id': { args: []; returnType: string };
   'identity:sign-challenge': { args: [nonceHex: string]; returnType: string };
-  'identity:export': { args: [password: string]; returnType: string };
-  'identity:import': { args: [exportedIdentity: string, password: string]; returnType: AppIdentityResult };
+  'identity:export': { args: [password: string, extras?: string]; returnType: string };
+  'identity:import': { args: [exportedIdentity: string, password: string]; returnType: AppIdentityImportResult };
+
+  // Backup de servidores salvos e configuracoes (#472)
+  'backup:save-file': { args: [contents: string, suggestedName: string]; returnType: BackupSaveResult };
+  'backup:open-file': { args: []; returnType: BackupOpenResult };
+  'backup:encrypt': { args: [contents: string, password: string]; returnType: BackupCryptoResult };
+  'backup:decrypt': { args: [payload: string, password: string]; returnType: BackupCryptoResult };
 
   // Servidor Local
   'server-host:start': { args: [options: HostServerOptions]; returnType: { success: boolean; error?: string } };
@@ -231,6 +358,7 @@ export interface IpcInvokeChannels {
   // Captura de Tela
   'screen-share:ensure-permission': { args: []; returnType: boolean };
   'screen-share:get-sources': { args: []; returnType: DesktopSource[] };
+  'screen-share:prepare-window': { args: [string]; returnType: boolean };
 
   // Diálogos Nativos
   'dialog:select-image': { args: []; returnType: ImageSelectionResult | null };
@@ -279,12 +407,25 @@ export interface IpcInvokeChannels {
   'updater:check': { args: []; returnType: UpdateCheckResult };
   'updater:download': { args: [allowBeta: boolean]; returnType: UpdateSimpleResult };
   'updater:install': { args: []; returnType: UpdateSimpleResult };
+  'updater:outcome': { args: []; returnType: UpdateOutcome | null };
+  'updater:release-notes': { args: [tag?: string]; returnType: ReleaseNotesResult };
+
+  // Client Logging (#444)
+  'client-log:write': { args: [entry: ClientLogEntry]; returnType: void };
+  'client-log:get-config': { args: []; returnType: ClientLogConfig };
+  'client-log:set-config': { args: [config: Partial<ClientLogConfig>]; returnType: void };
+  'client-log:export': { args: []; returnType: { success: boolean; filePath?: string; error?: string } };
+  'client-log:get-size': { args: []; returnType: number };
+  'client-log:clear': { args: []; returnType: void };
 }
 
 /**
  * Mapeamento de Eventos Unidirecionais (Main -> Renderer via webContents.send)
  */
 export interface IpcEvents {
+  // Pedido de despedida antes do processo morrer: o renderer sai das chamadas e
+  // avisa os servidores enquanto ainda esta vivo (#458)
+  'app:before-quit': [];
   'lan:found': [server: DiscoveredLanServer];
   'lan:lost': [server: DiscoveredLanServer];
   'soundboard:shortcut-triggered': [soundName: string];
@@ -292,6 +433,8 @@ export interface IpcEvents {
   'ptt:state-changed': [active: boolean];
   'ptt:captured': [binding: PttKeyBinding];
   'screen-audio:frame': [buffer: ArrayBuffer | Uint8Array];
+  /** Falha assincrona da captura nativa (dispositivo caiu, stream derrubado pelo sistema). */
+  'screen-audio:error': [message: string];
   'tray:toggle-mute': [];
   'tray:toggle-deafen': [];
   'updater:progress': [percent: number];
@@ -299,6 +442,13 @@ export interface IpcEvents {
   'updater:error': [message: string];
   'server-host:log': [entry: LogEntry];
   'server-host:status-changed': [status: { isRunning: boolean; port: number | null; serverId: string | null }];
+
+  // Eventos de Sobreposição (Overlay) (#169)
+  'overlay:state-changed': [isOpen: boolean];
+  'overlay:config-updated': [config: OverlayConfig];
+  'overlay:signal-received': [signal: string];
+  'overlay:sync-state-received': [state: OverlaySyncState];
+  'overlay:close-requested': [];
 }
 
 export type IpcInvokeChannel = keyof IpcInvokeChannels;

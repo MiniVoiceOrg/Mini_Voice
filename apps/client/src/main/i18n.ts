@@ -12,6 +12,8 @@ const CATALOGS = {
   'pt-BR': {
     'dialog.selectProfilePhoto': 'Selecionar Foto de Perfil',
     'dialog.selectSoundFile': 'Selecionar Arquivo de Som',
+    'dialog.saveBackup': 'Salvar backup do Monky',
+    'dialog.openBackup': 'Abrir backup do Monky',
     'dialog.audioFilter': 'Áudio (WAV, MP3, OGG)',
     'dialog.selectSoundboardFolder': 'Selecionar Pasta de Sons (Soundboard)',
     'dialog.selectStickersFolder': 'Selecionar Pasta de Figurinhas',
@@ -22,6 +24,17 @@ const CATALOGS = {
     'error.startServerFailed': 'Falha ao iniciar servidor',
     'error.deleteServerDataFailed': 'Não foi possível apagar os dados do servidor',
     'error.deleteServerDataRunning': 'Pare o servidor antes de apagar os dados dele',
+    'updateInstall.title': 'Atualizando o Monky',
+    'updateInstall.installing': 'Instalando a versão {version}…',
+    'updateInstall.installingGeneric': 'Instalando a atualização…',
+    'updateInstall.installingHint':
+      'Não abra o Monky agora — a instalação pode levar até cerca de um minuto, e ele reabre sozinho ao terminar.',
+    'updateInstall.busy': 'A versão {version} está sendo instalada.',
+    'updateInstall.busyHint':
+      'Esta janela fecha sozinha. O Monky abre automaticamente quando a instalação terminar.',
+    'updateInstall.finishing': 'Abrindo o Monky…',
+    'updateInstall.finishingHint':
+      'A atualização foi concluída. Só um instante enquanto o Monky abre.',
     'screenPermission.title': 'Permissão de gravação de tela',
     'screenPermission.message': 'O macOS está negando a captura de tela para o Monky.',
     'screenPermission.detail':
@@ -47,6 +60,8 @@ const CATALOGS = {
   en: {
     'dialog.selectProfilePhoto': 'Select Profile Picture',
     'dialog.selectSoundFile': 'Select Sound File',
+    'dialog.saveBackup': 'Save Monky backup',
+    'dialog.openBackup': 'Open Monky backup',
     'dialog.audioFilter': 'Audio (WAV, MP3, OGG)',
     'dialog.selectSoundboardFolder': 'Select Sound Folder (Soundboard)',
     'dialog.selectStickersFolder': 'Select Stickers Folder',
@@ -57,6 +72,17 @@ const CATALOGS = {
     'error.startServerFailed': 'Failed to start the server',
     'error.deleteServerDataFailed': 'Could not delete the server data',
     'error.deleteServerDataRunning': 'Stop the server before deleting its data',
+    'updateInstall.title': 'Updating Monky',
+    'updateInstall.installing': 'Installing version {version}…',
+    'updateInstall.installingGeneric': 'Installing the update…',
+    'updateInstall.installingHint':
+      "Don't open Monky right now — the install can take up to about a minute, and it reopens on its own when it's done.",
+    'updateInstall.busy': 'Version {version} is being installed.',
+    'updateInstall.busyHint':
+      'This window closes on its own. Monky opens automatically when the install finishes.',
+    'updateInstall.finishing': 'Opening Monky…',
+    'updateInstall.finishingHint':
+      'The update is done. Just a moment while Monky opens.',
     'screenPermission.title': 'Screen recording permission',
     'screenPermission.message': 'macOS is denying screen capture for Monky.',
     'screenPermission.detail':
@@ -89,6 +115,10 @@ export function setMainLanguage(language: string | undefined): void {
   if (language === 'en' || language === 'pt-BR') {
     currentLanguage = language;
   }
+}
+
+export function getMainLanguage(): MainLanguage {
+  return currentLanguage;
 }
 
 export function mt(key: MainTranslationKey, params?: Record<string, string>): string {

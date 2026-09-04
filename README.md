@@ -1,7 +1,7 @@
 <div align="center">
   <img src="images/Logo.png" alt="Monky" width="220">
   <h1>Monky 🎙️</h1>
-  <p><b>Voz, vídeo, tela e chat entre amigos — no seu próprio servidor, sem cadastro e sem intermediários.</b></p>
+  <p><b>Voz, vídeo, tela e chat entre amigos — no seu próprio servidor, sem cadastro e sem empresa nenhuma no meio.</b></p>
 
   <p>
     <a href="https://github.com/MonkyOrg/Monky/releases/latest"><img alt="Release" src="https://img.shields.io/github/v/release/MonkyOrg/Monky?label=download&color=5865f2"></a>
@@ -25,7 +25,7 @@ Como funciona na prática:
 
 1. **Uma pessoa hospeda** pelo app ou em um VPS, sem conta, e-mail ou nuvem no meio.
 2. **Os amigos entram** informando IP e porta.
-3. **A conversa é direta:** voz, vídeo e tela trafegam P2P via WebRTC; o servidor cuida de login, canais, chat e sinalização. Quando dois membros estão atrás de CGNAT e não conseguem se conectar, quem hospeda em Linux pode ligar um [relay TURN opcional](https://monkyorg.github.io/Monky/cli#relay-de-midia-turn).
+3. **A conversa é direta ou centralizada:** por padrão, voz, vídeo e tela trafegam P2P via WebRTC (mesh direto); para chamadas maiores e transmissões pesadas em 1080p 60fps, o anfitrião pode ativar o modo **SFU** (Selective Forwarding Unit com `mediasoup`). Quando dois membros estão atrás de CGNAT e não conseguem se conectar no modo P2P, quem hospeda em Linux pode ligar um [relay TURN opcional](https://monkyorg.github.io/Monky/cli#relay-de-midia-turn).
 
 Tudo o que é seu fica com você: histórico e usuários no SQLite (`server.db`) do anfitrião; nickname, avatar e preferências no seu PC.
 
@@ -39,7 +39,7 @@ Baixe a versão mais recente em [github.com/MonkyOrg/Monky/releases/latest](http
 | Windows 10/11 (x64) | `Monky-<versão>-win-x64-portable.exe` | Não instala nada, é só executar |
 | macOS (Intel / Apple Silicon) | `Monky-<versão>-mac-<arch>.dmg` | Escolha `x64` (Intel) ou `arm64` (M1/M2/M3+) |
 
-Se o Windows/macOS mostrar aviso de segurança, veja [Instalação](https://monkyorg.github.io/Monky/instalacao). Para checksums e assinatura, veja [Verificar Releases](https://monkyorg.github.io/Monky/verificar-releases).
+Se o Windows/macOS mostrar aviso de segurança, veja [Download](https://monkyorg.github.io/Monky/download). Para checksums e assinatura, veja [Verificar Releases](https://monkyorg.github.io/Monky/verificar-releases).
 
 ## 📚 Documentação
 
@@ -52,33 +52,38 @@ Manual completo de uso e hospedagem em **[monkyorg.github.io/Monky](https://monk
 
 ## 🏗️ Como funciona por dentro
 
-O Monky separa **o que o servidor controla** do **que trafega entre as pessoas**:
+O Monky separa **o que o servidor controla** do **que trafega entre as pessoas**, suportando dois modos de mídia:
 
 ```mermaid
 flowchart TB
-    subgraph MP["Plano de mídia — P2P, não passa pelo servidor"]
+    subgraph P2P["Modo P2P Mesh (Padrão)"]
         direction LR
-        A2["Ana"] <-->|"voz · vídeo · tela"| B2["Bruno"]
-        B2 <-->|"voz · vídeo · tela"| C2["Carla"]
-        A2 <-->|"voz · vídeo · tela"| C2
+        A1["Ana"] <-->|"WebRTC direto"| B1["Bruno"]
+        B1 <-->|"WebRTC direto"| C1["Carla"]
+        A1 <-->|"WebRTC direto"| C1
+    end
+
+    subgraph SFU["Modo SFU (Centralizado)"]
+        direction LR
+        A2["Ana"] <-->|"1 stream (1080p60)"| MS[("mediasoup<br/>Worker")]
+        B2["Bruno"] <-->|"1 stream"| MS
+        C2["Carla"] <-->|"1 stream"| MS
     end
 
     S[("Servidor Monky<br/>WebSocket + SQLite")]
-    A["Ana"] <-->|"login, canais, chat, sinalização"| S
+    A["Ana"] <-->|"login, chat, sinalização"| S
     B["Bruno"] <--> S
     C["Carla"] <--> S
 
-    S -.->|"apresenta os pares<br/>uns aos outros"| MP
+    S -.->|"Sinalização"| P2P
+    S -.->|"Roteamento"| SFU
 ```
 
-O servidor cuida de login, canais, chat, cargos e sinalização — e sai da frente.
-Voz, vídeo e tela vão **direto de uma pessoa para a outra** via WebRTC, em mesh.
-Duas consequências: a banda do servidor quase não importa (um VPS baratinho dá
-conta) e **nem quem hospeda consegue ouvir a conversa**.
+- **P2P Mesh (Padrão):** O servidor apenas sinaliza; áudio, vídeo e tela vão direto entre os usuários. Não consome banda de mídia no host.
+- **SFU Centralizado (mediasoup):** O servidor roteia os fluxos WebRTC. Quem compartilha tela em 1080p60 envia apenas 1 stream, economizando CPU e upload. Se o processo SFU cair, o cliente avisa em tela e refaz a sessão sozinho assim que ele voltar.
 
-O detalhe completo — protocolo, autenticação por chave pública, banco, permissões,
-plano de mídia, perfis de qualidade e limites conhecidos — está em
-**[Arquitetura](https://monkyorg.github.io/Monky/arquitetura)**.
+O detalhe completo — protocolo, autenticação por chave pública, banco, permissões, topologias de mídia, perfis de qualidade e limites — está em **[Arquitetura](https://monkyorg.github.io/Monky/arquitetura)**.
+
 
 ## 🗳️ Roadmap & Votação
 

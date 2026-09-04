@@ -9,6 +9,7 @@ import {
   ProtocolErrorCode,
   ServerDetails,
   UserSummary,
+  VoiceMode,
   authChallengeResponseSchema,
   authConnectSchema,
   canAccessChannel,
@@ -16,6 +17,7 @@ import {
   normalizePublicKeyHex,
 } from '@monky/shared';
 import { ServerRecord, UserRecord } from '../../domain/entities';
+import { CapacityEstimator } from '../../domain/services/CapacityEstimator';
 import { IChannelRepository, IMentionRepository, IServerRepository, IUserRepository } from '../../domain/repositories';
 import { AvatarStorageService } from '../../infrastructure/security/AvatarStorageService';
 import { PasswordService } from '../../infrastructure/security/PasswordService';
@@ -41,6 +43,42 @@ interface PendingAuthChallenge {
   nonce: string;
   /** Which installation is connecting, so two devices of the same person coexist (#309). */
   deviceId: string;
+}
+
+/**
+ * Decides what happens to the TURN relay when voice settings are saved.
+ *
+ * TURN and SFU are mutually exclusive: the SFU already receives and forwards
+ * every stream, so it *is* the relay. Keeping coturn on would burn a second
+ * relay hop, hand out credentials nobody uses and fight the SFU for UDP
+ * ports (#515).
+ *
+ * Pure and exported because the interesting case is not the obvious one. The
+ * desktop submits the current voice mode on *every* save, so `turnEnabled:
+ * true` arriving next to `voiceMode: 'sfu'` is the ordinary "admin whose relay
+ * was already on picks SFU" migration — not a contradiction. Refusing it there
+ * would make the P2P+TURN → SFU upgrade impossible from the UI, which is
+ * exactly the most common upgrade path. Only switching the relay on against a
+ * server that is *staying* in SFU is a genuine contradiction.
+ *
+ * `turnEnabled: undefined` in the result means "leave the stored value alone".
+ */
+export function resolveTurnSfuExclusion(
+  current: { voiceMode?: string | null; turnEnabled?: boolean | null },
+  requested: { voiceMode?: 'p2p' | 'sfu'; turnEnabled?: boolean }
+): { rejected: boolean; turnEnabled: boolean | undefined } {
+  const effectiveVoiceMode = requested.voiceMode ?? current.voiceMode ?? 'p2p';
+  const switchingIntoSfu = requested.voiceMode === 'sfu' && current.voiceMode !== 'sfu';
+
+  if (requested.turnEnabled === true && effectiveVoiceMode === 'sfu' && !switchingIntoSfu) {
+    return { rejected: true, turnEnabled: undefined };
+  }
+
+  let turnEnabled = requested.turnEnabled;
+  if (effectiveVoiceMode === 'sfu' && (turnEnabled || current.turnEnabled)) {
+    turnEnabled = false;
+  }
+  return { rejected: false, turnEnabled };
 }
 
 export class AuthService {
@@ -333,6 +371,11 @@ export class AuthService {
       maxUsers: server.maxUsers,
       hasPassword: !!(server.passwordHash && server.passwordHash.length > 0),
       allowSoundboard: server.allowSoundboard !== false,
+      allowEveryoneMention: server.allowEveryoneMention !== false,
+      allowMessageEdit: server.allowMessageEdit !== false,
+      showRoleBadgesToEveryone: server.showRoleBadgesToEveryone !== false,
+      voiceMode: server.voiceMode || 'p2p',
+      hostSpecs: CapacityEstimator.getHostSpecs(),
       turnEnabled: Boolean(server.turnEnabled),
       iconUrl: this.avatarStorage.getPublicUrl(server.iconPath),
       channels: visibleChannels.map((c) => ({
@@ -394,6 +437,10 @@ export class AuthService {
     name?: string;
     password?: string | null;
     allowSoundboard?: boolean;
+    allowEveryoneMention?: boolean;
+    allowMessageEdit?: boolean;
+    showRoleBadgesToEveryone?: boolean;
+    voiceMode?: VoiceMode;
     iconBase64?: string | null;
     maxAttachmentFileBytes?: number;
     maxAttachmentStorageBytes?: number;
@@ -404,6 +451,10 @@ export class AuthService {
     name?: string;
     hasPassword?: boolean;
     allowSoundboard?: boolean;
+    allowEveryoneMention?: boolean;
+    allowMessageEdit?: boolean;
+    showRoleBadgesToEveryone?: boolean;
+    voiceMode?: VoiceMode;
     iconUrl?: string | null;
     attachmentStorage?: AttachmentStorageInfo;
     maxUsers?: number;
@@ -467,15 +518,41 @@ export class AuthService {
     if (payload.allowSoundboard !== undefined) {
       updates.allowSoundboard = Boolean(payload.allowSoundboard);
     }
+    if (payload.allowEveryoneMention !== undefined) {
+      updates.allowEveryoneMention = Boolean(payload.allowEveryoneMention);
+    }
+    if (payload.allowMessageEdit !== undefined) {
+      updates.allowMessageEdit = Boolean(payload.allowMessageEdit);
+    }
+    if (payload.showRoleBadgesToEveryone !== undefined) {
+      updates.showRoleBadgesToEveryone = Boolean(payload.showRoleBadgesToEveryone);
+    }
+    if (payload.voiceMode !== undefined) {
+      updates.voiceMode = payload.voiceMode === 'sfu' ? 'sfu' : 'p2p';
+    }
 
-    if (payload.turnEnabled !== undefined) {
-      updates.turnEnabled = Boolean(payload.turnEnabled);
-      // Mint the shared secret the first time the relay is switched on, and
-      // keep it afterwards: rotating it would invalidate every credential
-      // already handed out, dropping the calls currently being relayed.
-      if (updates.turnEnabled && !server.turnSecret) {
-        updates.turnSecret = randomBytes(32).toString('hex');
+    const decision = resolveTurnSfuExclusion(
+      { voiceMode: server.voiceMode, turnEnabled: server.turnEnabled },
+      {
+        voiceMode: updates.voiceMode,
+        turnEnabled: payload.turnEnabled === undefined ? undefined : Boolean(payload.turnEnabled),
       }
+    );
+    if (decision.rejected) {
+      return {
+        success: false,
+        errorMessage: 'O relay TURN não pode ser ativado no modo SFU: o próprio SFU já faz o papel de relay.',
+      };
+    }
+    if (decision.turnEnabled !== undefined) {
+      updates.turnEnabled = decision.turnEnabled;
+    }
+
+    // Mint the shared secret the first time the relay is switched on, and
+    // keep it afterwards: rotating it would invalidate every credential
+    // already handed out, dropping the calls currently being relayed.
+    if (updates.turnEnabled && !server.turnSecret) {
+      updates.turnSecret = randomBytes(32).toString('hex');
     }
 
     if (payload.iconBase64 !== undefined) {
@@ -513,6 +590,10 @@ export class AuthService {
       name: updatedServer?.name || server.name,
       hasPassword: !!(updatedServer?.passwordHash && updatedServer.passwordHash.length > 0),
       allowSoundboard: updatedServer?.allowSoundboard !== false,
+      allowEveryoneMention: updatedServer?.allowEveryoneMention !== false,
+      allowMessageEdit: updatedServer?.allowMessageEdit !== false,
+      showRoleBadgesToEveryone: updatedServer?.showRoleBadgesToEveryone !== false,
+      voiceMode: updatedServer?.voiceMode || 'p2p',
       iconUrl: this.avatarStorage.getPublicUrl(updatedServer?.iconPath),
       attachmentStorage: await this.attachmentService.getStorageInfo(),
       maxUsers: updatedServer?.maxUsers ?? server.maxUsers,

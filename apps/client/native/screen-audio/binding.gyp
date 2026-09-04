@@ -13,13 +13,14 @@
         [
           "OS=='win'",
           {
-            "sources": ["src/win/wasapi_loopback.cpp"],
+            "sources": ["src/win/wasapi_loopback.cpp", "src/win/window_enum.cpp"],
             "libraries": [
               "-lMmdevapi",
               "-lOle32",
               "-lAvrt",
               "-lKsuser",
-              "-lUser32"
+              "-lUser32",
+              "-lDwmapi"
             ],
             "msvs_settings": {
               "VCCLCompilerTool": {
@@ -32,7 +33,7 @@
         [
           "OS=='mac'",
           {
-            "sources": ["src/mac/sc_capture.mm"],
+            "sources": ["src/mac/sc_capture.mm", "src/mac/window_owners.mm"],
             "xcode_settings": {
               "GCC_ENABLE_CPP_EXCEPTIONS": "YES",
               "CLANG_ENABLE_OBJC_ARC": "YES",
@@ -42,6 +43,8 @@
                 "-framework CoreMedia",
                 "-framework AVFoundation",
                 "-framework Foundation",
+                "-framework CoreGraphics",
+                "-framework AppKit",
                 "-framework CoreAudio"
               ]
             },

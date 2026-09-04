@@ -2,8 +2,98 @@ import { execSync } from 'child_process';
 import fs from 'fs';
 
 /**
- * Parses commit messages in the given range and determines if the bump
- * should be 'major', 'minor', or 'patch'.
+ * Conventional-commit types we recognise. Anything else falls back to a patch,
+ * which is what an untyped commit has always meant here.
+ */
+const COMMIT_TYPES = 'feat|feature|minor|fix|bugfix|perf|refactor|style|docs|chore|test|build|ci|revert|major';
+
+/**
+ * A single commit listed inside a squash message, as GitHub writes them:
+ * `* fix: subject`. This is what lets one squashed PR still be counted as the
+ * several commits it actually carried (#465).
+ */
+const SQUASH_ENTRY = new RegExp(`^\\s*[*-]\\s+(${COMMIT_TYPES})(\\([^)]*\\))?(!)?:`, 'i');
+
+/**
+ * Splits one commit message into the commits it describes.
+ *
+ * Merging with squash collapses a whole PR into a single commit, but GitHub
+ * keeps every original commit in the body as a bullet list. Reading only the
+ * subject line meant a PR carrying three fixes moved the version by one patch
+ * instead of three (#465).
+ *
+ * When those bullets are present the subject is *skipped*: it summarises the
+ * same work the bullets already describe, so counting both would bump twice for
+ * the same change. A message without bullets is a single commit, subject and
+ * all.
+ */
+export function splitCommitEntries(message) {
+  const text = String(message || '').trim();
+  if (!text) return [];
+
+  const lines = text.split('\n');
+  const starts = [];
+  for (let i = 0; i < lines.length; i += 1) {
+    if (SQUASH_ENTRY.test(lines[i])) starts.push(i);
+  }
+
+  if (starts.length === 0) return [text];
+
+  return starts.map((start, idx) => {
+    const end = idx + 1 < starts.length ? starts[idx + 1] : lines.length;
+    return lines.slice(start, end).join('\n').trim();
+  });
+}
+
+/**
+ * Classifies a single commit as 'major', 'minor' or 'patch'.
+ */
+export function bumpTypeForEntry(entry) {
+  const text = String(entry || '').trim();
+  if (!text) return 'patch';
+
+  const header = text.split('\n')[0].replace(/^\s*[*-]\s+/, '').trim();
+
+  if (
+    /BREAKING[ -]CHANGE:/i.test(text) ||
+    /^[a-zA-Z0-9_-]+(\([^)]*\))?!:/.test(header) ||
+    /^major(\([^)]*\))?:/i.test(header)
+  ) {
+    return 'major';
+  }
+
+  if (/^(feat|feature|minor)(\([^)]*\))?:/i.test(header)) return 'minor';
+
+  return 'patch';
+}
+
+/**
+ * Reads every commit described by the given messages and returns one bump per
+ * commit, in the order they are given.
+ *
+ * Order matters, because the bumps are applied in sequence: a fix followed by a
+ * feature lands on 1.1.0, while a feature followed by a fix lands on 1.1.1.
+ * Callers must therefore pass commits oldest-first.
+ */
+export function collectBumps(commitMessages = []) {
+  const bumps = [];
+  for (const message of commitMessages) {
+    if (!message || typeof message !== 'string') continue;
+    for (const entry of splitCommitEntries(message)) {
+      bumps.push(bumpTypeForEntry(entry));
+    }
+  }
+  return bumps;
+}
+
+/**
+ * Parses commit messages in the given range and determines the single highest
+ * bump they carry: 'major', 'minor' or 'patch'.
+ *
+ * Kept for the release summary and for callers that only want to know how big
+ * the change is. The version itself is calculated by applying *every* commit
+ * (see `applyBumps`), which is not the same thing: three fixes are three
+ * patches, not one.
  *
  * Rules:
  * - major: BREAKING CHANGE, BREAKING-CHANGE, commit type ending with '!' (e.g. feat!:, fix!:, refactor!:), or major: / major(...)
@@ -11,32 +101,9 @@ import fs from 'fs';
  * - patch: fix: / fix(...) / bugfix: / perf: / refactor: / style: / docs: / chore: / test: or default
  */
 export function determineBumpType(commitMessages = []) {
-  let hasMajor = false;
-  let hasMinor = false;
-
-  for (const message of commitMessages) {
-    if (!message || typeof message !== 'string') continue;
-    const trimmed = message.trim();
-    if (!trimmed) continue;
-
-    // Check for breaking changes
-    if (
-      /BREAKING[ -]CHANGE:/i.test(trimmed) ||
-      /^[a-zA-Z0-9_-]+(\([^)]+\))?!:/m.test(trimmed) ||
-      /^major(\([^)]+\))?:/i.test(trimmed)
-    ) {
-      hasMajor = true;
-      break; // Major is the highest precedence
-    }
-
-    // Check for new features / minor
-    if (/^(feat|feature|minor)(\([^)]+\))?:/i.test(trimmed)) {
-      hasMinor = true;
-    }
-  }
-
-  if (hasMajor) return 'major';
-  if (hasMinor) return 'minor';
+  const bumps = collectBumps(commitMessages);
+  if (bumps.includes('major')) return 'major';
+  if (bumps.includes('minor')) return 'minor';
   return 'patch';
 }
 
@@ -67,6 +134,22 @@ export function bumpVersion(currentVersion, bumpType = 'patch') {
   }
 
   return `${major}.${minor}.${patch}`;
+}
+
+/**
+ * Applies a whole list of bumps in sequence, so a release carries the number
+ * every commit in it earned (#465).
+ *
+ * Order is significant and callers pass commits oldest-first: a fix and then a
+ * feature over 1.0.0 lands on 1.1.0, because the feature resets the patch it
+ * had just raised. The reverse order lands on 1.1.1.
+ *
+ * An empty list still moves one patch: every release has to have a number of
+ * its own, and a commit with no recognised type has always meant a patch here.
+ */
+export function applyBumps(currentVersion, bumps = []) {
+  if (!bumps.length) return bumpVersion(currentVersion, 'patch');
+  return bumps.reduce((version, bump) => bumpVersion(version, bump), String(currentVersion));
 }
 
 /**
@@ -192,13 +275,17 @@ export function promoteBetaTag(betaTag) {
 }
 
 /**
- * Gets commit messages between a tag and HEAD.
+ * Gets commit messages between a tag and HEAD, oldest first.
+ *
+ * The order is not cosmetic: bumps are applied in sequence, so reading the log
+ * newest-first would let an older fix land *after* a newer feature and add a
+ * patch on top of the minor it should have been folded into (#465).
  */
 export function getGitCommitsSinceTag(tag) {
   try {
     const range = tag ? `${tag}..HEAD` : 'HEAD';
     const DELIMITER = '---__COMMIT_DELIMITER__---';
-    const output = execSync(`git log ${range} --pretty=format:"%B${DELIMITER}"`, {
+    const output = execSync(`git log --reverse ${range} --pretty=format:"%B${DELIMITER}"`, {
       encoding: 'utf8',
       stdio: ['pipe', 'pipe', 'ignore'],
     });
@@ -224,13 +311,19 @@ export function getGitCommitsSinceTag(tag) {
  * became 1.1.0-beta001, and every later beta — features and fixes alike — kept
  * that same 1.1.0, so promoting after dozens of changes still published 1.1.0
  * (#378).
+ *
+ * Every commit in the range moves the number, one bump each. Taking only the
+ * highest type meant a release carrying three fixes moved a single patch, and a
+ * squashed PR carrying three of them moved one no matter how much it held
+ * (#465).
  */
 export function calculateNextVersion(options = {}) {
   const channel = options.channel === 'beta' ? 'beta' : 'stable';
   const prevTag = options.prevTag || getLatestReleaseTag() || 'v1.0.55';
   const commits = options.commits || getGitCommitsSinceTag(prevTag);
+  const bumps = options.bumpType ? [options.bumpType] : collectBumps(commits);
   const bumpType = options.bumpType || determineBumpType(commits);
-  const baseVersion = bumpVersion(prevTag, bumpType);
+  const baseVersion = applyBumps(prevTag, bumps);
 
   if (channel === 'beta') {
     const nextVersion = `${baseVersion}-${BETA_SUFFIX}`;
@@ -243,6 +336,7 @@ export function calculateNextVersion(options = {}) {
       nextVersion,
       nextTag: `v${nextVersion}`,
       commitsCount: commits.length,
+      bumps,
     };
   }
 
@@ -255,6 +349,7 @@ export function calculateNextVersion(options = {}) {
     nextVersion: baseVersion,
     nextTag: `v${baseVersion}`,
     commitsCount: commits.length,
+    bumps,
   };
 }
 
@@ -291,8 +386,11 @@ if (isDirectRun) {
     bumpType = result.bumpType;
     channel = result.channel;
     prerelease = result.prerelease;
+    const tally = ['major', 'minor', 'patch']
+      .map((type) => `${type}=${result.bumps.filter((b) => b === type).length}`)
+      .join(' ');
     console.log(
-      `[Version] Previous tag: ${result.prevTag} | Bump: ${result.bumpType} | Channel: ${channel} | Next version: ${version}`
+      `[Version] Previous tag: ${result.prevTag} | Bumps: ${result.bumps.length} (${tally}) | Highest: ${result.bumpType} | Channel: ${channel} | Next version: ${version}`
     );
   }
 

@@ -2,7 +2,7 @@ import http from 'http';
 import fs from 'fs';
 import path from 'path';
 import { v4 as uuidv4 } from 'uuid';
-import { ADMIN_PERMISSIONS, DEFAULT_PERMISSIONS, LIMITS, Permission, ProtocolErrorCode, ServerStats, stripAdministrator } from '@monky/shared';
+import { ADMIN_PERMISSIONS, DEFAULT_PERMISSIONS, LIMITS, Permission, ProtocolErrorCode, ServerStats, VoiceMode, stripAdministrator } from '@monky/shared';
 import { AuthService } from './application/services/AuthService';
 import { AttachmentService } from './application/services/AttachmentService';
 import { ChannelService } from './application/services/ChannelService';
@@ -29,6 +29,7 @@ import { AvatarStorageService } from './infrastructure/security/AvatarStorageSer
 import { PasswordService } from './infrastructure/security/PasswordService';
 import { RateLimiter } from './infrastructure/security/RateLimiter';
 import { CoturnManager } from './infrastructure/turn/CoturnManager';
+import { SfuManager } from './infrastructure/sfu/SfuManager';
 import { WebSocketServer } from './infrastructure/websocket/WebSocketServer';
 
 export interface ServerConfig {
@@ -38,13 +39,14 @@ export interface ServerConfig {
   discoveryPort?: number;
   password?: string;
   maxUsers?: number;
+  voiceMode?: VoiceMode;
   initialVoiceChannel?: string;
   initialTextChannel?: string;
 }
 
 type ServerSeedConfig = Pick<
   ServerConfig,
-  'serverName' | 'password' | 'maxUsers' | 'initialVoiceChannel' | 'initialTextChannel'
+  'serverName' | 'password' | 'maxUsers' | 'voiceMode' | 'initialVoiceChannel' | 'initialTextChannel'
 >;
 
 export async function ensureServerSeedData(
@@ -67,6 +69,8 @@ export async function ensureServerSeedData(
       maxUsers: config.maxUsers ?? LIMITS.MAX_USERS_DEFAULT,
       ownerUserId: null,
       allowSoundboard: true,
+      allowEveryoneMention: true,
+      voiceMode: config.voiceMode || 'p2p',
     });
 
     await channelRepo.create({
@@ -167,6 +171,7 @@ export class MonkyServer {
   private lanBroadcaster: LanBroadcaster;
   private attachmentService: AttachmentService;
   private coturnManager: CoturnManager;
+  private sfuManager: SfuManager;
   private serverRepo: SqliteServerRepository;
   private startedAt: number | null = null;
 
@@ -180,6 +185,7 @@ export class MonkyServer {
     lanBroadcaster: LanBroadcaster,
     attachmentService: AttachmentService,
     coturnManager: CoturnManager,
+    sfuManager: SfuManager,
     serverRepo: SqliteServerRepository
   ) {
     this.dbConn = dbConn;
@@ -190,6 +196,7 @@ export class MonkyServer {
     this.lanBroadcaster = lanBroadcaster;
     this.attachmentService = attachmentService;
     this.coturnManager = coturnManager;
+    this.sfuManager = sfuManager;
     this.serverRepo = serverRepo;
   }
 
@@ -223,7 +230,9 @@ export class MonkyServer {
       mentionRepo,
       avatarStorage,
       rateLimiter,
-      attachmentService
+      attachmentService,
+      serverRepo,
+      (userId, channelId) => channelService.canUserAccessChannel(userId, channelId)
     );
 
     let getOnlineUsers: () => any = () => new Map();
@@ -364,6 +373,7 @@ export class MonkyServer {
     });
 
     const coturnManager = new CoturnManager(config.dataDir);
+    const sfuManager = new SfuManager();
 
     const wsServer = new WebSocketServer(
       httpServer,
@@ -377,7 +387,8 @@ export class MonkyServer {
       permissionService,
       roleService,
       coturnManager,
-      rateLimiter
+      rateLimiter,
+      sfuManager
     );
 
     getOnlineUsers = () => wsServer.getOnlineUsersMap();
@@ -398,6 +409,7 @@ export class MonkyServer {
       lanBroadcaster,
       attachmentService,
       coturnManager,
+      sfuManager,
       serverRepo
     );
   }
@@ -576,6 +588,18 @@ export class MonkyServer {
       const server = await this.serverRepo.getServer();
       if (!server?.turnEnabled) return;
 
+      // TURN and SFU are mutually exclusive (#515), but the pair was legal
+      // before that rule existed, so an upgraded database can still carry it.
+      // Leaving coturn up would be worse than redundant: the SFU path hands
+      // out no TURN credentials at all, so the relay would hold port 3478 and
+      // its whole relay range without ever serving an allocation. The row is
+      // repaired so the next boot is clean.
+      if (server.voiceMode === 'sfu') {
+        Logger.warn('NETWORK', 'TURN relay was enabled alongside SFU mode; disabling it (the SFU is the relay).');
+        await this.serverRepo.updateServer({ turnEnabled: false });
+        return;
+      }
+
       const secret = server.turnSecret;
       if (!secret) {
         Logger.warn('NETWORK', 'TURN relay is enabled but has no shared secret; leaving it off.');
@@ -589,6 +613,7 @@ export class MonkyServer {
 
   public async stop(): Promise<void> {
     Logger.info('INFO', 'Stopping Monky Server...');
+    this.sfuManager.close();
     await this.coturnManager.stop();
     await this.lanBroadcaster.stop();
     this.rateLimiter.dispose();

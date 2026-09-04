@@ -1,0 +1,61 @@
+/**
+ * Diagramas da página de arquitetura (#349).
+ *
+ * Os diagramas são SVGs prontos, gerados a partir dos fontes mermaid em
+ * `docs-site/diagramas/src/` — ver `diagramas/scripts/gerar.mjs`. São dois por
+ * diagrama, claro e escuro, e a troca acontece aqui.
+ *
+ * O tamanho é o natural do desenho. Deixar o navegador encolher para caber na
+ * coluna de texto (~688px) é justamente o que tornava os diagramas ilegíveis:
+ * um desenho de 1600px chegava à tela a 43%, com texto de 16px virando 7px.
+ * Então o que não cabe rola na horizontal, como já acontece com tabela e bloco
+ * de código no VitePress.
+ */
+.vp-doc .diagrama {
+  overflow-x: auto;
+  overflow-y: hidden;
+  /* Espaço para a barra de rolagem não cobrir a última linha do desenho. */
+  padding-bottom: 4px;
+  margin: 20px 0;
+}
+
+/* O parágrafo que o markdown cria em volta das imagens não deve dar espaço. */
+.vp-doc .diagrama p {
+  margin: 0;
+}
+
+.vp-doc .diagrama img {
+  /* O `max-width: 100%` do tema venceria a rolagem e encolheria o desenho. */
+  max-width: none;
+  display: block;
+  /* Cabe na coluna: centraliza. Não cabe: começa da esquerda e rola. */
+  margin: 0 auto;
+}
+
+html:not(.dark) .vp-doc .diagrama .tema-escuro,
+html.dark .vp-doc .diagrama .tema-claro {
+  display: none;
+}
+
+/**
+ * Página de arquitetura: coluna larga só para os diagramas (#349).
+ *
+ * A coluna de texto do VitePress tem 688px, e 9 dos 11 diagramas são mais
+ * largos que isso — ou seja, quase todos rolavam. Com `aside: false` no
+ * frontmatter a página libera o espaço do sumário lateral, e aqui o texto
+ * continua em 688px (linha longa cansa de ler) enquanto só o diagrama ocupa
+ * a largura toda.
+ */
+.pagina-arquitetura .content-container {
+  max-width: none;
+}
+
+.pagina-arquitetura .vp-doc > div > * {
+  max-width: 688px;
+  margin-left: auto;
+  margin-right: auto;
+}
+
+.pagina-arquitetura .vp-doc > div > .diagrama {
+  max-width: none;
+}

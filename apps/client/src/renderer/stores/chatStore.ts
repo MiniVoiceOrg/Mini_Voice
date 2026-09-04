@@ -11,6 +11,10 @@ export class ChatStore {
   private mentionChannels: Set<string> = new Set();
   // Text channels with unread messages for the current user (#263).
   private unreadChannels: Set<string> = new Set();
+  // Half-written messages, keyed by channelId (#478). They live in the store
+  // instead of the view because the view is torn down and rebuilt whenever the
+  // center area switches between chat and the voice stage.
+  private drafts: Map<string, string> = new Map();
   // Maximum number of messages kept in memory per channel to bound memory usage.
   private static readonly MAX_MESSAGES_PER_CHANNEL = 250;
 
@@ -38,6 +42,20 @@ export class ChatStore {
       list.splice(0, list.length - ChatStore.MAX_MESSAGES_PER_CHANNEL);
     }
     this.bus.emit('chat.message_added', message);
+  }
+
+  /**
+   * Replaces a message already in the feed with its edited/deleted state (#504).
+   * A message the client never loaded is ignored: it will arrive in its final
+   * shape the next time the history is fetched.
+   */
+  public updateMessage(message: ChatMessage): void {
+    const list = this.messages.get(message.channelId);
+    if (!list) return;
+    const index = list.findIndex((m) => m.id === message.id);
+    if (index === -1) return;
+    list[index] = message;
+    this.bus.emit('chat.message_updated', message);
   }
 
   public getMessages(channelId: string): ChatMessage[] {
@@ -93,10 +111,39 @@ export class ChatStore {
     return this.unreadChannels.size > 0 || this.mentionChannels.size > 0;
   }
 
+  /**
+   * Whether any channel holds an unread @-mention. The rail badge separates it
+   * from plain unread so a mention shows up in red instead of white (#479).
+   */
+  public hasAnyMention(): boolean {
+    return this.mentionChannels.size > 0;
+  }
+
+  /**
+   * Remembers what the user had typed but not sent in a channel, so leaving for
+   * the voice stage or another channel doesn't throw the text away (#478).
+   */
+  public setDraft(channelId: string, text: string): void {
+    if (text.length === 0) {
+      this.drafts.delete(channelId);
+      return;
+    }
+    this.drafts.set(channelId, text);
+  }
+
+  public getDraft(channelId: string): string {
+    return this.drafts.get(channelId) || '';
+  }
+
+  public clearDraft(channelId: string): void {
+    this.drafts.delete(channelId);
+  }
+
   public clear(): void {
     this.messages.clear();
     this.mentionChannels.clear();
     this.unreadChannels.clear();
+    this.drafts.clear();
     this.bus.emit('chat.cleared');
   }
 }

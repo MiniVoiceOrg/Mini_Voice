@@ -17,9 +17,10 @@
   },
   "dependencies": {
     "@monky/shared": "*",
-    "ws": "^8.18.0",
+    "mediasoup": "^3.26.0",
+    "sql.js": "^1.12.0",
     "uuid": "^11.1.0",
-    "sql.js": "^1.12.0"
+    "ws": "^8.18.0"
   },
   "devDependencies": {
     "@types/node": "^22.13.4",

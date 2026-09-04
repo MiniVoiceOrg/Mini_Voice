@@ -1,0 +1,210 @@
+# Media relay (TURN)
+
+By default Monky's voice and video travel **straight between participants**
+(P2P). The server only handles the introductions. That is a good thing: less
+latency, and almost no bandwidth for whoever hosts.
+
+The problem shows up when two members sit behind **CGNAT** — common on mobile
+networks and at many residential ISPs. In that case both sides may simply be
+unable to see each other, and the call between them never connects, even though
+each of them connects fine with everyone else.
+
+**TURN** fixes it by having the server **forward the media** for that specific
+pair. It is a last resort: WebRTC always tries the direct route first and only
+falls back to the relay when there is no alternative.
+
+::: info This page applies to P2P Mesh mode
+In [SFU mode](/en/criar-seu-servidor#voice-media-modes-p2p-mesh-vs-sfu) every
+participant already connects to the server rather than to each other, so CGNAT
+stops getting in the way and the relay has no job left — the SFU *is* the relay.
+Enabled alongside it, coturn would just hold port 3478 and its whole range
+without ever serving a single allocation, which is why Monky refuses the
+combination from both the app and the CLI. If you are on SFU and media does not
+flow, the fix is to
+[open the SFU ports](/en/hospedar-em-vps#opening-the-sfu-mode-ports), not to turn
+TURN on.
+:::
+
+## Requirements
+
+- A **Linux** host with a public IP (a typical VPS). No coturn package exists
+  for Windows or macOS — the relay is unavailable on those platforms.
+- **Open ports** in the firewall (see below).
+- Bandwidth on the host: every relayed pair uses the server's upload **and**
+  download.
+
+## Required ports
+
+| Port | Protocol | Purpose |
+|---|---|---|
+| `3478` | **TCP** | TURN listening port (signaling and allocate) |
+| `3478` | **UDP** | TURN listening port (signaling and allocate) |
+| `49152-65535` | **UDP** | Port range for media relay |
+
+::: danger All 3 rules are mandatory
+If any of these ports is closed, coturn will start but clients will not be able
+to create relay candidates — the call simply will not connect for people behind
+CGNAT.
+:::
+
+## Opening ports on Linux
+
+### 1. Provider firewall (web panel)
+
+Most VPS providers (Oracle Cloud, AWS, Azure, GCP, Hetzner) have a firewall
+**outside** the machine, at the network level. This firewall must be configured
+**in the provider's web panel** — changing `iptables` alone is not enough.
+
+#### Oracle Cloud (OCI)
+
+1. Open the Oracle Cloud console
+2. Go to **Networking → Virtual Cloud Networks**
+3. Click on the **VCN** of your instance
+4. In the side menu, click **Security** (or Subnets → your subnet → Security List)
+5. Click on the associated **Security List**
+6. Click **Add Ingress Rules** and add 3 rules:
+
+| Source CIDR | IP Protocol | Destination Port Range |
+|---|---|---|
+| `0.0.0.0/0` | UDP | `3478` |
+| `0.0.0.0/0` | TCP | `3478` |
+| `0.0.0.0/0` | UDP | `49152-65535` |
+
+7. Save
+
+#### AWS (EC2)
+
+1. Open the AWS console → **EC2 → Security Groups**
+2. Select your instance's Security Group
+3. Tab **Inbound rules → Edit inbound rules**
+4. Add the same 3 rules (Custom UDP/TCP, source `0.0.0.0/0`)
+
+#### Other providers
+
+Look for "Security Groups", "Firewall Rules" or "Network ACL" in your
+provider's panel. The logic is the same: open ports 3478 TCP/UDP and the range
+49152-65535 UDP from any source.
+
+### 2. Linux firewall (iptables)
+
+Even with the provider firewall open, Linux may have its own rules. Run:
+
+```bash
+# Open the ports
+sudo iptables -I INPUT -p udp --dport 3478 -j ACCEPT
+sudo iptables -I INPUT -p tcp --dport 3478 -j ACCEPT
+sudo iptables -I INPUT -p udp --dport 49152:65535 -j ACCEPT
+
+# Persist (survives reboot)
+sudo netfilter-persistent save
+```
+
+::: tip If you use `ufw` instead of `iptables`
+```bash
+sudo ufw allow 3478/tcp
+sudo ufw allow 3478/udp
+sudo ufw allow 49152:65535/udp
+```
+:::
+
+::: tip If you use `firewalld` (CentOS/RHEL)
+```bash
+sudo firewall-cmd --permanent --add-port=3478/tcp
+sudo firewall-cmd --permanent --add-port=3478/udp
+sudo firewall-cmd --permanent --add-port=49152-65535/udp
+sudo firewall-cmd --reload
+```
+:::
+
+## Enabling the relay
+
+```bash
+monky config set turn true
+monky restart
+```
+
+coturn is installed **automatically** from your distro the first time you turn
+the relay on. This applies both to the command above and to the switch under
+**Server Settings → Voice and Video** in the app.
+
+If the server does not run as root, run this once:
+
+```bash
+sudo bash scripts/install-turn.sh
+```
+
+## Checking that it works
+
+### Via CLI
+
+```bash
+monky status
+```
+
+In the **TURN Relay** section, you should see:
+
+```
+turn: yes
+coturn: installed
+port: 3478
+status: ✔ accessible
+```
+
+If you see `⚠ port blocked`, review the firewalls above.
+
+### Via network (from another machine)
+
+```bash
+# Check if the port is responding
+nc -zv YOUR_IP 3478
+```
+
+### On the server itself
+
+```bash
+# Check if coturn is listening
+sudo ss -tlnup | grep 3478
+```
+
+### In the app
+
+A participant connected through the relay gets an amber `swap_horiz` icon next
+to their name, both on the stage and in the voice channel list. If nobody shows
+the icon, either everyone is connecting directly (the ideal case) or the relay
+did not start — check with `monky logs`.
+
+## Troubleshooting
+
+| Symptom | Likely cause | Solution |
+|---|---|---|
+| `monky status` shows `⚠ port blocked` | Port 3478 closed in provider or Linux firewall | Follow the port opening steps above |
+| coturn starts but nobody connects via relay | Missing `external-ip` in config (NAT-based VPS) | Update to v4.13.2+ — detection is automatic |
+| `monky status` shows `coturn: unavailable` | coturn is not installed | `sudo bash scripts/install-turn.sh` |
+| The TURN switch is greyed out in the app | Server is not Linux, or old version | Update the server; TURN only works on Linux |
+| Call connects but with high latency | Normal for relay — media goes through the server | Consider a VPS closer to your members |
+
+## Disabling it
+
+```bash
+monky config set turn false
+monky restart
+```
+
+coturn stays installed but is not started. No extra ports need to remain open.
+
+## How it works under the hood
+
+Monky uses [coturn](https://github.com/coturn/coturn), the reference TURN
+server. When the relay is enabled:
+
+1. Monky generates a random **shared secret** and persists it in the database
+2. On boot, it detects the VPS **public IP** (via ipify.org) and the **local
+   IP** of the NIC
+3. Generates `turnserver.conf` with the `external-ip=PUBLIC/PRIVATE` directive —
+   without this, on NAT-based VPS (Oracle, AWS, etc.), coturn advertises the
+   private IP and relay candidates become unreachable
+4. Spawns coturn as a child process
+5. Verifies port 3478 is listening and, if possible, externally accessible
+6. At each client login, generates **ephemeral credentials** (TURN REST API)
+   valid for 12 hours
+7. The client's WebRTC tries the direct route and only uses the relay if needed

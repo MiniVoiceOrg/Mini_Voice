@@ -249,35 +249,30 @@ jobs:
           ref: ${{ needs.version.outputs.checkout_ref }}
           fetch-depth: 0
 
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
       - name: Generate changelog
         id: changelog
         run: |
           PREV_TAG="${{ needs.version.outputs.prev_tag }}"
           echo "Previous tag: ${PREV_TAG:-<none>}"
-          if [ -n "$PREV_TAG" ]; then
-            RANGE="${PREV_TAG}..HEAD"
-          else
-            RANGE=""
-          fi
 
-          # Prefer the descriptive per-issue lines from commit bodies
-          # (e.g. "#44: reconecta imediatamente ..."); fall back to commit
-          # subjects when a commit has no such lines. This yields a written
-          # changelog that still references the issues.
-          ITEM_LINES=$(git log $RANGE --no-merges --pretty=format:'%b' \
-            | grep -E '^#[0-9]+:' | sed -E 's/^/- /' || true)
-          if [ -z "$ITEM_LINES" ]; then
-            ITEM_LINES=$(git log $RANGE --no-merges --pretty=format:'- %s' || true)
-          fi
-          if [ -z "$ITEM_LINES" ]; then
-            ITEM_LINES="- Melhorias diversas e correções."
-          fi
+          # scripts/generate-changelog.js turns the commit range into the
+          # friendly, grouped notes (Novidades / Correções / Outros) shown both
+          # on the release and inside the client (#547). It reads the curated
+          # "#NNN:" lines from commit bodies, falls back to bullets then the
+          # subject, and appends the comparison link.
+          NOTES=$(node scripts/generate-changelog.js \
+            --prev "$PREV_TAG" \
+            --version "${{ needs.version.outputs.version }}" \
+            --repo "$GITHUB_REPOSITORY")
 
           {
             echo "notes<<CHANGELOG_EOF"
-            echo "$ITEM_LINES"
-            echo ""
-            echo "**Comparação completa**: https://github.com/${GITHUB_REPOSITORY}/compare/${PREV_TAG}...v${{ needs.version.outputs.version }}"
+            echo "$NOTES"
             echo "CHANGELOG_EOF"
           } >> "$GITHUB_OUTPUT"
 

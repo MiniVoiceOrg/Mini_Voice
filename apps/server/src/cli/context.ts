@@ -15,6 +15,7 @@ import {
   DEFAULT_SERVER_NAME,
   SERVER_DB_NAME,
 } from './constants';
+import { t } from './i18n/index';
 
 export interface CliContext {
   dataDir: string;
@@ -44,7 +45,7 @@ export function parseGlobalArgs(argv: string[]): GlobalArgs {
     if (arg === '--data') {
       const value = argv[i + 1];
       if (!value) {
-        throw new Error('Informe um caminho após --data.');
+        throw new Error(t('context.noPathAfterData'));
       }
       dataDir = path.resolve(value);
       dataDirSpecified = true;

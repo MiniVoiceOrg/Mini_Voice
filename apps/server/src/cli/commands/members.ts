@@ -2,12 +2,13 @@ import { RoleRecord, UserRecord } from '../../domain/entities';
 import { ANSI, color } from '../constants';
 import { CliContext } from '../context';
 import { formatDate, formatBool, pad } from '../formatters';
+import { t } from '../i18n/index';
 import { ask, askChoice } from '../prompts';
 
 export async function resolveUser(ctx: CliContext, query: string): Promise<UserRecord> {
   const normalized = query.trim();
   if (!normalized) {
-    throw new Error('Informe um nickname ou clientId.');
+    throw new Error(t('members.enterQuery'));
   }
 
   const byClientId = await ctx.userRepo.findByClientId(normalized);
@@ -20,7 +21,7 @@ export async function resolveUser(ctx: CliContext, query: string): Promise<UserR
     return byNickname;
   }
 
-  throw new Error(`Usuário não encontrado: ${normalized}`);
+  throw new Error(t('members.notFound', { query: normalized }));
 }
 
 export async function getRolesByUserId(ctx: CliContext): Promise<Map<string, RoleRecord[]>> {
@@ -49,7 +50,7 @@ export async function listMembers(ctx: CliContext): Promise<void> {
   const rolesByUser = await getRolesByUserId(ctx);
 
   if (users.length === 0) {
-    console.log(color('Nenhum membro registrado.', ANSI.yellow));
+    console.log(color(t('members.noMembers'), ANSI.yellow));
     return;
   }
 
@@ -73,12 +74,12 @@ export async function listMembers(ctx: CliContext): Promise<void> {
 }
 
 export async function showMemberInfo(ctx: CliContext, query: string): Promise<void> {
-  const normalized = query.trim() || (await ask('Nickname ou clientId do membro'));
+  const normalized = query.trim() || (await ask(t('members.askNickname')));
   const user = await resolveUser(ctx, normalized);
   const roles = await ctx.roleRepo.listRolesForUser(user.id);
   const server = await ctx.serverRepo.getServer();
 
-  console.log(color(`Membro: ${user.nickname}`, ANSI.bold));
+  console.log(color(t('members.info', { nickname: user.nickname }), ANSI.bold));
   console.log(`id: ${user.id}`);
   console.log(`clientId: ${user.clientId}`);
   console.log(`publicKey: ${user.publicKey ?? '-'}`);
@@ -96,7 +97,7 @@ export async function selectUser(ctx: CliContext, question: string, query?: stri
 
   const users = (await ctx.userRepo.listAll()).sort((a, b) => a.nickname.localeCompare(b.nickname));
   if (users.length === 0) {
-    throw new Error('Nenhum membro registrado.');
+    throw new Error(t('members.noMembers'));
   }
 
   const labels = users.map((u) => `${u.nickname} (${u.clientId})`);
@@ -107,20 +108,20 @@ export async function selectUser(ctx: CliContext, question: string, query?: stri
 export async function changeAdminRole(ctx: CliContext, query: string, assign: boolean): Promise<void> {
   const user = await selectUser(
     ctx,
-    assign ? 'Membros do servidor:' : 'Selecione o membro para remover o admin:',
+    assign ? t('members.selectToGrant') : t('members.selectToRevoke'),
     query
   );
   const adminRole = await ctx.roleRepo.findByName('Admin');
   if (!adminRole) {
-    throw new Error('Cargo Admin não encontrado.');
+    throw new Error(t('create.adminRoleNotFound'));
   }
 
   if (assign) {
     await ctx.roleRepo.assignRole(user.id, adminRole.id);
-    console.log(color(`Admin concedido para ${user.nickname}.`, ANSI.green));
+    console.log(color(t('members.adminGranted', { nickname: user.nickname }), ANSI.green));
     return;
   }
 
   await ctx.roleRepo.unassignRole(user.id, adminRole.id);
-  console.log(color(`Admin removido de ${user.nickname}.`, ANSI.green));
+  console.log(color(t('members.adminRevoked', { nickname: user.nickname }), ANSI.green));
 }

@@ -2,6 +2,7 @@ import http from 'http';
 import { LIMITS } from '@monky/shared';
 import { ANSI, color } from './constants';
 import { readLocalConfig } from './context';
+import { t } from './i18n/index';
 import { confirm } from './prompts';
 import { RegisteredServer } from './registry';
 
@@ -70,18 +71,18 @@ export async function confirmDisconnectingUsers(
   const onlineUsers = await countOnlineUsers(resolveServerPort(server));
   if (onlineUsers === null || onlineUsers <= 0) return true;
 
-  const people = onlineUsers === 1 ? '1 pessoa conectada' : `${onlineUsers} pessoas conectadas`;
-  console.log(color(`Atenção: há ${people} em "${server.name || server.dataDir}".`, ANSI.yellow));
-  console.log(color(`Ao ${action} o servidor, todas serão desconectadas.`, ANSI.yellow));
+  const people = onlineUsers === 1 ? t('online.one') : t('online.many', { count: onlineUsers });
+  console.log(color(t('online.warning', { people, server: server.name || server.dataDir }), ANSI.yellow));
+  console.log(color(t('online.willDisconnect', { action }), ANSI.yellow));
 
   if (!process.stdin.isTTY) {
-    console.log(color('Terminal não interativo — seguindo em frente.', ANSI.dim));
+    console.log(color(t('online.nonInteractive'), ANSI.dim));
     return true;
   }
 
-  const confirmed = await confirm(`Tem certeza que deseja ${action} mesmo assim?`, false);
+  const confirmed = await confirm(t('online.confirmAction', { action }), false);
   if (!confirmed) {
-    console.log(color('Operação cancelada.', ANSI.yellow));
+    console.log(color(t('prompt.cancelled'), ANSI.yellow));
   }
   return confirmed;
 }

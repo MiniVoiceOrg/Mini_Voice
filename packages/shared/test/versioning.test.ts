@@ -1,4 +1,4 @@
-import { bumpVersion, determineBumpType, calculateNextVersion } from '../../../scripts/calculate-version.js';
+const { bumpVersion, determineBumpType, calculateNextVersion } = require('../../../scripts/calculate-version.js');
 
 console.log('=== Início dos Testes de Versionamento SemVer (#122) ===');
 

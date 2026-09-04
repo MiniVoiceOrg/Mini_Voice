@@ -4,15 +4,61 @@ import type { ParticipantManager } from '../ParticipantManager';
 import type { PeerSession } from '../WebRtcManager';
 
 /**
- * RemoteMediaRouter manages playback, volume, audio routing, speaker device sinks,
- * and video DOM attachments for remote audio and screen tracks.
+ * Pipeline de amplificação via Web Audio API.
+ * Usado apenas quando o volume > 100% — o <audio> element continua
+ * sendo o consumidor primário do stream (garante que o Chromium decodifique
+ * as tracks), e o GainNode faz a amplificação conectando ao ctx.destination.
+ *
+ * Quando volume <= 100%, o pipeline é desconectado e o <audio>.volume
+ * controla o nível normalmente (mais leve para a CPU).
+ */
+interface AmplificationPipeline {
+  source: MediaStreamAudioSourceNode;
+  gain: GainNode;
+  destination: MediaStreamAudioDestinationNode;
+  trackId: string;
+  connected: boolean;
+}
+
+/**
+ * RemoteMediaRouter manages playback, volume (0–200%), audio routing,
+ * speaker device sinks, and video DOM attachments for remote audio and screen tracks.
+ *
+ * Architecture:
+ * - <audio> elements remain the primary playback mechanism (Chromium requires
+ *   them to keep decoding MediaStream tracks).
+ * - For amplification above 100%, a Web Audio GainNode pipeline is layered on
+ *   top: the <audio> element is muted, and the GainNode output is routed to
+ *   an AudioContext destination with the selected speaker sink.
  */
 export class RemoteMediaRouter {
   private audioElements: Map<string, HTMLAudioElement> = new Map();
   private screenAudioElements: Map<string, HTMLAudioElement> = new Map();
+  private amplificationPipelines: Map<string, AmplificationPipeline> = new Map();
+  private screenAmplificationPipelines: Map<string, AmplificationPipeline> = new Map();
   private isDeafened: boolean = false;
+  private audioContext: AudioContext | null = null;
 
   constructor(private getVoiceParticipants: () => ParticipantManager) {}
+
+  // ── AudioContext (lazy, only created when amplification > 100% is needed) ──
+
+  private getOrCreateAudioContext(): AudioContext {
+    if (!this.audioContext || this.audioContext.state === 'closed') {
+      const AudioContextClass = window.AudioContext || (window as any).webkitAudioContext;
+      this.audioContext = new AudioContextClass();
+      const sinkId = settingsStore.selectedSpeakerId;
+      if (sinkId && typeof (this.audioContext as any).setSinkId === 'function') {
+        (this.audioContext as any).setSinkId(sinkId).catch(() => {});
+      }
+    }
+    if (this.audioContext.state === 'suspended') {
+      this.audioContext.resume().catch(() => {});
+    }
+    return this.audioContext;
+  }
+
+  // ── Public getters (preserving existing API) ──
 
   public getAudioElement(peerSessionId: string): HTMLAudioElement | undefined {
     return this.audioElements.get(peerSessionId);
@@ -22,6 +68,8 @@ export class RemoteMediaRouter {
     return this.screenAudioElements.get(peerSessionId);
   }
 
+  // ── Deafen ──
+
   public setDeafened(deafened: boolean): void {
     this.isDeafened = deafened;
     for (const audioEl of this.audioElements.values()) {
@@ -30,14 +78,38 @@ export class RemoteMediaRouter {
     for (const screenAudioEl of this.screenAudioElements.values()) {
       screenAudioEl.muted = deafened;
     }
+    // Also silence any active amplification pipelines
+    if (deafened) {
+      for (const pipeline of this.amplificationPipelines.values()) {
+        pipeline.gain.gain.value = 0;
+      }
+      for (const pipeline of this.screenAmplificationPipelines.values()) {
+        pipeline.gain.gain.value = 0;
+      }
+    } else {
+      this.applyUserVolumes();
+    }
   }
 
+  // ── Speaker device routing ──
+
   public async setSpeakerDeviceId(deviceId: string): Promise<void> {
+    const sinkId = deviceId ?? settingsStore.selectedSpeakerId;
+    // Apply to all peer audio elements
     for (const audioEl of this.audioElements.values()) {
-      await this.applySinkToElement(audioEl, deviceId);
+      await this.applySinkToElement(audioEl, sinkId);
     }
+    // Apply to all screen audio elements
     for (const screenAudioEl of this.screenAudioElements.values()) {
-      await this.applySinkToElement(screenAudioEl, deviceId);
+      await this.applySinkToElement(screenAudioEl, sinkId);
+    }
+    // Apply to the AudioContext if it exists (for amplification > 100%)
+    if (this.audioContext && typeof (this.audioContext as any).setSinkId === 'function') {
+      try {
+        await (this.audioContext as any).setSinkId(sinkId || '');
+      } catch (err) {
+        console.warn('[WebRTC:MediaRouter] Error setting sink ID for AudioContext:', err);
+      }
     }
   }
 
@@ -51,6 +123,8 @@ export class RemoteMediaRouter {
       console.warn('[WebRTC:MediaRouter] Error setting sink ID for speaker device:', err);
     }
   }
+
+  // ── Screen audio routing ──
 
   public routeScreenAudioTrack(peerSessionId: string, track: MediaStreamTrack): void {
     let screenAudioEl = this.screenAudioElements.get(peerSessionId);
@@ -72,22 +146,30 @@ export class RemoteMediaRouter {
     screenAudioEl.srcObject = screenStream;
     const participant = this.getVoiceParticipants().get(peerSessionId);
     const volume = settingsStore.getScreenAudioVolume(peerSessionId, participant?.user.clientId);
-    screenAudioEl.volume = Math.max(0, Math.min(100, volume)) / 100;
+    this.applyVolumeToElement(screenAudioEl, volume, peerSessionId, this.screenAmplificationPipelines, track);
     this.applySinkToElement(screenAudioEl).finally(() => {
       screenAudioEl!.play().catch((e) => console.warn('[WebRTC:MediaRouter] Screen audio play error:', e));
     });
     track.onended = () => {
-      const el = this.screenAudioElements.get(peerSessionId);
-      if (el) {
-        try {
-          el.pause();
-        } catch {}
-        el.srcObject = null;
-        el.remove();
-        this.screenAudioElements.delete(peerSessionId);
-      }
+      this.cleanupScreenAudio(peerSessionId);
     };
   }
+
+  public setScreenAudioMuted(peerSessionId: string, muted: boolean): void {
+    const screenAudioEl = this.screenAudioElements.get(peerSessionId);
+    if (screenAudioEl) {
+      screenAudioEl.muted = muted;
+    }
+    // Also mute the amplification pipeline if active
+    const pipeline = this.screenAmplificationPipelines.get(peerSessionId);
+    if (pipeline) {
+      pipeline.gain.gain.value = muted ? 0 : pipeline.gain.gain.value;
+    }
+  }
+
+  // ── Screen video routing ──
+
+  private sfuRemoteScreenStreams: Map<string, Map<string, MediaStream>> = new Map();
 
   public routeScreenVideoTrack(
     peerSessionId: string,
@@ -95,19 +177,29 @@ export class RemoteMediaRouter {
     shareId: string,
     session: PeerSession | undefined
   ): void {
-    if (!session) return;
-
     // If it was provisionally added to the camera stream (meta arrived late),
     // move it out so it doesn't render as the camera.
-    if (session.remoteStream.getTrackById(track.id)) {
+    if (session && session.remoteStream.getTrackById(track.id)) {
       session.remoteStream.removeTrack(track);
       this.getVoiceParticipants().setRemoteStream(peerSessionId, session.remoteStream);
     }
 
-    let screenStream = session.remoteScreenStreams.get(shareId);
+    let streamsMap: Map<string, MediaStream>;
+    if (session) {
+      streamsMap = session.remoteScreenStreams;
+    } else {
+      let sfuMap = this.sfuRemoteScreenStreams.get(peerSessionId);
+      if (!sfuMap) {
+        sfuMap = new Map();
+        this.sfuRemoteScreenStreams.set(peerSessionId, sfuMap);
+      }
+      streamsMap = sfuMap;
+    }
+
+    let screenStream = streamsMap.get(shareId);
     if (!screenStream) {
       screenStream = new MediaStream();
-      session.remoteScreenStreams.set(shareId, screenStream);
+      streamsMap.set(shareId, screenStream);
     }
 
     // Replace any previous screen video track for this share with this one.
@@ -141,10 +233,12 @@ export class RemoteMediaRouter {
     track.onended = () => {
       try { track.stop(); } catch {}
       screenStream!.removeTrack(track);
-      session.remoteScreenStreams.delete(shareId);
+      streamsMap.delete(shareId);
       this.getVoiceParticipants().removeRemoteScreenStream(peerSessionId, shareId);
     };
   }
+
+  // ── Peer voice audio ──
 
   public ensureVoiceAudioElement(peerSessionId: string, stream: MediaStream): HTMLAudioElement {
     let audioEl = this.audioElements.get(peerSessionId);
@@ -155,31 +249,152 @@ export class RemoteMediaRouter {
       audioEl.setAttribute('data-peer-session', peerSessionId);
       document.body.appendChild(audioEl);
       this.audioElements.set(peerSessionId, audioEl);
+      console.log(`[MediaRouter] Created new <audio> element for peerSessionId: ${peerSessionId}`);
     }
     if (audioEl.srcObject !== stream) {
       audioEl.srcObject = stream;
+      console.log(`[MediaRouter] Set srcObject on <audio> element for ${peerSessionId} with ${stream.getAudioTracks().length} audio tracks`);
     }
     const participant = this.getVoiceParticipants().get(peerSessionId);
     const volume = settingsStore.getUserVolume(peerSessionId, participant?.user.clientId);
-    audioEl.volume = Math.max(0, Math.min(100, volume)) / 100;
+    const audioTrack = stream.getAudioTracks()[0];
+    console.log(`[MediaRouter] Applying volume ${volume}% to peerSessionId ${peerSessionId} (audioTrack id: ${audioTrack?.id}, enabled: ${audioTrack?.enabled})`);
+    this.applyVolumeToElement(audioEl, volume, peerSessionId, this.amplificationPipelines, audioTrack);
     this.applySinkToElement(audioEl).finally(() => {
-      audioEl!.play().catch((e) => console.warn('[WebRTC:MediaRouter] Audio play error:', e));
+      audioEl!
+        .play()
+        .then(() => console.log(`[MediaRouter] Audio playback started for peerSessionId: ${peerSessionId}`))
+        .catch((e) => console.warn('[WebRTC:MediaRouter] Audio play error:', e));
     });
     return audioEl;
   }
 
+  // ── Volume control (hybrid: <audio>.volume for ≤100%, GainNode for >100%) ──
+
+  /**
+   * Applies volume to an audio element. For volumes 0–100%, uses the native
+   * HTMLAudioElement.volume property. For volumes >100%, mutes the <audio>
+   * element and routes through a GainNode pipeline for amplification.
+   */
+  private applyVolumeToElement(
+    audioEl: HTMLAudioElement,
+    volume: number,
+    sessionId: string,
+    pipelineMap: Map<string, AmplificationPipeline>,
+    track?: MediaStreamTrack
+  ): void {
+    const clamped = Math.max(0, Math.min(200, volume));
+    const isDeaf = this.isDeafened || voiceStore.getEffectiveDeafened();
+
+    if (isDeaf) {
+      audioEl.muted = true;
+      const pipeline = pipelineMap.get(sessionId);
+      if (pipeline) {
+        pipeline.gain.gain.value = 0;
+      }
+      return;
+    }
+
+    if (clamped <= 100) {
+      // Normal range: use native <audio> volume, disconnect amplification pipeline
+      audioEl.volume = clamped / 100;
+      // Don't unmute screen audio elements that are intentionally muted (#150)
+      if (!audioEl.hasAttribute('data-screen-audio-session') || !audioEl.muted) {
+        audioEl.muted = false;
+      }
+      this.disconnectAmplificationPipeline(sessionId, pipelineMap);
+    } else {
+      // Amplification range (101–200%): mute <audio> element, route through GainNode
+      audioEl.volume = 0;
+      // Keep audioEl unmuted so Chromium continues decoding the stream,
+      // but set volume to 0 so it doesn't output sound directly.
+      // The GainNode pipeline handles the actual audio output.
+      this.ensureAmplificationPipeline(sessionId, audioEl, pipelineMap, track);
+      const pipeline = pipelineMap.get(sessionId);
+      if (pipeline) {
+        pipeline.gain.gain.value = clamped / 100; // 1.01 – 2.0
+      }
+    }
+  }
+
+  private ensureAmplificationPipeline(
+    sessionId: string,
+    audioEl: HTMLAudioElement,
+    pipelineMap: Map<string, AmplificationPipeline>,
+    track?: MediaStreamTrack
+  ): void {
+    const existingPipeline = pipelineMap.get(sessionId);
+
+    // Determine the track to use
+    const audioTrack = track || (audioEl.srcObject as MediaStream | null)?.getAudioTracks()[0];
+    if (!audioTrack) return;
+
+    // If pipeline already exists and is for the same track, just ensure it's connected
+    if (existingPipeline && existingPipeline.trackId === audioTrack.id) {
+      if (!existingPipeline.connected) {
+        existingPipeline.source.connect(existingPipeline.gain);
+        existingPipeline.gain.connect(this.getOrCreateAudioContext().destination);
+        existingPipeline.connected = true;
+      }
+      return;
+    }
+
+    // Cleanup old pipeline if track changed
+    if (existingPipeline) {
+      try {
+        existingPipeline.source.disconnect();
+        existingPipeline.gain.disconnect();
+      } catch {}
+      pipelineMap.delete(sessionId);
+    }
+
+    // Create new pipeline
+    const ctx = this.getOrCreateAudioContext();
+    const amplStream = new MediaStream([audioTrack]);
+    const source = ctx.createMediaStreamSource(amplStream);
+    const gain = ctx.createGain();
+    const destination = ctx.createMediaStreamDestination();
+    source.connect(gain);
+    gain.connect(ctx.destination);
+
+    pipelineMap.set(sessionId, {
+      source,
+      gain,
+      destination,
+      trackId: audioTrack.id,
+      connected: true,
+    });
+  }
+
+  private disconnectAmplificationPipeline(
+    sessionId: string,
+    pipelineMap: Map<string, AmplificationPipeline>
+  ): void {
+    const pipeline = pipelineMap.get(sessionId);
+    if (pipeline && pipeline.connected) {
+      try {
+        pipeline.source.disconnect();
+        pipeline.gain.disconnect();
+      } catch {}
+      pipeline.connected = false;
+    }
+  }
+
   public setPeerVolume(peerSessionId: string, volume: number): void {
-    const clamped = Math.max(0, Math.min(100, volume));
     const audioEl = this.audioElements.get(peerSessionId);
     if (audioEl) {
-      audioEl.volume = clamped / 100;
+      const stream = audioEl.srcObject as MediaStream | null;
+      const track = stream?.getAudioTracks()[0];
+      this.applyVolumeToElement(audioEl, volume, peerSessionId, this.amplificationPipelines, track);
     }
   }
 
   public setScreenAudioVolume(peerSessionId: string, volume: number): void {
     const screenAudioEl = this.screenAudioElements.get(peerSessionId);
     if (screenAudioEl) {
-      screenAudioEl.volume = Math.max(0, Math.min(100, volume)) / 100;
+      const stream = screenAudioEl.srcObject as MediaStream | null;
+      const track = stream?.getAudioTracks()[0];
+      this.applyVolumeToElement(screenAudioEl, volume, peerSessionId, this.screenAmplificationPipelines, track);
     }
   }
 
@@ -187,8 +402,36 @@ export class RemoteMediaRouter {
     for (const [peerSessionId, audioEl] of this.audioElements.entries()) {
       const participant = this.getVoiceParticipants().get(peerSessionId);
       const vol = settingsStore.getUserVolume(peerSessionId, participant?.user.clientId);
-      audioEl.volume = Math.max(0, Math.min(100, vol)) / 100;
+      const stream = audioEl.srcObject as MediaStream | null;
+      const track = stream?.getAudioTracks()[0];
+      this.applyVolumeToElement(audioEl, vol, peerSessionId, this.amplificationPipelines, track);
     }
+  }
+
+  // ── Cleanup ──
+
+  private cleanupAmplificationPipeline(sessionId: string, pipelineMap: Map<string, AmplificationPipeline>): void {
+    const pipeline = pipelineMap.get(sessionId);
+    if (pipeline) {
+      try {
+        pipeline.source.disconnect();
+        pipeline.gain.disconnect();
+      } catch {}
+      pipelineMap.delete(sessionId);
+    }
+  }
+
+  public cleanupScreenAudio(peerSessionId: string): void {
+    const el = this.screenAudioElements.get(peerSessionId);
+    if (el) {
+      try {
+        el.pause();
+      } catch {}
+      el.srcObject = null;
+      el.remove();
+      this.screenAudioElements.delete(peerSessionId);
+    }
+    this.cleanupAmplificationPipeline(peerSessionId, this.screenAmplificationPipelines);
   }
 
   public cleanupPeerMedia(peerSessionId: string, session?: PeerSession): void {
@@ -201,15 +444,21 @@ export class RemoteMediaRouter {
       audioEl.remove();
       this.audioElements.delete(peerSessionId);
     }
+    this.cleanupAmplificationPipeline(peerSessionId, this.amplificationPipelines);
 
-    const screenAudioEl = this.screenAudioElements.get(peerSessionId);
-    if (screenAudioEl) {
-      try {
-        screenAudioEl.pause();
-      } catch {}
-      screenAudioEl.srcObject = null;
-      screenAudioEl.remove();
-      this.screenAudioElements.delete(peerSessionId);
+    this.cleanupScreenAudio(peerSessionId);
+
+    const sfuScreens = this.sfuRemoteScreenStreams.get(peerSessionId);
+    if (sfuScreens) {
+      for (const [shareId, stream] of sfuScreens.entries()) {
+        stream.getTracks().forEach((track) => {
+          try {
+            track.stop();
+          } catch {}
+        });
+        this.getVoiceParticipants().removeRemoteScreenStream(peerSessionId, shareId);
+      }
+      this.sfuRemoteScreenStreams.delete(peerSessionId);
     }
 
     if (session) {
@@ -251,5 +500,39 @@ export class RemoteMediaRouter {
       screenAudioEl.remove();
     }
     this.screenAudioElements.clear();
+
+    for (const [peerSessionId, sfuScreens] of this.sfuRemoteScreenStreams.entries()) {
+      for (const [shareId, stream] of sfuScreens.entries()) {
+        stream.getTracks().forEach((track) => {
+          try {
+            track.stop();
+          } catch {}
+        });
+        this.getVoiceParticipants().removeRemoteScreenStream(peerSessionId, shareId);
+      }
+    }
+    this.sfuRemoteScreenStreams.clear();
+
+    // Cleanup all amplification pipelines
+    for (const pipeline of this.amplificationPipelines.values()) {
+      try {
+        pipeline.source.disconnect();
+        pipeline.gain.disconnect();
+      } catch {}
+    }
+    this.amplificationPipelines.clear();
+
+    for (const pipeline of this.screenAmplificationPipelines.values()) {
+      try {
+        pipeline.source.disconnect();
+        pipeline.gain.disconnect();
+      } catch {}
+    }
+    this.screenAmplificationPipelines.clear();
+
+    if (this.audioContext && this.audioContext.state !== 'closed') {
+      this.audioContext.close().catch(() => {});
+      this.audioContext = null;
+    }
   }
 }

@@ -7,11 +7,15 @@ import {
   ChannelCreatedPayload,
   ChannelDeletedPayload,
   ChannelUpdatedPayload,
+  ChannelsReorderedPayload,
   ChatHistoryPayload,
+  ChatMessageUpdatedPayload,
   ChatMessage,
   MessageType,
   MemberKickedPayload,
+  ProtocolErrorCode,
   RolesListPayload,
+  ServerErrorPayload,
   UserJoinedPayload,
   UserLeftPayload,
   UserConnectionStatePayload,
@@ -19,6 +23,7 @@ import {
   VoiceStateChangedPayload,
   VoiceUserJoinedPayload,
   VoiceUserLeftPayload,
+  hasEveryoneMention,
 } from '@monky/shared';
 import { audioProcessor } from './core/AudioProcessor';
 import { appEvents } from './core/EventBus';
@@ -45,15 +50,30 @@ import { screenSharePickerModal } from './views/ScreenSharePickerModal';
 import { showAlert } from './views/Dialog';
 import { showIdentityImportDialog } from './views/IdentityDialogs';
 import { initI18n, t } from './i18n';
+import { translateProtocolError } from './i18n/protocolErrors';
 import { toAbsoluteServerIconUrl } from './utils/avatar';
+import { installImageFallback } from './utils/imageFallback';
+import { clientLog } from './core/ClientLogService';
+import { overlayBridgeService } from './core/OverlayBridgeService';
+import { OverlayStageView } from './views/OverlayStageView';
 
 class App {
   private appContainer: HTMLElement;
-  private connectionView: ConnectionView;
-  private mainView: MainView;
+  private connectionView!: ConnectionView;
+  private mainView!: MainView;
+  private rendererReadySignalled = false;
 
   constructor() {
     this.appContainer = document.getElementById('app')!;
+    installImageFallback();
+
+    const isOverlay = window.location.search.includes('overlay=1');
+    if (isOverlay) {
+      initI18n();
+      new OverlayStageView(this.appContainer).init();
+      return;
+    }
+
     // Routes incoming server events to the right state bundle. It must be in
     // place before any connection exists, otherwise the first events would be
     // applied to whatever store happens to be active (#400).
@@ -64,11 +84,18 @@ class App {
     // Must run before any await in init(): otherwise the Windows-style window
     // controls stay visible on macOS during onboarding/identity loading (#307)
     this.setupTitleBar();
+    // Registered before any await: quitting during onboarding must still take
+    // the user out of whatever server is connected (#458).
+    this.setupGracefulQuit();
 
     this.init();
   }
 
   private async init(): Promise<void> {
+    // Initialise client logging (#444)
+    await clientLog.init();
+    clientLog.info('APP', 'Renderer process initialising');
+
     initI18n();
 
     // Check if identity exists BEFORE rendering anything
@@ -90,8 +117,18 @@ class App {
     this.setupGlobalEventListeners();
     this.setupTraySync();
 
+    // Initialize and sync quality preset to WebRtcManager and VideoService (#474)
+    webRtcManager.setQualityPreset(settingsStore.qualityPreset);
+
+    // Initialize overlay bridge service (#169)
+    overlayBridgeService.init();
+
     // Render connection view initially
-    this.connectionView.render();
+    this.connectionView?.render();
+
+    // The main UI has now been written to the DOM — let the main process lift
+    // the post-update splash once it actually paints (#498).
+    this.signalRendererReady();
 
     // Load soundboard sounds if configured
     soundboardService.loadSounds().catch(() => {});
@@ -106,6 +143,32 @@ class App {
 
     // Start checking for app updates (non-blocking)
     updateService.init();
+
+    // Debug helper to check voice engine status in console
+    (window as any).debugVoice = () => {
+      const status = webRtcManager.getVoiceStatus();
+      console.log('%c🎙️ [Monky Voice Status]', 'color: #5865f2; font-weight: bold; font-size: 14px;');
+      console.table(status);
+      return status;
+    };
+  }
+
+  /**
+   * Tells the main process the real UI has painted, so the post-update
+   * "Abrindo o Monky…" splash lifts exactly as Monky becomes visible instead of
+   * at the blank first paint that `ready-to-show` marks (#498). Guarded to fire
+   * once; the double `requestAnimationFrame` waits for a frame to actually paint
+   * after the DOM was written (a hidden window still paints because
+   * `backgroundThrottling` is off).
+   */
+  private signalRendererReady(): void {
+    if (this.rendererReadySignalled) return;
+    this.rendererReadySignalled = true;
+    requestAnimationFrame(() => {
+      requestAnimationFrame(() => {
+        window.api?.signalRendererReady?.();
+      });
+    });
   }
 
   private showIdentityOnboarding(): Promise<void> {
@@ -130,6 +193,10 @@ class App {
           </div>
         </div>
       `;
+
+      // Onboarding is the first real paint for a user without an identity; let
+      // the main process lift the post-update splash here too (#498).
+      this.signalRendererReady();
 
       document.getElementById('btn-onboard-create')?.addEventListener('click', async () => {
         // Generate identity
@@ -176,6 +243,31 @@ class App {
 
     window.api?.onTrayToggleDeafen(() => {
       this.toggleDeafenFromTray();
+    });
+  }
+
+  /**
+   * Leaves every server before the process dies (#458).
+   *
+   * Closing the app used to just drop the WebSockets. The server cannot tell
+   * that apart from a network blip, so it held the person in the voice channel
+   * for the whole reconnection grace period: everyone else kept seeing a
+   * participant who could no longer speak, and no leave sound played. Sending
+   * the logout explicitly makes the departure immediate and deliberate.
+   *
+   * The main process waits for the ack (with a short timeout) before quitting.
+   */
+  private setupGracefulQuit(): void {
+    window.api?.onAppBeforeQuit(() => {
+      try {
+        sessionManager.removeAll();
+      } catch (err) {
+        clientLog.error('CONNECTION', 'Failed to leave servers before quitting', {
+          error: (err as Error)?.message,
+        });
+      } finally {
+        void window.api?.notifyLeaveComplete();
+      }
     });
   }
 
@@ -233,38 +325,6 @@ class App {
     webRtcManager.setDeafened(voiceStore.getEffectiveDeafened());
   }
 
-  private showReconnectOverlay(): void {
-    // Anchor to the server layout so the title bar and the server rail stay
-    // usable while reconnecting (#321).
-    const host = document.querySelector('.main-layout') || document.body;
-    let overlay = document.getElementById('reconnect-overlay');
-    if (overlay && overlay.parentElement !== host) {
-      overlay.remove();
-      overlay = null;
-    }
-    if (!overlay) {
-      overlay = document.createElement('div');
-      overlay.id = 'reconnect-overlay';
-      overlay.className = 'reconnect-overlay';
-      overlay.innerHTML = `
-        <div class="reconnect-card">
-          <div class="reconnect-spinner"></div>
-          <div class="reconnect-title">${t('app.connectionLost')}</div>
-          <div id="reconnect-subtitle" class="reconnect-subtitle"></div>
-        </div>
-      `;
-      host.appendChild(overlay);
-    }
-    const subtitle = document.getElementById('reconnect-subtitle');
-    if (subtitle) {
-      subtitle.textContent = t('app.reconnecting');
-    }
-  }
-
-  private hideReconnectOverlay(): void {
-    document.getElementById('reconnect-overlay')?.remove();
-  }
-
   /**
    * Whether the event being handled came from the server hosting the call.
    *
@@ -298,6 +358,20 @@ class App {
       if (voiceStore.currentVoiceChannelId) {
         appEvents.emit('modal.open_screenshare_picker');
       }
+    });
+
+    // Silencing the soundboard and cutting every sound short are the two things
+    // people reach for mid-call, so both got a shortcut (#517). The event is
+    // re-emitted because `save()` only persists — active playbacks re-read their
+    // volume from `settings.updated`.
+    appEvents.on('keybind.toggle_soundboard_mute', () => {
+      settingsStore.soundboardMuted = !settingsStore.soundboardMuted;
+      settingsStore.save();
+      appEvents.emit('settings.updated');
+    });
+
+    appEvents.on('keybind.stop_soundboard', () => {
+      soundboardService.stopAllFromUi();
     });
 
     // Language switch (#16): re-render whichever screen is on, so every label
@@ -353,7 +427,6 @@ class App {
 
       if (isForegroundEvent()) {
         this.mainView.render();
-        this.hideReconnectOverlay();
       }
 
       // Persist the server icon on the saved server entry so the rail shows it
@@ -417,8 +490,6 @@ class App {
       // A background server dropping must not disturb what is on screen (#400).
       if (!isForegroundEvent()) return;
 
-      this.hideReconnectOverlay();
-
       // Another server may still be connected — typically the one hosting the
       // call. Showing it beats dumping the user on the connection screen while
       // they are still talking to someone.
@@ -436,15 +507,6 @@ class App {
       this.mainView.destroy();
       void window.api?.setWindowInServer?.(false);
       this.connectionView.render();
-    });
-
-    // Reconnection feedback overlay
-    appEvents.on('network.reconnecting', () => {
-      // The overlay covers the whole server view, so a background server
-      // retrying must not raise it: only the visible session can hide it again,
-      // and it would stay stuck over a server that is working fine (#400).
-      if (!isForegroundEvent()) return;
-      this.showReconnectOverlay();
     });
 
     // Protocol Server -> Client Broadcast Handlers
@@ -515,6 +577,10 @@ class App {
       serverStore.updateChannel(payload.channel);
     });
 
+    appEvents.on(`message.${MessageType.CHANNELS_REORDERED}`, (payload: ChannelsReorderedPayload) => {
+      serverStore.applyChannelPositions(payload.positions);
+    });
+
     appEvents.on(`message.${MessageType.CHAT_MESSAGE}`, (message: ChatMessage) => {
       chatStore.addMessage(message);
       // Incoming chat cue (#152), honoring the mute / mentions-only settings
@@ -524,7 +590,12 @@ class App {
         const me = serverStore.currentUser;
         if (me && message.userId !== me.id) {
           const nick = (me.nickname || '').trim().toLowerCase();
-          const isMention = !!nick && message.content.toLowerCase().includes(`@${nick}`);
+          // `@todos` counts as a mention for everyone in the channel when the
+          // server allows it (#464).
+          const everyoneAllowed = serverStore.serverDetails?.allowEveryoneMention !== false;
+          const isMention =
+            (!!nick && message.content.toLowerCase().includes(`@${nick}`)) ||
+            (everyoneAllowed && hasEveryoneMention(message.content));
 
           // Resolve the chat-sound mode with the 3-level precedence
           // channel → server → global (#153).
@@ -565,7 +636,21 @@ class App {
       chatStore.setHistory(payload.channelId, payload.messages);
     });
 
+    // An existing message was edited or deleted (#504). No sound and no unread
+    // marker: nothing new was said, so nothing should call attention to it.
+    appEvents.on(`message.${MessageType.CHAT_MESSAGE_UPDATED}`, (payload: ChatMessageUpdatedPayload) => {
+      if (payload?.message) chatStore.updateMessage(payload.message);
+    });
+
     appEvents.on(`message.${MessageType.VOICE_USER_JOINED}`, (payload: VoiceUserJoinedPayload) => {
+      // Read before the state is overwritten: an admin move announces the
+      // arrival once itself and once more when the moved client re-joins, so
+      // the room would hear the join sound twice (#500). A repeated
+      // announcement for a session already listed in this channel is that
+      // second copy — the mesh still reconnects, only the cue is skipped.
+      const alreadyInChannel =
+        participantManager.get(payload.sessionId)?.voiceState?.channelId === payload.channelId;
+
       participantManager.updateVoiceState(payload.voiceState);
 
       // If we are also in this voice channel and not the joining session, connect P2P Mesh
@@ -576,25 +661,34 @@ class App {
       ) {
         webRtcManager.connectToPeer(payload.sessionId, false);
         // Let everyone already in the channel hear that someone joined (#54), unless deafened (#251).
-        if (!voiceStore.getEffectiveDeafened()) {
+        if (!alreadyInChannel && !voiceStore.getEffectiveDeafened()) {
           soundEffects.play('join_voice');
         }
       }
     });
 
     appEvents.on(`message.${MessageType.VOICE_USER_LEFT}`, (payload: VoiceUserLeftPayload) => {
-      // Play a leave sound for everyone still in the same voice channel (#54), unless deafened (#251).
-      if (
-        this.eventOwnsCall() &&
-        voiceStore.currentVoiceChannelId === payload.channelId &&
-        !serverStore.isMySession(payload.sessionId)
-      ) {
-        if (!voiceStore.getEffectiveDeafened()) {
-          soundEffects.play('leave_voice');
+      const isMySession = serverStore.isMySession(payload.sessionId);
+      if (this.eventOwnsCall()) {
+        if (isMySession) {
+          audioProcessor.stopMicrophone();
+          videoService.stopCamera();
+          videoService.stopScreenShare();
+          webRtcManager.clearLocalScreenTracks();
+          webRtcManager.closeAllPeers();
+          voiceStore.reset();
+          if (!voiceStore.getEffectiveDeafened()) {
+            soundEffects.play('leave_voice');
+          }
+          if (isForegroundEvent()) this.mainView.render();
+        } else {
+          if (voiceStore.currentVoiceChannelId === payload.channelId && !voiceStore.getEffectiveDeafened()) {
+            soundEffects.play('leave_voice');
+          }
+          webRtcManager.removePeer(payload.sessionId);
         }
       }
       participantManager.removeVoiceState(payload.sessionId);
-      if (this.eventOwnsCall()) webRtcManager.removePeer(payload.sessionId);
     });
 
     appEvents.on(`message.${MessageType.VOICE_STATE_CHANGED}`, (payload: VoiceStateChangedPayload) => {
@@ -654,7 +748,14 @@ class App {
       videoService.stopScreenShare();
       webRtcManager.clearLocalScreenTracks();
       webRtcManager.closeAllPeers();
+      // Being kicked is still leaving the call, so it gets the same cue as
+      // leaving on your own (#533) — read before reset(), which clears the
+      // server-side deafen that decides whether anything should be heard.
+      const shouldPlayLeaveCue = !voiceStore.getEffectiveDeafened();
       voiceStore.reset();
+      if (shouldPlayLeaveCue) {
+        soundEffects.play('leave_voice');
+      }
       if (isForegroundEvent()) this.mainView.render();
     });
 
@@ -721,10 +822,60 @@ class App {
         variant: 'warning',
       });
     });
+
+    // The SFU link dropped and is being rebuilt. Instead of a blocking modal,
+    // this surfaces in the sidebar voice indicator (yellow) plus a recurring
+    // audio cue, and clears itself once media flows again (#553).
+    appEvents.on('sfu.reconnecting', () => {
+      voiceStore.setReconnecting(true);
+    });
+    appEvents.on('sfu.reconnected', () => {
+      voiceStore.setReconnecting(false);
+    });
+
+    // Drives the recurring reconnection cue for the whole attempt, stopping as
+    // soon as the call recovers or the user leaves the channel (#553).
+    appEvents.on('voice.reconnecting_changed', (reconnecting: boolean) => {
+      if (reconnecting) soundEffects.startReconnectingLoop();
+      else soundEffects.stopReconnectingLoop();
+    });
+
+    // The SFU refusing to start after an admin switched the server to it
+    // arrives as an error with no requestId, which `NetworkClient` cannot
+    // correlate to anything and therefore only re-emits — so without a
+    // listener the admin would never hear about it.
+    //
+    // The server's own message is preferred over the code's canned text: it
+    // carries what actually failed (the worker error and the port preflight),
+    // while the canned string only describes the port conflict. Uncorrelated
+    // errors are otherwise left alone, since fire-and-forget requests fail
+    // this way too and have always been silent here.
+    appEvents.on(`message.${MessageType.SERVER_ERROR}`, (payload: ServerErrorPayload) => {
+      if (payload?.code !== ProtocolErrorCode.SFU_UNAVAILABLE) return;
+      showAlert({
+        title: t('sfu.unavailableTitle'),
+        message: payload.message || translateProtocolError(payload.code, payload.message),
+        variant: 'warning',
+      });
+    });
   }
 }
 
 // Bootstrap when DOM ready
 document.addEventListener('DOMContentLoaded', () => {
   new App();
+});
+
+// Global error handlers for uncaught exceptions (#444)
+window.addEventListener('error', (event) => {
+  clientLog.error('APP', `Uncaught error: ${event.message}`, {
+    filename: event.filename,
+    lineno: event.lineno,
+    colno: event.colno,
+  });
+});
+
+window.addEventListener('unhandledrejection', (event) => {
+  const reason = event.reason instanceof Error ? event.reason.message : String(event.reason);
+  clientLog.error('APP', `Unhandled promise rejection: ${reason}`);
 });

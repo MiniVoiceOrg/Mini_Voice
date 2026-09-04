@@ -1,4 +1,14 @@
-import { QualityPresetType, QualityProfile, DEFAULT_CUSTOM_PROFILE, PttKeyBinding } from '@monky/shared';
+import {
+  QualityPresetType,
+  QualityProfile,
+  DEFAULT_CUSTOM_PROFILE,
+  PttKeyBinding,
+  OverlayMode,
+  OverlayLayout,
+  OverlayPosition,
+  OverlayBounds,
+  OverlayConfig,
+} from '@monky/shared';
 import { appEvents } from '../core/EventBus';
 
 /**
@@ -17,6 +27,7 @@ const CHAT_SOUND_MODES: ChatSoundMode[] = ['inherit', 'all', 'mentions', 'none']
 
 export class SettingsStore {
   public qualityPreset: QualityPresetType = 'NORMAL';
+  public preferredVideoCodec: 'auto' | 'av1' | 'vp9' | 'vp8' | 'h264' = 'auto';
   public customProfile: QualityProfile = { ...DEFAULT_CUSTOM_PROFILE };
   public inputMode: 'voice_activity' | 'push_to_talk' = 'voice_activity'; // #186
   public pttKey: PttKeyBinding = { code: 'KeyV', display: 'V', keyType: 'keyboard', keyCode: 47 };
@@ -67,6 +78,18 @@ export class SettingsStore {
   // A missing entry (or 'inherit') means "use the level above".
   public chatSoundServerOverrides: Record<string, ChatSoundMode> = {};
   public chatSoundChannelOverrides: Record<string, ChatSoundMode> = {};
+  public onboardingCompleted: boolean = false;
+
+  // Sobreposição de Tela Flutuante (Overlay) (#169)
+  public overlayMode: OverlayMode = 'cameras-only';
+  public overlayLayout: OverlayLayout = 'grid';
+  public overlayPosition: OverlayPosition = 'bottom-right';
+  public overlayCardOpacity: number = 85; // 20 - 100%
+  public overlayFocusActiveSpeaker: boolean = false;
+  public overlayAutoOpenOnLeaveStage: boolean = false;
+  public overlayMinimalistMode: boolean = false;
+  public overlayHideSelf: boolean = false;
+  public overlaySavedBounds: OverlayBounds | null = null;
 
   constructor() {
     this.load();
@@ -107,6 +130,9 @@ export class SettingsStore {
         }
         if (!['simple', 'complete'].includes(this.screenShareTelemetryMode)) {
           this.screenShareTelemetryMode = 'simple';
+        }
+        if (!['auto', 'av1', 'vp9', 'vp8', 'h264'].includes(this.preferredVideoCodec)) {
+          this.preferredVideoCodec = 'auto';
         }
         if (!this.customProfile || typeof this.customProfile !== 'object' || !this.customProfile.audioBitrateKbps) {
           this.customProfile = { ...DEFAULT_CUSTOM_PROFILE };
@@ -160,8 +186,88 @@ export class SettingsStore {
         }
         this.chatSoundServerOverrides = this.sanitizeModeMap(this.chatSoundServerOverrides);
         this.chatSoundChannelOverrides = this.sanitizeModeMap(this.chatSoundChannelOverrides);
+        if (typeof this.onboardingCompleted !== 'boolean') {
+          this.onboardingCompleted = false;
+        }
+
+        if (!['cameras-only', 'cameras-and-screens'].includes(this.overlayMode)) {
+          this.overlayMode = 'cameras-only';
+        }
+        if (!['grid', 'vertical', 'horizontal'].includes(this.overlayLayout)) {
+          this.overlayLayout = 'grid';
+        }
+        if (!['top-left', 'top-right', 'bottom-left', 'bottom-right', 'custom'].includes(this.overlayPosition)) {
+          this.overlayPosition = 'bottom-right';
+        }
+        if (typeof this.overlayCardOpacity !== 'number' || isNaN(this.overlayCardOpacity)) {
+          this.overlayCardOpacity = 85;
+        } else {
+          this.overlayCardOpacity = Math.max(20, Math.min(100, Math.round(this.overlayCardOpacity)));
+        }
+        if (typeof this.overlayFocusActiveSpeaker !== 'boolean') {
+          this.overlayFocusActiveSpeaker = false;
+        }
+        if (typeof this.overlayAutoOpenOnLeaveStage !== 'boolean') {
+          this.overlayAutoOpenOnLeaveStage = false;
+        }
+        if (typeof this.overlayMinimalistMode !== 'boolean') {
+          this.overlayMinimalistMode = false;
+        }
+        if (typeof this.overlayHideSelf !== 'boolean') {
+          this.overlayHideSelf = false;
+        }
+        if (
+          this.overlaySavedBounds &&
+          (typeof this.overlaySavedBounds.width !== 'number' || typeof this.overlaySavedBounds.height !== 'number')
+        ) {
+          this.overlaySavedBounds = null;
+        }
       }
     } catch (e) {}
+  }
+
+  public getOverlayConfig(): OverlayConfig {
+    return {
+      mode: this.overlayMode,
+      layout: this.overlayLayout,
+      position: this.overlayPosition,
+      cardOpacity: this.overlayCardOpacity / 100,
+      focusActiveSpeaker: this.overlayFocusActiveSpeaker,
+      autoOpenOnLeaveStage: this.overlayAutoOpenOnLeaveStage,
+      minimalistMode: this.overlayMinimalistMode,
+      hideSelf: this.overlayHideSelf,
+      bounds: this.overlaySavedBounds || undefined,
+    };
+  }
+
+  public setOverlayConfig(config: Partial<OverlayConfig>): void {
+    if (config.mode) this.overlayMode = config.mode;
+    if (config.layout) this.overlayLayout = config.layout;
+    if (config.position) this.overlayPosition = config.position;
+    if (typeof config.cardOpacity === 'number') {
+      this.overlayCardOpacity = Math.max(20, Math.min(100, Math.round(config.cardOpacity * 100)));
+    }
+    if (typeof config.focusActiveSpeaker === 'boolean') {
+      this.overlayFocusActiveSpeaker = config.focusActiveSpeaker;
+    }
+    if (typeof config.autoOpenOnLeaveStage === 'boolean') {
+      this.overlayAutoOpenOnLeaveStage = config.autoOpenOnLeaveStage;
+    }
+    if (typeof config.minimalistMode === 'boolean') {
+      this.overlayMinimalistMode = config.minimalistMode;
+    }
+    if (typeof config.hideSelf === 'boolean') {
+      this.overlayHideSelf = config.hideSelf;
+    }
+    // Presence of the key (not truthiness) is what matters: resetting the size
+    // sends `{ bounds: undefined }` on purpose, and that has to actually clear
+    // the saved bounds so the "reset size" control knows it is back to default
+    // (#543).
+    if ('bounds' in config) {
+      this.overlaySavedBounds = config.bounds ?? null;
+    }
+    this.save();
+    appEvents.emit('overlay_settings.updated', this.getOverlayConfig());
   }
 
   /**
@@ -172,7 +278,7 @@ export class SettingsStore {
    */
   private readVolume(map: Record<string, number>, sessionId: string, legacyClientId?: string): number {
     const raw = map[sessionId] ?? (legacyClientId ? map[legacyClientId] : undefined);
-    return typeof raw === 'number' && !isNaN(raw) ? Math.max(0, Math.min(100, raw)) : 100;
+    return typeof raw === 'number' && !isNaN(raw) ? Math.max(0, Math.min(200, raw)) : 100;
   }
 
   public getUserVolume(sessionId: string, legacyClientId?: string): number {
@@ -182,7 +288,7 @@ export class SettingsStore {
 
   public setUserVolume(sessionId: string, volume: number): void {
     if (!sessionId) return;
-    const clamped = Math.max(0, Math.min(100, Math.round(volume)));
+    const clamped = Math.max(0, Math.min(200, Math.round(volume)));
     this.userVolumes[sessionId] = clamped;
     this.save();
     appEvents.emit('user_volume.changed', { sessionId, volume: clamped });
@@ -195,7 +301,7 @@ export class SettingsStore {
 
   public setScreenAudioVolume(sessionId: string, volume: number): void {
     if (!sessionId) return;
-    const clamped = Math.max(0, Math.min(100, Math.round(volume)));
+    const clamped = Math.max(0, Math.min(200, Math.round(volume)));
     this.screenAudioVolumes[sessionId] = clamped;
     this.save();
     appEvents.emit('screen_audio_volume.changed', { sessionId, volume: clamped });
@@ -263,6 +369,7 @@ export class SettingsStore {
     try {
       localStorage.setItem('monky_settings', JSON.stringify({
         qualityPreset: this.qualityPreset,
+        preferredVideoCodec: this.preferredVideoCodec,
         vadSensitivity: this.vadSensitivity,
         selectedMicrophoneId: this.selectedMicrophoneId,
         selectedSpeakerId: this.selectedSpeakerId,
@@ -297,6 +404,16 @@ export class SettingsStore {
         askShutdownOnLastLeave: this.askShutdownOnLastLeave,
         chatSoundServerOverrides: this.chatSoundServerOverrides,
         chatSoundChannelOverrides: this.chatSoundChannelOverrides,
+        onboardingCompleted: this.onboardingCompleted,
+        overlayMode: this.overlayMode,
+        overlayLayout: this.overlayLayout,
+        overlayPosition: this.overlayPosition,
+        overlayCardOpacity: this.overlayCardOpacity,
+        overlayFocusActiveSpeaker: this.overlayFocusActiveSpeaker,
+        overlayAutoOpenOnLeaveStage: this.overlayAutoOpenOnLeaveStage,
+        overlayMinimalistMode: this.overlayMinimalistMode,
+        overlayHideSelf: this.overlayHideSelf,
+        overlaySavedBounds: this.overlaySavedBounds,
       }));
       appEvents.emit('settings.updated');
     } catch (e) {}

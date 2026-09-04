@@ -1,0 +1,5 @@
+flowchart LR
+    N["NetworkClient<br/>(WebSocket)"] -->|server event| ST["Stores<br/>serverStore, voiceStore,<br/>chatStore, connectionStore,<br/>settingsStore"]
+    ST -->|appEvents.emit| EB(["EventBus"])
+    EB -->|appEvents.on| V["Views<br/>MainView, ChatView,<br/>VoiceStageView…"]
+    V -->|user action| N

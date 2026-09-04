@@ -14,7 +14,7 @@
  *
  * Usage: node scripts/pack-cli.js [version] [--out <dir>]
  */
-import { execFileSync } from 'child_process';
+import { execSync } from 'child_process';
 import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
@@ -70,7 +70,9 @@ export function buildCliPackageJson(serverPkg, sharedPkg, version) {
     main: serverPkg.main,
     types: serverPkg.types,
     bin: serverPkg.bin,
-    engines: { node: '>=20' },
+    // mediasoup and two of its transitive dependencies (h264-profile-level-id,
+    // supports-color) declare `>=22`, so the CLI cannot honestly claim Node 20.
+    engines: { node: '>=22' },
     dependencies,
     bundleDependencies: ['@monky/shared'],
   };
@@ -131,12 +133,10 @@ function main() {
   fs.mkdirSync(args.out, { recursive: true });
   // npm pack writes into the cwd. --pack-destination is avoided on purpose:
   // resolving npm.cmd on Windows requires shell mode, which splits arguments
-  // on spaces and would corrupt any path containing one.
-  const packed = execFileSync('npm', ['pack'], {
-    cwd: staging,
-    encoding: 'utf8',
-    shell: process.platform === 'win32',
-  })
+  // on spaces and would corrupt any path containing one. A fixed command with
+  // no interpolated arguments sidesteps that entirely — and, having no args
+  // array, it does not trip Node's DEP0190 either.
+  const packed = execSync('npm pack', { cwd: staging, encoding: 'utf8' })
     .trim()
     .split('\n')
     .pop()

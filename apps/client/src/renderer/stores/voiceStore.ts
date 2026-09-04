@@ -1,6 +1,7 @@
 import { appEvents } from '../core/EventBus';
 import { emitOutsideRouting } from '../core/sessionRouting';
 import { settingsStore } from './settingsStore';
+import { clientLog } from '../core/ClientLogService';
 
 export class VoiceStore {
   public currentVoiceChannelId: string | null = null;
@@ -27,10 +28,19 @@ export class VoiceStore {
   /** Share whose system audio is being captured, if any (#253: at most one). */
   public screenAudioShareId: string | null = null;
 
+  /**
+   * True while the active call is trying to re-establish its link (#553).
+   * Surfaced in the sidebar voice indicator (yellow) and by a periodic audio
+   * cue instead of a screen-blocking overlay.
+   */
+  public isReconnecting: boolean = false;
+
   /** Hard cap on simultaneous screen shares per participant (#253). */
   public static readonly MAX_SCREEN_SHARES = 2;
 
   public setChannel(channelId: string | null, sessionKey: string | null = null): void {
+    clientLog.info('CONNECTION', `Voice channel ${channelId ? 'joined' : 'left'}`, { channelId, sessionKey });
+    const wasReconnecting = this.isReconnecting;
     this.currentVoiceChannelId = channelId;
     if (channelId) {
       this.voiceSessionKey = sessionKey;
@@ -41,11 +51,16 @@ export class VoiceStore {
       this.isScreenSharing = false;
       this.screenAudioShareId = null;
       this.isSpeaking = false;
+      this.isReconnecting = false;
     }
-    emitOutsideRouting(() => appEvents.emit('voice.channel_changed', channelId));
+    emitOutsideRouting(() => {
+      appEvents.emit('voice.channel_changed', channelId);
+      if (!channelId && wasReconnecting) appEvents.emit('voice.reconnecting_changed', false);
+    });
   }
 
   public setMuted(muted: boolean): void {
+    clientLog.info('AUDIO', `Muted: ${muted}`);
     this.isMuted = muted;
     settingsStore.isMuted = muted;
     settingsStore.save();
@@ -53,6 +68,7 @@ export class VoiceStore {
   }
 
   public setDeafened(deafened: boolean): void {
+    clientLog.info('AUDIO', `Deafened: ${deafened}`);
     if (deafened && !this.isDeafened) {
       // Entering deafen: remember whether the mic was already muted, then mute it.
       this.micMutedBeforeDeafen = this.isMuted;
@@ -71,11 +87,13 @@ export class VoiceStore {
   }
 
   public setServerMuted(muted: boolean): void {
+    clientLog.warn('AUDIO', `Server muted: ${muted}`);
     this.serverMuted = muted;
     appEvents.emit('voice.state_updated');
   }
 
   public setServerDeafened(deafened: boolean): void {
+    clientLog.warn('AUDIO', `Server deafened: ${deafened}`);
     this.serverDeafened = deafened;
     appEvents.emit('voice.state_updated');
   }
@@ -94,6 +112,20 @@ export class VoiceStore {
       appEvents.emit('voice.speaking_changed', speaking);
       appEvents.emit('voice.state_updated');
     }
+  }
+
+  /**
+   * Flags the active call as (re)connecting so the UI can react (#553). A
+   * `true` with no live call is ignored, so a late event fired right after
+   * hang-up can never strand the indicator in the reconnecting state.
+   */
+  public setReconnecting(reconnecting: boolean): void {
+    if (this.isReconnecting === reconnecting) return;
+    if (reconnecting && !this.currentVoiceChannelId) return;
+    this.isReconnecting = reconnecting;
+    clientLog.info('CONNECTION', `Voice reconnecting: ${reconnecting}`);
+    appEvents.emit('voice.reconnecting_changed', reconnecting);
+    appEvents.emit('voice.state_updated');
   }
 
   public setCameraOn(on: boolean): void {
@@ -138,6 +170,7 @@ export class VoiceStore {
 
   public reset(): void {
     const hadChannel = this.currentVoiceChannelId !== null;
+    const wasReconnecting = this.isReconnecting;
     this.currentVoiceChannelId = null;
     this.voiceSessionKey = null;
     // Note (#358): isMuted and isDeafened are persistent user privacy states
@@ -149,12 +182,15 @@ export class VoiceStore {
     this.screenShareIds = [];
     this.isScreenSharing = false;
     this.screenAudioShareId = null;
+    this.isReconnecting = false;
     emitOutsideRouting(() => {
       appEvents.emit('voice.state_updated');
       // Ending a call is a channel change: without this the sidebar row and the
       // rail badge would linger when the call's server drops while the user is
       // looking at another one (#400).
       if (hadChannel) appEvents.emit('voice.channel_changed', null);
+      // Stops the reconnection cue if the call ended mid-attempt (#553).
+      if (wasReconnecting) appEvents.emit('voice.reconnecting_changed', false);
     });
   }
 }

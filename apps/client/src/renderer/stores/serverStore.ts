@@ -1,6 +1,7 @@
-import { AttachmentStorageInfo, ChannelSummary, DEFAULT_PERMISSIONS, Permission, Role, ServerDetails, TurnAvailability, UserRoleSummary, UserSummary, hasPermission } from '@monky/shared';
+import { AttachmentStorageInfo, ChannelSummary, DEFAULT_PERMISSIONS, Permission, Role, ServerDetails, TurnAvailability, UserRoleSummary, UserSummary, VoiceMode, hasPermission } from '@monky/shared';
 import { appEvents, EventBus } from '../core/EventBus';
 import { createActiveProxy } from '../core/activeProxy';
+import { clientLog } from '../core/ClientLogService';
 
 export class ServerStore {
   /**
@@ -21,6 +22,11 @@ export class ServerStore {
   public knownMembers: Map<string, UserSummary> = new Map();
 
   public setServerDetails(details: ServerDetails, currentUser: UserSummary): void {
+    clientLog.info('SERVER_HOST', `Server details received: "${details.name}"`, {
+      channels: details.channels.length,
+      members: details.members.length,
+      turnEnabled: details.turnEnabled,
+    });
     // The server sends one entry per live connection (#309). The member list is
     // per person, so it holds a collapsed copy — the untouched original still
     // feeds the per-session voice lists.
@@ -96,6 +102,7 @@ export class ServerStore {
   public addChannel(channel: ChannelSummary): void {
     if (this.serverDetails) {
       this.serverDetails.channels.push(channel);
+      this.sortChannels();
       this.bus.emit('server.updated');
     }
   }
@@ -120,6 +127,40 @@ export class ServerStore {
 
     this.serverDetails.channels[index] = channel;
     this.bus.emit('server.updated');
+  }
+
+  /**
+   * Applies a new channel order (#471).
+   *
+   * Only the positions of channels this client can see are sent, so anything
+   * not mentioned is left where it is. Sorting here (rather than in the view)
+   * keeps a single source of truth for the order: the list in the store is
+   * always the list as it should be shown.
+   */
+  public applyChannelPositions(positions: Array<{ channelId: string; position: number }>): void {
+    if (!this.serverDetails || positions.length === 0) return;
+
+    const byId = new Map(positions.map((p) => [p.channelId, p.position]));
+    let changed = false;
+    for (const channel of this.serverDetails.channels) {
+      const next = byId.get(channel.id);
+      if (next !== undefined && next !== channel.position) {
+        channel.position = next;
+        changed = true;
+      }
+    }
+    if (!changed) return;
+
+    this.sortChannels();
+    this.bus.emit('server.updated');
+  }
+
+  /**
+   * Orders channels the way the server does: by position, falling back to
+   * creation time so channels sharing a position keep a stable order (#471).
+   */
+  private sortChannels(): void {
+    this.serverDetails?.channels.sort((a, b) => a.position - b.position || a.createdAt - b.createdAt);
   }
 
   public updateCurrentUser(user: UserSummary): void {
@@ -175,7 +216,11 @@ export class ServerStore {
     iconUrl?: string | null,
     attachmentStorage?: AttachmentStorageInfo,
     maxUsers?: number,
-    turnEnabled?: boolean
+    turnEnabled?: boolean,
+    allowEveryoneMention?: boolean,
+    allowMessageEdit?: boolean,
+    voiceMode?: VoiceMode,
+    showRoleBadgesToEveryone?: boolean
   ): void {
     if (this.serverDetails) {
       this.serverDetails.name = name;
@@ -195,6 +240,18 @@ export class ServerStore {
       if (turnEnabled !== undefined) {
         this.serverDetails.turnEnabled = turnEnabled;
       }
+      if (allowEveryoneMention !== undefined) {
+        this.serverDetails.allowEveryoneMention = allowEveryoneMention;
+      }
+      if (allowMessageEdit !== undefined) {
+        this.serverDetails.allowMessageEdit = allowMessageEdit;
+      }
+      if (voiceMode !== undefined) {
+        this.serverDetails.voiceMode = voiceMode;
+      }
+      if (showRoleBadgesToEveryone !== undefined) {
+        this.serverDetails.showRoleBadgesToEveryone = showRoleBadgesToEveryone;
+      }
       this.bus.emit('server.updated');
       this.bus.emit('server.meta_updated', this.serverDetails);
     }
@@ -210,6 +267,7 @@ export class ServerStore {
    */
   public setTurnAvailability(availability: TurnAvailability | undefined): void {
     if (!this.serverDetails || availability === undefined) return;
+    clientLog.info('SERVER_HOST', 'TURN availability updated', { availability });
     this.serverDetails.turnAvailability = availability;
     this.bus.emit('server.updated');
     this.bus.emit('server.meta_updated', this.serverDetails);
@@ -287,19 +345,39 @@ export class ServerStore {
     );
   }
 
-  /** Members ordered by role ranking first, then alphabetically (#262). */
+  /**
+   * Whether a member holds ADMINISTRATOR (the owner included, since the owner
+   * is handed every permission bit). Admin comes from the built-in Admin role,
+   * whose position in the drag-and-drop ranking is arbitrary, so it is checked
+   * by permission instead of by position.
+   */
+  public isAdminMember(userId: string): boolean {
+    return hasPermission(this.getUserPermissions(userId), Permission.ADMINISTRATOR);
+  }
+
+  /**
+   * Ranking used inside each member-list group: admins are pinned above
+   * everyone else regardless of role ordering (#489), then the highest role
+   * position decides, and finally the nickname.
+   */
+  private compareMembersForDisplay(a: UserSummary, b: UserSummary): number {
+    const adminDiff = Number(this.isAdminMember(b.id)) - Number(this.isAdminMember(a.id));
+    if (adminDiff !== 0) return adminDiff;
+    const diff = this.getUserHighestRolePosition(b.id) - this.getUserHighestRolePosition(a.id);
+    if (diff !== 0) return diff;
+    return a.nickname.localeCompare(b.nickname);
+  }
+
+  /** Members ordered by admin, then role ranking, then alphabetically (#262, #489). */
   public getMembersInDisplayOrder(): UserSummary[] {
     const members = [...(this.serverDetails?.members ?? [])];
-    return members.sort((a, b) => {
-      const diff = this.getUserHighestRolePosition(b.id) - this.getUserHighestRolePosition(a.id);
-      if (diff !== 0) return diff;
-      return a.nickname.localeCompare(b.nickname);
-    });
+    return members.sort((a, b) => this.compareMembersForDisplay(a, b));
   }
 
   /**
    * Returns all known members (online + offline), sorted with online/voice
-   * users first, then offline, each sub-group sorted by role then name (#401).
+   * users first, then offline, each sub-group sorted by admin, then role, then
+   * name (#401, #489).
    */
   public getAllMembersInDisplayOrder(): UserSummary[] {
     const onlineIds = new Set((this.serverDetails?.members ?? []).map((m) => m.id));
@@ -320,9 +398,7 @@ export class ServerStore {
       const aOnline = onlineIds.has(a.id) ? 0 : 1;
       const bOnline = onlineIds.has(b.id) ? 0 : 1;
       if (aOnline !== bOnline) return aOnline - bOnline;
-      const diff = this.getUserHighestRolePosition(b.id) - this.getUserHighestRolePosition(a.id);
-      if (diff !== 0) return diff;
-      return a.nickname.localeCompare(b.nickname);
+      return this.compareMembersForDisplay(a, b);
     });
   }
 
@@ -343,6 +419,7 @@ export class ServerStore {
   }
 
   public clear(): void {
+    clientLog.info('SERVER_HOST', 'Server store cleared');
     this.serverDetails = null;
     this.currentUser = null;
     this.activeTextChannelId = null;

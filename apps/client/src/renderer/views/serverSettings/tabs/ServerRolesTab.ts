@@ -3,6 +3,7 @@ import { serverStore } from '../../../stores/serverStore';
 import { networkClient } from '../../../core/NetworkClient';
 import { getAvatarUrl } from '../../../utils/avatar';
 import { escapeHtml } from '../../../utils/html';
+import { showAlert, showConfirm } from '../../Dialog';
 import { t } from '../../../i18n';
 
 export class ServerRolesTab {
@@ -10,10 +11,27 @@ export class ServerRolesTab {
 
   public renderHtml(): string {
     const roles: Role[] = serverStore.getVisibleRoles().sort((a: Role, b: Role) => b.position - a.position);
-    const members = serverStore.serverDetails?.members ?? [];
+    // Counting only live connections made the column lie about roles held by
+    // people who happen to be offline (#477).
+    const members = serverStore.getAllMembersInDisplayOrder();
 
     return `
       <div style="display: flex; flex-direction: column; gap: 16px; width: 100%;">
+        <div style="display: flex; align-items: center; justify-content: space-between; background: var(--bg-card); padding: 12px 14px; border-radius: var(--radius-md); border: 1px solid var(--border-color);">
+          <div>
+            <label for="checkbox-show-role-badges" style="font-size: 13px; font-weight: 600; color: var(--text-primary); display: flex; align-items: center; gap: 6px; cursor: pointer; margin-bottom: 2px;">
+              <span class="material-symbols-outlined md-18" style="color: var(--accent-primary);">visibility</span>
+              <span>${t('roles.badgeVisibility')}</span>
+            </label>
+            <div style="font-size: 11px; color: var(--text-muted);">
+              ${t('roles.badgeVisibilityDesc')}
+            </div>
+          </div>
+          <label class="toggle-switch" aria-label="${t('roles.badgeVisibility')}">
+            <input id="checkbox-show-role-badges" type="checkbox" ${serverStore.serverDetails?.showRoleBadgesToEveryone !== false ? 'checked' : ''}>
+            <span class="toggle-slider"></span>
+          </label>
+        </div>
         <div style="background: var(--bg-card); border: 1px solid var(--border-color); border-radius: var(--radius-md); padding: 14px; display: flex; flex-direction: column; gap: 12px; overflow: visible;">
           <div style="display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; flex-wrap: wrap;">
             <div>
@@ -46,7 +64,7 @@ export class ServerRolesTab {
                         </div>
                       </td>
                       <td style="font-size: 12px; color: var(--text-secondary);">${escapeHtml(this.describeRolePermissions(role))}</td>
-                      <td style="font-size: 12px; color: var(--text-secondary);">${assignedMembers}</td>
+                      <td class="role-member-count" data-role-count="${role.id}" style="font-size: 12px; color: var(--text-secondary);">${assignedMembers}</td>
                       <td style="text-align: right;">
                         <button type="button" class="btn btn-secondary role-open-btn" data-role-open="${role.id}">${t('common.edit')}</button>
                       </td>
@@ -191,10 +209,21 @@ export class ServerRolesTab {
       `;
     }
 
-    const members = [...(serverStore.serverDetails?.members ?? [])].sort((a, b) => a.nickname.localeCompare(b.nickname));
+    // A role belongs to the person, not to the connection, so offline members
+    // have to be listed too. This helper forces the right presence state on
+    // people who dropped mid-session (#477).
+    const members = serverStore.getAllMembersInDisplayOrder();
 
     return `
       <div style="font-size: 11px; color: var(--text-muted); margin-bottom: 10px;">${t('roles.membersEditorHint')}</div>
+      <div style="display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-bottom: 10px;">
+        <input type="text" id="role-members-search" class="role-members-search" placeholder="${t('roles.searchMembersPlaceholder')}" autocomplete="off">
+        <span id="role-members-count" style="font-size: 11px; color: var(--text-muted); white-space: nowrap;">${t('roles.membersShown', { shown: members.length, total: members.length })}</span>
+        <div style="display: flex; gap: 6px; margin-left: auto;">
+          <button type="button" class="btn btn-secondary role-members-bulk" data-bulk-assign="true" data-role-id="${roleId}">${t('roles.bulkAssign')}</button>
+          <button type="button" class="btn btn-secondary role-members-bulk" data-bulk-assign="false" data-role-id="${roleId}">${t('roles.bulkUnassign')}</button>
+        </div>
+      </div>
       <div class="settings-table-wrap">
         <table class="settings-data-table">
           <thead>
@@ -203,18 +232,20 @@ export class ServerRolesTab {
               <th style="width: 100px; text-align: center;">${t('roles.assignedColumn')}</th>
             </tr>
           </thead>
-          <tbody>
+          <tbody id="role-members-tbody">
             ${members.map((member) => {
               const assigned = serverStore.getUserRoleIds(member.id).includes(roleId);
+              const offline = member.status === 'DISCONNECTED';
               return `
-                <tr>
+                <tr class="role-member-row" data-member-name="${escapeHtml(member.nickname.toLowerCase())}">
                   <td>
                     <div style="display: flex; align-items: center; gap: 10px; min-width: 0;">
-                      <img src="${getAvatarUrl(member.avatarUrl)}" alt="${escapeHtml(member.nickname)}" style="width: 34px; height: 34px; border-radius: 50%; object-fit: cover; border: 1px solid var(--border-color); flex-shrink: 0;">
+                      <img src="${getAvatarUrl(member.avatarUrl)}" alt="${escapeHtml(member.nickname)}" data-fallback="avatar" style="width: 34px; height: 34px; border-radius: 50%; object-fit: cover; border: 1px solid var(--border-color); flex-shrink: 0; ${offline ? 'opacity: 0.5;' : ''}">
                       <div style="display: flex; align-items: center; gap: 6px; flex-wrap: wrap; min-width: 0;">
                         <span style="font-size: 13px; font-weight: 600; color: var(--text-primary); min-width: 0; overflow: hidden; text-overflow: ellipsis;">${escapeHtml(member.nickname)}</span>
                         ${member.id === serverStore.currentUser?.id ? `<span class="member-badge-you">${t('common.you')}</span>` : ''}
                         ${member.id === serverStore.ownerId ? `<span class="member-badge-you">${t('roles.ownerBadge')}</span>` : ''}
+                        ${offline ? `<span class="member-badge-offline">${t('roles.offlineBadge')}</span>` : ''}
                       </div>
                     </div>
                   </td>
@@ -466,6 +497,15 @@ export class ServerRolesTab {
         return;
       }
 
+      const bulkButton = target.closest('.role-members-bulk') as HTMLElement | null;
+      if (bulkButton) {
+        const roleId = bulkButton.getAttribute('data-role-id');
+        if (roleId) {
+          void this.applyBulkRoleChange(container, roleId, bulkButton.getAttribute('data-bulk-assign') === 'true');
+        }
+        return;
+      }
+
       const menuTrigger = target.closest('.member-actions-trigger') as HTMLElement | null;
       if (menuTrigger) {
         event.preventDefault();
@@ -521,6 +561,12 @@ export class ServerRolesTab {
       }
     });
 
+    container.addEventListener('input', (event) => {
+      const target = event.target as HTMLElement;
+      if (target?.id !== 'role-members-search') return;
+      this.filterMemberRows(container, (target as HTMLInputElement).value);
+    });
+
     container.addEventListener('change', (event) => {
       const target = event.target as HTMLElement;
       if (!(target instanceof HTMLInputElement)) return;
@@ -528,10 +574,96 @@ export class ServerRolesTab {
       const userId = target.getAttribute('data-user-id');
       const roleId = target.getAttribute('data-role-id');
       if (!userId || !roleId) return;
+      const shouldAssign = target.checked;
+      target.disabled = true;
       void (async () => {
-        await networkClient.sendRequest(target.checked ? MessageType.ROLE_ASSIGN : MessageType.ROLE_UNASSIGN, { userId, roleId });
-        onReload();
+        try {
+          await networkClient.sendRequest(shouldAssign ? MessageType.ROLE_ASSIGN : MessageType.ROLE_UNASSIGN, { userId, roleId });
+          // Reopening the whole modal here (the old `onReload()`) collapsed the
+          // editor and threw the admin back to the role list on every single
+          // member, which is what made assigning several people so painful
+          // (#477). The server broadcast already refreshes the store, so only
+          // the member counter needs a nudge.
+          this.refreshRoleMemberCount(container, roleId);
+        } catch (error) {
+          target.checked = !shouldAssign;
+        } finally {
+          target.disabled = false;
+        }
       })();
     });
+  }
+
+  /** Hides member rows that don't match the search box (#477). */
+  private filterMemberRows(container: HTMLElement, query: string): void {
+    const term = query.trim().toLowerCase();
+    const rows = Array.from(container.querySelectorAll('.role-member-row')) as HTMLElement[];
+    let shown = 0;
+    rows.forEach((row) => {
+      const name = row.dataset.memberName ?? '';
+      const matches = term.length === 0 || name.includes(term);
+      row.style.display = matches ? '' : 'none';
+      if (matches) shown += 1;
+    });
+
+    const counter = container.querySelector('#role-members-count');
+    if (counter) {
+      counter.textContent = t('roles.membersShown', { shown, total: rows.length });
+    }
+  }
+
+  /**
+   * Rewrites the "members" cell of a role straight from the switches on screen,
+   * so the number is right without waiting for the broadcast to land (#477).
+   */
+  private refreshRoleMemberCount(container: HTMLElement, roleId: string): void {
+    const cell = container.querySelector(`[data-role-count="${roleId}"]`);
+    if (!cell) return;
+    const assigned = container.querySelectorAll(
+      `.role-editor-member-switch[data-role-id="${roleId}"]:checked`
+    ).length;
+    cell.textContent = String(assigned);
+  }
+
+  /**
+   * Applies one role change to every member matching the current search, so a
+   * whole group can be added or removed in one go (#477).
+   */
+  private async applyBulkRoleChange(container: HTMLElement, roleId: string, assign: boolean): Promise<void> {
+    const switches = (Array.from(
+      container.querySelectorAll(`.role-editor-member-switch[data-role-id="${roleId}"]`)
+    ) as HTMLInputElement[]).filter((input) => {
+      const row = input.closest('.role-member-row') as HTMLElement | null;
+      const visible = !row || row.style.display !== 'none';
+      return visible && input.checked !== assign;
+    });
+
+    if (switches.length === 0) {
+      await showAlert({ message: t('roles.bulkNothingToDo'), variant: 'warning' });
+      return;
+    }
+
+    const confirmed = await showConfirm({
+      title: assign ? t('roles.bulkAssign') : t('roles.bulkUnassign'),
+      message: assign
+        ? t('roles.bulkAssignConfirm', { count: switches.length })
+        : t('roles.bulkUnassignConfirm', { count: switches.length }),
+      variant: assign ? 'info' : 'danger',
+    });
+    if (!confirmed) return;
+
+    for (const input of switches) {
+      const userId = input.getAttribute('data-user-id');
+      if (!userId) continue;
+      try {
+        await networkClient.sendRequest(assign ? MessageType.ROLE_ASSIGN : MessageType.ROLE_UNASSIGN, { userId, roleId });
+        input.checked = assign;
+      } catch (error) {
+        // A member the server refuses (the owner, a higher role) must not stop
+        // the rest of the batch.
+      }
+    }
+
+    this.refreshRoleMemberCount(container, roleId);
   }
 }

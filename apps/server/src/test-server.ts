@@ -26,6 +26,16 @@ import { DatabaseConnection } from './infrastructure/database/DatabaseConnection
 import { SqliteRoleRepository, SqliteServerRepository, SqliteUserRepository } from './infrastructure/database/SqliteRepositories';
 import { PermissionService } from './application/services/PermissionService';
 import { RoleService } from './application/services/RoleService';
+import { CapacityEstimator } from './domain/services/CapacityEstimator';
+import { SfuManager } from './infrastructure/sfu/SfuManager';
+import { resolveTurnSfuExclusion } from './application/services/AuthService';
+import {
+  evaluateServerHealth,
+  majorOf,
+  needsProcessRecreate,
+  probeLocalPort,
+  STARTUP_GRACE_MS,
+} from './cli/health';
 
 function withTimeout<T>(promise: Promise<T>, ms: number, label: string): Promise<T> {
   return Promise.race([
@@ -538,14 +548,24 @@ async function runTests() {
         throw new Error('Teste 13: servidores diferentes deveriam ter processos PM2 diferentes');
       }
       const ecosystem = generateEcosystem({ dataDir: serverA, port: 3010, serverName: 'Servidor "A"' });
-      if (!ecosystem.includes(`name: '${nameA}'`)) {
+      // O ecosystem é carregado pelo PM2 como módulo, então o que importa é o
+      // valor depois do parse do JS — não o texto cru. Conferir o texto
+      // escondia que as aspas escapadas eram consumidas pelo parser do próprio
+      // literal, entregando ao PM2 um args com aspas desbalanceadas.
+      const loadEcosystemApp = (source: string) => {
+        const generatedModule = { exports: {} as { apps: Array<Record<string, string>> } };
+        new Function('module', source)(generatedModule);
+        return generatedModule.exports.apps[0];
+      };
+      const app = loadEcosystemApp(ecosystem);
+      if (app.name !== nameA) {
         throw new Error('Teste 13: o ecosystem deveria usar o nome de processo derivado da pasta');
       }
-      if (!ecosystem.includes('--port 3010')) {
+      if (!app.args.includes('--port 3010')) {
         throw new Error('Teste 13: o ecosystem deveria conter a porta informada');
       }
-      if (!ecosystem.includes('\\"A\\"')) {
-        throw new Error('Teste 13: aspas no nome do servidor deveriam ser escapadas');
+      if (!app.args.includes('--name "Servidor \\"A\\""')) {
+        throw new Error('Teste 13: aspas no nome do servidor deveriam chegar escapadas ao PM2');
       }
     } finally {
       if (previousHome === undefined) {
@@ -799,25 +819,616 @@ async function runTests() {
     }
     console.log('✔ Teste 18 passou: ICE servers chegam ao cliente, com STUN, sem vazar TURN quando desligado, e com a disponibilidade do relay');
 
-    // Teste 19: verifyPassword recebia um hash truncado e chegava ao
+    // ── Teste 19: Estimador de Capacidade e SFU (Selective Forwarding Unit) (#515) ──
+    const est1vCpu = CapacityEstimator.estimate(50, 1, 1);
+    if (est1vCpu.maxAudioParticipants < 30 || est1vCpu.maxScreenShareParticipants < 5) {
+      throw new Error('Teste 19: Estimativa de capacidade para 1 vCPU / 1 GB RAM incorreta');
+    }
+
+    const estAmpere = CapacityEstimator.estimate(1000, 4, 24);
+    if (estAmpere.maxAudioParticipants < 100 || estAmpere.maxScreenShareParticipants < 100) {
+      throw new Error('Teste 19: Estimativa de capacidade para 4 vCPU / 24 GB RAM incorreta');
+    }
+
+    // O estimador reporta a máquina que roda o servidor: sem isso o client caía
+    // para `navigator.deviceMemory`, que descreve o desktop do admin e é
+    // limitado a 8 GB pela spec (#515).
+    const hostSpecs = CapacityEstimator.getHostSpecs();
+    if (!(hostSpecs.cpuCores >= 1) || !(hostSpecs.ramTotalGb > 0)) {
+      throw new Error('Teste 19: getHostSpecs deve reportar CPU e RAM reais do host');
+    }
+
+    // A regra TURN×SFU precisa deixar passar a migração mais comum: VPS Linux
+    // com coturn ligado em P2P, admin escolhe SFU. A UI manda o voiceMode em
+    // todo save, então o payload chega como { voiceMode: 'sfu', turnEnabled:
+    // true } — recusar isso tornaria o upgrade impossível pela interface (#515).
+    const relayCases: Array<{
+      name: string;
+      current: { voiceMode?: string | null; turnEnabled?: boolean | null };
+      requested: { voiceMode?: 'p2p' | 'sfu'; turnEnabled?: boolean };
+      rejected: boolean;
+      turnEnabled: boolean | undefined;
+    }> = [
+      {
+        name: 'migração P2P+TURN → SFU desliga o relay em vez de recusar',
+        current: { voiceMode: 'p2p', turnEnabled: true },
+        requested: { voiceMode: 'sfu', turnEnabled: true },
+        rejected: false,
+        turnEnabled: false,
+      },
+      {
+        name: 'entrar em SFU desliga o relay mesmo sem turnEnabled no payload',
+        current: { voiceMode: 'p2p', turnEnabled: true },
+        requested: { voiceMode: 'sfu' },
+        rejected: false,
+        turnEnabled: false,
+      },
+      {
+        name: 'ligar TURN em servidor que permanece em SFU é recusado',
+        current: { voiceMode: 'sfu', turnEnabled: false },
+        requested: { turnEnabled: true },
+        rejected: true,
+        turnEnabled: undefined,
+      },
+      {
+        name: 'ligar TURN em SFU é recusado mesmo com o voiceMode ecoado',
+        current: { voiceMode: 'sfu', turnEnabled: false },
+        requested: { voiceMode: 'sfu', turnEnabled: true },
+        rejected: true,
+        turnEnabled: undefined,
+      },
+      {
+        name: 'sair do SFU e ligar TURN é permitido',
+        current: { voiceMode: 'sfu', turnEnabled: false },
+        requested: { voiceMode: 'p2p', turnEnabled: true },
+        rejected: false,
+        turnEnabled: true,
+      },
+      {
+        name: 'ligar TURN em P2P continua funcionando',
+        current: { voiceMode: 'p2p', turnEnabled: false },
+        requested: { turnEnabled: true },
+        rejected: false,
+        turnEnabled: true,
+      },
+      {
+        name: 'salvar outra configuração em P2P não mexe no relay',
+        current: { voiceMode: 'p2p', turnEnabled: true },
+        requested: {},
+        rejected: false,
+        turnEnabled: undefined,
+      },
+    ];
+
+    for (const c of relayCases) {
+      const got = resolveTurnSfuExclusion(c.current, c.requested);
+      if (got.rejected !== c.rejected || got.turnEnabled !== c.turnEnabled) {
+        throw new Error(
+          `Teste 19 (TURN×SFU): ${c.name} — esperado ` +
+          `{ rejected: ${c.rejected}, turnEnabled: ${c.turnEnabled} }, ` +
+          `recebido { rejected: ${got.rejected}, turnEnabled: ${got.turnEnabled} }`
+        );
+      }
+    }
+
+    // O range do SFU não pode invadir o range de relay do coturn, senão os dois
+    // disputam as mesmas portas UDP quando ambos estão ativos (#515).
+    if (LIMITS.SFU_DEFAULT_MAX_PORT >= LIMITS.TURN_RELAY_MIN_PORT) {
+      throw new Error('Teste 19: Range UDP do SFU colide com o range de relay do coturn');
+    }
+
+    const sfuManager = new SfuManager();
+    const routerCaps = await sfuManager.getRouterRtpCapabilities('channel-test-1');
+    if (!routerCaps || !Array.isArray(routerCaps.codecs) || routerCaps.codecs.length === 0) {
+      throw new Error('Teste 19: SfuManager deve fornecer RTP Capabilities com codecs suportados');
+    }
+    const hasOpus = routerCaps.codecs.some((c: any) => c.mimeType?.toLowerCase() === 'audio/opus');
+    if (!hasOpus) {
+      throw new Error('Teste 19: RTP Capabilities deve incluir codec audio/opus');
+    }
+    sfuManager.closeChannel('channel-test-1');
+    sfuManager.close();
+
+    // Teste de persistência e sinalização do voiceMode em servidor SFU
+    const sfuDir = path.join(testDataDir, 'sfu-mode-test');
+    const sfuServer = await MonkyServer.create({
+      port: 3004,
+      dataDir: sfuDir,
+      serverName: 'Servidor SFU',
+      initialVoiceChannel: 'Geral',
+      initialTextChannel: 'geral',
+      voiceMode: 'sfu',
+    });
+
+    try {
+      await sfuServer.start();
+      const wsSfu = new WebSocket('ws://localhost:3004');
+      const authResSfu = await authenticateSocket(wsSfu, 'req-sfu-1', 'SfuUser', '');
+      if (authResSfu.payload?.server?.voiceMode !== 'sfu') {
+        throw new Error('Teste 19: Servidor configurado com SFU deve retornar voiceMode: "sfu" no login');
+      }
+
+      // O servidor precisa reportar as specs da máquina que realmente roda o
+      // SFU, senão o client volta a estimar capacidade com o hardware errado.
+      const reportedSpecs = authResSfu.payload?.server?.hostSpecs;
+      if (!reportedSpecs || !(reportedSpecs.cpuCores >= 1) || !(reportedSpecs.ramTotalGb > 0)) {
+        throw new Error('Teste 19: serverDetails deve incluir hostSpecs com CPU e RAM do host');
+      }
+
+      // TURN e SFU são mutuamente exclusivos: o SFU já é o relay, então ligar
+      // o coturn junto só queimaria portas e credenciais (#515).
+      await withTimeout(new Promise<void>((resolve, reject) => {
+        const handler = (data: RawData) => {
+          const res = JSON.parse(data.toString());
+          if (res.type === MessageType.SERVER_SETTINGS_UPDATED) {
+            wsSfu.off('message', handler);
+            reject(new Error('Teste 19: ativar TURN no modo SFU deveria ser recusado, não aplicado'));
+            return;
+          }
+          if (res.type !== MessageType.SERVER_ERROR) return;
+          wsSfu.off('message', handler);
+          resolve();
+        };
+        wsSfu.on('message', handler);
+        wsSfu.send(JSON.stringify({
+          type: MessageType.SERVER_UPDATE_SETTINGS,
+          requestId: 'req-sfu-turn',
+          payload: { turnEnabled: true },
+        } satisfies ProtocolMessage));
+      }), 5000, 'Teste 19: TURN recusado no modo SFU');
+
+      // O handshake do SFU precisa continuar funcionando com o modo ligado: o
+      // gate de dispatch consulta o voiceMode gravado antes de qualquer
+      // handler, e um erro aqui derrubaria a voz inteira (#515).
+      await withTimeout(new Promise<void>((resolve, reject) => {
+        const handler = (data: RawData) => {
+          const res = JSON.parse(data.toString());
+          if (res.requestId !== 'req-sfu-caps') return;
+          wsSfu.off('message', handler);
+          if (res.type !== MessageType.SFU_ROUTER_RTP_CAPABILITIES) {
+            reject(new Error(`Teste 19: handshake do SFU recusado em modo SFU (${res.type})`));
+            return;
+          }
+          if (!res.payload?.rtpCapabilities?.codecs?.length) {
+            reject(new Error('Teste 19: RTP Capabilities do handshake vieram vazias'));
+            return;
+          }
+          resolve();
+        };
+        wsSfu.on('message', handler);
+        wsSfu.send(JSON.stringify({
+          type: MessageType.SFU_GET_ROUTER_RTP_CAPABILITIES,
+          requestId: 'req-sfu-caps',
+          payload: { channelId: 'canal-sfu-handshake' },
+        } satisfies ProtocolMessage));
+      }), 10000, 'Teste 19: handshake do SFU aceito em modo SFU');
+
+      await withTimeout(new Promise<void>((resolve, reject) => {
+        const handler = (data: RawData) => {
+          const res = JSON.parse(data.toString());
+          if (res.type !== MessageType.SERVER_SETTINGS_UPDATED) return;
+          wsSfu.off('message', handler);
+          if (res.payload?.voiceMode !== 'p2p') {
+            reject(new Error('Teste 19: SERVER_SETTINGS_UPDATED deve refletir alteração para voiceMode: "p2p"'));
+            return;
+          }
+          resolve();
+        };
+        wsSfu.on('message', handler);
+        wsSfu.send(JSON.stringify({
+          type: MessageType.SERVER_UPDATE_SETTINGS,
+          requestId: 'req-sfu-update',
+          payload: { voiceMode: 'p2p' },
+        } satisfies ProtocolMessage));
+      }), 5000, 'Teste 19: atualização dinâmica de voiceMode no servidor');
+
+      // A visibilidade das badges de cargo é uma configuração do servidor, e o
+      // cliente só sabe esconder o que o broadcast disser (#530).
+      await withTimeout(new Promise<void>((resolve, reject) => {
+        const handler = (data: RawData) => {
+          const res = JSON.parse(data.toString());
+          if (res.type !== MessageType.SERVER_SETTINGS_UPDATED) return;
+          wsSfu.off('message', handler);
+          if (res.payload?.showRoleBadgesToEveryone !== false) {
+            reject(new Error('Teste 19: SERVER_SETTINGS_UPDATED deve refletir showRoleBadgesToEveryone: false'));
+            return;
+          }
+          resolve();
+        };
+        wsSfu.on('message', handler);
+        wsSfu.send(JSON.stringify({
+          type: MessageType.SERVER_UPDATE_SETTINGS,
+          requestId: 'req-role-badges',
+          payload: { showRoleBadgesToEveryone: false },
+        } satisfies ProtocolMessage));
+      }), 5000, 'Teste 19: visibilidade das badges de cargo');
+
+      // Já em P2P, o mesmo pedido tem de ser recusado. Sem isso qualquer membro
+      // autenticado sobe um worker mediasoup — e o CREATE_WEBRTC_TRANSPORT
+      // ainda reserva um par de portas — num servidor que o operador deixou
+      // deliberadamente em P2P (#515).
+      await withTimeout(new Promise<void>((resolve, reject) => {
+        const handler = (data: RawData) => {
+          const res = JSON.parse(data.toString());
+          if (res.requestId !== 'req-p2p-caps') return;
+          wsSfu.off('message', handler);
+          if (res.type !== MessageType.SERVER_ERROR) {
+            reject(new Error(`Teste 19: handshake do SFU deveria ser recusado em modo P2P (${res.type})`));
+            return;
+          }
+          // BAD_REQUEST, e não SFU_UNAVAILABLE: aquele código diz que o host
+          // não consegue carregar mídia SFU e o cliente o exibe ao admin com o
+          // motivo. Aqui é só um pedido chegando no modo errado — inclusive
+          // pelo caminho normal, quando um cliente ainda fecha producers
+          // enquanto o servidor acabou de ser trocado para P2P — e não pode
+          // virar alarme na tela de todo mundo que está na chamada.
+          if (res.payload?.code !== ProtocolErrorCode.BAD_REQUEST) {
+            reject(new Error(`Teste 19: recusa do SFU em P2P deveria usar BAD_REQUEST (${res.payload?.code})`));
+            return;
+          }
+          resolve();
+        };
+        wsSfu.on('message', handler);
+        wsSfu.send(JSON.stringify({
+          type: MessageType.SFU_GET_ROUTER_RTP_CAPABILITIES,
+          requestId: 'req-p2p-caps',
+          payload: { channelId: 'canal-sfu-handshake' },
+        } satisfies ProtocolMessage));
+      }), 5000, 'Teste 19: handshake do SFU recusado em modo P2P');
+
+      wsSfu.close();
+    } finally {
+      await sfuServer.stop();
+    }
+    console.log('✔ Teste 19 passou: Estimador de capacidade, SfuManager, ciclo de vida de voiceMode e visibilidade das badges de cargo validados');
+
+    // ── Teste 20: Diagnóstico de saúde do processo PM2 (#522) ──
+    // O "monky status" reportava apenas o que o PM2 dizia. Depois de um upgrade
+    // de Node, o daemon ficou incapaz de spawnar o processo e mesmo assim
+    // manteve o status "online" — o CLI dizia que o servidor estava no ar
+    // enquanto a porta estava fechada, sem nada que ligasse uma coisa à outra.
+    const nodeHealthCases = [
+      {
+        name: 'daemon com Node abaixo do mínimo',
+        entry: { pid: 4242, pm2_env: { status: 'online', node_version: '20.20.2' } },
+        portState: 'closed' as const,
+        cliNodeVersion: '24.20.0',
+        expectProblems: 2,
+        expectMatch: /Node 20\.20\.2/,
+      },
+      {
+        name: 'status online sem pid (spawn falhou)',
+        entry: { pm2_env: { status: 'online', node_version: '24.20.0' } },
+        portState: 'closed' as const,
+        cliNodeVersion: '24.20.0',
+        expectProblems: 1,
+        expectMatch: /PID|PID/i,
+      },
+      {
+        name: 'processo sadio',
+        entry: { pid: 10, pm2_env: { status: 'online', node_version: '24.20.0' } },
+        portState: 'listening' as const,
+        cliNodeVersion: '24.20.0',
+        expectProblems: 0,
+        expectMatch: null,
+      },
+      {
+        name: 'servidor parado não é problema de saúde',
+        entry: { pm2_env: { status: 'stopped', node_version: '24.20.0' } },
+        portState: 'closed' as const,
+        cliNodeVersion: '24.20.0',
+        expectProblems: 0,
+        expectMatch: null,
+      },
+      {
+        name: 'porta fechada com processo vivo',
+        entry: { pid: 10, pm2_env: { status: 'online', node_version: '24.20.0' } },
+        portState: 'closed' as const,
+        cliNodeVersion: '24.20.0',
+        expectProblems: 1,
+        expectMatch: null,
+      },
+      {
+        name: 'divergência de major entre CLI e daemon',
+        entry: { pid: 10, pm2_env: { status: 'online', node_version: '22.1.0' } },
+        portState: 'listening' as const,
+        cliNodeVersion: '24.20.0',
+        expectProblems: 1,
+        expectMatch: null,
+      },
+      {
+        // O servidor roda migrações e autodetecta o IP público antes do
+        // listen(), então logo após o start a porta ainda está fechada por
+        // motivo legítimo. Acusar erro aqui geraria alarme falso a cada start.
+        name: 'porta fechada dentro da janela de inicialização',
+        entry: {
+          pid: 10,
+          pm2_env: { status: 'online', node_version: '24.20.0', pm_uptime: Date.now() - 2000 },
+        },
+        portState: 'closed' as const,
+        cliNodeVersion: '24.20.0',
+        expectProblems: 0,
+        expectMatch: null,
+      },
+      {
+        name: 'porta fechada depois da janela de inicialização',
+        entry: {
+          pid: 10,
+          pm2_env: {
+            status: 'online',
+            node_version: '24.20.0',
+            pm_uptime: Date.now() - (STARTUP_GRACE_MS + 5000),
+          },
+        },
+        portState: 'closed' as const,
+        cliNodeVersion: '24.20.0',
+        expectProblems: 1,
+        expectMatch: null,
+      },
+      {
+        // Um spawn que nunca aconteceu não é lentidão de boot: foi assim que o
+        // problema original passou despercebido por 5 minutos.
+        name: 'sem pid é reportado mesmo recém-iniciado',
+        entry: {
+          pm2_env: { status: 'online', node_version: '24.20.0', pm_uptime: Date.now() - 1000 },
+        },
+        portState: 'closed' as const,
+        cliNodeVersion: '24.20.0',
+        expectProblems: 1,
+        expectMatch: null,
+      },
+    ];
+
+    for (const c of nodeHealthCases) {
+      const problems = evaluateServerHealth({
+        entry: c.entry,
+        portState: c.portState,
+        cliNodeVersion: c.cliNodeVersion,
+      });
+      if (problems.length !== c.expectProblems) {
+        throw new Error(
+          `Teste 20 (health): ${c.name} — esperado ${c.expectProblems} problema(s), ` +
+            `obtido ${problems.length}: ${problems.map((p) => p.message).join(' | ')}`
+        );
+      }
+      if (c.expectMatch && !c.expectMatch.test(problems.map((p) => p.message).join(' '))) {
+        throw new Error(`Teste 20 (health): ${c.name} — mensagem não menciona a causa`);
+      }
+      for (const problem of problems) {
+        if (!problem.message || problem.message.includes('{')) {
+          throw new Error(`Teste 20 (health): ${c.name} — placeholder não interpolado`);
+        }
+      }
+    }
+
+    // Um Node antigo é a causa e a porta fechada é o sintoma: reportar o
+    // sintoma primeiro mandaria o operador investigar o lugar errado.
+    const ordered = evaluateServerHealth({
+      entry: { pm2_env: { status: 'online', node_version: '20.20.2' } },
+      portState: 'closed',
+      cliNodeVersion: '24.20.0',
+    });
+    if (!/Node/.test(ordered[0]?.message ?? '')) {
+      throw new Error('Teste 20: a causa (Node) deveria ser reportada antes do sintoma');
+    }
+
+    if (majorOf('v24.20.0') !== 24 || majorOf('20.20.2') !== 20 || majorOf('') !== null) {
+      throw new Error('Teste 20: majorOf deveria extrair o major e tolerar entrada inválida');
+    }
+
+    // Recriar o processo custa caro: se o start seguinte falhar, o registro
+    // some do PM2 e o "monky logs" se recusa a mostrar o que aconteceu. Por
+    // isso o gatilho é só o spawn que nunca aconteceu ("online" sem pid), e
+    // não um interpretador diferente — esse o startOrRestart com o ecosystem
+    // reaplica sozinho.
+    const recreateCases = [
+      {
+        name: 'interpretador antigo resolvido pelo ambiente do daemon',
+        entry: { pid: 10, pm2_env: { status: 'online', exec_interpreter: 'node' } },
+        expected: false,
+      },
+      {
+        name: 'interpretador apontando para um Node removido',
+        entry: {
+          pid: 10,
+          // Derivado do execPath real: um caminho fixo como "/usr/bin/node"
+          // seria o proprio interpretador numa VPS com Node do apt, e o teste
+          // passaria a falhar justamente na plataforma que ele protege.
+          pm2_env: { status: 'online', exec_interpreter: `${process.execPath}.removed` },
+        },
+        expected: false,
+      },
+      {
+        name: 'online sem pid (spawn nunca aconteceu)',
+        entry: { pm2_env: { status: 'online', exec_interpreter: process.execPath } },
+        expected: true,
+      },
+      {
+        name: 'já fixado no interpretador correto',
+        entry: { pid: 10, pm2_env: { status: 'online', exec_interpreter: process.execPath } },
+        expected: false,
+      },
+      {
+        name: 'servidor parado com interpretador correto não precisa recriar',
+        entry: { pm2_env: { status: 'stopped', exec_interpreter: process.execPath } },
+        expected: false,
+      },
+      { name: 'processo inexistente', entry: null, expected: false },
+      {
+        name: 'registro sem interpretador conhecido',
+        entry: { pid: 10, pm2_env: { status: 'online' } },
+        expected: false,
+      },
+    ];
+
+    for (const c of recreateCases) {
+      if (needsProcessRecreate(c.entry) !== c.expected) {
+        throw new Error(
+          `Teste 20 (recreate): ${c.name} — esperado ${c.expected}`
+        );
+      }
+    }
+
+    // Um interpretador diferente do que vamos fixar NAO justifica recriar: o
+    // "startOrRestart" com o ecosystem reaplica o interpretador sozinho, e
+    // deletar o processo custaria os logs se o start seguinte falhasse.
+    const staleEntry = {
+      pid: 10,
+      pm2_env: { status: 'online', exec_interpreter: 'node' },
+    };
+    if (needsProcessRecreate(staleEntry) !== false) {
+      throw new Error('Teste 20: interpretador diferente nao deveria, sozinho, exigir recriacao');
+    }
+    // Um spawn que nunca aconteceu continua exigindo recriacao.
+    if (needsProcessRecreate({ pm2_env: { status: 'online' } }) !== true) {
+      throw new Error('Teste 20: "online" sem pid deveria exigir recriacao');
+    }
+
+    // Uma porta livre precisa ser reconhecida como fechada, senão o
+    // diagnóstico silenciaria justamente o caso que motivou este teste.
+    if ((await probeLocalPort(1, 300)) === 'listening') {
+      throw new Error('Teste 20: porta sem serviço não deveria ser reportada como escutando');
+    }
+    if ((await probeLocalPort(3999, 1000)) !== 'listening') {
+      throw new Error('Teste 20: a porta do servidor de teste deveria estar escutando');
+    }
+
+    // Fora do Windows o ecosystem precisa fixar o interpretador: sem isso o PM2
+    // resolve "node" pelo ambiente do daemon, que é justamente o que quebrou no
+    // upgrade. No Windows fixar custaria o wrapper de fork do PM2 — que só é
+    // aplicado quando o interpretador termina em "node" — e com ele o IPC que
+    // reporta a versão do Node ao diagnóstico.
+    const ecosystemNode = generateEcosystem({
+      dataDir: testDataDir,
+      port: 3010,
+      serverName: 'Interp',
+    });
+    if (process.platform === 'win32') {
+      if (ecosystemNode.includes('interpreter:')) {
+        throw new Error('Teste 20: no Windows o ecosystem não deveria fixar o interpretador');
+      }
+    } else {
+      if (!ecosystemNode.includes('interpreter:')) {
+        throw new Error('Teste 20: o ecosystem deveria fixar o interpretador do Node');
+      }
+      if (!ecosystemNode.includes(process.execPath.replace(/\\/g, '\\\\'))) {
+        throw new Error('Teste 20: o interpretador deveria ser o Node que executa o CLI');
+      }
+    }
+
+    // O ecosystem é um arquivo JS que o PM2 carrega, e o nome do servidor é
+    // texto livre digitado pelo usuário: um apóstrofo fechava o literal e o
+    // PM2 falhava com "File malformated", sem citar o nome. Carregar o
+    // resultado é o que prova que o escape cobre o caso.
+    for (const trickyName of ["Lucas' Server", 'O\'Brien "X"', 'Back\\slash']) {
+      const generated = generateEcosystem({
+        dataDir: testDataDir,
+        port: 3010,
+        serverName: trickyName,
+      });
+      let args: string;
+      try {
+        const generatedModule = { exports: {} as { apps: Array<Record<string, string>> } };
+        new Function('module', generated)(generatedModule);
+        args = generatedModule.exports.apps[0].args;
+      } catch (error) {
+        throw new Error(
+          `Teste 20: o ecosystem gerado para o nome ${trickyName} não é JS válido (${(error as Error).message})`
+        );
+      }
+      // O PM2 separa os argumentos respeitando aspas, então o nome precisa
+      // chegar com as aspas internas escapadas e as barras preservadas.
+      const expected = `--name "${trickyName.replace(/\\/g, '\\\\').replace(/"/g, '\\"')}"`;
+      if (!args.includes(expected)) {
+        throw new Error(
+          `Teste 20: o nome ${trickyName} não sobreviveu ao ecosystem (args: ${args})`
+        );
+      }
+    }
+
+    // O tarball publicado declara o mínimo em `engines`; a constante existe
+    // para o runtime poder checar o mesmo número. Se os dois divergirem, o CLI
+    // passa a diagnosticar um limite que o instalador não aplica.
+    const packCli = fs.readFileSync(path.join(__dirname, '..', '..', '..', 'scripts', 'pack-cli.js'), 'utf8');
+    const declaredEngine = /engines:\s*\{\s*node:\s*'>=(\d+)'/.exec(packCli);
+    if (!declaredEngine) {
+      throw new Error('Teste 20: não foi possível ler o "engines" declarado em scripts/pack-cli.js');
+    }
+    if (Number(declaredEngine[1]) !== LIMITS.MIN_NODE_MAJOR) {
+      throw new Error(
+        `Teste 20: engines do CLI (>=${declaredEngine[1]}) diverge de LIMITS.MIN_NODE_MAJOR ` +
+          `(${LIMITS.MIN_NODE_MAJOR})`
+      );
+    }
+    console.log('✔ Teste 20 passou: Diagnóstico de saúde do PM2 e interpretador fixo no ecosystem validados');
+
+    // ── Teste 21: Toda saída da voz precisa reapear o SFU (#527) ──
+    // Um producer que fica no SFU depois do dono sair faz o próximo a entrar
+    // consumir um microfone fantasma: áudio que nunca chega e um participante
+    // que aparece mudo para sempre. A limpeza vive em closeSfuSession(), e o
+    // risco real é um caminho de saída novo (ou existente) esquecer de chamá-la
+    // — por isso a asserção é sobre os caminhos, não sobre um deles.
+    const wsServerSource = fs.readFileSync(
+      path.join(__dirname, '..', 'src', 'infrastructure', 'websocket', 'WebSocketServer.ts'),
+      'utf8'
+    );
+    const readMethodBody = (methodName: string): string => {
+      const signature = new RegExp(`\\n  (?:private|public|protected)?\\s*(?:async\\s+)?${methodName}\\s*\\(`);
+      const start = signature.exec(wsServerSource);
+      if (!start) {
+        throw new Error(`Teste 21: método ${methodName} não encontrado em WebSocketServer.ts`);
+      }
+      const openBrace = wsServerSource.indexOf('{', start.index + start[0].length);
+      let depth = 0;
+      for (let i = openBrace; i < wsServerSource.length; i++) {
+        if (wsServerSource[i] === '{') depth++;
+        else if (wsServerSource[i] === '}') {
+          depth--;
+          if (depth === 0) return wsServerSource.slice(openBrace, i + 1);
+        }
+      }
+      throw new Error(`Teste 21: não foi possível delimitar o corpo de ${methodName}`);
+    };
+
+    // handleVoiceLeave e announceVoiceLeave (desconexão) já cobriam a saída
+    // normal; os kicks é que passavam batido, porque o cliente expulso apenas
+    // se desmonta localmente e nunca manda VOICE_LEAVE.
+    for (const exitPath of ['handleVoiceLeave', 'announceVoiceLeave', 'handleAdminKickVoice', 'handleMemberKick']) {
+      if (!readMethodBody(exitPath).includes('this.closeSfuSession(')) {
+        throw new Error(`Teste 21: ${exitPath} sai da voz sem fechar a sessão no SFU (producers fantasma)`);
+      }
+    }
+
+    // E a limpeza só serve se avisar o canal: sem SFU_PRODUCER_CLOSED, quem
+    // ficou continua com o consumer aberto do lado dele.
+    const closeSfuSessionBody = readMethodBody('closeSfuSession');
+    if (!closeSfuSessionBody.includes('sfuManager.closeSession(')) {
+      throw new Error('Teste 21: closeSfuSession deveria fechar a sessão no SfuManager');
+    }
+    if (!closeSfuSessionBody.includes('MessageType.SFU_PRODUCER_CLOSED')) {
+      throw new Error('Teste 21: closeSfuSession deveria anunciar SFU_PRODUCER_CLOSED para o canal');
+    }
+    console.log('✔ Teste 21 passou: Todas as saídas da voz fecham a sessão no SFU e anunciam os producers');
+
+    // Teste 22: verifyPassword recebia um hash truncado e chegava ao
     // timingSafeEqual com buffers de tamanhos diferentes, que lança exceção em
     // vez de responder "senha errada" (#372).
     const hashValido = PasswordService.hashPassword('senha-secreta-123');
     if (!(await PasswordService.verifyPassword('senha-secreta-123', hashValido))) {
-      throw new Error('Teste 19: a senha correta deveria ser aceita');
+      throw new Error('Teste 22: a senha correta deveria ser aceita');
     }
     if (await PasswordService.verifyPassword('senha-errada', hashValido)) {
-      throw new Error('Teste 19: a senha errada deveria ser recusada');
+      throw new Error('Teste 22: a senha errada deveria ser recusada');
     }
     const [saltValido, chaveValida] = hashValido.split(':');
     for (const hashQuebrado of ['', 'sem-separador', `${saltValido}:`, `${saltValido}:${chaveValida.slice(0, 20)}`]) {
       if (await PasswordService.verifyPassword('senha-secreta-123', hashQuebrado)) {
-        throw new Error('Teste 19: um hash malformado não deveria autenticar ninguém');
+        throw new Error('Teste 22: um hash malformado não deveria autenticar ninguém');
       }
     }
-    console.log('✔ Teste 19 passou: Hash malformado responde senha inválida em vez de lançar exceção');
+    console.log('✔ Teste 22 passou: Hash malformado responde senha inválida em vez de lançar exceção');
 
-    // Teste 20: a autenticação não passava pelo rate limiter, então a senha do
+    // Teste 23: a autenticação não passava pelo rate limiter, então a senha do
     // servidor podia ser testada indefinidamente — e cada tentativa custa uma
     // derivação scrypt (#372).
     const limitadorAuth = new RateLimiter();
@@ -828,26 +1439,26 @@ async function runTests() {
       }
     }
     if (aceitas !== LIMITS.RATE_LIMIT_MAX_AUTH_ATTEMPTS) {
-      throw new Error(`Teste 20: o IP deveria parar em ${LIMITS.RATE_LIMIT_MAX_AUTH_ATTEMPTS} tentativas, parou em ${aceitas}`);
+      throw new Error(`Teste 23: o IP deveria parar em ${LIMITS.RATE_LIMIT_MAX_AUTH_ATTEMPTS} tentativas, parou em ${aceitas}`);
     }
     if (!limitadorAuth.checkLimit('auth:203.0.113.9', LIMITS.RATE_LIMIT_MAX_AUTH_ATTEMPTS, LIMITS.RATE_LIMIT_AUTH_WINDOW_MS)) {
-      throw new Error('Teste 20: o limite de um IP não deveria bloquear outro');
+      throw new Error('Teste 23: o limite de um IP não deveria bloquear outro');
     }
     limitadorAuth.dispose();
-    console.log('✔ Teste 20 passou: Tentativas de autenticação são limitadas por IP');
+    console.log('✔ Teste 23 passou: Tentativas de autenticação são limitadas por IP');
 
-    // Teste 21: sem maxPayload valia o padrão da lib ws, 100 MiB, que qualquer
+    // Teste 24: sem maxPayload valia o padrão da lib ws, 100 MiB, que qualquer
     // cliente não autenticado podia mandar para o servidor bufferizar (#372).
     const maiorAvatarEmBase64 = Math.ceil(LIMITS.MAX_AVATAR_SIZE / 3) * 4;
     if (LIMITS.WS_MAX_PAYLOAD_BYTES <= maiorAvatarEmBase64) {
-      throw new Error('Teste 21: o teto do frame precisa caber o maior avatar legítimo em base64');
+      throw new Error('Teste 24: o teto do frame precisa caber o maior avatar legítimo em base64');
     }
     if (LIMITS.WS_MAX_PAYLOAD_BYTES >= 100 * 1024 * 1024) {
-      throw new Error('Teste 21: o teto do frame precisa ser menor que o padrão de 100 MiB da lib ws');
+      throw new Error('Teste 24: o teto do frame precisa ser menor que o padrão de 100 MiB da lib ws');
     }
-    console.log('✔ Teste 21 passou: Frame de WebSocket tem teto acima do avatar legítimo e abaixo do padrão da lib');
+    console.log('✔ Teste 24 passou: Frame de WebSocket tem teto acima do avatar legítimo e abaixo do padrão da lib');
 
-    // Teste 22: MANAGE_ROLES podia atribuir o cargo Admin embutido, inclusive a
+    // Teste 25: MANAGE_ROLES podia atribuir o cargo Admin embutido, inclusive a
     // si mesmo — o mesmo ADMINISTRATOR que criar e editar cargo já barram (#277),
     // alcançado em um passo pela porta dos fundos (#372).
     const escaladaDir = path.join(__dirname, '../../test-data-escalada');
@@ -897,47 +1508,47 @@ async function runTests() {
 
     const escalar = await roleServiceEsc.assignRole('moderador', { userId: 'moderador', roleId: cargoAdmin.id });
     if (escalar.success || escalar.errorCode !== ProtocolErrorCode.PERMISSION_DENIED) {
-      throw new Error('Teste 22: MANAGE_ROLES não deveria conseguir se promover a administrador');
+      throw new Error('Teste 25: MANAGE_ROLES não deveria conseguir se promover a administrador');
     }
     const escalarOutro = await roleServiceEsc.assignRole('moderador', { userId: 'alvo', roleId: cargoAdmin.id });
     if (escalarOutro.success) {
-      throw new Error('Teste 22: MANAGE_ROLES não deveria conseguir promover outra pessoa a administrador');
+      throw new Error('Teste 25: MANAGE_ROLES não deveria conseguir promover outra pessoa a administrador');
     }
     const derrubarAdmin = await roleServiceEsc.unassignRole('moderador', { userId: 'dono', roleId: cargoAdmin.id });
     if (derrubarAdmin.success) {
-      throw new Error('Teste 22: MANAGE_ROLES não deveria conseguir remover um administrador');
+      throw new Error('Teste 25: MANAGE_ROLES não deveria conseguir remover um administrador');
     }
     const cargoNormal = await roleServiceEsc.assignRole('moderador', { userId: 'alvo', roleId: cargoComum.id });
     if (!cargoNormal.success) {
-      throw new Error('Teste 22: MANAGE_ROLES deveria continuar atribuindo cargos comuns');
+      throw new Error('Teste 25: MANAGE_ROLES deveria continuar atribuindo cargos comuns');
     }
     const donoPromove = await roleServiceEsc.assignRole('dono', { userId: 'alvo', roleId: cargoAdmin.id });
     if (!donoPromove.success) {
-      throw new Error('Teste 22: o dono deveria continuar podendo promover alguém a administrador');
+      throw new Error('Teste 25: o dono deveria continuar podendo promover alguém a administrador');
     }
     escaladaConn.close();
     fs.rmSync(escaladaDir, { recursive: true, force: true });
-    console.log('✔ Teste 22 passou: Só o dono atribui ou remove o cargo Admin embutido');
+    console.log('✔ Teste 25 passou: Só o dono atribui ou remove o cargo Admin embutido');
 
-    // Teste 23: só o fracasso gasta cota. Contar toda tentativa penalizava quem
+    // Teste 26: só o fracasso gasta cota. Contar toda tentativa penalizava quem
     // entra normalmente e travava sozinha uma casa inteira atrás de um NAT ao
     // reconectar depois de uma queda (#372).
     const limitadorPeek = new RateLimiter();
     for (let i = 0; i < 50; i++) {
       if (!limitadorPeek.peek('auth:203.0.113.5', LIMITS.RATE_LIMIT_MAX_AUTH_ATTEMPTS, LIMITS.RATE_LIMIT_AUTH_WINDOW_MS)) {
-        throw new Error('Teste 23: consultar o limite não deveria gastar cota');
+        throw new Error('Teste 26: consultar o limite não deveria gastar cota');
       }
     }
     for (let i = 0; i < LIMITS.RATE_LIMIT_MAX_AUTH_ATTEMPTS; i++) {
       limitadorPeek.checkLimit('auth:203.0.113.5', LIMITS.RATE_LIMIT_MAX_AUTH_ATTEMPTS, LIMITS.RATE_LIMIT_AUTH_WINDOW_MS);
     }
     if (limitadorPeek.peek('auth:203.0.113.5', LIMITS.RATE_LIMIT_MAX_AUTH_ATTEMPTS, LIMITS.RATE_LIMIT_AUTH_WINDOW_MS)) {
-      throw new Error('Teste 23: depois das falhas registradas o IP deveria estar barrado');
+      throw new Error('Teste 26: depois das falhas registradas o IP deveria estar barrado');
     }
     limitadorPeek.dispose();
-    console.log('✔ Teste 23 passou: Consultar o limite não gasta cota; só a falha registrada gasta');
+    console.log('✔ Teste 26 passou: Consultar o limite não gasta cota; só a falha registrada gasta');
 
-    // Teste 24 (por último, de propósito: deixa 127.0.0.1 barrado): a senha
+    // Teste 27 (por último, de propósito: deixa 127.0.0.1 barrado): a senha
     // errada repetida acaba recusada antes do scrypt, com código próprio — o
     // cliente traduz por código, e RATE_LIMITED já quer dizer "flood de
     // mensagens" para ele (#372).
@@ -953,9 +1564,9 @@ async function runTests() {
       wsForca.close();
     }
     if (codigoDeBloqueio !== ProtocolErrorCode.AUTH_RATE_LIMITED) {
-      throw new Error('Teste 24: tentativas repetidas de senha errada deveriam ser barradas com AUTH_RATE_LIMITED');
+      throw new Error('Teste 27: tentativas repetidas de senha errada deveriam ser barradas com AUTH_RATE_LIMITED');
     }
-    console.log('✔ Teste 24 passou: Senha errada repetida é barrada por IP com AUTH_RATE_LIMITED');
+    console.log('✔ Teste 27 passou: Senha errada repetida é barrada por IP com AUTH_RATE_LIMITED');
 
     console.log('=== Todos os testes do servidor passaram com sucesso! ===');
   } finally {
@@ -966,7 +1577,11 @@ async function runTests() {
   }
 }
 
-runTests().catch((err) => {
-  console.error('Falha nos testes:', err);
-  process.exit(1);
-});
+runTests()
+  .then(() => {
+    process.exit(0);
+  })
+  .catch((err) => {
+    console.error('Falha nos testes:', err);
+    process.exit(1);
+  });

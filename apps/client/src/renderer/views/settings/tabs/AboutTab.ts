@@ -1,5 +1,6 @@
 import { settingsStore } from '../../../stores/settingsStore';
 import { updateService } from '../../../core/UpdateService';
+import { changelogModal } from '../../ChangelogModal';
 import { t } from '../../../i18n';
 
 const IDEAS_URL = 'https://github.com/MonkyOrg/Monky/discussions/categories/ideas';
@@ -26,6 +27,12 @@ export class AboutTab {
           <button id="btn-check-updates" class="btn btn-secondary" style="font-size: 12px; padding: 6px 12px;">
             <span class="material-symbols-outlined md-16" style="margin-right: 4px;">refresh</span>
             ${t('settings.checkUpdates')}
+          </button>
+        </div>
+        <div style="margin-top: 8px;">
+          <button id="btn-view-changelog" class="btn btn-secondary" style="font-size: 12px; padding: 6px 12px;">
+            <span class="material-symbols-outlined md-16" style="margin-right: 4px; color: var(--accent-primary);">new_releases</span>
+            ${t('settings.viewChangelog')}
           </button>
         </div>
         <div style="display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-top: 12px; padding-top: 12px; border-top: 1px dashed var(--border-color);">
@@ -133,6 +140,7 @@ export class AboutTab {
 
   public attachEvents(container: HTMLElement): void {
     const btnCheckUpdates = container.querySelector<HTMLButtonElement>('#btn-check-updates');
+    const btnViewChangelog = container.querySelector<HTMLButtonElement>('#btn-view-changelog');
     const updateStatus = container.querySelector<HTMLElement>('#settings-update-status');
     const checkboxBeta = container.querySelector<HTMLInputElement>('#checkbox-update-beta');
     const checkboxAutoStart = container.querySelector<HTMLInputElement>('#checkbox-auto-start');
@@ -155,6 +163,10 @@ export class AboutTab {
           updateStatus.textContent = t('settings.upToDate');
         }
       }
+    });
+
+    btnViewChangelog?.addEventListener('click', () => {
+      void changelogModal.open({ celebrate: false });
     });
 
     checkboxBeta?.addEventListener('change', async () => {

@@ -7,7 +7,6 @@ const ptSidebar = [
     items: [
       { text: 'Início', link: '/' },
       { text: 'Download', link: '/download' },
-      { text: 'Instalação', link: '/instalacao' },
       { text: 'Primeiros Passos', link: '/primeiros-passos' },
     ],
   },
@@ -24,6 +23,7 @@ const ptSidebar = [
     text: 'Avançado',
     items: [
       { text: 'Hospedar em VPS', link: '/hospedar-em-vps' },
+      { text: 'Relay TURN', link: '/turn' },
       { text: 'Monky CLI', link: '/cli' },
       { text: 'Verificar Releases', link: '/verificar-releases' },
     ],
@@ -44,7 +44,6 @@ const enSidebar = [
     items: [
       { text: 'Home', link: '/en/' },
       { text: 'Download', link: '/en/download' },
-      { text: 'Installation', link: '/en/instalacao' },
       { text: 'Getting Started', link: '/en/primeiros-passos' },
     ],
   },
@@ -61,6 +60,7 @@ const enSidebar = [
     text: 'Advanced',
     items: [
       { text: 'Host on a VPS', link: '/en/hospedar-em-vps' },
+      { text: 'TURN Relay', link: '/en/turn' },
       { text: 'Monky CLI', link: '/en/cli' },
       { text: 'Verify Releases', link: '/en/verificar-releases' },
     ],
@@ -79,7 +79,29 @@ export default withMermaid(defineConfig({
   title: 'Monky',
   description: 'Voz, vídeo, tela e chat entre amigos — no seu próprio servidor.',
   base: '/Monky/',
-  head: [['link', { rel: 'icon', href: '/Monky/logo.png' }]],
+  head: [
+    ['link', { rel: 'icon', href: '/Monky/logo.png' }],
+    ['script', {}, `
+(function() {
+  var b = '/Monky/', p = location.pathname;
+  // Crawlers indexam com navigator.language = en-US e sem localStorage, o que
+  // faria o Googlebot ver um redirect em toda página PT e invalidar o hreflang.
+  var isBot = /bot|crawl|spider|slurp|bingpreview|duckduckbot|baiduspider|yandex|facebookexternalhit|embedly|quora link preview|showyoubot|outbrain|pinterest|whatsapp|telegrambot|discordbot|lighthouse|headlesschrome/i
+    .test(navigator.userAgent || '');
+  if (!isBot && !localStorage.getItem('monky-lang-manual')) {
+    var isEn = p.startsWith(b + 'en/') || p === b + 'en';
+    var wantsPt = (navigator.language || '').startsWith('pt');
+    if (wantsPt && isEn) { location.replace(b + p.slice(b.length + 3)); return; }
+    if (!wantsPt && !isEn && p.startsWith(b)) { location.replace(b + 'en/' + p.slice(b.length)); return; }
+  }
+  document.addEventListener('click', function(e) {
+    if (e.target.closest && e.target.closest('.translations')) {
+      localStorage.setItem('monky-lang-manual', '1');
+    }
+  });
+})();
+`],
+  ],
 
   locales: {
     root: {
@@ -121,6 +143,30 @@ export default withMermaid(defineConfig({
         },
       },
     },
+  },
+
+  /**
+   * Hoje nenhuma página tem bloco mermaid: os diagramas da arquitetura são SVGs
+   * gerados fora do site (`docs-site/diagramas/`). O padrão `useMaxWidth: true`
+   * encolhia todo diagrama mais largo que a coluna de texto do VitePress
+   * (~624px) até o texto ficar ilegível, que é o que a #349 relatava.
+   *
+   * A configuração fica para um bloco mermaid escrito amanhã não nascer com o
+   * mesmo defeito. O `theme` fica de fora de propósito: o plugin troca sozinho
+   * para o tema escuro quando a página está no escuro, e fixar um valor aqui
+   * quebraria isso.
+   */
+  mermaid: {
+    // O componente do plugin substitui os padrões dele pelo que vier daqui,
+    // então estes dois precisam ser repetidos.
+    startOnLoad: false,
+    securityLevel: 'loose',
+    themeVariables: {
+      fontSize: '16px',
+      fontFamily: 'Inter, ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif',
+    },
+    flowchart: { useMaxWidth: false, htmlLabels: true, nodeSpacing: 45, rankSpacing: 55, padding: 12 },
+    sequence: { useMaxWidth: false },
   },
 
   themeConfig: {

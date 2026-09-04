@@ -1,6 +1,6 @@
 import { MessageType, Permission, UserSummary } from '@monky/shared';
 import { escapeHtml } from '../utils/html';
-import { getAvatarUrl } from '../utils/avatar';
+import { avatarFileExtension, getAvatarUrl } from '../utils/avatar';
 import { renderRoleOption } from '../utils/roleOption';
 import { settingsStore } from '../stores/settingsStore';
 import { serverStore } from '../stores/serverStore';
@@ -10,6 +10,7 @@ import { appEvents } from '../core/EventBus';
 import { participantManager, ParticipantViewModel } from '../core/ParticipantManager';
 import { networkClient } from '../core/NetworkClient';
 import { showAlert } from './Dialog';
+import { downloadLightboxFile, lightboxModal } from './LightboxModal';
 import { warnIfMoveBlocked } from '../utils/channelAccess';
 import { t } from '../i18n';
 
@@ -38,6 +39,8 @@ export class UserContextMenu {
     const volumeSessionId = this.resolveVolumeTarget(user);
     const currentVol = settingsStore.getUserVolume(volumeSessionId, user.clientId);
     const avatarSrc = getAvatarUrl(user.avatarUrl);
+    // Sem foto o que se abriria é o logo padrão, então o olho não aparece (#406).
+    const hasAvatar = !!user.avatarUrl;
     // Voice moderation addresses a connection, not a person: prefer the exact
     // session the menu was opened from, else any session of theirs in voice (#309).
     const targetState = this.resolveVoiceTarget(user)?.voiceState;
@@ -65,7 +68,14 @@ export class UserContextMenu {
     this.menuEl.className = 'user-context-menu';
     this.menuEl.innerHTML = `
       <div class="context-menu-header">
-        <img class="context-menu-avatar" src="${avatarSrc}" alt="">
+        ${hasAvatar ? `
+          <button type="button" id="ctx-view-avatar" class="context-menu-avatar-button" title="${t('userMenu.viewAvatar')}" aria-label="${t('userMenu.viewAvatar')}">
+            <img class="context-menu-avatar" src="${avatarSrc}" alt="" data-fallback="avatar">
+            <span class="context-menu-avatar-overlay">
+              <span class="material-symbols-outlined md-18">visibility</span>
+            </span>
+          </button>
+        ` : `<img class="context-menu-avatar" src="${avatarSrc}" alt="" data-fallback="avatar">`}
         <div class="context-menu-user-info">
           <span class="context-menu-nickname">${escapeHtml(user.nickname)}</span>
           <span class="context-menu-subtext">${t('userMenu.audioSettings')}</span>
@@ -91,17 +101,17 @@ export class UserContextMenu {
             class="user-volume-slider"
             type="range"
             min="0"
-            max="100"
+            max="200"
             value="${currentVol}"
             step="1"
-            style="--slider-fill: ${currentVol}%;"
+            style="--slider-fill: ${(currentVol / 200) * 100}%;"
           >
         </div>
 
         <div class="context-menu-quick-btns">
           <button id="ctx-vol-0" class="btn-ctx-quick" title="${t('userMenu.muteUserTitle')}">${t('userMenu.volumeMuted')}</button>
-          <button id="ctx-vol-50" class="btn-ctx-quick" title="50%">50%</button>
           <button id="ctx-vol-100" class="btn-ctx-quick" title="${t('userMenu.restoreVolume')}">100%</button>
+          <button id="ctx-vol-200" class="btn-ctx-quick" title="200%">200%</button>
         </div>
       </div>
 
@@ -224,8 +234,10 @@ export class UserContextMenu {
   private updateSliderTrackFill(volume: number): void {
     const slider = this.menuEl?.querySelector('#ctx-volume-slider') as HTMLInputElement | null;
     if (slider) {
-      const percentage = Math.max(0, Math.min(100, volume));
+      const percentage = Math.max(0, Math.min(100, (volume / 200) * 100));
       slider.style.setProperty('--slider-fill', `${percentage}%`);
+      // Vermelho quando acima de 100% para indicar amplificação
+      slider.style.setProperty('--slider-color', volume > 100 ? '#ed4245' : 'var(--accent-primary)');
     }
   }
 
@@ -235,12 +247,12 @@ export class UserContextMenu {
     btns.forEach((b) => b.classList.remove('active'));
 
     if (volume === 0) this.menuEl.querySelector('#ctx-vol-0')?.classList.add('active');
-    else if (volume === 50) this.menuEl.querySelector('#ctx-vol-50')?.classList.add('active');
     else if (volume === 100) this.menuEl.querySelector('#ctx-vol-100')?.classList.add('active');
+    else if (volume === 200) this.menuEl.querySelector('#ctx-vol-200')?.classList.add('active');
   }
 
   private applyVolume(user: UserSummary, volume: number): void {
-    const clamped = Math.max(0, Math.min(100, Math.round(volume)));
+    const clamped = Math.max(0, Math.min(200, Math.round(volume)));
     const badge = this.menuEl?.querySelector('#ctx-volume-badge');
     const icon = this.menuEl?.querySelector('#ctx-volume-icon');
     const slider = this.menuEl?.querySelector('#ctx-volume-slider') as HTMLInputElement | null;
@@ -297,9 +309,32 @@ export class UserContextMenu {
 
     const slider = this.menuEl.querySelector('#ctx-volume-slider') as HTMLInputElement | null;
     slider?.addEventListener('input', () => this.applyVolume(user, parseInt(slider.value, 10)));
+    const avatarButton = this.menuEl.querySelector<HTMLButtonElement>('#ctx-view-avatar');
+    avatarButton?.addEventListener('click', () => {
+      const url = getAvatarUrl(user.avatarUrl);
+      // O menu some ao abrir a foto: deixá-lo por cima do lightbox só atrapalha.
+      this.close();
+      lightboxModal.open(
+        [{
+          kind: 'image',
+          url,
+          fileName: `${user.nickname}.${avatarFileExtension(user.avatarUrl)}`,
+          // O nome já aparece na legenda pelo nome do arquivo; repetir aqui só
+          // duplicaria a informação na barra do visualizador.
+          senderName: '',
+          timestamp: '',
+          // `source` só é lido no ramo de vídeo, para herdar o tempo e o volume
+          // do player embutido; uma imagem não tem o que herdar.
+          source: document.body,
+        }],
+        0,
+        downloadLightboxFile
+      );
+    });
+
     this.menuEl.querySelector('#ctx-vol-0')?.addEventListener('click', () => this.applyVolume(user, 0));
-    this.menuEl.querySelector('#ctx-vol-50')?.addEventListener('click', () => this.applyVolume(user, 50));
     this.menuEl.querySelector('#ctx-vol-100')?.addEventListener('click', () => this.applyVolume(user, 100));
+    this.menuEl.querySelector('#ctx-vol-200')?.addEventListener('click', () => this.applyVolume(user, 200));
     // Each submenu toggles on click and closes its siblings, so opening "Move"
     // never leaves "Roles" hanging open next to it (#258).
     this.menuEl.querySelectorAll<HTMLElement>('.ctx-submenu-wrap').forEach((wrap) => {

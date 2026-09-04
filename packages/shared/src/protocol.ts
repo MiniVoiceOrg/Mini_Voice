@@ -1,4 +1,4 @@
-import { AttachmentStorageInfo, ChannelSummary, ChatMessage, Role, ServerDetails, TurnAvailability, TurnInstallStage, UserRoleSummary, UserSummary, VoiceParticipantState, WebRtcSignalPayload } from './models.js';
+import { AttachmentStorageInfo, ChannelSummary, ChannelType, ChatMessage, Role, ServerDetails, TurnAvailability, TurnInstallStage, UserRoleSummary, UserSummary, VoiceMode, VoiceParticipantState, WebRtcSignalPayload } from './models.js';
 
 export enum ProtocolErrorCode {
   AUTH_INVALID_PASSWORD = 'AUTH_INVALID_PASSWORD',
@@ -30,6 +30,13 @@ export enum ProtocolErrorCode {
    * client can explain what to do instead of showing a generic message (#429).
    */
   TURN_UNAVAILABLE = 'TURN_UNAVAILABLE',
+  /**
+   * The SFU cannot carry media on this host — typically a UDP range that is
+   * blocked or already taken. Same intent as TURN_UNAVAILABLE: the switch is
+   * refused with an actionable reason instead of being accepted and silently
+   * degrading to P2P (#515).
+   */
+  SFU_UNAVAILABLE = 'SFU_UNAVAILABLE',
 }
 
 export enum MessageType {
@@ -39,10 +46,15 @@ export enum MessageType {
   CHAT_SEND = 'CHAT_SEND',
   CHAT_LOAD_HISTORY = 'CHAT_LOAD_HISTORY',
   CHAT_MENTIONS_READ = 'CHAT_MENTIONS_READ',
+  /** Client -> server: rewrite the content of a message the caller wrote (#504). */
+  CHAT_EDIT = 'CHAT_EDIT',
+  /** Client -> server: delete a message (own, or anyone's with MANAGE_SERVER) (#504). */
+  CHAT_DELETE = 'CHAT_DELETE',
   CHAT_REQUEST_UPLOAD_TOKEN = 'CHAT_REQUEST_UPLOAD_TOKEN',
   CHANNEL_CREATE = 'CHANNEL_CREATE',
   CHANNEL_UPDATE = 'CHANNEL_UPDATE',
   CHANNEL_DELETE = 'CHANNEL_DELETE',
+  CHANNEL_REORDER = 'CHANNEL_REORDER',
   USER_CHANGE_NICKNAME = 'USER_CHANGE_NICKNAME',
   USER_UPDATE_AVATAR = 'USER_UPDATE_AVATAR',
   SERVER_UPDATE_SETTINGS = 'SERVER_UPDATE_SETTINGS',
@@ -64,7 +76,31 @@ export enum MessageType {
   PING = 'PING',
   USER_LOGOUT = 'USER_LOGOUT',
   SOUNDBOARD_PLAY = 'SOUNDBOARD_PLAY',
+  /**
+   * Client -> server, when the person who triggered a sound stops it. The audio
+   * is broadcast once and then played by each listener on their own, so a stop
+   * has to travel the same way or only the sender would fall silent (#499).
+   */
+  SOUNDBOARD_STOP = 'SOUNDBOARD_STOP',
   SERVER_GET_INVITE_INFO = 'SERVER_GET_INVITE_INFO',
+
+  // SFU Client <-> Server Messages (#515)
+  SFU_GET_ROUTER_RTP_CAPABILITIES = 'SFU_GET_ROUTER_RTP_CAPABILITIES',
+  SFU_ROUTER_RTP_CAPABILITIES = 'SFU_ROUTER_RTP_CAPABILITIES',
+  SFU_CREATE_WEBRTC_TRANSPORT = 'SFU_CREATE_WEBRTC_TRANSPORT',
+  SFU_WEBRTC_TRANSPORT_CREATED = 'SFU_WEBRTC_TRANSPORT_CREATED',
+  SFU_CONNECT_WEBRTC_TRANSPORT = 'SFU_CONNECT_WEBRTC_TRANSPORT',
+  SFU_WEBRTC_TRANSPORT_CONNECTED = 'SFU_WEBRTC_TRANSPORT_CONNECTED',
+  SFU_PRODUCE = 'SFU_PRODUCE',
+  SFU_PRODUCED = 'SFU_PRODUCED',
+  SFU_CONSUME = 'SFU_CONSUME',
+  SFU_CONSUMED = 'SFU_CONSUMED',
+  SFU_PRODUCER_CLOSED = 'SFU_PRODUCER_CLOSED',
+  SFU_CONSUMER_CLOSED = 'SFU_CONSUMER_CLOSED',
+  SFU_CONSUMER_SET_PAUSED = 'SFU_CONSUMER_SET_PAUSED',
+  SFU_NEW_PRODUCER = 'SFU_NEW_PRODUCER',
+  SFU_GET_PRODUCERS = 'SFU_GET_PRODUCERS',
+  SFU_PRODUCERS_LIST = 'SFU_PRODUCERS_LIST',
 
   // Server -> Client
   AUTH_CHALLENGE = 'AUTH_CHALLENGE',
@@ -88,13 +124,18 @@ export enum MessageType {
   CHANNEL_CREATED = 'CHANNEL_CREATED',
   CHANNEL_UPDATED = 'CHANNEL_UPDATED',
   CHANNEL_DELETED = 'CHANNEL_DELETED',
+  CHANNELS_REORDERED = 'CHANNELS_REORDERED',
   CHAT_MESSAGE = 'CHAT_MESSAGE',
   CHAT_HISTORY = 'CHAT_HISTORY',
+  /** Server -> clients: an existing message was edited or deleted (#504). */
+  CHAT_MESSAGE_UPDATED = 'CHAT_MESSAGE_UPDATED',
   CHAT_UPLOAD_TOKEN = 'CHAT_UPLOAD_TOKEN',
   VOICE_USER_JOINED = 'VOICE_USER_JOINED',
   VOICE_USER_LEFT = 'VOICE_USER_LEFT',
   VOICE_STATE_CHANGED = 'VOICE_STATE_CHANGED',
   SOUNDBOARD_PLAYED = 'SOUNDBOARD_PLAYED',
+  /** Server -> clients in the channel: drop this user's ongoing sound (#499). */
+  SOUNDBOARD_STOPPED = 'SOUNDBOARD_STOPPED',
   SERVER_ERROR = 'SERVER_ERROR',
   PONG = 'PONG',
 }
@@ -188,6 +229,28 @@ export interface ChannelDeletePayload {
   channelId: string;
 }
 
+/**
+ * Reorders the channels of one kind (#471).
+ *
+ * The whole list is sent rather than a single "move this one here": the client
+ * already knows the order it is showing, and sending it whole means the server
+ * never has to guess what the other positions became.
+ */
+export interface ChannelReorderPayload {
+  type: ChannelType;
+  /** Every channel of that type, in the order they should appear. */
+  orderedIds: string[];
+}
+
+/**
+ * The new positions, broadcast after a reorder (#471). Only the channels the
+ * recipient can already see are included, so a private channel is not revealed
+ * by its position alone.
+ */
+export interface ChannelsReorderedPayload {
+  positions: Array<{ channelId: string; position: number }>;
+}
+
 export interface UserChangeNicknamePayload {
   newNickname: string;
 }
@@ -201,6 +264,12 @@ export interface ServerUpdateSettingsPayload {
   name?: string;
   password?: string | null; // null or empty string removes the password
   allowSoundboard?: boolean;
+  /** Enables or disables the `@todos` / `@everyone` mention (#464). */
+  allowEveryoneMention?: boolean;
+  /** Enables or disables editing of already-sent messages (#504). */
+  allowMessageEdit?: boolean;
+  /** Shows role badges to every member, or only to who holds the role (#530). */
+  showRoleBadgesToEveryone?: boolean;
   iconBase64?: string | null; // Data URL, pure base64, or null to remove
   // Attachment storage limits in bytes (#11).
   maxAttachmentFileBytes?: number;
@@ -208,6 +277,8 @@ export interface ServerUpdateSettingsPayload {
   // Membership cap counted in registered members, or LIMITS.MAX_USERS_UNLIMITED
   // to remove the cap entirely (#403).
   maxUsers?: number;
+  /** Voice topology mode: 'p2p' (mesh) or 'sfu' (selective forwarding unit) (#515). */
+  voiceMode?: VoiceMode;
   /** Turn the host's TURN relay on or off (#425). Linux-only; see CoturnManager. */
   turnEnabled?: boolean;
 }
@@ -243,11 +314,26 @@ export interface RoleUnassignPayload {
   roleId: string;
 }
 
+export interface ChatEditPayload {
+  channelId: string;
+  messageId: string;
+  content: string;
+}
+
+export interface ChatDeletePayload {
+  channelId: string;
+  messageId: string;
+}
+
 export interface SoundboardPlayPayload {
   channelId: string;
   soundName: string;
   audioBase64: string;
   mimeType?: string;
+}
+
+export interface SoundboardStopPayload {
+  channelId: string;
 }
 
 export interface VoiceJoinPayload {
@@ -368,6 +454,14 @@ export interface ServerSettingsUpdatedPayload {
   name: string;
   hasPassword: boolean;
   allowSoundboard?: boolean;
+  /** Current state of the `@todos` / `@everyone` mention (#464). */
+  allowEveryoneMention?: boolean;
+  /** Current state of the message-editing switch (#504). */
+  allowMessageEdit?: boolean;
+  /** Current state of the role badge visibility switch (#530). */
+  showRoleBadgesToEveryone?: boolean;
+  /** Current state of the voice/video topology mode ('p2p' | 'sfu') (#515). */
+  voiceMode?: VoiceMode;
   iconUrl?: string | null;
   // Current attachment-storage limits + usage, so the settings UI stays in sync (#11).
   attachmentStorage?: AttachmentStorageInfo;
@@ -396,6 +490,11 @@ export interface TurnInstallProgressPayload {
   stage: TurnInstallStage;
 }
 
+/** The message in its state after the edit or deletion (#504). */
+export interface ChatMessageUpdatedPayload {
+  message: ChatMessage;
+}
+
 export interface SoundboardPlayedPayload {
   channelId: string;
   userId: string;
@@ -403,6 +502,11 @@ export interface SoundboardPlayedPayload {
   soundName: string;
   audioBase64: string;
   mimeType?: string;
+}
+
+export interface SoundboardStoppedPayload {
+  channelId: string;
+  userId: string;
 }
 
 export interface ServerShutdownPayload {
@@ -483,4 +587,100 @@ export interface ServerInviteInfoPayload {
   serverName: string;
   publicIp?: string | null;
   networkInterfaces: ServerNetworkInterface[];
+}
+
+// SFU Payloads (#515)
+export interface SfuGetRouterRtpCapabilitiesPayload {
+  channelId: string;
+}
+
+export interface SfuRouterRtpCapabilitiesPayload {
+  channelId: string;
+  rtpCapabilities: any;
+}
+
+export interface SfuCreateWebRtcTransportPayload {
+  channelId: string;
+  direction: 'send' | 'recv';
+}
+
+export interface SfuWebRtcTransportCreatedPayload {
+  channelId: string;
+  direction: 'send' | 'recv';
+  transportOptions: {
+    id: string;
+    iceParameters: any;
+    iceCandidates: any[];
+    dtlsParameters: any;
+    sctpParameters?: any;
+  };
+}
+
+export interface SfuConnectWebRtcTransportPayload {
+  channelId: string;
+  transportId: string;
+  dtlsParameters: any;
+}
+
+export interface SfuProducePayload {
+  channelId: string;
+  transportId: string;
+  kind: 'audio' | 'video';
+  rtpParameters: any;
+  appData?: Record<string, any>;
+}
+
+export interface SfuProducedPayload {
+  channelId: string;
+  id: string;
+}
+
+export interface SfuConsumePayload {
+  channelId: string;
+  transportId: string;
+  producerId: string;
+  rtpCapabilities: any;
+}
+
+export interface SfuConsumedPayload {
+  channelId: string;
+  id: string;
+  producerId: string;
+  kind: 'audio' | 'video';
+  rtpParameters: any;
+  producerSessionId: string;
+  appData: Record<string, any>;
+}
+
+export interface SfuProducerClosedPayload {
+  channelId: string;
+  producerId: string;
+}
+
+export interface SfuConsumerClosedPayload {
+  channelId: string;
+  consumerId: string;
+}
+
+export interface SfuConsumerSetPausedPayload {
+  channelId: string;
+  consumerId: string;
+  paused: boolean;
+}
+
+export interface SfuNewProducerPayload {
+  channelId: string;
+  producerId: string;
+  producerSessionId: string;
+  kind: 'audio' | 'video';
+  appData: Record<string, any>;
+}
+
+export interface SfuGetProducersPayload {
+  channelId: string;
+}
+
+export interface SfuProducersListPayload {
+  channelId: string;
+  producers: SfuNewProducerPayload[];
 }

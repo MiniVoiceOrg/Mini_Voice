@@ -1,5 +1,7 @@
 import { ConnectionStatus } from '../core/NetworkClient';
 import { appEvents } from '../core/EventBus';
+import { clientLog } from '../core/ClientLogService';
+import { VoiceMode } from '@monky/shared';
 
 export interface SavedServer {
   host: string;
@@ -37,6 +39,8 @@ export interface CreatedServer {
   lastStarted: number;
   /** Member cap picked on creation; 0/undefined means no limit (#403). */
   maxUsers?: number;
+  /** Voice mode ('p2p' | 'sfu') picked on creation (#515). */
+  voiceMode?: VoiceMode;
 }
 
 export class ConnectionStore {
@@ -115,6 +119,7 @@ export class ConnectionStore {
   }
 
   public addSavedServer(server: SavedServer): void {
+    clientLog.info('STORE', `Saving server: ${server.host}:${server.port}`, { name: server.name });
     const existingIdx = this.savedServers.findIndex(
       (s) => s.host === server.host && s.port === server.port
     );
@@ -141,6 +146,7 @@ export class ConnectionStore {
   }
 
   public removeSavedServer(host: string, port: number): void {
+    clientLog.info('STORE', `Removing saved server: ${host}:${port}`);
     this.savedServers = this.savedServers.filter((s) => !(s.host === host && s.port === port));
     this.syncRailLayoutWithSavedServers();
     this.saveSavedServers();
@@ -409,6 +415,7 @@ export class ConnectionStore {
   }
 
   public setIdentity(identity: { publicKey: string; clientId: string } | null): void {
+    clientLog.info('IDENTITY', `Identity ${identity ? 'set' : 'cleared'}`);
     this.publicKey = identity?.publicKey || '';
     this.clientId = identity?.clientId || '';
     this.hasIdentity = !!identity;

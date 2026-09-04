@@ -1,6 +1,5 @@
 import fs from 'fs';
 import path from 'path';
-import { spawnSync } from 'child_process';
 import { LIMITS } from '@monky/shared';
 import { PasswordService } from '../../infrastructure/security/PasswordService';
 import {
@@ -11,16 +10,20 @@ import {
   DEFAULT_SERVER_NAME,
 } from '../constants';
 import { CliContext, readLocalConfig, writeLocalConfig } from '../context';
-import { formatBool, formatDate, parseBoolean, parseMemberLimit, parsePositiveInt } from '../formatters';
+import { estimateHostCapacity, printCapacityEstimate } from '../capacity';
+import { describeSfuPortProblem, formatBool, formatDate, parseBoolean, parseMemberLimit, parsePositiveInt, printSfuPreflight, printVoiceModeComparisonTable, sfuPreflightSummary } from '../formatters';
+import { t } from '../i18n/index';
 import {
   getPm2ProcessName,
   isMonkyServerRunning,
   writeEcosystem,
 } from '../pm2';
+import { runSync } from '../process';
 import { registerServer } from '../registry';
 import { ask, askChoice, confirm, promptPassword } from '../prompts';
 import { disableAutoUpdate, enableAutoUpdate, isAutoUpdateEnabled, AutoUpdateSchedule } from './update';
 import { CoturnManager } from '../../infrastructure/turn/CoturnManager';
+import { checkSfuPreflight } from '../../infrastructure/sfu/SfuPreflight';
 
 /**
  * Warns, right where the value is shown, when the relay cannot actually run on
@@ -29,27 +32,41 @@ import { CoturnManager } from '../../infrastructure/turn/CoturnManager';
  */
 function turnStatusSuffix(): string {
   const reason = CoturnManager.getUnavailabilityReason();
-  return reason ? color(`  (indisponível: ${reason})`, ANSI.yellow) : '';
+  return reason ? color(`  (${t('config.turnUnavailable', { reason })})`, ANSI.yellow) : '';
+}
+
+/**
+ * Same intent as {@link turnStatusSuffix}: `voiceMode: sfu` is misleading when
+ * the worker cannot run on this host, since the server starts anyway and
+ * quietly relays nothing.
+ */
+function voiceModeStatusSuffix(voiceMode: string): string {
+  if (voiceMode !== 'sfu') return '';
+  const reason = sfuPreflightSummary(checkSfuPreflight());
+  return reason ? color(`  (${t('config.sfuUnavailable', { reason })})`, ANSI.yellow) : '';
 }
 
 export async function showConfig(ctx: CliContext): Promise<void> {
   const server = await ctx.serverRepo.getServer();
   if (!server) {
-    throw new Error('Servidor não encontrado.');
+    throw new Error(t('create.serverNotFound'));
   }
 
   const localConfig = readLocalConfig(ctx.dataDir);
   const owner = server.ownerUserId ? await ctx.userRepo.findById(server.ownerUserId) : null;
-  console.log(color('Configuração do servidor', ANSI.bold));
+  console.log(color(t('config.title'), ANSI.bold));
   console.log(`dataDir: ${ctx.dataDir}`);
   console.log(`id: ${server.id}`);
   console.log(`name: ${server.name}`);
   console.log(`port: ${localConfig.port || LIMITS.DEFAULT_PORT}`);
   console.log(`hasPassword: ${formatBool(Boolean(server.passwordHash))}`);
-  console.log(`maxUsers: ${server.maxUsers > LIMITS.MAX_USERS_UNLIMITED ? server.maxUsers : 'sem limite'}`);
+  console.log(`maxUsers: ${server.maxUsers > LIMITS.MAX_USERS_UNLIMITED ? server.maxUsers : t('config.noLimit')}`);
   console.log(`ownerUserId: ${server.ownerUserId ?? '-'}`);
   console.log(`ownerNickname: ${owner?.nickname ?? '-'}`);
   console.log(`allowSoundboard: ${formatBool(server.allowSoundboard !== false)}`);
+  console.log(`allowEveryoneMention: ${formatBool(server.allowEveryoneMention !== false)}`);
+  console.log(`showRoleBadgesToEveryone: ${formatBool(server.showRoleBadgesToEveryone !== false)}`);
+  console.log(`voiceMode: ${server.voiceMode || 'p2p'}${voiceModeStatusSuffix(server.voiceMode || 'p2p')}`);
   console.log(`turn: ${formatBool(Boolean(server.turnEnabled))}${turnStatusSuffix()}`);
   console.log(`iconPath: ${server.iconPath ?? '-'}`);
   console.log(`maxAttachmentFileBytes: ${server.maxAttachmentFileBytes ?? '-'}`);
@@ -60,17 +77,30 @@ export async function showConfig(ctx: CliContext): Promise<void> {
 
 export async function askConfigKey(): Promise<ConfigKey> {
   const choice = await askChoice(
-    'Qual configuração deseja alterar?',
+    t('config.whichKey'),
     CONFIG_KEYS.map((key) => `${key}`)
   );
   return choice as ConfigKey;
 }
 
-export async function setConfig(ctx: CliContext, key: string, value?: string): Promise<void> {
+/**
+ * `skipSfuDiagnostics` is set by `monky create`, which already probed the
+ * ports, printed the capacity report and ran the preflight before the operator
+ * confirmed. Without it the SFU branch below would repeat all three — asking
+ * for the upload bandwidth a second time — and, worse, `throw` on a port
+ * problem that `create` had deliberately downgraded to a warning, aborting
+ * after the database was already bootstrapped (#515).
+ */
+export async function setConfig(
+  ctx: CliContext,
+  key: string,
+  value?: string,
+  options: { skipSfuDiagnostics?: boolean } = {}
+): Promise<void> {
   const normalizedKey = (key.trim() || (await askConfigKey())) as ConfigKey;
   const server = await ctx.serverRepo.getServer();
   if (!server) {
-    throw new Error('Servidor não encontrado.');
+    throw new Error(t('create.serverNotFound'));
   }
 
   const localConfig = readLocalConfig(ctx.dataDir);
@@ -82,6 +112,9 @@ export async function setConfig(ctx: CliContext, key: string, value?: string): P
     icon: server.iconPath ?? '',
     maxUsers: String(server.maxUsers),
     allowSoundboard: String(server.allowSoundboard !== false),
+    allowEveryoneMention: String(server.allowEveryoneMention !== false),
+    showRoleBadgesToEveryone: String(server.showRoleBadgesToEveryone !== false),
+    voiceMode: server.voiceMode || 'p2p',
     maxAttachmentFileBytes: String(server.maxAttachmentFileBytes ?? ''),
     maxAttachmentStorageBytes: String(server.maxAttachmentStorageBytes ?? ''),
     autoUpdate: String(isAutoUpdateEnabled(ctx.dataDir)),
@@ -92,35 +125,37 @@ export async function setConfig(ctx: CliContext, key: string, value?: string): P
   if (nextValue === undefined) {
     switch (normalizedKey) {
       case 'name':
-        nextValue = await ask('Nome do servidor', currentValues.name);
+        nextValue = await ask(t('config.askName'), currentValues.name);
         break;
       case 'password':
-        nextValue = await promptPassword('Senha do servidor (deixe vazio para remover): ');
+        nextValue = await promptPassword(t('config.askPassword'));
         break;
       case 'port':
-        nextValue = await ask('Porta do servidor', currentValues.port);
+        nextValue = await ask(t('config.askPort'), currentValues.port);
         break;
       case 'icon':
-        nextValue = await ask('Caminho da imagem do servidor (deixe vazio para remover)');
+        nextValue = await ask(t('config.askIcon'));
         break;
       case 'allowSoundboard':
-        nextValue = await askChoice('Permitir soundboard?', ['true', 'false']);
-        break;
-      case 'turn':
-        nextValue = await askChoice('Habilitar o relay de mídia (TURN)?', ['true', 'false']);
-        break;
+      case 'allowEveryoneMention':
+      case 'showRoleBadgesToEveryone':
       case 'autoUpdate':
-        nextValue = await askChoice('Habilitar atualização automática?', ['true', 'false']);
+      case 'turn':
+        nextValue = await askChoice(t('config.askBoolean'), ['true', 'false']);
+        break;
+      case 'voiceMode':
+        printVoiceModeComparisonTable();
+        nextValue = await askChoice(t('config.askVoiceMode'), ['p2p', 'sfu']);
         break;
       case 'maxUsers':
-        nextValue = await ask('Limite de membros (0 para sem limite)', currentValues.maxUsers);
+        nextValue = await ask(t('config.askMaxUsers'), currentValues.maxUsers);
         break;
       case 'maxAttachmentFileBytes':
       case 'maxAttachmentStorageBytes':
-        nextValue = await ask(`Valor para ${normalizedKey}`, currentValues[normalizedKey]);
+        nextValue = await ask(t('config.askValue', { key: normalizedKey }), currentValues[normalizedKey]);
         break;
       default:
-        nextValue = await ask(`Valor para ${normalizedKey}`);
+        nextValue = await ask(t('config.askValue', { key: normalizedKey }));
     }
   }
 
@@ -128,7 +163,7 @@ export async function setConfig(ctx: CliContext, key: string, value?: string): P
     case 'name': {
       const nextName = nextValue.trim();
       if (nextName.length < 2) {
-        throw new Error('O nome do servidor deve ter pelo menos 2 caracteres.');
+        throw new Error(t('config.nameTooShort'));
       }
       await ctx.serverRepo.updateServer({ name: nextName });
       registerServer(ctx.dataDir, { name: nextName });
@@ -150,20 +185,20 @@ export async function setConfig(ctx: CliContext, key: string, value?: string): P
 
       const processName = getPm2ProcessName(ctx.dataDir);
       if (isMonkyServerRunning(processName)) {
-        const shouldRestart = await confirm('Servidor está rodando. Deseja reiniciar agora para aplicar a nova porta?', true);
+        const shouldRestart = await confirm(t('config.restartForPort'), true);
         if (shouldRestart) {
           const ecosystemPath = writeEcosystem({
             dataDir: ctx.dataDir,
             port: portNum,
             serverName: (await ctx.serverRepo.getServer())?.name || DEFAULT_SERVER_NAME,
           });
-          spawnSync('pm2', ['startOrRestart', ecosystemPath], { stdio: 'inherit', shell: true });
-          console.log(color('Servidor reiniciado com a nova porta.', ANSI.green));
+          runSync('pm2', ['startOrRestart', ecosystemPath], { stdio: 'inherit' });
+          console.log(color(t('config.portRestarted'), ANSI.green));
         } else {
-          console.log(color('A nova porta será usada no próximo "monky start" ou "monky restart".', ANSI.dim));
+          console.log(color(t('config.portNextStartOrRestart'), ANSI.dim));
         }
       } else {
-        console.log(color('A nova porta será usada no próximo "monky start".', ANSI.dim));
+        console.log(color(t('config.portNextStart'), ANSI.dim));
       }
       registerServer(ctx.dataDir, { port: portNum });
       break;
@@ -172,11 +207,11 @@ export async function setConfig(ctx: CliContext, key: string, value?: string): P
       const iconValue = nextValue.trim();
       if (!iconValue || ['clear', 'none', 'remove'].includes(iconValue.toLowerCase())) {
         await ctx.serverRepo.updateServer({ iconPath: null });
-        console.log(color('Ícone removido.', ANSI.dim));
+        console.log(color(t('config.iconRemoved'), ANSI.dim));
       } else {
         const resolvedPath = path.resolve(iconValue);
         if (!fs.existsSync(resolvedPath)) {
-          throw new Error(`Arquivo não encontrado: ${resolvedPath}`);
+          throw new Error(t('config.fileNotFound', { path: resolvedPath }));
         }
         const destDir = path.join(ctx.dataDir, 'icons');
         await fs.promises.mkdir(destDir, { recursive: true });
@@ -194,9 +229,7 @@ export async function setConfig(ctx: CliContext, key: string, value?: string): P
       if (nextMax > LIMITS.MAX_USERS_UNLIMITED) {
         const memberCount = await ctx.userRepo.count();
         if (nextMax < memberCount) {
-          throw new Error(
-            `O servidor já tem ${memberCount} membros. Remova membros antes de definir um limite menor.`
-          );
+          throw new Error(t('config.tooManyMembers', { count: memberCount }));
         }
       }
       await ctx.serverRepo.updateServer({ maxUsers: nextMax });
@@ -205,34 +238,79 @@ export async function setConfig(ctx: CliContext, key: string, value?: string): P
     case 'allowSoundboard':
       await ctx.serverRepo.updateServer({ allowSoundboard: parseBoolean(nextValue) });
       break;
+    case 'allowEveryoneMention':
+      await ctx.serverRepo.updateServer({ allowEveryoneMention: parseBoolean(nextValue) });
+      break;
+    case 'showRoleBadgesToEveryone':
+      await ctx.serverRepo.updateServer({ showRoleBadgesToEveryone: parseBoolean(nextValue) });
+      break;
+    case 'voiceMode': {
+      const mode = nextValue.toLowerCase().trim() === 'sfu' ? 'sfu' : 'p2p';
+
+      if (mode === 'sfu' && !options.skipSfuDiagnostics) {
+        // Refuse before persisting: the desktop path already blocks the switch
+        // when the range is unusable, and the CLI accepting it would be the
+        // only way left to end up with a mode the host cannot serve (#515).
+        const { SfuManager } = await import('../../infrastructure/sfu/SfuManager');
+        const portProblem = await new SfuManager().checkPortAvailability();
+        if (portProblem) {
+          throw new Error(describeSfuPortProblem(portProblem));
+        }
+        console.log(color(t('config.sfuPortOk'), ANSI.green));
+      }
+
+      await ctx.serverRepo.updateServer({ voiceMode: mode });
+
+      // The SFU is the relay in this mode, so coturn is turned off rather than
+      // left running and unused (#515).
+      if (mode === 'sfu' && server.turnEnabled) {
+        await ctx.serverRepo.updateServer({ turnEnabled: false });
+        console.log(color(t('config.turnDisabledBySfu'), ANSI.yellow));
+      }
+
+      if (mode === 'sfu' && !options.skipSfuDiagnostics) {
+        const report = await estimateHostCapacity();
+        printCapacityEstimate(report);
+        printSfuPreflight(checkSfuPreflight());
+      }
+
+      // Same caveat as `turn`: the running process decided its voice mode at
+      // startup, so the new value only takes effect after a reload. Without
+      // this the operator sees `voiceMode: sfu` in `monky config` while the
+      // server keeps serving P2P (#515).
+      if (isMonkyServerRunning(getPm2ProcessName(ctx.dataDir))) {
+        console.log(color(t('config.voiceModeRestartNeeded'), ANSI.yellow));
+      }
+      break;
+    }
     case 'turn': {
       const enabled = parseBoolean(nextValue);
+      // The SFU already relays every stream, so a second relay would only add
+      // cost and fight it for UDP ports. Refused here as well as on the server
+      // so neither entry point can produce the combination (#515).
+      if (enabled && (server.voiceMode || 'p2p') === 'sfu') {
+        throw new Error(t('config.turnBlockedBySfu'));
+      }
       if (enabled && !CoturnManager.isInstalled()) {
         // Same intent as the desktop toggle: asking is enough, the server does
         // the installing (#431).
         if (!CoturnManager.isSupportedPlatform()) {
-          throw new Error(
-            'O relay TURN só é suportado em servidores Linux. Não existe pacote do coturn para Windows ou macOS.'
-          );
+          throw new Error(t('config.turnLinuxOnly'));
         }
-        console.log('Instalando o coturn (pode levar alguns minutos)...');
+        console.log(t('config.installingCoturn'));
         const outcome = await CoturnManager.ensureInstalled();
         if (!outcome.ok) {
           switch (outcome.reason) {
             case 'no-privileges':
-              throw new Error(
-                'O coturn não está instalado e este comando não tem privilégio para instalá-lo. Rode "sudo monky config set turn true" ou "sudo bash scripts/install-turn.sh".'
-              );
+              throw new Error(t('config.coturnNoPrivileges'));
             case 'unknown-package-manager':
-              throw new Error(
-                'Nenhum gerenciador de pacotes conhecido foi encontrado. Instale o coturn manualmente no host.'
-              );
+              throw new Error(t('config.coturnNoPackageManager'));
             default:
-              throw new Error(`Não foi possível instalar o coturn: ${outcome.detail ?? 'erro desconhecido'}`);
+              throw new Error(t('config.coturnInstallFailed', { detail: outcome.detail ?? 'unknown error' }));
           }
         }
         if (!outcome.alreadyInstalled) {
-          console.log(color('coturn instalado com sucesso.', ANSI.green));
+          console.log(color(t('config.coturnInstalled'), ANSI.green));
         }
       }
       const updates: { turnEnabled: boolean; turnSecret?: string } = { turnEnabled: enabled };
@@ -246,17 +324,16 @@ export async function setConfig(ctx: CliContext, key: string, value?: string): P
       // The running process holds its own copy of this setting, so the change
       // only takes effect once it reloads.
       if (isMonkyServerRunning(getPm2ProcessName(ctx.dataDir))) {
-        console.log(
-          color('O servidor está rodando. Rode "monky restart" para aplicar a mudança do relay.', ANSI.yellow)
-        );
+        console.log(color(t('config.turnRestartNeeded'), ANSI.yellow));
       }
       if (enabled) {
-        console.log(
-          color(
-            'Lembre-se de liberar no firewall a porta 3478 (TCP/UDP) e a faixa UDP 49152-65535.',
-            ANSI.dim
-          )
-        );
+        // Run a real port check instead of a static reminder.
+        const portProblem = await CoturnManager.checkPortReachability();
+        if (portProblem) {
+          console.log(color('⚠ ' + portProblem, ANSI.yellow));
+        } else {
+          console.log(color(t('config.turnPortOk'), ANSI.green));
+        }
       }
       break;
     }
@@ -271,16 +348,18 @@ export async function setConfig(ctx: CliContext, key: string, value?: string): P
       if (enabled) {
         let schedule: AutoUpdateSchedule = { type: 'daily', value: '04:00' };
         if (process.stdin.isTTY) {
-          const scheduleMode = await askChoice('Tipo de agendamento do auto-update:', [
-            'Diário em horário fixo (ex: 04:00)',
-            'Intervalo de horas (ex: a cada 2 horas)',
+          const dailyOption = t('config.autoUpdateDaily');
+          const intervalOption = t('config.autoUpdateInterval');
+          const scheduleMode = await askChoice(t('config.autoUpdateScheduleType'), [
+            dailyOption,
+            intervalOption,
           ]);
-          if (scheduleMode.startsWith('Intervalo')) {
-            const hoursStr = await ask('Intervalo em horas para verificar atualizações', '2');
+          if (scheduleMode === intervalOption) {
+            const hoursStr = await ask(t('config.autoUpdateHoursInterval'), '2');
             const hours = Math.max(1, parseInt(hoursStr, 10) || 2);
             schedule = { type: 'interval', value: hours };
           } else {
-            const timeStr = await ask('Horário diário da verificação (HH:MM)', '04:00');
+            const timeStr = await ask(t('config.autoUpdateDailyTime'), '04:00');
             schedule = { type: 'daily', value: timeStr.trim() || '04:00' };
           }
         }
@@ -291,8 +370,8 @@ export async function setConfig(ctx: CliContext, key: string, value?: string): P
       break;
     }
     default:
-      throw new Error(`Chave não suportada: ${key}`);
+      throw new Error(t('config.unsupportedKey', { key }));
   }
 
-  console.log(color(`Configuração "${normalizedKey}" atualizada com sucesso.`, ANSI.green));
+  console.log(color(t('config.updated', { key: normalizedKey }), ANSI.green));
 }

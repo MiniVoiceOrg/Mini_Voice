@@ -1,5 +1,34 @@
 export type ChannelType = 'VOICE' | 'TEXT';
 
+export type VoiceMode = 'p2p' | 'sfu';
+
+export interface SfuTransportOptions {
+  id: string;
+  iceParameters: any;
+  iceCandidates: any[];
+  dtlsParameters: any;
+  sctpParameters?: any;
+}
+
+export interface SfuProducerData {
+  id: string;
+  kind: 'audio' | 'video';
+  rtpParameters: any;
+  type?: string;
+  paused?: boolean;
+  appData: Record<string, any>;
+}
+
+export interface SfuConsumerData {
+  id: string;
+  producerId: string;
+  kind: 'audio' | 'video';
+  rtpParameters: any;
+  type?: string;
+  producerAppData: Record<string, any>;
+  producerSessionId: string;
+}
+
 export type UserStatus = 'ONLINE' | 'IDLE' | 'VOICE' | 'DISCONNECTED';
 
 export interface UserSummary {
@@ -85,6 +114,15 @@ export interface ChatMessage {
   isSystem?: boolean;
   // Files attached to this message (#11). Omitted/empty for plain text messages.
   attachments?: AttachmentMeta[];
+  /** When the author last edited the message, so the UI can mark it (#504). */
+  editedAt?: number | null;
+  /**
+   * When the message was deleted (#504). A deleted message keeps its row and
+   * arrives with an empty `content` and no attachments: the client draws a
+   * "message deleted" placeholder instead of making the message vanish, which
+   * would silently rewrite the conversation for everyone reading it.
+   */
+  deletedAt?: number | null;
 }
 
 export interface Role {
@@ -124,6 +162,12 @@ export interface VoiceParticipantState {
   screenShareIds?: string[];
 }
 
+/** CPU and RAM of the machine hosting the server, as measured by the server. */
+export interface HostSpecs {
+  cpuCores: number;
+  ramTotalGb: number;
+}
+
 export interface ServerDetails {
   id: string;
   name: string;
@@ -131,6 +175,34 @@ export interface ServerDetails {
   maxUsers: number;
   hasPassword?: boolean;
   allowSoundboard?: boolean;
+  /** Whether `@todos` / `@everyone` mentions the whole channel (#464). */
+  allowEveryoneMention?: boolean;
+  /**
+   * Whether members may edit their own messages (#504). Deleting is always
+   * allowed: this switch is about rewriting history, not about taking it back.
+   */
+  allowMessageEdit?: boolean;
+  /**
+   * Whether role badges in the member list are visible to everyone (#530).
+   * When false, each badge is only rendered for members holding that role.
+   */
+  showRoleBadgesToEveryone?: boolean;
+  /**
+   * Voice and video topology mode (#515).
+   * - 'p2p': Direct full-mesh WebRTC connections between participants.
+   * - 'sfu': Centralized Selective Forwarding Unit media routing via the server.
+   */
+  voiceMode?: VoiceMode;
+  /**
+   * CPU and RAM of the machine actually running the server (#515).
+   *
+   * The capacity estimator used to read `navigator.hardwareConcurrency` and
+   * `navigator.deviceMemory` in the renderer, which describes the admin's
+   * desktop — not the VPS being administered — and is capped at 8 GB by the
+   * Device Memory spec, so it reported "8 GB" for every host. Optional because
+   * an older server simply will not send it.
+   */
+  hostSpecs?: HostSpecs;
   iconUrl?: string | null;
   channels: ChannelSummary[];
   /** One entry per live connection: a user signed in from two devices appears twice (#309). */
@@ -208,5 +280,5 @@ export interface WebRtcSignalPayload {
 export interface BandwidthSettings {
   maxUploadKbps: number;
   maxDownloadKbps: number;
-  qualityPreset: 'ECONOMIC' | 'NORMAL' | 'HIGH' | 'GAMING';
+  qualityPreset: 'ECONOMIC' | 'NORMAL' | 'HIGH' | 'GAMING' | 'ULTRA';
 }

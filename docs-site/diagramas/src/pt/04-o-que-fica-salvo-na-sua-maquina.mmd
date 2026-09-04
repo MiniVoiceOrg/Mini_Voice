@@ -1,0 +1,20 @@
+flowchart TB
+    subgraph LS["localStorage — o renderer lê e escreve"]
+        direction TB
+        L1["<b>monky_settings</b><br/>qualidade, dispositivos,<br/>volumes, atalhos, soundboard"]
+        L2["<b>monky_nickname</b> · <b>monky_avatar</b><br/>sua identidade visual"]
+        L3["<b>monky_saved_servers</b> · <b>monky_created_servers</b><br/>servidores salvos e criados"]
+        L4["<b>monky_device_id</b> · <b>monky_language</b><br/>este aparelho e o idioma"]
+        L1 ~~~ L2 ~~~ L3 ~~~ L4
+    end
+
+    subgraph UD["userData em disco — só o processo main alcança"]
+        direction TB
+        D1["<b>identity.json</b><br/>seu par de chaves,<br/>cifrado com safeStorage"]
+        D2["<b>server-data/</b><br/>o banco do servidor,<br/>quando você hospeda pelo app"]
+        D1 ~~~ D2
+    end
+
+    R["Renderer"] --> LS
+    R -->|window.api| M["Main"]
+    M --> UD

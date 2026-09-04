@@ -1,4 +1,5 @@
 import { MessageType, Permission, UserSummary, canAccessChannel } from '@monky/shared';
+import type { ChannelType } from '@monky/shared';
 import { escapeHtml } from '../utils/html';
 import { appEvents } from '../core/EventBus';
 import { networkClient } from '../core/NetworkClient';
@@ -35,8 +36,19 @@ import { soundEffects } from '../core/SoundEffects';
 import { getAvatarUrl, toAbsoluteServerIconUrl } from '../utils/avatar';
 import { peerFailureTooltip } from '../utils/peerFailureHint';
 import { serverRailView } from './ServerRailView';
+import { soundboardPlayersBar } from './SoundboardPlayersBar';
+import { overlayBridgeService } from '../core/OverlayBridgeService';
 import logoUrl from '../assets/Logo.png';
 import { t, tCount } from '../i18n';
+
+/**
+ * Icons for the sidebar voice indicator (#553). Centralised so switching the
+ * connected/reconnecting glyph is a one-line change. `rss_feed` reads as a
+ * signal/connection ("tilted wifi"); `signal_wifi_bad` carries the failure
+ * exclamation used while reconnecting.
+ */
+const VOICE_ICON_CONNECTED = 'rss_feed';
+const VOICE_ICON_RECONNECTING = 'signal_wifi_bad';
 
 export class MainView {
   private container: HTMLElement;
@@ -51,6 +63,17 @@ export class MainView {
   private screenShareNoticeSignature: string | null = null;
   private textChannelDragHoverTimer: number | null = null;
   private textChannelDragHoverId: string | null = null;
+  // Measures the floating user card so the server rail can reserve room for it
+  // (#473).
+  private userCardObserver: ResizeObserver | null = null;
+
+  public setActiveContentView(view: 'chat' | 'stage'): void {
+    const changed = this.activeContentView !== view;
+    this.activeContentView = view;
+    if (changed) {
+      appEvents.emit('stage.visibility_changed', view === 'stage');
+    }
+  }
 
   constructor(container: HTMLElement) {
     this.container = container;
@@ -128,7 +151,9 @@ export class MainView {
 
           <!-- Bottom User Bar -->
           <div class="user-control-bar">
+            <div id="soundboard-players-slot" class="sb-notice-slot"></div>
             <div id="screenshare-notice-slot"></div>
+            <div id="overlay-notice-slot"></div>
             <div id="voice-connection-row-slot"></div>
             <div class="user-media-bar" id="user-media-bar">
               <button id="media-btn-camera" class="btn btn-icon media-bar-btn-lg ${voiceStore.isCameraOn ? 'broadcasting-pulse active' : ''}" title="${t('main.toggleCamera')}">
@@ -144,7 +169,7 @@ export class MainView {
             <div class="user-control-main">
               <div id="user-profile-btn" class="user-profile-summary" title="${t('main.profileSettings')}">
                 <div class="user-avatar-container">
-                  <img id="main-user-avatar" class="user-avatar-main ${voiceStore.isSpeaking ? 'speaking' : ''}" src="${getAvatarUrl(u.avatarUrl)}">
+                  <img id="main-user-avatar" class="user-avatar-main ${voiceStore.isSpeaking ? 'speaking' : ''}" src="${getAvatarUrl(u.avatarUrl)}" data-fallback="avatar">
                 </div>
                 <div class="user-info-text">
                   <span id="main-user-name" class="user-name-display">${escapeHtml(u.nickname)}</span>
@@ -187,6 +212,7 @@ export class MainView {
     this.renderMembers();
     serverRailView.render();
     this.setupChannelsResizer();
+    this.observeUserCardHeight();
 
     const centerStageEl = document.getElementById('main-center-stage')!;
     // Re-rendering happens on every server switch now (#400), so the previous
@@ -204,7 +230,7 @@ export class MainView {
     if (this.activeContentView === 'stage' && this.callIsHere()) {
       this.voiceStageView.setChannel(voiceStore.currentVoiceChannelId);
     } else if (serverStore.activeTextChannelId) {
-      this.activeContentView = 'chat';
+      this.setActiveContentView('chat');
       this.chatView.setChannel(serverStore.activeTextChannelId);
     }
 
@@ -214,6 +240,10 @@ export class MainView {
     // cached signature (#282).
     this.screenShareNoticeSignature = null;
     this.updateScreenShareNotice();
+    this.updateOverlayNotice();
+
+    const soundboardSlot = document.getElementById('soundboard-players-slot');
+    if (soundboardSlot) soundboardPlayersBar.mount(soundboardSlot);
   }
 
   /**
@@ -243,13 +273,19 @@ export class MainView {
       return;
     }
 
+    const reconnecting = voiceStore.isReconnecting;
+    const serverName = serverStore.serverDetails?.name ?? '';
+    const signalIcon = reconnecting ? VOICE_ICON_RECONNECTING : VOICE_ICON_CONNECTED;
+    const statusText = reconnecting ? t('main.reconnecting') : t('main.voiceConnected');
+
     slot.innerHTML = `
-      <div class="voice-connection-row" id="voice-connection-row">
+      <div class="voice-connection-row ${reconnecting ? 'reconnecting' : ''}" id="voice-connection-row">
         <div class="voice-conn-info">
-          <span class="material-symbols-outlined md-16 voice-conn-signal">graphic_eq</span>
+          <span class="material-symbols-outlined md-16 voice-conn-signal ${reconnecting ? 'reconnecting' : ''}"${reconnecting ? ` title="${t('main.reconnectingTitle')}"` : ''}>${signalIcon}</span>
           <div class="voice-conn-text">
-            <span class="voice-conn-status">${t('main.voiceConnected')}</span>
+            <span class="voice-conn-status">${statusText}</span>
             <span class="voice-conn-channel" id="sidebar-voice-channel">${escapeHtml(vc.name)}</span>
+            ${serverName ? `<span class="voice-conn-server">${escapeHtml(serverName)}</span>` : ''}
           </div>
           <span class="voice-conn-ping" id="sidebar-voice-ping" title="${t('main.averagePing')}">-- ms</span>
         </div>
@@ -289,8 +325,9 @@ export class MainView {
     const update = async () => {
       const pingEl = document.getElementById('sidebar-voice-ping');
       if (!pingEl) return;
+      const isSfu = webRtcManager.isSfuMode();
       const participants = participantManager.getInVoiceChannel(voiceStore.currentVoiceChannelId || '');
-      if (participants.length <= 1) {
+      if (participants.length <= 1 && !isSfu) {
         pingEl.textContent = '0 ms';
         return;
       }
@@ -410,13 +447,42 @@ export class MainView {
   }
 
   /**
+   * Sidebar line mirroring the screen-share notice, but for the overlay: it
+   * tells the user the overlay is on and carries the stop button, so the overlay
+   * no longer needs a stop control on the stage. Unlike the screen-share notice,
+   * it stays visible on the stage too — the overlay keeps running there, so its
+   * indicator should as well.
+   */
+  private updateOverlayNotice(): void {
+    const slot = document.getElementById('overlay-notice-slot');
+    if (!slot) return;
+
+    if (!overlayBridgeService.isActive()) {
+      slot.innerHTML = '';
+      return;
+    }
+
+    slot.innerHTML = `
+      <div class="screenshare-notice screenshare-notice--self">
+        <span class="material-symbols-outlined md-16 screenshare-notice-icon">picture_in_picture_alt</span>
+        <span class="screenshare-notice-text">${t('overlay.overlayActive')}</span>
+        <button id="overlay-notice-stop-btn" class="screenshare-notice-btn screenshare-notice-btn--danger">${t('overlay.stopOverlayBtn')}</button>
+      </div>
+    `;
+
+    document.getElementById('overlay-notice-stop-btn')?.addEventListener('click', () => {
+      void overlayBridgeService.deactivate();
+    });
+  }
+
+  /**
    * Switches the center area to the voice stage, optionally opting into a
    * specific remote screen share on the way in (#282).
    */
   private openVoiceStage(watchSessionId?: string): void {
     const channelId = voiceStore.currentVoiceChannelId;
     if (!channelId) return;
-    this.activeContentView = 'stage';
+    this.setActiveContentView('stage');
     this.voiceStageView?.setChannel(channelId);
     if (watchSessionId) this.voiceStageView?.watchScreenShare(watchSessionId);
     this.renderChannels();
@@ -495,7 +561,7 @@ export class MainView {
   private activateTextChannel(channelId: string): void {
     this.clearTextChannelDragHover();
     serverStore.setActiveTextChannel(channelId);
-    this.activeContentView = 'chat';
+    this.setActiveContentView('chat');
     this.chatView?.setChannel(channelId);
     this.renderChannels();
     this.updateScreenShareNotice();
@@ -630,7 +696,7 @@ export class MainView {
 
                   return `
                     <div id="voice-mini-user-${sessionId}" class="voice-participant-mini ${isSpeaking ? 'speaking' : ''}" data-session-id="${sessionId}" title="${escapeHtml(displayName)} (${t('main.rightClickVolumeShort')})">
-                      <img class="voice-mini-avatar" src="${avatar}">
+                      <img class="voice-mini-avatar" src="${avatar}" data-fallback="avatar">
                       <span class="voice-mini-name">${escapeHtml(displayName)}</span>
                       ${isPeerFailed ? `<span class="material-symbols-outlined md-14 voice-mini-icon peer-failed" title="${peerFailureTooltip('main.peerConnectionFailed')}">link_off</span>` : ''}
                       ${isConnecting ? `<span class="material-symbols-outlined md-14 voice-mini-icon peer-connecting" title="${t('main.peerConnecting')}">sync</span>` : ''}
@@ -751,7 +817,7 @@ export class MainView {
           item.classList.add('joining');
           try {
             await this.handleJoinVoiceChannel(channelId);
-            this.activeContentView = 'stage';
+            this.setActiveContentView('stage');
             this.voiceStageView?.setChannel(channelId);
             this.updateScreenShareNotice();
           } finally {
@@ -811,6 +877,142 @@ export class MainView {
         this.openChannelMenu(channelId, rect.left, rect.bottom + 4);
       });
     });
+
+    this.setupChannelReorder();
+  }
+
+  /**
+   * Lets managers drag channels into a new order (#471).
+   *
+   * Text and voice are reordered independently, so a drag only ever finds drop
+   * targets inside its own list. The dragged element carries its type in the
+   * drag data, which is what keeps a voice channel from landing among the text
+   * ones — the check has to happen on `dragover` (there is no way to reject a
+   * drop after the fact) and the payload itself is unreadable there, so the type
+   * travels as part of the MIME type.
+   */
+  private setupChannelReorder(): void {
+    if (!serverStore.hasPermission(Permission.MANAGE_CHANNELS)) return;
+
+    const lists: Array<{ el: HTMLElement | null; type: ChannelType }> = [
+      { el: document.getElementById('text-channels-list'), type: 'TEXT' },
+      { el: document.getElementById('voice-channels-list'), type: 'VOICE' },
+    ];
+
+    for (const { el: listEl, type } of lists) {
+      if (!listEl) continue;
+      const mime = `text/monky-channel-${type.toLowerCase()}`;
+      // A voice channel and its participants live in a wrapper; a text channel
+      // is the item itself. Dragging and dropping act on whichever is the direct
+      // child of the list, so the participants travel with their channel.
+      const rows = Array.from(listEl.children) as HTMLElement[];
+
+      for (const row of rows) {
+        const handle = (row.matches('.channel-item') ? row : row.querySelector('.channel-item')) as HTMLElement | null;
+        if (!handle) continue;
+        const channelId = handle.getAttribute('data-channel-id');
+        if (!channelId) continue;
+
+        handle.draggable = true;
+        // Dragging is invisible without a hint, and the row has no title of its
+        // own to lose.
+        if (!handle.title) handle.title = t('main.channelReorderHint');
+        handle.addEventListener('dragstart', (e: Event) => {
+          const de = e as DragEvent;
+          de.dataTransfer?.setData(mime, channelId);
+          de.dataTransfer!.effectAllowed = 'move';
+          row.classList.add('channel-dragging');
+        });
+        handle.addEventListener('dragend', () => {
+          row.classList.remove('channel-dragging');
+          listEl.querySelectorAll('.channel-drop-before, .channel-drop-after').forEach((n) => {
+            n.classList.remove('channel-drop-before', 'channel-drop-after');
+          });
+        });
+
+        row.addEventListener('dragover', (e: Event) => {
+          const de = e as DragEvent;
+          if (!de.dataTransfer?.types.includes(mime)) return;
+          de.preventDefault();
+          de.stopPropagation();
+          de.dataTransfer.dropEffect = 'move';
+          const rect = row.getBoundingClientRect();
+          const after = de.clientY > rect.top + rect.height / 2;
+          row.classList.toggle('channel-drop-before', !after);
+          row.classList.toggle('channel-drop-after', after);
+        });
+        row.addEventListener('dragleave', (e: Event) => {
+          const next = (e as DragEvent).relatedTarget as Node | null;
+          if (next && row.contains(next)) return;
+          row.classList.remove('channel-drop-before', 'channel-drop-after');
+        });
+        row.addEventListener('drop', (e: Event) => {
+          const de = e as DragEvent;
+          const draggedId = de.dataTransfer?.getData(mime);
+          const after = row.classList.contains('channel-drop-after');
+          row.classList.remove('channel-drop-before', 'channel-drop-after');
+          if (!draggedId) return;
+          de.preventDefault();
+          de.stopPropagation();
+          if (draggedId === channelId) return;
+          this.commitChannelOrder(type, draggedId, channelId, after);
+        });
+      }
+
+      // Dropping on the empty space below the list sends the channel to the end.
+      listEl.addEventListener('dragover', (e: Event) => {
+        const de = e as DragEvent;
+        if (!de.dataTransfer?.types.includes(mime)) return;
+        de.preventDefault();
+        de.dataTransfer.dropEffect = 'move';
+      });
+      listEl.addEventListener('drop', (e: Event) => {
+        const de = e as DragEvent;
+        const draggedId = de.dataTransfer?.getData(mime);
+        if (!draggedId) return;
+        de.preventDefault();
+        this.commitChannelOrder(type, draggedId, null, true);
+      });
+    }
+  }
+
+  /**
+   * Sends the reordered list to the server (#471).
+   *
+   * The new order is applied locally right away so the drop feels instant, and
+   * the broadcast that comes back simply confirms it. A failure re-renders from
+   * the store, which still holds the order the server knows about.
+   */
+  private commitChannelOrder(
+    type: ChannelType,
+    draggedId: string,
+    targetId: string | null,
+    after: boolean
+  ): void {
+    const channels = serverStore.serverDetails?.channels.filter((c) => c.type === type) ?? [];
+    const ids = channels.map((c) => c.id).filter((id) => id !== draggedId);
+    if (ids.length === channels.length) return;
+
+    let index = ids.length;
+    if (targetId) {
+      const at = ids.indexOf(targetId);
+      if (at === -1) return;
+      index = after ? at + 1 : at;
+    }
+    ids.splice(index, 0, draggedId);
+
+    serverStore.applyChannelPositions(ids.map((channelId, position) => ({ channelId, position })));
+
+    void networkClient
+      .sendRequest(MessageType.CHANNEL_REORDER, { type, orderedIds: ids })
+      .catch((err: unknown) => {
+        void showAlert({
+          title: t('common.error'),
+          message: (err as Error)?.message || t('main.channelReorderFailed'),
+          variant: 'danger',
+        });
+        this.renderChannels();
+      });
   }
 
   /** Opens the per-channel options menu at the given screen coordinates (#151). */
@@ -882,7 +1084,7 @@ export class MainView {
   private async handleJoinVoiceChannel(channelId: string, silent: boolean = false): Promise<void> {
     if (voiceStore.currentVoiceChannelId === channelId) {
       // Already in this channel, just switch view to stage
-      this.activeContentView = 'stage';
+      this.setActiveContentView('stage');
       this.voiceStageView?.setChannel(channelId);
       this.updateScreenShareNotice();
       return;
@@ -929,12 +1131,16 @@ export class MainView {
       isDeafened: voiceStore.isDeafened,
     });
 
-    // Connect to all peers already in this voice channel
-    const peersInChannel = participantManager.getInVoiceChannel(channelId);
-    for (const peer of peersInChannel) {
-      const peerSessionId = peer.user.sessionId || peer.user.id;
-      if (!serverStore.isMySession(peer.user.sessionId)) {
-        await webRtcManager.connectToPeer(peerSessionId, true);
+    if (webRtcManager.isSfuMode()) {
+      await webRtcManager.initSfuForCurrentChannel();
+    } else {
+      // Connect to all peers already in this voice channel
+      const peersInChannel = participantManager.getInVoiceChannel(channelId);
+      for (const peer of peersInChannel) {
+        const peerSessionId = peer.user.sessionId || peer.user.id;
+        if (!serverStore.isMySession(peer.user.sessionId)) {
+          await webRtcManager.connectToPeer(peerSessionId, true);
+        }
       }
     }
   }
@@ -945,7 +1151,7 @@ export class MainView {
     // Reset the stored voice channel so handleJoinVoiceChannel performs a full
     // (re)join instead of early-returning, then reconnect the mesh.
     voiceStore.setChannel(null);
-    this.activeContentView = 'stage';
+    this.setActiveContentView('stage');
     await this.handleJoinVoiceChannel(channelId, true);
     this.voiceStageView?.setChannel(channelId);
     this.renderChannels();
@@ -980,7 +1186,7 @@ export class MainView {
       audioProcessor.stopMicrophone();
       voiceStore.reset();
       this.voiceStageView?.setChannel(null);
-      this.activeContentView = 'chat';
+      this.setActiveContentView('chat');
     }
 
     networkClient.send(MessageType.CHANNEL_DELETE, { channelId });
@@ -1045,7 +1251,7 @@ export class MainView {
       return `
         <div class="member-item ${effectiveOffline ? 'member-offline' : ''} ${isReconnecting ? 'reconnecting' : ''}" data-user-id="${m.id}" title="${escapeHtml(m.nickname)} ${isLocal ? `(${t('common.you')})` : `(${t('main.rightClickVolume')})`}">
           <div class="member-avatar-wrapper">
-            <img class="member-avatar-img" src="${avatar}">
+            <img class="member-avatar-img" src="${avatar}" data-fallback="avatar">
             <span class="status-indicator ${statusClass}"></span>
           </div>
           <div class="member-info">
@@ -1062,7 +1268,15 @@ export class MainView {
               ${isSelfDeafened ? `<span class="material-symbols-outlined md-14 member-cam-icon" title="${t('main.audioMuted')}">headset_off</span>` : ''}
             </div>
             ${(() => {
-              const userRoles = serverStore.getUserRoles(m.id).filter((r) => !r.isDefault);
+              // With public badges off, a role tag is only rendered for members
+              // who hold that same role — except for admins, who moderate the
+              // server and therefore always see every badge (#530).
+              const badgesArePublic = serverStore.serverDetails?.showRoleBadgesToEveryone !== false;
+              const canSeeAllBadges = badgesArePublic || serverStore.hasPermission(Permission.ADMINISTRATOR);
+              const myRoleIds = canSeeAllBadges ? [] : serverStore.getUserRoleIds(serverStore.currentUser?.id || '');
+              const userRoles = serverStore
+                .getUserRoles(m.id)
+                .filter((r) => !r.isDefault && (canSeeAllBadges || myRoleIds.includes(r.id)));
               return userRoles.length ? `<div class="member-role-tags">${userRoles.map((role) => `<span class="member-role-tag" style="${role.color ? `--role-color: ${role.color}` : ''}">${escapeHtml(role.name)}</span>`).join('')}</div>` : '';
             })()}
             <span class="member-subtext">${statusText}</span>
@@ -1368,7 +1582,7 @@ export class MainView {
     });
 
     const u7 = appEvents.on(`message.${MessageType.SERVER_SETTINGS_UPDATED}`, (payload: any) => {
-      serverStore.updateServerMeta(payload.name, payload.hasPassword, payload.allowSoundboard, payload.iconUrl, payload.attachmentStorage, payload.maxUsers, payload.turnEnabled);
+      serverStore.updateServerMeta(payload.name, payload.hasPassword, payload.allowSoundboard, payload.iconUrl, payload.attachmentStorage, payload.maxUsers, payload.turnEnabled, payload.allowEveryoneMention, payload.allowMessageEdit, payload.voiceMode, payload.showRoleBadgesToEveryone);
       serverStore.setTurnAvailability(payload.turnAvailability);
       // The store above is the one of whichever server sent this. Everything
       // below writes to the screen and to the saved-server list, so it may only
@@ -1472,7 +1686,17 @@ export class MainView {
       this.renderChannels();
     });
 
-    this.unbindEvents.push(u1, u2, u3, u4, u5, u6, u7, u7b, u7c, u7d, u8, u9, u10, u11, u12, u13);
+    // Keep the sidebar overlay notice in sync: `state_changed` covers the window
+    // opening/closing, `overlay_settings.updated` covers the "open on leaving the
+    // stage" arm/disarm that also counts as active (#169).
+    const u14 = appEvents.on('overlay.state_changed', () => this.updateOverlayNotice());
+    const u15 = appEvents.on('overlay_settings.updated', () => this.updateOverlayNotice());
+
+    // Repaint the sidebar voice row when the call flips in/out of reconnecting
+    // so the icon, colour and status text track the live state (#553).
+    const u16 = appEvents.on('voice.reconnecting_changed', () => this.updateVoiceConnectionRow());
+
+    this.unbindEvents.push(u1, u2, u3, u4, u5, u6, u7, u7b, u7c, u7d, u8, u9, u10, u11, u12, u13, u14, u15, u16);
   }
 
   /** True when the given text channel is the one currently visible on screen (#14). */
@@ -1481,6 +1705,32 @@ export class MainView {
       this.activeContentView === 'chat' &&
       serverStore.activeTextChannelId === channelId
     );
+  }
+
+  /**
+   * Keeps the server rail clear of the floating user card (#473).
+   *
+   * The card overlaps the bottom of the rail, so without reserving room the
+   * last servers in a long list would sit behind it, unreachable. The height is
+   * measured instead of hardcoded because it changes with the screen-share
+   * notice and the voice connection row.
+   */
+  private observeUserCardHeight(): void {
+    this.userCardObserver?.disconnect();
+    this.userCardObserver = null;
+
+    const layout = this.container.querySelector('.main-layout') as HTMLElement | null;
+    const card = this.container.querySelector('.user-control-bar') as HTMLElement | null;
+    if (!layout || !card) return;
+
+    const apply = () => {
+      layout.style.setProperty('--user-card-height', `${Math.ceil(card.getBoundingClientRect().height)}px`);
+    };
+    apply();
+
+    if (typeof ResizeObserver === 'undefined') return;
+    this.userCardObserver = new ResizeObserver(apply);
+    this.userCardObserver.observe(card);
   }
 
   private unbindListeners(): void {
@@ -1492,6 +1742,9 @@ export class MainView {
     this.stopSidebarPing();
     this.clearTextChannelDragHover();
     this.unbindListeners();
+    soundboardPlayersBar.unmount();
+    this.userCardObserver?.disconnect();
+    this.userCardObserver = null;
     this.chatView?.destroy();
     this.voiceStageView?.destroy();
   }

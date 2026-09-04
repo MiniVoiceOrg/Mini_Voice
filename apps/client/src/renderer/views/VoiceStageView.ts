@@ -18,6 +18,8 @@ import { showAlert, showConfirm } from './Dialog';
 import { userContextMenu } from './UserContextMenu';
 import { setButtonLoading, isButtonLoading } from '../utils/buttonLoading';
 import { soundboardModal } from './SoundboardModal';
+import { overlayConfigModal } from './OverlayConfigModal';
+import { overlayBridgeService } from '../core/OverlayBridgeService';
 import { t } from '../i18n';
 
 interface ScreenTelemetrySnapshot {
@@ -190,9 +192,18 @@ export class VoiceStageView {
               </div>
             </div>
 
-            <div class="header-status-badge" style="background-color: rgba(35, 165, 90, 0.15); color: var(--success); display: flex; align-items: center; gap: 6px;">
-              <span class="material-symbols-outlined md-14">wifi_tethering</span>
-              <span>${t('stage.connectedMesh')}</span>
+            <div id="stage-header-mode-badge-wrapper">
+              ${
+                webRtcManager.isSfuMode()
+                  ? `<div class="header-status-badge sfu-mode-badge" style="background-color: rgba(88, 101, 242, 0.15); color: var(--accent-primary); display: flex; align-items: center; gap: 6px;" title="${t('stage.sfuModeTooltip')}">
+                       <span class="material-symbols-outlined md-14">hub</span>
+                       <span>${t('stage.connectedSfu')}</span>
+                     </div>`
+                  : `<div class="header-status-badge p2p-mode-badge" style="background-color: rgba(35, 165, 90, 0.15); color: var(--success); display: flex; align-items: center; gap: 6px;" title="${t('stage.p2pModeTooltip')}">
+                       <span class="material-symbols-outlined md-14">wifi_tethering</span>
+                       <span>${t('stage.connectedMesh')}</span>
+                     </div>`
+              }
             </div>
           </div>
         </div>
@@ -217,6 +228,9 @@ export class VoiceStageView {
           <button id="stage-btn-screen" class="btn btn-icon ${voiceStore.isScreenSharing ? 'broadcasting-pulse active' : ''}" title="${voiceStore.isScreenSharing ? t('stage.stopScreenShare') : t('main.shareScreen')}">
             <span class="material-symbols-outlined">${voiceStore.isScreenSharing ? 'stop_screen_share' : 'screen_share'}</span>
           </button>
+          <button id="stage-btn-overlay" class="btn btn-icon ${overlayBridgeService.isActive() ? 'broadcasting-pulse active' : ''}" title="${t('overlay.openOverlay')}">
+            <span class="material-symbols-outlined">picture_in_picture_alt</span>
+          </button>
           <button id="stage-btn-soundboard" class="btn btn-icon" title="${t('main.openSoundboard')}">
             <span class="material-symbols-outlined">music_note</span>
           </button>
@@ -224,7 +238,7 @@ export class VoiceStageView {
             <span class="material-symbols-outlined md-18" style="margin-right: 4px;">stop_screen_share</span>
             <span>${t('screenShare.stopSharing')}</span>
           </button>
-          <button id="stage-btn-leave" class="btn btn-danger" style="margin-left: ${voiceStore.isScreenSharing ? '8px' : '12px'}; padding: 0 16px; height: 38px;" title="${t('stage.leaveChannel')}">
+          <button id="stage-btn-leave" class="btn btn-danger" style="margin-left: 12px; padding: 0 16px; height: 38px;" title="${t('stage.leaveChannel')}">
             <span class="material-symbols-outlined md-18" style="margin-right: 4px;">call_end</span>
             <span>${t('stage.leaveVoice')}</span>
           </button>
@@ -274,15 +288,24 @@ export class VoiceStageView {
       `;
     }
 
+    const btnOverlay = document.getElementById('stage-btn-overlay');
+    if (btnOverlay) {
+      const isOverlayActive = overlayBridgeService.isActive();
+      btnOverlay.className = `btn btn-icon ${isOverlayActive ? 'broadcasting-pulse active' : ''}`;
+      btnOverlay.title = isOverlayActive ? t('overlay.overlayActive') : t('overlay.openOverlay');
+      btnOverlay.innerHTML = `<span class="material-symbols-outlined">picture_in_picture_alt</span>`;
+    }
+
     const btnStopShare = document.getElementById('stage-btn-stop-share') as HTMLButtonElement | null;
     const btnLeave = document.getElementById('stage-btn-leave') as HTMLButtonElement | null;
+
     if (btnStopShare) {
       const hasScreenAudio = screenAudioService.getIsCapturing();
       btnStopShare.style.display = voiceStore.isScreenSharing ? 'inline-flex' : 'none';
       btnStopShare.title = hasScreenAudio ? t('stage.stopScreenShareWithAudio') : t('stage.stopScreenShare');
     }
     if (btnLeave) {
-      btnLeave.style.marginLeft = voiceStore.isScreenSharing ? '8px' : '12px';
+      btnLeave.style.marginLeft = '12px';
     }
 
     // Top broadcast banner
@@ -632,8 +655,6 @@ export class VoiceStageView {
         // Persisted per device, not per person (#363): the same person sharing
         // from two machines gets one slider each.
         settingsStore.setScreenAudioVolume(sessionId, vol);
-        const audioEl = document.querySelector(`audio[data-screen-audio-session="${sessionId}"]`) as HTMLAudioElement | null;
-        if (audioEl) audioEl.volume = vol / 100;
       });
     });
 
@@ -660,18 +681,16 @@ export class VoiceStageView {
         if (!slider) return;
         const sessionId = slider.getAttribute('data-session-id');
         if (!sessionId) return;
-        const audioEl = document.querySelector(`audio[data-screen-audio-session="${sessionId}"]`) as HTMLAudioElement | null;
-
         const icon = btn.querySelector('.material-symbols-outlined');
         if (this.mutedScreenSessionIds.has(sessionId)) {
           this.mutedScreenSessionIds.delete(sessionId);
-          if (audioEl) audioEl.muted = voiceStore.getEffectiveDeafened() ? true : false;
+          webRtcManager.setScreenAudioMuted(sessionId, false);
           if (icon) icon.textContent = 'volume_up';
           btn.title = t('stage.screenAudioVolume');
           wrapper?.classList.remove('screen-audio-muted');
         } else {
           this.mutedScreenSessionIds.add(sessionId);
-          if (audioEl) audioEl.muted = true;
+          webRtcManager.setScreenAudioMuted(sessionId, true);
           if (icon) icon.textContent = 'volume_off';
           btn.title = t('stage.screenAudioMuted');
           wrapper?.classList.add('screen-audio-muted');
@@ -928,7 +947,7 @@ export class VoiceStageView {
             ${isMini ? '' : `<span>${isScreenTile ? t('stage.loadingScreen') : t('stage.loadingCamera')}</span>`}
           </div>
         ` : ''}
-        ${(isScreenTile && !isLocked && !isMini) ? `
+        ${(isVideoTile && !isLocked && !isMini) ? `
           <div
             class="telemetry-overlay position-${settingsStore.screenShareTelemetryPosition}${settingsStore.screenShareTelemetryEnabled ? '' : ' is-hidden'}"
             data-telemetry-key="${escapeHtml(tile.key)}"
@@ -947,7 +966,7 @@ export class VoiceStageView {
             ${isRemoteScreen ? `
               <div class="stage-volume-wrapper">
                 <div class="stage-volume-popup">
-                  <input type="range" class="stage-screen-volume-slider" data-session-id="${sidOf(p)}" min="0" max="100" value="${settingsStore.getScreenAudioVolume(sidOf(p), p.user.clientId)}" />
+                  <input type="range" class="stage-screen-volume-slider" data-session-id="${sidOf(p)}" min="0" max="200" value="${settingsStore.getScreenAudioVolume(sidOf(p), p.user.clientId)}" />
                 </div>
                 <button class="stage-volume-btn" title="${t('stage.screenAudioVolume')}" aria-label="${t('stage.volumeAria')}">
                   <span class="material-symbols-outlined md-18">volume_up</span>
@@ -964,7 +983,7 @@ export class VoiceStageView {
         `}
       ` : `
         <div class="stage-avatar-wrapper">
-          <img class="stage-avatar-img" src="${avatarSrc}">
+          <img class="stage-avatar-img" src="${avatarSrc}" data-fallback="avatar">
           ${!isMini ? `
             <div class="stage-participant-name">${escapeHtml(participantManager.displayName(p))} ${isLocal ? `(${t('common.you')})` : ''}</div>
           ` : ''}
@@ -1000,6 +1019,7 @@ export class VoiceStageView {
     }
 
     const lines = [
+      `Codec: ${snapshot.codec || '--'}`,
       `FPS: ${this.formatTelemetryNumber(snapshot.fps, 0)}`,
       `Res: ${this.formatResolution(snapshot.width, snapshot.height)}`,
       `Bitrate: ${this.formatTelemetryNumber(snapshot.bitrateKbps, 0, ' kbps')}`,
@@ -1008,13 +1028,11 @@ export class VoiceStageView {
     if (settingsStore.screenShareTelemetryMode === 'complete') {
       if (snapshot.kind === 'sender') {
         lines.push(
-          `Codec: ${snapshot.codec || '--'}`,
           `Frames enc: ${this.formatTelemetryNumber(snapshot.framesEncoded, 0)}`,
           `Keyframes: ${this.formatTelemetryNumber(snapshot.keyFramesEncoded, 0)}`
         );
       } else {
         lines.push(
-          `Codec: ${snapshot.codec || '--'}`,
           `Loss: ${this.formatTelemetryNumber(snapshot.packetLossPct, 1, '%')}`,
           `Jitter: ${this.formatTelemetryNumber(snapshot.jitterMs, 1, ' ms')}`,
           `Frames dec: ${this.formatTelemetryNumber(snapshot.framesDecoded, 0)}`,
@@ -1055,14 +1073,17 @@ export class VoiceStageView {
   }
 
   /**
-   * Screen tiles currently on the stage. Built the same way as
-   * `buildStageTiles` so the keys match the overlays already in the DOM (#340).
+   * Video tiles currently on the stage — every screen share plus every camera
+   * (#493). Built the same way as `buildStageTiles` so the keys match the
+   * overlays already in the DOM (#340).
    */
-  private getScreenTiles(): StageTile[] {
+  private getTelemetryTiles(): StageTile[] {
     if (!this.currentChannelId) return [];
     const tiles: StageTile[] = [];
     for (const p of participantManager.getInVoiceChannel(this.currentChannelId)) {
       const isLocal = serverStore.isMySession(p.user.sessionId);
+      const isCamOn = isLocal ? voiceStore.isCameraOn : (p.voiceState?.isCameraOn ?? false);
+      if (isCamOn) tiles.push({ p, kind: 'camera', key: `${sidOf(p)}:camera` });
       for (const shareId of this.getShareIds(p, isLocal)) {
         tiles.push({ p, kind: 'screen', key: `${sidOf(p)}:screen:${shareId}`, shareId });
       }
@@ -1070,12 +1091,12 @@ export class VoiceStageView {
     return tiles;
   }
 
-  private hasActiveScreenShares(): boolean {
-    return this.getScreenTiles().length > 0;
+  private hasTelemetryTiles(): boolean {
+    return this.getTelemetryTiles().length > 0;
   }
 
   private syncTelemetryMonitor(): void {
-    if (!this.currentChannelId || !settingsStore.screenShareTelemetryEnabled || !this.hasActiveScreenShares()) {
+    if (!this.currentChannelId || !settingsStore.screenShareTelemetryEnabled || !this.hasTelemetryTiles()) {
       this.stopTelemetryMonitor(false);
       this.applyTelemetryOverlayState();
       return;
@@ -1101,9 +1122,9 @@ export class VoiceStageView {
 
     this.telemetryRefreshInFlight = true;
     try {
-      const screenTiles = this.getScreenTiles();
+      const videoTiles = this.getTelemetryTiles();
 
-      if (screenTiles.length === 0) {
+      if (videoTiles.length === 0) {
         this.telemetrySnapshots.clear();
         this.telemetryByteSamples.clear();
         this.applyTelemetryOverlayState();
@@ -1112,7 +1133,7 @@ export class VoiceStageView {
       }
 
       const nextSnapshots = new Map<string, ScreenTelemetrySnapshot>();
-      await Promise.all(screenTiles.map(async (tile) => {
+      await Promise.all(videoTiles.map(async (tile) => {
         const snapshot = await this.collectTelemetrySnapshot(tile);
         if (snapshot) {
           nextSnapshots.set(tile.key, snapshot);
@@ -1120,7 +1141,7 @@ export class VoiceStageView {
       }));
 
       this.telemetrySnapshots = nextSnapshots;
-      this.pruneTelemetryByteSamples(Array.from(screenTiles, (tile) => tile.key));
+      this.pruneTelemetryByteSamples(Array.from(videoTiles, (tile) => tile.key));
       this.applyTelemetryOverlayState();
     } finally {
       this.telemetryRefreshInFlight = false;
@@ -1130,19 +1151,22 @@ export class VoiceStageView {
   private async collectTelemetrySnapshot(tile: StageTile): Promise<ScreenTelemetrySnapshot | null> {
     const isLocal = serverStore.isMySession(tile.p.user.sessionId);
     return isLocal
-      ? this.collectSenderTelemetry(tile.key, tile.shareId!)
+      ? this.collectSenderTelemetry(tile.key, tile.shareId ?? null)
       : this.collectReceiverTelemetry(tile);
   }
 
   /**
-   * Stats for one local share only (#340). Reading `getStats()` off the
-   * senders that carry this share — instead of the whole peer connection —
-   * keeps a second share's bitrate and resolution out of these numbers.
+   * Stats for one local video source only (#340). Reading `getStats()` off the
+   * senders that carry this source — instead of the whole peer connection —
+   * keeps a second share (or the camera) out of these numbers. A null
+   * `shareId` means the camera tile (#493).
    */
-  private async collectSenderTelemetry(tileKey: string, shareId: string): Promise<ScreenTelemetrySnapshot | null> {
-    const senders = webRtcManager.getScreenSendersForShare(shareId);
-    const localTrack = this.getLocalScreenTrack(shareId);
-    const fallback = this.getLocalScreenFallback(shareId);
+  private async collectSenderTelemetry(tileKey: string, shareId: string | null): Promise<ScreenTelemetrySnapshot | null> {
+    const senders = shareId === null
+      ? webRtcManager.getCameraSenders()
+      : webRtcManager.getScreenSendersForShare(shareId);
+    const localTrack = this.getLocalVideoTrack(shareId);
+    const fallback = this.getLocalVideoFallback(shareId);
 
     if (senders.length === 0) {
       return fallback;
@@ -1212,13 +1236,14 @@ export class VoiceStageView {
   }
 
   /**
-   * Stats for one remote share only (#340). The receiver is matched by the
-   * routed screen track, so a peer sharing two screens (or a screen plus a
-   * camera) reports separate numbers on each tile.
+   * Stats for one remote video source only (#340, #493). The receiver is
+   * matched by the routed track, so a peer sharing two screens (or a screen
+   * plus a camera) reports separate numbers on each tile.
    */
   private async collectReceiverTelemetry(tile: StageTile): Promise<ScreenTelemetrySnapshot | null> {
     const sessionId = sidOf(tile.p);
-    const track = this.getRemoteScreenStream(tile)?.getVideoTracks()[0];
+    const stream = tile.kind === 'camera' ? tile.p.remoteStream : this.getRemoteScreenStream(tile);
+    const track = stream?.getVideoTracks()[0];
     if (!track) return null;
 
     const receiver = webRtcManager.getReceiverForTrack(sessionId, track.id);
@@ -1263,13 +1288,16 @@ export class VoiceStageView {
     }
   }
 
-  /** Local video track backing one screen share (#340). */
-  private getLocalScreenTrack(shareId: string): MediaStreamTrack | null {
-    return videoService.getScreenStream(shareId)?.getVideoTracks()[0] ?? null;
+  /** Local video track backing one screen share, or the camera when null (#340, #493). */
+  private getLocalVideoTrack(shareId: string | null): MediaStreamTrack | null {
+    const stream = shareId === null
+      ? videoService.getCameraStream()
+      : videoService.getScreenStream(shareId);
+    return stream?.getVideoTracks()[0] ?? null;
   }
 
-  private getLocalScreenFallback(shareId: string): ScreenTelemetrySnapshot | null {
-    const track = this.getLocalScreenTrack(shareId);
+  private getLocalVideoFallback(shareId: string | null): ScreenTelemetrySnapshot | null {
+    const track = this.getLocalVideoTrack(shareId);
     if (!track) return null;
 
     const settings = track.getSettings();
@@ -1294,12 +1322,23 @@ export class VoiceStageView {
   }
 
   private getCodecName(stats: RTCStatsReport, codecId?: string): string | null {
-    if (!codecId) return null;
-    const codecReport = stats.get(codecId) as any;
-    const mimeType = typeof codecReport?.mimeType === 'string' ? codecReport.mimeType : '';
-    if (!mimeType) return null;
-    const parts = mimeType.split('/');
-    return parts[parts.length - 1] || mimeType;
+    if (codecId) {
+      const codecReport = stats.get(codecId) as any;
+      const mimeType = typeof codecReport?.mimeType === 'string' ? codecReport.mimeType : '';
+      if (mimeType) {
+        const parts = mimeType.split('/');
+        return parts[parts.length - 1] || mimeType;
+      }
+    }
+    // Fallback: search for codec report in stats
+    let fallbackCodec: string | null = null;
+    stats.forEach((report: any) => {
+      if (!fallbackCodec && report.type === 'codec' && typeof report.mimeType === 'string' && report.mimeType.toLowerCase().startsWith('video/')) {
+        const parts = report.mimeType.split('/');
+        fallbackCodec = parts[parts.length - 1] || report.mimeType;
+      }
+    });
+    return fallbackCodec;
   }
 
   private computeBitrateKbps(key: string, bytes: number): number | null {
@@ -1347,10 +1386,11 @@ export class VoiceStageView {
 
       if (!pingBadge || !pingText || !this.currentChannelId) return;
 
+      const isSfu = webRtcManager.isSfuMode();
       const participants = participantManager.getInVoiceChannel(this.currentChannelId);
       const isSolo = participants.length <= 1;
 
-      if (isSolo) {
+      if (isSolo && !isSfu) {
         pingBadge.className = 'stage-ping-badge good';
         pingText.textContent = '0 ms';
         if (tooltipContent) {
@@ -1379,15 +1419,16 @@ export class VoiceStageView {
         }
 
         if (tooltipContent) {
+          const tooltipKey = isSfu ? 'stage.tooltipPingSfu' : 'stage.tooltipPing';
           tooltipContent.innerHTML = `
-            ${t('stage.tooltipPing', { ping: avgPing, quality })}
+            ${t(tooltipKey as any, { ping: avgPing, quality })}
           `;
         }
       } else {
-        pingText.textContent = 'P2P';
+        pingText.textContent = isSfu ? 'SFU' : 'P2P';
         pingBadge.className = 'stage-ping-badge good';
         if (tooltipContent) {
-          tooltipContent.innerHTML = t('stage.tooltipEstablishing');
+          tooltipContent.innerHTML = isSfu ? t('stage.tooltipEstablishingSfu' as any) : t('stage.tooltipEstablishing');
         }
       }
     };
@@ -1554,6 +1595,11 @@ export class VoiceStageView {
       }
     });
 
+    const btnOverlay = document.getElementById('stage-btn-overlay');
+    btnOverlay?.addEventListener('click', () => {
+      overlayConfigModal.open();
+    });
+
     const btnSoundboard = document.getElementById('stage-btn-soundboard');
     btnSoundboard?.addEventListener('click', () => {
       soundboardModal.open();
@@ -1595,6 +1641,18 @@ export class VoiceStageView {
 
     const u8 = appEvents.on('local.screen_audio_started', () => this.updateControlsUI());
     const u9 = appEvents.on('local.screen_audio_stopped', () => this.updateControlsUI());
+    const u10 = appEvents.on('overlay.state_changed', () => this.updateControlsUI());
+    // Arming "open on leaving the stage" turns the overlay on without opening a
+    // window, so the stage controls have to follow the setting too (#169).
+    const u13 = appEvents.on('overlay_settings.updated', () => this.updateControlsUI());
+
+    const u11 = appEvents.on('voice.mode_switched', () => {
+      this.updateHeaderModeBadge();
+      this.renderParticipants();
+    });
+    const u12 = appEvents.on('server.meta_updated', () => {
+      this.updateHeaderModeBadge();
+    });
 
     // `remote.peer_failed` / `remote.peer_recovered` are not handled here on
     // purpose: WebRtcManager writes the flag straight into the participant
@@ -1603,7 +1661,21 @@ export class VoiceStageView {
     // browsing another server during a call (#400), write it onto the wrong
     // server's participants (#426).
 
-    this.unbindEvents.push(u1, u2, u3, u4, u5, u6, u7, u8, u9);
+    this.unbindEvents.push(u1, u2, u3, u4, u5, u6, u7, u8, u9, u10, u11, u12, u13);
+  }
+
+  private updateHeaderModeBadge(): void {
+    const wrapper = document.getElementById('stage-header-mode-badge-wrapper');
+    if (!wrapper) return;
+    wrapper.innerHTML = webRtcManager.isSfuMode()
+      ? `<div class="header-status-badge sfu-mode-badge" style="background-color: rgba(88, 101, 242, 0.15); color: var(--accent-primary); display: flex; align-items: center; gap: 6px;" title="${t('stage.sfuModeTooltip')}">
+           <span class="material-symbols-outlined md-14">hub</span>
+           <span>${t('stage.connectedSfu')}</span>
+         </div>`
+      : `<div class="header-status-badge p2p-mode-badge" style="background-color: rgba(35, 165, 90, 0.15); color: var(--success); display: flex; align-items: center; gap: 6px;" title="${t('stage.p2pModeTooltip')}">
+           <span class="material-symbols-outlined md-14">wifi_tethering</span>
+           <span>${t('stage.connectedMesh')}</span>
+         </div>`;
   }
 
   private unbindListeners(): void {

@@ -1,4 +1,4 @@
-import { MessageType, Permission, SoundboardPlayedPayload } from '@monky/shared';
+import { MessageType, Permission, SoundboardPlayedPayload, SoundboardStoppedPayload } from '@monky/shared';
 import { appEvents } from './EventBus';
 import { callClient } from './serverConnection';
 import { sessionManager } from './SessionManager';
@@ -38,6 +38,11 @@ export class SoundboardService {
     // Listen to network events when another user or server sends a soundboard play
     appEvents.on(`message.${MessageType.SOUNDBOARD_PLAYED}`, (payload: SoundboardPlayedPayload) => {
       this.handleIncomingSound(payload);
+    });
+
+    // Whoever started the sound stopped it, so the whole channel drops it (#499).
+    appEvents.on(`message.${MessageType.SOUNDBOARD_STOPPED}`, (payload: SoundboardStoppedPayload) => {
+      if (payload?.userId) this.stopSoundForUser(payload.userId);
     });
 
     // Update active soundboard playbacks when local user deafens
@@ -180,6 +185,47 @@ export class SoundboardService {
         console.warn('[SoundboardService] Error stopping user audio:', err);
       }
       appEvents.emit('soundboard.playback_ended', { userId, soundName: existing.soundName });
+    }
+  }
+
+  /**
+   * Stop requested from the UI. The audio travels once and is then played by
+   * each listener on their own, so stopping your own sound has to be announced
+   * to the channel — otherwise only the sender falls silent while everyone else
+   * hears the rest of the file (#499). Stopping somebody else's sound stays
+   * local: it is a personal "I don't want to hear this", not a moderation tool.
+   */
+  public stopSoundFromUi(userId: string): void {
+    if (this.isLocalPlayback(userId)) this.broadcastStop();
+    this.stopSoundForUser(userId);
+  }
+
+  /**
+   * Stops every sound at once (#517). Our own playback is announced to the
+   * channel for the same reason a single stop is: the audio already travelled,
+   * so silence has to be asked for, not assumed.
+   */
+  public stopAllFromUi(): void {
+    const hasLocalPlayback = this.getActivePlaybacks().some((p) => this.isLocalPlayback(p.userId));
+    if (hasLocalPlayback) this.broadcastStop();
+    this.stopSound();
+  }
+
+  /** Whether a playback entry belongs to this client (call user or preview). */
+  private isLocalPlayback(userId: string): boolean {
+    if (userId === 'local') return true;
+    const voiceKey = voiceStore.voiceSessionKey;
+    const voiceServerStore = (voiceKey ? sessionManager.get(voiceKey)?.serverStore : null) ?? serverStore;
+    return !!voiceServerStore.currentUser && voiceServerStore.currentUser.id === userId;
+  }
+
+  private broadcastStop(): void {
+    const channelId = voiceStore.currentVoiceChannelId;
+    if (!channelId || !voiceStore.voiceSessionKey) return;
+    try {
+      callClient().send(MessageType.SOUNDBOARD_STOP, { channelId });
+    } catch (err) {
+      console.warn('[SoundboardService] Failed to broadcast soundboard stop:', err);
     }
   }
 

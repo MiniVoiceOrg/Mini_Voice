@@ -16,13 +16,21 @@ Dentro do servidor, clique no **nome do servidor** › **Convidar Amigos**. O ap
 | Outra internet | Seu IP público + porta liberada no roteador |
 | Sem mexer no roteador | IP da VPN, como Radmin VPN, Hamachi, ZeroTier ou Tailscale |
 
+## Modos de Voz e Mídia (P2P Mesh vs SFU)
+
+Ao criar ou administrar o servidor, você escolhe o modo de voz e vídeo:
+- **P2P Mesh (Padrão):** O áudio e vídeo trafegam diretamente entre os participantes. O servidor apenas faz a sinalização, sem consumir CPU de transcodificação ou banda de mídia.
+- **SFU Centralizado (mediasoup):** O fluxo de cada membro é enviado uma única vez ao servidor, que repassa aos demais participantes. Economiza CPU e upload de quem transmite telas em 1080p60. O app e o CLI incluem um **Estimador de Capacidade** para calcular o hardware e banda necessários.
+
 ## Liberar acesso pela internet
 
-Libere a porta no firewall, faça port forwarding da porta `3000` (ou a escolhida) para o IP local do PC e use VPN se o provedor estiver atrás de CGNAT.
+- **Porta TCP principal:** Libere a porta `3000` (ou a escolhida) no firewall e configure o port forwarding no roteador.
+- **Portas para o SFU (mediasoup):** Se usar o modo SFU, libere também o range `40000-49151` — em UDP e em TCP — no roteador/firewall. Numa VPS, veja [Abrindo as portas do Modo SFU](/hospedar-em-vps#abrindo-as-portas-do-modo-sfu).
+- **Sem mexer no roteador:** É possível usar uma VPN como Radmin VPN, Hamachi, ZeroTier ou Tailscale.
 
 ## Administrar
 
-Em **Configurações do Servidor** é possível renomear o servidor, alterar/remover senha, definir ou remover o limite de membros e permitir ou bloquear o soundboard. Os cabeçalhos de canais têm **+** para criar e lixeira para apagar.
+Em **Configurações do Servidor** é possível renomear o servidor, alterar/remover senha, alternar o modo de voz (P2P / SFU), definir ou remover o limite de membros e permitir ou bloquear o soundboard. Os cabeçalhos de canais têm **+** para criar e lixeira para apagar.
 
 O limite conta **membros cadastrados**, não quem está online: uma pessoa ocupa a vaga a partir da primeira entrada, mesmo desconectada. Para liberar a vaga, expulse o membro. Com o limite desligado, o servidor aceita quantas pessoas quiserem entrar.
 

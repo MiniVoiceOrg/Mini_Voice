@@ -6,14 +6,21 @@ import { networkClient } from '../core/NetworkClient';
 import { openServerSession } from '../core/serverConnection';
 import { getAvatarUrl } from '../utils/avatar';
 import { settingsModal } from './SettingsModal';
+import { settingsStore } from '../stores/settingsStore';
 import { withButtonLoading } from '../utils/buttonLoading';
 import { showAlert, showConfirm } from './Dialog';
 import { pickAndCropImage } from './ImageCropModal';
 import { showIdentityImportDialog } from './IdentityDialogs';
 import { serverMonitorModal } from './ServerMonitorModal';
 import { confirmStopHostedServer } from '../utils/hostedServer';
+import { onboardingWizard } from './OnboardingWizard';
 import logoUrl from '../assets/Logo.png';
 import { getLanguage, t } from '../i18n';
+import {
+  renderWhatPassesWhereTableHtml,
+  renderCapacityEstimatorHtml,
+  attachCapacityEstimatorEvents,
+} from '../utils/voiceModeInfo';
 
 interface DiscoveredServer {
   host: string;
@@ -32,6 +39,8 @@ export class ConnectionView {
   private runningCreatedServerId: string | null = null;
   private runningHostedPort: number | null = null;
   private readonly discoveredServers: Map<string, DiscoveredServer> = new Map();
+  private onboardingAutoOpened: boolean = false;
+  private contentResizeObserver: ResizeObserver | null = null;
 
   constructor(container: HTMLElement) {
     this.container = container;
@@ -238,10 +247,15 @@ export class ConnectionView {
             <img src="${logoUrl}" alt="Monky Logo" style="width: 200px; max-width: 70%; height: auto; max-height: 80px; object-fit: contain; filter: drop-shadow(0 4px 16px rgba(88, 101, 242, 0.4));">
             <div class="brand-logo" style="display: flex; align-items: center; justify-content: center; gap: 8px;">
               <span style="font-size: 24px; font-weight: 800; letter-spacing: -0.5px;">Monky</span>
-              <span class="brand-badge" style="font-size: 11px; padding: 2px 8px;">P2P</span>
+              <span class="brand-badge" style="font-size: 11px; padding: 2px 8px;">${t('connection.brandBadge')}</span>
             </div>
             <div class="brand-tagline" style="font-size: 12px; color: var(--text-secondary); margin-top: 2px;">${t('connection.tagline')}</div>
           </div>
+
+          <!-- Onboarding help button -->
+          <button class="onboarding-help-btn" id="btn-onboarding">
+            ${t('onboarding.helpButton')}
+          </button>
 
           <div class="nav-tabs" style="margin-bottom: 14px;">
             <button id="tab-join" class="tab-button ${this.activeTab === 'join' ? 'active' : ''}">${t('connection.tabJoin')}</button>
@@ -252,7 +266,7 @@ export class ConnectionView {
 
           <!-- Avatar Picker -->
           <div class="avatar-picker" style="margin-bottom: 14px; gap: 12px;">
-            <img id="avatar-preview" class="avatar-preview-img" style="width: 46px; height: 46px;" src="${getAvatarUrl(this.selectedAvatarBase64)}">
+            <img id="avatar-preview" class="avatar-preview-img" style="width: 46px; height: 46px;" src="${getAvatarUrl(this.selectedAvatarBase64)}" data-fallback="avatar">
             <div>
               <button id="btn-select-avatar" class="btn btn-secondary" style="padding: 5px 10px; font-size: 11px;">
                 <span class="material-symbols-outlined md-14" style="margin-right: 4px;">photo_camera</span>
@@ -412,7 +426,7 @@ export class ConnectionView {
                 </div>
               </div>
 
-              <div class="form-group" style="display: flex; align-items: center; justify-content: space-between; gap: 12px;">
+              <div class="form-group" style="flex-direction: row; align-items: center; justify-content: space-between; gap: 12px;">
                 <div>
                   <label style="margin-bottom: 2px;">${t('connection.memberLimitLabel')}</label>
                   <div style="font-size: 11px; color: var(--text-muted);">${t('connection.memberLimitDesc')}</div>
@@ -427,6 +441,37 @@ export class ConnectionView {
                 <input id="host-max-users" type="number" min="1" step="1" value="20">
               </div>
 
+              <div class="form-group" style="margin-top: 12px; background: var(--bg-card); border: 1px solid var(--border-color); border-radius: var(--radius-md); padding: 14px;">
+                <div style="font-size: 13px; font-weight: 600; color: var(--text-primary); margin-bottom: 4px; display: flex; align-items: center; gap: 6px;">
+                  <span class="material-symbols-outlined md-18" style="color: var(--accent-primary);">hub</span>
+                  <span>${t('serverSettings.voiceModeLabel')}</span>
+                </div>
+                <div style="font-size: 11px; color: var(--text-muted); margin-bottom: 12px;">
+                  ${t('serverSettings.voiceModeDesc')}
+                </div>
+
+                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 10px;" id="host-voice-mode-cards">
+                  <div class="voice-mode-card selected" data-mode="p2p" style="padding: 10px 12px; border: 1.5px solid var(--accent-primary); background: rgba(88, 101, 242, 0.1); border-radius: var(--radius-md); cursor: pointer; transition: all 0.15s ease;">
+                    <div style="display: flex; align-items: center; gap: 6px; margin-bottom: 4px;">
+                      <span class="material-symbols-outlined md-16" style="color: var(--accent-primary);">wifi_tethering</span>
+                      <span style="font-size: 12px; font-weight: 600; color: var(--text-primary);">${t('serverSettings.voiceModeP2pTitle')}</span>
+                    </div>
+                    <div style="font-size: 10px; color: var(--text-muted); line-height: 1.3;">${t('serverSettings.voiceModeP2pDesc')}</div>
+                  </div>
+                  <div class="voice-mode-card" data-mode="sfu" style="padding: 10px 12px; border: 1.5px solid var(--border-color); background: var(--bg-card-secondary); border-radius: var(--radius-md); cursor: pointer; transition: all 0.15s ease;">
+                    <div style="display: flex; align-items: center; gap: 6px; margin-bottom: 4px;">
+                      <span class="material-symbols-outlined md-16" style="color: var(--text-muted);">hub</span>
+                      <span style="font-size: 12px; font-weight: 600; color: var(--text-primary);">${t('serverSettings.voiceModeSfuTitle')}</span>
+                    </div>
+                    <div style="font-size: 10px; color: var(--text-muted); line-height: 1.3;">${t('serverSettings.voiceModeSfuDesc')}</div>
+                  </div>
+                </div>
+                <input type="hidden" id="input-host-voice-mode" value="p2p" />
+
+                ${renderWhatPassesWhereTableHtml()}
+                ${renderCapacityEstimatorHtml('host')}
+              </div>
+
               <button type="submit" id="btn-submit-host" class="btn btn-primary" style="width: 100%; margin-top: 8px;">
                 <span class="material-symbols-outlined md-18" style="margin-right: 6px;">add_circle</span>
                 ${t('connection.createAndStart')}
@@ -439,7 +484,37 @@ export class ConnectionView {
     `;
 
     this.attachEvents();
+    this.observeContentHeight();
     void this.refreshHostedServerStatus();
+  }
+
+  /**
+   * Grows the window to whatever the card currently measures so the home screen
+   * never needs scrolling (#536). A ResizeObserver covers every cause at once:
+   * the error banner, switching tabs, the LAN/saved server lists and language
+   * changes. The main process caps the result at the display's work area.
+   */
+  private observeContentHeight(): void {
+    const layout = this.container.querySelector('.connection-layout') as HTMLElement | null;
+    const card = layout?.querySelector('.connection-card') as HTMLElement | null;
+    if (!layout || !card || typeof ResizeObserver === 'undefined') return;
+
+    this.contentResizeObserver?.disconnect();
+    this.contentResizeObserver = new ResizeObserver(() => {
+      const cardHeight = card.getBoundingClientRect().height;
+      // A detached card measures zero; resizing to that would be nonsense.
+      if (cardHeight <= 0) return;
+      const style = getComputedStyle(layout);
+      const padding = parseFloat(style.paddingTop) + parseFloat(style.paddingBottom);
+      // The custom title bar sits outside the layout but inside the window, so
+      // asking only for the card's height left it short by exactly that strip —
+      // enough to keep a scrollbar around. Measuring the gap instead of
+      // hardcoding 33px keeps this right if the title bar ever changes.
+      const outsideLayout = Math.max(0, window.innerHeight - layout.getBoundingClientRect().height);
+      const needed = cardHeight + (Number.isFinite(padding) ? padding : 0) + outsideLayout;
+      void window.api?.fitHomeWindowToContent?.(Math.ceil(needed));
+    });
+    this.contentResizeObserver.observe(card);
   }
 
   private async startHostedServer(server: CreatedServer, nickname: string): Promise<void> {
@@ -481,6 +556,7 @@ export class ConnectionView {
         initialVoiceChannel: server.voiceChannel,
         serverId: server.id,
         maxUsers: server.maxUsers,
+        voiceMode: server.voiceMode,
       });
 
       if (!hostRes.success) {
@@ -666,7 +742,7 @@ export class ConnectionView {
           ? `http://${host}:${port}${u.avatarUrl}`
           : u.avatarUrl || getAvatarUrl(null);
         const title = escapeHtml(u.nickname || t('connection.unknownUser'));
-        return `<img class="preview-avatar" src="${raw}" title="${title}" onerror="this.src='${getAvatarUrl(null)}'">`;
+        return `<img class="preview-avatar" src="${raw}" title="${title}" data-fallback="avatar">`;
       })
       .join('');
 
@@ -878,6 +954,33 @@ export class ConnectionView {
       withButtonLoading(e.currentTarget as HTMLElement, () => settingsModal.open());
     });
 
+    // Onboarding wizard button
+    document.getElementById('btn-onboarding')?.addEventListener('click', () => {
+      onboardingWizard.open((action) => {
+        if (action === 'join' && this.activeTab !== 'join') {
+          this.activeTab = 'join';
+          this.render();
+        } else if (action === 'host' && this.activeTab !== 'host') {
+          this.activeTab = 'host';
+          this.render();
+        }
+      });
+    });
+
+    // Auto-open onboarding on first launch
+    if (!settingsStore.onboardingCompleted && !onboardingWizard.isOpen && !this.onboardingAutoOpened) {
+      this.onboardingAutoOpened = true;
+      onboardingWizard.open((action) => {
+        if (action === 'join' && this.activeTab !== 'join') {
+          this.activeTab = 'join';
+          this.render();
+        } else if (action === 'host' && this.activeTab !== 'host') {
+          this.activeTab = 'host';
+          this.render();
+        }
+      });
+    }
+
     importIdentityButton?.addEventListener('click', async () => {
       const identity = await showIdentityImportDialog();
       if (!identity) return;
@@ -906,6 +1009,26 @@ export class ConnectionView {
           : `<span class="material-symbols-outlined md-18" style="margin-right: 6px;">close</span> ${t('common.cancel')}`;
       }
     });
+
+    const hostVoiceCards = document.querySelectorAll('#host-voice-mode-cards .voice-mode-card');
+    const hiddenHostVoiceMode = document.getElementById('input-host-voice-mode') as HTMLInputElement | null;
+    hostVoiceCards.forEach((card) => {
+      card.addEventListener('click', () => {
+        const mode = (card as HTMLElement).dataset.mode;
+        if (!mode) return;
+        if (hiddenHostVoiceMode) hiddenHostVoiceMode.value = mode;
+        hostVoiceCards.forEach((c) => {
+          const isSelected = (c as HTMLElement).dataset.mode === mode;
+          c.classList.toggle('selected', isSelected);
+          (c as HTMLElement).style.borderColor = isSelected ? 'var(--accent-primary)' : 'var(--border-color)';
+          (c as HTMLElement).style.background = isSelected ? 'rgba(88, 101, 242, 0.1)' : 'var(--bg-card-secondary)';
+          const icon = c.querySelector('.material-symbols-outlined') as HTMLElement | null;
+          if (icon) icon.style.color = isSelected ? 'var(--accent-primary)' : 'var(--text-muted)';
+        });
+      });
+    });
+
+    attachCapacityEstimatorEvents(this.container, 'host');
 
     startCreatedButtons.forEach((btn) => {
       btn.addEventListener('click', async (e) => {
@@ -1123,6 +1246,10 @@ export class ConnectionView {
           server.textChannel === initialText &&
           server.voiceChannel === initialVoice
         );
+        const voiceModeInput = (document.getElementById('input-host-voice-mode') as HTMLInputElement | null) ||
+          (document.querySelector('input[name="host-voice-mode"]:checked') as HTMLInputElement | null);
+        const voiceMode = (voiceModeInput?.value as 'p2p' | 'sfu') || 'p2p';
+
         const createdServer: CreatedServer = {
           id: existingServer?.id || this.createCreatedServerId(),
           name: serverName,
@@ -1133,6 +1260,7 @@ export class ConnectionView {
           createdAt: existingServer?.createdAt || now,
           lastStarted: now,
           maxUsers,
+          voiceMode,
         };
 
         await this.startHostedServer(createdServer, nickname);

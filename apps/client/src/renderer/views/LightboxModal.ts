@@ -1,5 +1,24 @@
 import { t } from '../i18n';
 import { initializeCustomVideoPlayers } from '../utils/videoPlayer';
+import { showAlert } from './Dialog';
+
+/**
+ * Handler de download que o lightbox espera. Fica aqui porque todo mundo que
+ * abre o visualizador precisa exatamente disto — o chat e o menu de contexto
+ * mantinham a mesma dezena de linhas duplicada, cada uma com sua cópia do
+ * aviso de falha (#406).
+ */
+export async function downloadLightboxFile(url: string, fileName: string): Promise<void> {
+  if (!window.api?.downloadFile) return;
+  const result = await window.api.downloadFile(url, fileName);
+  if (!result.success && result.error) {
+    await showAlert({
+      title: t('chat.downloadFailedTitle'),
+      message: t('chat.downloadFailedMessage', { error: result.error }),
+      variant: 'danger',
+    });
+  }
+}
 
 export interface LightboxMedia {
   kind: 'image' | 'video';

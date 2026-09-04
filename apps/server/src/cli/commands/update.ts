@@ -1,8 +1,10 @@
 import fs from 'fs';
 import path from 'path';
-import { execSync, spawnSync } from 'child_process';
+import { execSync } from 'child_process';
 import { ANSI, color } from '../constants';
 import { GlobalArgs } from '../context';
+import { resolveInterpreter } from '../health';
+import { t } from '../i18n/index';
 import {
   AUTO_UPDATE_CRON,
   ensurePm2,
@@ -12,7 +14,9 @@ import {
   isPm2Available,
   LEGACY_UPDATER_PROCESS_NAME,
 } from '../pm2';
-import { confirm } from '../prompts';import { restartServerCommand } from './serverLifecycle';
+import { confirm } from '../prompts';
+import { runSync } from '../process';
+import { restartServerCommand } from './serverLifecycle';
 
 export const GITHUB_RELEASES_URL =
   'https://api.github.com/repos/MonkyOrg/Monky/releases?per_page=100';
@@ -230,29 +234,24 @@ export async function checkForUpdate(
   includeBeta = false
 ): Promise<{ hasUpdate: boolean; local: string; remote: string; url: string; tgzUrl?: string; isPrerelease: boolean }> {
   const local = getLocalVersion();
-  console.log(color(`Versão local: ${local}`, ANSI.dim));
-  console.log(
-    color(
-      `Verificando atualizações no GitHub (${includeBeta ? 'Canal Beta/Prerelease' : 'Canal Estável'})...`,
-      ANSI.dim
-    )
-  );
+  console.log(color(t('update.localVersion', { version: local }), ANSI.dim));
+  console.log(color(includeBeta ? t('update.checkingBeta') : t('update.checkingStable'), ANSI.dim));
 
   const latest = await fetchLatestVersion(includeBeta);
   if (!latest) {
-    console.log(color('Não foi possível verificar atualizações (sem conexão ou limite de API).', ANSI.yellow));
+    console.log(color(t('update.checkFailed'), ANSI.yellow));
     return { hasUpdate: false, local, remote: local, url: '', isPrerelease: false };
   }
 
   const hasUpdate = compareVersions(local, latest.version) > 0;
   if (hasUpdate) {
     const tagDesc = latest.isPrerelease ? ' (Beta)' : '';
-    console.log(color(`Nova versão disponível: ${latest.version}${tagDesc}`, ANSI.green));
+    console.log(color(t('update.newVersion', { version: latest.version + tagDesc }), ANSI.green));
     if (latest.url) {
       console.log(`Release: ${latest.url}`);
     }
   } else {
-    console.log(color('Você já está na versão mais recente.', ANSI.green));
+    console.log(color(t('update.upToDate'), ANSI.green));
   }
 
   return {
@@ -265,10 +264,59 @@ export async function checkForUpdate(
   };
 }
 
+/**
+ * The only dependency in the CLI tree that ships an install script.
+ *
+ * mediasoup builds its worker binary in `postinstall`; without it the SFU
+ * cannot start and voice silently degrades to P2P.
+ */
+export const SCRIPTED_DEPENDENCY = 'mediasoup';
+
+/**
+ * Whether this npm understands `--allow-scripts`.
+ *
+ * npm 11.16 started warning that dependency install scripts will be blocked
+ * and npm 12 blocks them outright. Older versions treat the flag as unknown
+ * config, so it is only passed where it actually means something.
+ */
+export function npmSupportsAllowScripts(npmVersion: string): boolean {
+  const [major = 0, minor = 0] = String(npmVersion)
+    .trim()
+    .split('.')
+    .map((part) => Number.parseInt(part, 10) || 0);
+  if (major >= 12) return true;
+  return major === 11 && minor >= 16;
+}
+
+function detectNpmVersion(): string | null {
+  try {
+    const result = runSync('npm', ['-v'], { encoding: 'utf8' });
+    if (result.status !== 0 || !result.stdout) return null;
+    return result.stdout.trim();
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Arguments for the global install, allowing mediasoup's script when needed.
+ *
+ * A dependency cannot authorise its own scripts — only the invoking install
+ * can — so every entry point that installs the CLI has to opt in explicitly.
+ */
+export function buildInstallArgs(tgzUrl: string, npmVersion: string | null): string[] {
+  const args = ['install', '-g'];
+  if (npmVersion && npmSupportsAllowScripts(npmVersion)) {
+    args.push(`--allow-scripts=${SCRIPTED_DEPENDENCY}`);
+  }
+  args.push(tgzUrl);
+  return args;
+}
+
 export async function performUpdate(
   options: { beta?: boolean; targetVersion?: string; tgzUrl?: string } = {}
 ): Promise<boolean> {
-  console.log(color('Atualizando Monky CLI...', ANSI.bold));
+  console.log(color(t('update.updating'), ANSI.bold));
   console.log();
 
   const tgzUrl =
@@ -278,19 +326,20 @@ export async function performUpdate(
       : null);
 
   if (!tgzUrl) {
-    console.log(color('URL do pacote da release não encontrada.', ANSI.red));
+    console.log(color(t('update.noTgzUrl'), ANSI.red));
     return false;
   }
 
-  console.log(color(`Instalando versão a partir de: ${tgzUrl}`, ANSI.cyan));
-  const installResult = spawnSync('npm', ['install', '-g', tgzUrl], { stdio: 'inherit', shell: true });
+  console.log(color(t('update.installing', { url: tgzUrl }), ANSI.cyan));
+  const installArgs = buildInstallArgs(tgzUrl, detectNpmVersion());
+  const installResult = runSync('npm', installArgs, { stdio: 'inherit' });
   if (installResult.status !== 0) {
-    console.log(color('Falha ao instalar pacote global do Monky CLI.', ANSI.red));
+    console.log(color(t('update.installFailed'), ANSI.red));
     return false;
   }
 
   console.log();
-  console.log(color('Atualização concluída com sucesso!', ANSI.green));
+  console.log(color(t('update.success'), ANSI.green));
   return true;
 }
 
@@ -309,15 +358,15 @@ export async function updateCommand(globalArgs: GlobalArgs, args: string[]): Pro
     if (assumeYes) {
       return;
     }
-    const force = await confirm('Deseja forçar a reinstalação/atualização mesmo assim?', false);
+    const force = await confirm(t('update.forceReinstall'), false);
     if (!force) return;
   }
 
   const channelLabel = isPrerelease || includeBeta ? ' (Beta)' : '';
   if (!assumeYes) {
-    const accepted = await confirm(`Deseja atualizar para a versão ${remote}${channelLabel} agora?`, true);
+    const accepted = await confirm(t('update.confirmUpdate', { version: remote + channelLabel }), true);
     if (!accepted) {
-      console.log(color('Atualização cancelada.', ANSI.yellow));
+      console.log(color(t('update.cancelled'), ANSI.yellow));
       return;
     }
   }
@@ -338,7 +387,7 @@ export async function updateCommand(globalArgs: GlobalArgs, args: string[]): Pro
     return;
   }
 
-  const shouldRestart = await confirm('Deseja reiniciar o servidor para aplicar a atualização?', true);
+  const shouldRestart = await confirm(t('update.confirmRestart'), true);
   if (shouldRestart) {
     await restartServerCommand(globalArgs);
   }
@@ -374,8 +423,8 @@ export function generateUpdaterScript(options: {
   const scheduleType = options.schedule?.type || 'daily';
   const scheduleValue = options.schedule?.value ?? '04:00';
 
-  return `// Monky auto-updater daemon — gerado pelo "monky config set autoUpdate".
-// Não edite: o arquivo é reescrito sempre que o auto-update é reconfigurado.
+  return `// Monky auto-updater daemon — generated by "monky config set autoUpdate".
+// Do not edit: this file is rewritten whenever auto-update is reconfigured.
 const { spawnSync } = require('child_process');
 
 const args = ${JSON.stringify(args, null, 2)};
@@ -400,12 +449,12 @@ function getMsUntilNextRun() {
 }
 
 function runUpdateCheck() {
-  console.log('[' + new Date().toISOString() + '] [monky-updater] Verificando atualizações programadas...');
+  console.log('[' + new Date().toISOString() + '] [monky-updater] Checking scheduled updates...');
   try {
     const result = spawnSync(process.execPath, args, { stdio: 'inherit' });
-    console.log('[monky-updater] Verificação finalizada com código:', result.status);
+    console.log('[monky-updater] Check finished with code:', result.status);
   } catch (err) {
-    console.error('[monky-updater] Erro ao executar verificação de atualização:', err);
+    console.error('[monky-updater] Error while running update check:', err);
   }
   scheduleNext();
 }
@@ -413,11 +462,11 @@ function runUpdateCheck() {
 function scheduleNext() {
   const delayMs = getMsUntilNextRun();
   const nextDate = new Date(Date.now() + delayMs);
-  console.log('[' + new Date().toISOString() + '] [monky-updater] Próxima verificação agendada para:', nextDate.toLocaleString());
+  console.log('[' + new Date().toISOString() + '] [monky-updater] Next check scheduled for:', nextDate.toLocaleString());
   setTimeout(runUpdateCheck, delayMs);
 }
 
-console.log('[monky-updater] Daemon de atualização automática iniciado (modo: ' + scheduleType + ', valor: ' + scheduleValue + ').');
+console.log('[monky-updater] Automatic update daemon started (mode: ' + scheduleType + ', value: ' + scheduleValue + ').');
 scheduleNext();
 `;
 }
@@ -453,48 +502,54 @@ export async function enableAutoUpdate(dataDir: string, schedule?: AutoUpdateSch
 
   const processName = getUpdaterProcessName(dataDir);
   for (const name of [processName, LEGACY_UPDATER_PROCESS_NAME]) {
-    spawnSync('pm2', ['delete', name], { stdio: 'ignore', shell: true });
+    runSync('pm2', ['delete', name], { stdio: 'ignore' });
   }
 
-  const result = spawnSync(
+  const interpreter = resolveInterpreter();
+  const result = runSync(
     'pm2',
     [
       'start',
       scriptPath,
       '--name',
       processName,
-      '--interpreter',
-      'node',
+      // Same reason as the server's ecosystem file: a bare `node` is resolved
+      // from the PM2 daemon's environment, which keeps the Node it was started
+      // with. After a Node upgrade that path can be gone, and PM2 then fails to
+      // spawn while still reporting the process as online (#522).
+      ...(interpreter ? ['--interpreter', interpreter] : []),
     ],
-    { stdio: 'inherit', shell: true }
+    { stdio: 'inherit' }
   );
 
   if (result.status !== 0) {
-    throw new Error('Falha ao registrar auto-update no PM2.');
+    throw new Error(t('update.autoUpdateFailed'));
   }
 
-  spawnSync('pm2', ['save'], { stdio: 'ignore', shell: true });
+  runSync('pm2', ['save'], { stdio: 'ignore' });
 
   const schedType = schedule?.type || 'daily';
   const schedVal = schedule?.value ?? '04:00';
-  const scheduleLabel = schedType === 'interval' ? `a cada ${schedVal} hora(s)` : `diariamente às ${schedVal}`;
+  const scheduleLabel = schedType === 'interval'
+    ? t('update.scheduleEvery', { value: schedVal })
+    : t('update.scheduleDaily', { value: schedVal });
 
-  console.log(color('Auto-update habilitado com sucesso!', ANSI.green));
-  console.log(`Agendamento: ${scheduleLabel}`);
-  console.log(`Canal: ${beta ? 'beta (inclui prereleases)' : 'estável'}`);
-  console.log(`Script: ${scriptPath}`);
-  console.log(color('Use "monky config set autoUpdate false" para desabilitar.', ANSI.dim));
+  console.log(color(t('update.autoUpdateEnabled'), ANSI.green));
+  console.log(t('update.schedule', { schedule: scheduleLabel }));
+  console.log(beta ? t('update.channelBeta') : t('update.channelStable'));
+  console.log(t('update.script', { path: scriptPath }));
+  console.log(color(t('update.disableHint'), ANSI.dim));
 }
 
 export async function disableAutoUpdate(dataDir: string): Promise<void> {
   if (!isPm2Available()) {
-    console.log(color('PM2 não encontrado. Auto-update já está desabilitado.', ANSI.yellow));
+    console.log(color(t('update.pm2NotFound'), ANSI.yellow));
     return;
   }
 
   for (const name of [getUpdaterProcessName(dataDir), LEGACY_UPDATER_PROCESS_NAME]) {
-    spawnSync('pm2', ['delete', name], { stdio: 'ignore', shell: true });
+    runSync('pm2', ['delete', name], { stdio: 'ignore' });
   }
-  spawnSync('pm2', ['save'], { stdio: 'ignore', shell: true });
-  console.log(color('Auto-update desabilitado.', ANSI.green));
+  runSync('pm2', ['save'], { stdio: 'ignore' });
+  console.log(color(t('update.autoUpdateDisabled'), ANSI.green));
 }

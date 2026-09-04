@@ -2,10 +2,15 @@ import jsQR from 'jsqr';
 import QRCode from 'qrcode';
 import { escapeHtml } from '../utils/html';
 import { t } from '../i18n';
+import { applyBackup, BACKUP_FILE_EXTENSION, BackupScope, collectBackup, parseBackup, scopesInBackup } from '../utils/backup';
 
 export interface IdentityInfo {
   publicKey: string;
   clientId: string;
+  /** Scopes restored from the backup that travelled with the identity (#472). */
+  restoredScopes?: BackupScope[];
+  /** The identity came in but its attached backup could not be read. */
+  extrasFailed?: boolean;
 }
 
 export async function showIdentityExportDialog(currentClientId: string): Promise<void> {
@@ -32,13 +37,34 @@ export async function showIdentityExportDialog(currentClientId: string): Promise
         <label for="identity-export-password">${t('identity.passwordLabel')}</label>
         <input id="identity-export-password" type="password" placeholder="${t('identity.passwordPlaceholder')}">
       </div>
+      <div style="display: grid; gap: 10px; margin-bottom: 14px;">
+        <div style="font-size: 11px; color: var(--text-muted);">${t('backup.includeLabel')}</div>
+        <div style="display: flex; align-items: center; justify-content: space-between; gap: 12px;">
+          <label style="font-size: 13px; cursor: pointer;" for="identity-export-include-servers">${t('backup.scopeServers')}</label>
+          <label class="toggle-switch" aria-label="${t('backup.scopeServers')}">
+            <input type="checkbox" id="identity-export-include-servers">
+            <span class="toggle-slider"></span>
+          </label>
+        </div>
+        <div style="display: flex; align-items: center; justify-content: space-between; gap: 12px;">
+          <label style="font-size: 13px; cursor: pointer;" for="identity-export-include-settings">${t('backup.scopeSettings')}</label>
+          <label class="toggle-switch" aria-label="${t('backup.scopeSettings')}">
+            <input type="checkbox" id="identity-export-include-settings">
+            <span class="toggle-slider"></span>
+          </label>
+        </div>
+      </div>
       <div style="display: flex; gap: 8px; margin-bottom: 14px;">
         <button type="button" id="btn-run-export-identity" class="btn btn-primary" style="flex: 1;">${t('identity.exportAction')}</button>
         <button type="button" id="btn-copy-export-identity" class="btn btn-secondary" style="display: none;">${t('identity.copyCode')}</button>
+        <button type="button" id="btn-file-export-identity" class="btn btn-secondary" style="display: none;">${t('backup.saveToFile')}</button>
       </div>
       <div id="identity-export-result" style="display: none;">
-        <div style="display: flex; justify-content: center; margin-bottom: 12px;">
+        <div id="identity-export-qr-wrap" style="display: flex; justify-content: center; margin-bottom: 12px;">
           <img id="identity-export-qr" alt="${t('identity.qrAlt')}" style="width: 220px; height: 220px; border-radius: 12px; background: white; padding: 8px;">
+        </div>
+        <div id="identity-export-qr-warning" style="display: none; font-size: 11px; color: var(--text-muted); margin-bottom: 10px;">
+          ${t('backup.qrTooLarge')}
         </div>
         <div class="form-group" style="margin-bottom: 0;">
           <label for="identity-export-code">${t('identity.codeLabel')}</label>
@@ -65,8 +91,13 @@ export async function showIdentityExportDialog(currentClientId: string): Promise
   const passwordInput = backdrop.querySelector('#identity-export-password') as HTMLInputElement;
   const exportButton = backdrop.querySelector('#btn-run-export-identity') as HTMLButtonElement;
   const copyButton = backdrop.querySelector('#btn-copy-export-identity') as HTMLButtonElement;
+  const fileButton = backdrop.querySelector('#btn-file-export-identity') as HTMLButtonElement;
+  const includeServers = backdrop.querySelector('#identity-export-include-servers') as HTMLInputElement;
+  const includeSettings = backdrop.querySelector('#identity-export-include-settings') as HTMLInputElement;
   const resultWrapper = backdrop.querySelector('#identity-export-result') as HTMLElement;
   const qrImage = backdrop.querySelector('#identity-export-qr') as HTMLImageElement;
+  const qrWrap = backdrop.querySelector('#identity-export-qr-wrap') as HTMLElement;
+  const qrWarning = backdrop.querySelector('#identity-export-qr-warning') as HTMLElement;
   const codeTextarea = backdrop.querySelector('#identity-export-code') as HTMLTextAreaElement;
 
   const showError = (message: string) => {
@@ -85,11 +116,29 @@ export async function showIdentityExportDialog(currentClientId: string): Promise
     exportButton.textContent = t('identity.exporting');
 
     try {
-      const exported = await window.api.exportIdentity(passwordInput.value);
-      qrImage.src = await QRCode.toDataURL(exported, { margin: 1, width: 220 });
+      const scopes: BackupScope[] = [];
+      if (includeServers.checked) scopes.push('servers');
+      if (includeSettings.checked) scopes.push('settings');
+      const extras = scopes.length > 0 ? JSON.stringify(collectBackup(scopes)) : undefined;
+
+      const exported = await window.api.exportIdentity(passwordInput.value, extras);
       codeTextarea.value = exported;
       resultWrapper.style.display = 'block';
       copyButton.style.display = 'inline-flex';
+      fileButton.style.display = 'inline-flex';
+
+      // A QR code tops out at a couple of kilobytes, and servers plus settings
+      // blow past that easily. When it does not fit we drop the QR instead of
+      // failing the whole export: the text code and the file still work.
+      try {
+        qrImage.src = await QRCode.toDataURL(exported, { margin: 1, width: 220 });
+        qrWrap.style.display = 'flex';
+        qrWarning.style.display = 'none';
+      } catch {
+        qrImage.removeAttribute('src');
+        qrWrap.style.display = 'none';
+        qrWarning.style.display = 'block';
+      }
     } catch (error: any) {
       showError(error?.message || t('identity.exportError'));
     } finally {
@@ -109,6 +158,11 @@ export async function showIdentityExportDialog(currentClientId: string): Promise
       codeTextarea.focus();
       codeTextarea.select();
     }
+  });
+
+  fileButton.addEventListener('click', async () => {
+    const result = await window.api.saveBackupFile(codeTextarea.value, `monky-identidade.${BACKUP_FILE_EXTENSION}`);
+    if (!result.success && result.error) showError(result.error);
   });
 
   backdrop.querySelectorAll('[data-action="cancel"]').forEach((element) => {
@@ -151,6 +205,7 @@ export async function showIdentityImportDialog(): Promise<IdentityInfo | null> {
         <div style="display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 12px;">
           <button type="button" id="btn-import-identity-run" class="btn btn-primary">${t('identity.importAction')}</button>
           <button type="button" id="btn-import-identity-scan" class="btn btn-secondary">${t('identity.scanQr')}</button>
+          <button type="button" id="btn-import-identity-file" class="btn btn-secondary">${t('backup.loadFromFile')}</button>
         </div>
         <div id="identity-import-scan-wrap" style="display: none; border: 1px solid var(--border-color); border-radius: var(--radius-md); padding: 10px; background: var(--bg-card);">
           <div style="font-size: 11px; color: var(--text-muted); margin-bottom: 8px;">${t('identity.scanHint')}</div>
@@ -169,6 +224,7 @@ export async function showIdentityImportDialog(): Promise<IdentityInfo | null> {
     const passwordInput = backdrop.querySelector('#identity-import-password') as HTMLInputElement;
     const importButton = backdrop.querySelector('#btn-import-identity-run') as HTMLButtonElement;
     const scanButton = backdrop.querySelector('#btn-import-identity-scan') as HTMLButtonElement;
+    const fileButton = backdrop.querySelector('#btn-import-identity-file') as HTMLButtonElement;
     const scanWrap = backdrop.querySelector('#identity-import-scan-wrap') as HTMLElement;
     const video = backdrop.querySelector('#identity-import-video') as HTMLVideoElement;
 
@@ -256,7 +312,19 @@ export async function showIdentityImportDialog(): Promise<IdentityInfo | null> {
       importButton.textContent = t('identity.importing');
       try {
         const identity = await window.api.importIdentity(codeInput.value, passwordInput.value);
-        settle(identity);
+        let restoredScopes: BackupScope[] | undefined;
+        let extrasFailed = false;
+        if (identity.extras) {
+          // A corrupt or foreign extras blob must not cost the user the
+          // identity that was already imported successfully.
+          try {
+            const backup = parseBackup(identity.extras);
+            restoredScopes = applyBackup(backup, scopesInBackup(backup));
+          } catch {
+            extrasFailed = true;
+          }
+        }
+        settle({ ...identity, restoredScopes, extrasFailed });
       } catch (error: any) {
         showError(error?.message || t('identity.importError'));
       } finally {
@@ -271,6 +339,17 @@ export async function showIdentityImportDialog(): Promise<IdentityInfo | null> {
         return;
       }
       await startScan();
+    });
+
+    fileButton.addEventListener('click', async () => {
+      clearError();
+      const result = await window.api.openBackupFile();
+      if (!result.success) {
+        if (result.error) showError(result.error);
+        return;
+      }
+      codeInput.value = (result.contents || '').trim();
+      passwordInput.focus();
     });
 
     backdrop.querySelectorAll('[data-action="cancel"]').forEach((element) => {
