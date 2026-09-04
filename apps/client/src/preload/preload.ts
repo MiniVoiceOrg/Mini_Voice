@@ -64,6 +64,7 @@ export interface ElectronApi {
     callback: (status: { isRunning: boolean; port: number | null; serverId: string | null }) => void
   ) => () => void;
   getDesktopSources: () => Promise<DesktopSource[]>;
+  prepareScreenShareWindow: (sourceId: string) => Promise<boolean>;
   ensureScreenPermission: () => Promise<boolean>;
   selectImageDialog: () => Promise<ImageSelectionResult | null>;
   selectSoundFile: () => Promise<string | null>;
@@ -196,6 +197,7 @@ const api: ElectronApi = {
     return () => ipcRenderer.removeListener('server-host:status-changed', listener);
   },
   getDesktopSources: () => ipcRenderer.invoke('screen-share:get-sources'),
+  prepareScreenShareWindow: (sourceId: string) => ipcRenderer.invoke('screen-share:prepare-window', sourceId),
   ensureScreenPermission: (): Promise<boolean> => ipcRenderer.invoke('screen-share:ensure-permission'),
   selectImageDialog: () => ipcRenderer.invoke('dialog:select-image'),
   selectSoundFile: () => ipcRenderer.invoke('dialog:select-sound-file'),

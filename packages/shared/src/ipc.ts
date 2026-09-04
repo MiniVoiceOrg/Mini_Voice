@@ -358,6 +358,7 @@ export interface IpcInvokeChannels {
   // Captura de Tela
   'screen-share:ensure-permission': { args: []; returnType: boolean };
   'screen-share:get-sources': { args: []; returnType: DesktopSource[] };
+  'screen-share:prepare-window': { args: [string]; returnType: boolean };
 
   // Diálogos Nativos
   'dialog:select-image': { args: []; returnType: ImageSelectionResult | null };
