@@ -159,6 +159,7 @@ export const ptBR = {
   'chat.codeModalEmpty': 'Escreva algum código antes de enviar.',
   'chat.codeModalHint': 'Tab indenta, Shift+Tab remove. Ctrl+Enter envia.',
   'chat.codeBlockPlain': 'Código',
+  'chat.copyMessage': 'Copiar mensagem',
   'chat.codeBlockCopy': 'Copiar',
   'chat.codeBlockCopied': 'Copiado!',
   'chat.stickerPermissionDenied': 'Você não tem permissão para enviar figurinhas neste canal.',

@@ -158,6 +158,7 @@ export const en: TranslationMap = {
   'chat.codeModalEmpty': 'Write some code before sending.',
   'chat.codeModalHint': 'Tab indents, Shift+Tab outdents. Ctrl+Enter sends.',
   'chat.codeBlockPlain': 'Code',
+  'chat.copyMessage': 'Copy message',
   'chat.codeBlockCopy': 'Copy',
   'chat.codeBlockCopied': 'Copied!',
   'chat.stickerPermissionDenied': "You don't have permission to send stickers in this channel.",
