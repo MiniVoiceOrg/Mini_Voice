@@ -399,9 +399,10 @@ export class SfuClientEngine {
     const key = `screen_video:${shareId}`;
     try {
       this.closeProducer(key);
+      const chosenCodec = this.pickVideoCodec();
       const producer = await this.sendTransport.produce({
         track,
-        codec: this.pickVideoCodec(),
+        codec: chosenCodec,
         appData: { mediaType: 'screen_video', shareId },
       });
       this.producers.set(key, producer);
@@ -410,7 +411,14 @@ export class SfuClientEngine {
         this.producers.delete(key);
       });
       console.log(`[SFU Client] Produced screen video track ${track.id} shareId ${shareId} with producerId ${producer.id}`);
-      clientLog.info('SFU', `Produced screen video track ${track.id} shareId ${shareId} with producerId ${producer.id}`);
+      // #566 diagnostics: capture the codec chosen for the SFU screen producer
+      // so the SFU side of a SFU -> P2P transition can be compared with the
+      // P2P offer codec order.
+      clientLog.info('SFU', `Produced screen video track ${track.id} shareId ${shareId} with producerId ${producer.id}`, {
+        preferred: settingsStore?.preferredVideoCodec ?? 'auto',
+        qualityPreset: settingsStore?.qualityPreset,
+        chosenCodec: chosenCodec?.mimeType ?? '(mediasoup default)',
+      });
       return producer;
     } catch (err: any) {
       console.error('[SFU Client] Failed to produce screen video track:', err);
