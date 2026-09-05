@@ -1098,6 +1098,9 @@ export class MainView {
     // If in another channel, close the current mesh locally; the server-side
     // join handler updates the stored voice state to the new room directly.
     if (voiceStore.currentVoiceChannelId) {
+      // Switching rooms ends any screen share (#565): it belongs to the room it
+      // started in and must not follow us into the next one.
+      await this.stopLocalScreenSharesForChannelChange();
       webRtcManager.closeAllPeers();
       // The call lives on a single server (#400). Joining voice somewhere else
       // means leaving the previous one for real, otherwise the old server would
@@ -1146,6 +1149,10 @@ export class MainView {
   }
 
   public async rejoinVoiceChannel(channelId: string): Promise<void> {
+    // Being moved to another room ends any screen share (#565); stop the local
+    // capture and producers before tearing the mesh down, otherwise the stale
+    // tracks would be re-announced into the destination on the next join.
+    await this.stopLocalScreenSharesForChannelChange();
     // Close existing peer connections before moving (#248)
     webRtcManager.closeAllPeers();
     // Reset the stored voice channel so handleJoinVoiceChannel performs a full
@@ -1156,6 +1163,22 @@ export class MainView {
     this.voiceStageView?.setChannel(channelId);
     this.renderChannels();
     this.updateScreenShareNotice();
+  }
+
+  /**
+   * Fully stops every local screen share because the participant's voice
+   * channel is changing (moved by an admin or switching rooms). Stops the OS
+   * capture (which plays the stop cue and auto-stops screen audio), removes the
+   * WebRTC producers/senders so nothing is re-announced into the new room, and
+   * clears the derived store flags. No-ops when nothing is being shared (#565).
+   */
+  private async stopLocalScreenSharesForChannelChange(): Promise<void> {
+    if (videoService.getScreenShareCount() === 0 && !voiceStore.isScreenSharing) {
+      return;
+    }
+    videoService.stopScreenShare();
+    await webRtcManager.removeAllLocalScreenTracks();
+    voiceStore.setScreenSharing(false);
   }
 
   private async handleDeleteChannel(channelId: string): Promise<void> {
