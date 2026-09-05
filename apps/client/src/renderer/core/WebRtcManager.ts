@@ -467,6 +467,11 @@ export class WebRtcManager {
         await this.sfuEngine.produceScreenAudio(this.localScreenAudioTrack, 'default');
       }
 
+      // Freshly created SFU producers start with no bitrate/degradation caps, so
+      // push the active quality profile onto them so screen share keeps its
+      // resolution under motion (#568).
+      await this.applyBitrateConstraints();
+
       if (this.isSfuJoinStale(epoch, channelId)) {
         this.sfuEngine.leave();
       }
@@ -1908,6 +1913,14 @@ export class WebRtcManager {
           await sender.setParameters(params);
         } catch (err) {}
       }
+    }
+
+    if (this.isSfuMode()) {
+      // In SFU mode there are no peer connections to iterate — media flows
+      // through the mediasoup send transport — so the loop above is a no-op.
+      // Push the same caps onto the SFU producers, otherwise screen share loses
+      // resolution under motion (#568).
+      await this.sfuEngine.applyQualityParams(this.currentPreset, profile);
     }
   }
 
