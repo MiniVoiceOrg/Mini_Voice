@@ -18,7 +18,7 @@ import { videoService } from './VideoService';
 import { RemoteMediaRouter } from './webrtc/RemoteMediaRouter';
 import { RemoteVadMonitor } from './webrtc/RemoteVadMonitor';
 import { RtcDiagnosticsCollector } from './webrtc/RtcDiagnosticsCollector';
-import { applyVideoCodecPreferences } from './webrtc/codecPreferences';
+import { applyVideoCodecPreferences, getSdpVideoCodecOrder } from './webrtc/codecPreferences';
 import { SfuClientEngine, SfuConsumerTrackEvent } from './webrtc/SfuClientEngine';
 
 export interface PeerSession {
@@ -1431,6 +1431,19 @@ export class WebRtcManager {
         iceRestart,
       });
       await session.pc.setLocalDescription(offer);
+
+      // #566 diagnostics: record which video codec the offer actually
+      // prioritised. H.264 explicitly chosen but negotiating AV1 after a
+      // SFU -> P2P switch shows up here as "av1" leading the order.
+      const offerVideoCodecOrder = getSdpVideoCodecOrder(session.pc.localDescription?.sdp ?? '');
+      if (offerVideoCodecOrder.length > 0) {
+        clientLog.info('WEBRTC', 'P2P offer video codec order', {
+          peer: session.peerSessionId,
+          preferred: settingsStore.preferredVideoCodec,
+          qualityPreset: settingsStore.qualityPreset,
+          codecOrder: offerVideoCodecOrder,
+        });
+      }
 
       this.signalClient.send(MessageType.RTC_SIGNAL, {
         targetSessionId: session.peerSessionId,
