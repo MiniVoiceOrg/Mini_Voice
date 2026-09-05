@@ -1,4 +1,4 @@
-import { app, BrowserWindow, desktopCapturer, dialog, globalShortcut, ipcMain, screen, shell, systemPreferences } from 'electron';
+import { app, BrowserWindow, desktopCapturer, dialog, ipcMain, screen, shell, systemPreferences } from 'electron';
 import { execFile } from 'child_process';
 import fs from 'fs';
 import http from 'http';
@@ -924,55 +924,18 @@ export function setupIpcHandlers(
     }
   });
 
-  let registeredSoundboardShortcuts: Array<{ soundName: string; accelerator: string }> = [];
-  let registeredActionShortcuts: Array<{ action: string; accelerator: string }> = [];
-
-  const syncAllGlobalShortcuts = (): boolean => {
-    try {
-      globalShortcut.unregisterAll();
-
-      for (const item of registeredSoundboardShortcuts) {
-        if (!item.accelerator || !item.soundName) continue;
-        try {
-          globalShortcut.register(item.accelerator, () => {
-            if (mainWindow && !mainWindow.isDestroyed()) {
-              mainWindow.webContents.send('soundboard:shortcut-triggered', item.soundName);
-            }
-          });
-        } catch (err) {
-          console.warn(`[main] Failed to register soundboard shortcut "${item.accelerator}" for "${item.soundName}":`, err);
-        }
-      }
-
-      for (const item of registeredActionShortcuts) {
-        if (!item.accelerator || !item.action) continue;
-        try {
-          globalShortcut.register(item.accelerator, () => {
-            if (mainWindow && !mainWindow.isDestroyed()) {
-              mainWindow.webContents.send('shortcut:action-triggered', item.action);
-            }
-          });
-        } catch (err) {
-          console.warn(`[main] Failed to register action shortcut "${item.accelerator}" for "${item.action}":`, err);
-        }
-      }
-      return true;
-    } catch (e) {
-      console.warn('[main] Error in syncAllGlobalShortcuts:', e);
-      return false;
-    }
-  };
-
-  // Soundboard Global Shortcuts Registration
+  // Global shortcuts for the soundboard and actions (mute/deafen/camera/etc.)
+  // are matched through the passive uiohook listener (globalInputHook) instead
+  // of Electron globalShortcut. globalShortcut.register() consumes the key on
+  // Windows, so a single-key bind like "Q" was swallowed and never reached the
+  // focused game (#571). uiohook only observes input, so the key passes through.
   ipcMain.handle('soundboard:register-shortcuts', (_, shortcuts: Array<{ soundName: string; accelerator: string }>) => {
-    registeredSoundboardShortcuts = Array.isArray(shortcuts) ? shortcuts : [];
-    return syncAllGlobalShortcuts();
+    return globalInputHook.setSoundboardHotkeys(Array.isArray(shortcuts) ? shortcuts : []);
   });
 
   // Action Global Shortcuts Registration (#252)
   ipcMain.handle('shortcuts:register-actions', (_, shortcuts: Array<{ action: string; accelerator: string }>) => {
-    registeredActionShortcuts = Array.isArray(shortcuts) ? shortcuts : [];
-    return syncAllGlobalShortcuts();
+    return globalInputHook.setActionHotkeys(Array.isArray(shortcuts) ? shortcuts : []);
   });
 
   // Push to Talk (PTT) (#186)
