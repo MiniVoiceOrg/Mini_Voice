@@ -2,6 +2,8 @@ import * as mediasoupClient from 'mediasoup-client';
 import type { types as mediasoupTypes } from 'mediasoup-client';
 import {
   MessageType,
+  QualityPresetType,
+  QualityProfile,
   SfuConnectWebRtcTransportPayload,
   SfuConsumePayload,
   SfuConsumedPayload,
@@ -53,6 +55,11 @@ export class SfuClientEngine {
   private recvTransport: mediasoupTypes.Transport | null = null;
   private channelId: string | null = null;
   private producers: Map<string, mediasoupTypes.Producer> = new Map();
+  // Last quality profile pushed from WebRtcManager. Applied to every producer's
+  // RTP sender so SFU media honors the same bitrate/degradation caps as the P2P
+  // path (#568). Null until the first apply.
+  private qualityPreset: QualityPresetType = 'NORMAL';
+  private qualityProfile: QualityProfile | null = null;
   private consumers: Map<string, mediasoupTypes.Consumer> = new Map();
   /** Consumer tracking metadata: producerId -> { producerSessionId, mediaType, shareId, consumerId } */
   private consumerMeta: Map<string, { producerSessionId: string; mediaType: string; shareId?: string; consumerId: string }> = new Map();
@@ -344,6 +351,7 @@ export class SfuClientEngine {
         },
       });
       this.producers.set('mic', producer);
+      await this.applyProducerQuality('mic', producer);
       producer.on('transportclose', () => {
         console.log(`[SFU Client] Mic producer transport closed`);
         this.producers.delete('mic');
@@ -372,6 +380,7 @@ export class SfuClientEngine {
         appData: { mediaType: 'camera' },
       });
       this.producers.set('camera', producer);
+      await this.applyProducerQuality('camera', producer);
       producer.on('transportclose', () => {
         this.producers.delete('camera');
       });
@@ -396,6 +405,7 @@ export class SfuClientEngine {
         appData: { mediaType: 'screen_video', shareId },
       });
       this.producers.set(key, producer);
+      await this.applyProducerQuality(key, producer);
       producer.on('transportclose', () => {
         this.producers.delete(key);
       });
@@ -422,6 +432,7 @@ export class SfuClientEngine {
         },
       });
       this.producers.set(key, producer);
+      await this.applyProducerQuality(key, producer);
       producer.on('transportclose', () => {
         this.producers.delete(key);
       });
@@ -432,6 +443,52 @@ export class SfuClientEngine {
       console.error('[SFU Client] Failed to produce screen audio track:', err);
       clientLog.error('SFU', 'Failed to produce screen audio track', { error: err?.message });
       return null;
+    }
+  }
+
+  /**
+   * Apply the active quality profile to every live producer. SFU producers are
+   * created with mediasoup/browser defaults (no bitrate cap, default
+   * degradation preference), so under heavy motion the encoder trades away
+   * resolution to hold framerate — the resolution collapse seen when streaming
+   * a game over SFU (#568). This mirrors WebRtcManager.applyBitrateConstraints
+   * (the P2P path) by writing maxBitrate/maxFramerate/degradationPreference
+   * straight onto each RTP sender.
+   */
+  public async applyQualityParams(preset: QualityPresetType, profile: QualityProfile): Promise<void> {
+    this.qualityPreset = preset;
+    this.qualityProfile = profile;
+    for (const [key, producer] of this.producers.entries()) {
+      await this.applyProducerQuality(key, producer);
+    }
+  }
+
+  private async applyProducerQuality(key: string, producer: mediasoupTypes.Producer): Promise<void> {
+    const profile = this.qualityProfile;
+    if (!profile) return;
+    const sender: RTCRtpSender | undefined = (producer as any).rtpSender;
+    if (!sender) return;
+    try {
+      const params = sender.getParameters();
+      if (!params.encodings || params.encodings.length === 0) {
+        params.encodings = [{}];
+      }
+      const isAudio = key === 'mic' || key.startsWith('screen_audio');
+      if (isAudio) {
+        params.encodings[0].maxBitrate = profile.audioBitrateKbps * 1000;
+      } else {
+        const isScreen = key.startsWith('screen_video');
+        params.encodings[0].maxBitrate =
+          (isScreen ? profile.screenBitrateKbps : profile.cameraBitrateKbps) * 1000;
+        params.encodings[0].maxFramerate = isScreen ? profile.screenFps : profile.cameraFps;
+        // Gaming keeps motion fluid (drops resolution first); every other preset
+        // holds resolution, matching the P2P behavior exactly.
+        params.degradationPreference =
+          this.qualityPreset === 'GAMING' ? 'maintain-framerate' : 'maintain-resolution';
+      }
+      await sender.setParameters(params);
+    } catch (err: any) {
+      clientLog.warn('SFU', `Failed to apply quality params to producer ${key}`, { error: err?.message });
     }
   }
 
